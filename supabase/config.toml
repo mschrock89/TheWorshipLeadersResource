@@ -1,0 +1,25 @@
+project_id = "cpqenpsibznmswkiahhv"
+
+[functions.import-team-members]
+verify_jwt = false
+
+[functions.send-welcome-email]
+verify_jwt = false
+
+[functions.pco-auth-callback]
+verify_jwt = false
+
+[functions.pco-sync-plans]
+verify_jwt = false
+
+[functions.pco-auto-sync]
+verify_jwt = false
+
+[functions.delete-profile]
+verify_jwt = false
+
+[functions.notify-setlist-published]
+verify_jwt = false
+
+[functions.notify-chat-mention]
+verify_jwt = false

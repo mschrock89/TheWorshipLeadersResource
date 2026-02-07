@@ -1,0 +1,350 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Safe area insets for mobile */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ECC Brand Style Guide - Version 3.1
+   The Experience Community Church
+   Primary: ECC Blue #35B0E5 | Dark Blue #27749D | Window Teal #008DB3
+   Secondary: Yellow #FFB838 | Grays
+   Typography: Avenir (using Nunito Sans as web fallback)
+   All colors are HSL.
+*/
+
+@layer base {
+  :root {
+    /* Dark background - less saturated, more muted */
+    --background: 210 10% 8%;
+    --foreground: 0 0% 100%;
+
+    /* Cards - dark, slightly lighter than background */
+    --card: 210 8% 12%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 210 8% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    /* ECC Blue as primary */
+    --primary: 197 76% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Dark Blue as secondary */
+    --secondary: 200 60% 38%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Soft muted tones - dark grays */
+    --muted: 210 8% 18%;
+    --muted-foreground: 0 0% 75%;
+
+    /* ECC Yellow accent */
+    --accent: 38 100% 61%;
+    --accent-foreground: 0 0% 5%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Dark borders */
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 197 76% 55%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar with ECC Dark Blue */
+    --sidebar-background: 200 60% 20%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 197 76% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 200 55% 28%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 200 50% 25%;
+    --sidebar-ring: 197 76% 55%;
+
+    /* ECC Brand colors */
+    --ecc-blue: 197 76% 55%;
+    --ecc-blue-dark: 200 60% 38%;
+    --ecc-blue-bright: 197 79% 60%;
+    --ecc-teal: 193 100% 35%;
+    --ecc-yellow: 38 100% 61%;
+    --ecc-gray: 228 2% 59%;
+    --ecc-gray-mid: 225 2% 73%;
+    --ecc-gray-light: 60 14% 96%;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(197 76% 55%), hsl(200 60% 38%));
+    --gradient-teal: linear-gradient(135deg, hsl(193 100% 35%), hsl(197 76% 55%));
+    --gradient-warm: linear-gradient(180deg, hsl(60 14% 96%), hsl(0 0% 100%));
+
+    /* Shadows */
+    --shadow-soft: 0 4px 20px -4px hsl(200 60% 38% / 0.15);
+    --shadow-glow: 0 0 30px hsl(197 76% 55% / 0.3);
+  }
+
+  /* Dark mode disabled - ECC light branding only */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer utilities {
+  .text-gradient-blue {
+    background: linear-gradient(
+      90deg,
+      hsl(197 76% 55%) 0%,
+      hsl(200 60% 38%) 50%,
+      hsl(197 76% 65%) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 6s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  .text-gradient-teal {
+    background: linear-gradient(135deg, hsl(193 100% 35%), hsl(197 76% 55%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, hsl(197 76% 55%), hsl(200 60% 38%));
+  }
+
+  .bg-gradient-teal {
+    background: linear-gradient(135deg, hsl(193 100% 35%), hsl(197 76% 55%));
+  }
+
+  .bg-gradient-light {
+    background: linear-gradient(180deg, hsl(60 14% 96%), hsl(0 0% 100%));
+  }
+
+  .shadow-ecc {
+    box-shadow: 0 4px 20px -4px hsl(200 60% 38% / 0.15);
+  }
+
+  .shadow-blue-glow {
+    box-shadow: 0 0 30px hsl(197 76% 55% / 0.3);
+  }
+
+  /* Prevent iOS overscroll/bounce on fixed elements */
+  .touch-none-ios {
+    touch-action: none;
+    -webkit-overflow-scrolling: auto;
+  }
+
+  /* Prevent body overscroll */
+  html, body {
+    overscroll-behavior: none;
+  }
+
+  /* iOS safe area utilities */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  
+  .pb-safe-nav {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Full height accounting for safe areas */
+  .min-h-screen-safe {
+    min-height: 100dvh;
+  }
+}
+
+/* Print Styles for Service Flow Export */
+@media print {
+  /* Reset page margins - tight for one-page fit */
+  @page {
+    margin: 0.2in;
+    size: letter;
+  }
+
+  /* Hide navigation, header, sidebar, footer */
+  header,
+  nav,
+  aside,
+  footer,
+  .sidebar,
+  .bottom-nav,
+  [data-radix-popper-content-wrapper],
+  .toaster,
+  .screen-header {
+    display: none !important;
+  }
+
+  /* Reset body and html for print - compact for single page */
+  html, body {
+    background: white !important;
+    color: black !important;
+    font-size: 9pt !important;
+    line-height: 1.15 !important;
+  }
+
+  /* Make main content full width */
+  main,
+  .service-flow-page {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    position: relative !important;
+  }
+
+  /* Reduce spacing in the page */
+  .service-flow-page.space-y-6 {
+    gap: 2px !important;
+  }
+
+  /* Show print header - compact to free vertical space for one-page fit */
+  .print-header {
+    display: flex !important;
+    border-color: #333 !important;
+    margin-bottom: 2px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .print-header img {
+    height: 32px !important;
+    width: auto !important;
+  }
+
+  .print-header h1 {
+    font-size: 12pt !important;
+  }
+
+  .print-header p {
+    font-size: 9pt !important;
+  }
+
+  .print-title {
+    color: #35B0E5 !important; /* ECC Blue */
+  }
+
+  .print-date {
+    color: #444 !important;
+  }
+
+  /* Hide controls but keep content */
+  .service-flow-page .flex.flex-wrap.gap-3 {
+    display: none !important;
+  }
+
+  /* Column headers - compact */
+  .service-flow-page .border-b {
+    border-bottom: 1px solid #333 !important;
+    margin-bottom: 2px !important;
+    padding-bottom: 2px !important;
+    font-size: 7pt !important;
+  }
+
+  /* Reduce space between items */
+  .service-flow-page .space-y-2 {
+    gap: 0 !important;
+    min-height: auto !important;
+  }
+
+  /* Style the items list for print - very compact */
+  .service-flow-page .space-y-2 > div {
+    page-break-inside: avoid;
+    background: white !important;
+    border: 1px solid #ddd !important;
+    margin-bottom: 0 !important;
+    padding: 2px 4px !important;
+    border-radius: 1px !important;
+  }
+
+  /* ECC Blue (#35B0E5) outline/border around header sections */
+  .service-flow-page .service-flow-header {
+    background: white !important;
+    color: #1a1a1a !important;
+    font-weight: 600 !important;
+    padding: 2px 6px !important;
+    border: 2px solid #35B0E5 !important;
+  }
+
+  .service-flow-page .service-flow-header * {
+    color: #1a1a1a !important;
+  }
+
+  /* Song items */
+  .service-flow-page .bg-card {
+    background: white !important;
+  }
+
+  /* Footer with total - absolute in header area so it's always on first page */
+  .service-flow-page .border-t {
+    position: absolute !important;
+    top: 0.7in !important;
+    right: 0.2in !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 9pt !important;
+    font-weight: 600 !important;
+  }
+
+  /* Hide add button, show total */
+  .service-flow-page .border-t button {
+    display: none !important;
+  }
+
+  /* Hide drag handles and delete buttons in print */
+  .service-flow-page [class*="cursor-grab"],
+  .service-flow-page button[class*="hover:text-destructive"] {
+    display: none !important;
+  }
+
+  /* Ensure text is readable */
+  .service-flow-page .space-y-2 * {
+    color: #1a1a1a !important;
+  }
+
+  .service-flow-page .text-muted-foreground {
+    color: #555 !important;
+  }
+
+  /* Badges styling for print - compact */
+  .service-flow-page [class*="Badge"],
+  .service-flow-page .bg-black {
+    background: #333 !important;
+    color: white !important;
+    padding: 1px 4px !important;
+    border-radius: 2px !important;
+    font-size: 7pt !important;
+  }
+
+  /* Compact item text */
+  .service-flow-page .text-sm {
+    font-size: 8pt !important;
+  }
+
+  .service-flow-page .text-xs {
+    font-size: 7pt !important;
+  }
+}

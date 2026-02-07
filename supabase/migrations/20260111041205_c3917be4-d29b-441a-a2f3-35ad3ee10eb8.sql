@@ -1,0 +1,10 @@
+-- Add new video positions to the team_position enum
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'camera_1';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'camera_2';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'camera_3';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'camera_4';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'chat_host';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'director';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'graphics';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'producer';
+ALTER TYPE public.team_position ADD VALUE IF NOT EXISTS 'switcher';
