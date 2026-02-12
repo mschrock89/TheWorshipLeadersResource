@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, Event } from "@/hooks/useEvents";
-import { useTeamSchedule } from "@/hooks/useTeamSchedule";
+import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -70,11 +70,20 @@ export default function Calendar() {
     data: events = [],
     isLoading
   } = useEventsForMonth(year, month);
-  // Get team schedule filtered by selected campus
+  // Get team schedule filtered by selected campus and rotation period (aligns with Team Builder)
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
+  // Use 15th of displayed month to determine which rotation period applies (matches Team Builder)
+  const referenceDateForPeriod = useMemo(
+    () => (effectiveCampusId ? new Date(year, month, 15) : null),
+    [effectiveCampusId, year, month]
+  );
+  const { data: rotationPeriodName } = useRotationPeriodForDate(
+    effectiveCampusId,
+    referenceDateForPeriod
+  );
   const {
     data: teamSchedule = []
-  } = useTeamSchedule(undefined, effectiveCampusId);
+  } = useTeamSchedule(rotationPeriodName ?? undefined, effectiveCampusId);
   const {
     scheduledDates,
     uniqueTeams
@@ -182,8 +191,25 @@ export default function Calendar() {
   // Check if user is scheduled on a specific day (filtered by campus for volunteers)
   const getUserScheduleForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dateForDay = new Date(year, month, day);
+    const dayOfWeek = dateForDay.getDay();
+    const isSaturday = dayOfWeek === 6;
+    const isSunday = dayOfWeek === 0;
 
-    // Filter by selected campus for non-admin users with multiple campuses
+    // When a specific campus is selected, don't show schedule for days that campus doesn't have service
+    // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
+    if (campusFilter && campusFilter !== "network-wide") {
+      const selectedCampus = campuses.find(c => c.id === campusFilter);
+      if (selectedCampus) {
+        if (isSaturday && !selectedCampus.has_saturday_service) return null;
+        if (isSunday && !selectedCampus.has_sunday_service) return null;
+      }
+      // Filter by selected campus - only show schedule at this campus
+      const match = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
+      return match;
+    }
+
+    // Network-wide or no campus filter - filter by campus for non-admin users with multiple campuses
     if (!isCampusAdmin && userCampuses.length > 1 && campusFilter && campusFilter !== "network-wide") {
       return scheduledDates.find(s => s.scheduleDate === dateStr && s.campusId === campusFilter);
     }
@@ -458,7 +484,9 @@ export default function Calendar() {
                 boxShadow: `inset 0 0 0 1px ${userSchedule.teamColor}40`,
                 opacity: 0.5
               } : undefined;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : isUserEffectivelyScheduled && !isSelected(day) && effectiveTeamColor ? {
+              // Show highlight when user is scheduled OR when a team is scheduled (colored border + background)
+              const showTeamHighlight = (isUserEffectivelyScheduled || teamEntry) && !isSelected(day) && effectiveTeamColor;
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : isMidweekService && !isSelected(day) ? {

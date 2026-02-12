@@ -1,6 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+/** Get the rotation period name that covers a given date for a campus (for filtering team_schedule) */
+export function useRotationPeriodForDate(campusId: string | null, date: Date | null) {
+  const dateStr = date
+    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+    : null;
+
+  return useQuery({
+    queryKey: ["rotation-period-for-date", campusId, dateStr],
+    queryFn: async (): Promise<string | null> => {
+      if (!campusId || !dateStr) return null;
+      const { data, error } = await supabase
+        .from("rotation_periods")
+        .select("name")
+        .eq("campus_id", campusId)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.name ?? null;
+    },
+    enabled: !!campusId && !!dateStr,
+  });
+}
+
 export interface WorshipTeam {
   id: string;
   name: string;
@@ -90,14 +115,28 @@ export function useTeamSchedule(rotationPeriod?: string, campusId?: string | nul
       if (campusId && data) {
         const entriesByDate = new Map<string, TeamScheduleEntry>();
         
-        // First pass: add all entries
-        for (const entry of data) {
+        // Sort so newer entries (by created_at) are processed last - they win when same priority
+        const sorted = [...data].sort((a, b) => {
+          const aT = new Date((a as { created_at?: string }).created_at || 0).getTime();
+          const bT = new Date((b as { created_at?: string }).created_at || 0).getTime();
+          return aT - bT; // older first, so newer overwrites
+        });
+
+        for (const entry of sorted) {
           const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}`;
           const existing = entriesByDate.get(key);
+          const entryAny = entry as TeamScheduleEntry & { created_at?: string };
           
           // Prioritize campus-specific (has campus_id) over shared (null campus_id)
           if (!existing || (entry.campus_id && !existing.campus_id)) {
             entriesByDate.set(key, entry as TeamScheduleEntry);
+          } else if ((entry.campus_id ?? null) === (existing.campus_id ?? null)) {
+            // Same priority (both shared or both campus-specific) - prefer newer
+            const entryCreated = new Date(entryAny.created_at || 0).getTime();
+            const existingCreated = new Date((existing as TeamScheduleEntry & { created_at?: string }).created_at || 0).getTime();
+            if (entryCreated > existingCreated) {
+              entriesByDate.set(key, entry as TeamScheduleEntry);
+            }
           }
         }
         

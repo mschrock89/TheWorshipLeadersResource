@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { format, parseISO } from "date-fns";
+import { useState, useMemo } from "react";
+import { format, parseISO, getDay } from "date-fns";
 import { Calendar, Plus, Trash2, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   useDeleteScheduleEntry,
 } from "@/hooks/useTeamScheduleEditor";
 import { useWorshipTeams } from "@/hooks/useTeamSchedule";
+import { useCampuses } from "@/hooks/useCampuses";
 
 interface TeamScheduleWidgetProps {
   campusId: string | null;
@@ -63,7 +64,23 @@ export function TeamScheduleWidget({
     rotationPeriodName,
     ministryFilter
   );
+  const { data: campuses = [] } = useCampuses();
   const { data: teams = [] } = useWorshipTeams();
+
+  // Filter out Saturday/Sunday entries for campuses that don't have service on those days
+  // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
+  const filteredEntries = useMemo(() => {
+    if (!campusId) return scheduleEntries;
+    const campus = campuses.find((c) => c.id === campusId);
+    if (!campus) return scheduleEntries;
+    return scheduleEntries.filter((entry) => {
+      const date = parseISO(entry.schedule_date);
+      const dayOfWeek = getDay(date); // 0 = Sunday, 6 = Saturday
+      if (dayOfWeek === 6 && !campus.has_saturday_service) return false;
+      if (dayOfWeek === 0 && !campus.has_sunday_service) return false;
+      return true;
+    });
+  }, [scheduleEntries, campusId, campuses]);
   const updateTeam = useUpdateScheduleTeam();
   const createEntry = useCreateScheduleEntry();
   const deleteEntry = useDeleteScheduleEntry();
@@ -199,7 +216,7 @@ export function TeamScheduleWidget({
           <div className="text-center text-muted-foreground py-8">
             Loading schedule...
           </div>
-        ) : scheduleEntries.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No schedule entries for this period.</p>
@@ -208,7 +225,7 @@ export function TeamScheduleWidget({
         ) : (
           <ScrollArea className="h-[300px] pr-4">
             <div className="space-y-2">
-              {scheduleEntries.map((entry) => {
+              {filteredEntries.map((entry) => {
                 const date = parseISO(entry.schedule_date);
                 const isShared = entry.campus_id === null;
                 const ministryType = entry.ministry_type || "weekend";

@@ -35,6 +35,7 @@ export function useTeamScheduleForCampus(
           notes,
           campus_id,
           rotation_period,
+          created_at,
           worship_teams(id, name, color, icon)
         `)
         .eq("rotation_period", rotationPeriodName)
@@ -53,16 +54,28 @@ export function useTeamScheduleForCampus(
       if (error) throw error;
 
       // Prioritize campus-specific entries over shared ones
-      // If a campus-specific entry exists for a date+ministry, exclude the shared one
+      // When same priority (e.g. duplicate shared entries), prefer newer by created_at
       const entriesMap = new Map<string, any>();
-      
-      for (const entry of data || []) {
+      const sorted = [...(data || [])].sort((a, b) => {
+        const aT = new Date(a.created_at || 0).getTime();
+        const bT = new Date(b.created_at || 0).getTime();
+        return aT - bT; // older first, so newer overwrites
+      });
+
+      for (const entry of sorted) {
         const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}`;
         const existing = entriesMap.get(key);
-        
+
         // Keep campus-specific entries over shared (null) entries
         if (!existing || (entry.campus_id !== null && existing.campus_id === null)) {
           entriesMap.set(key, entry);
+        } else if ((entry.campus_id ?? null) === (existing.campus_id ?? null)) {
+          // Same priority - prefer newer
+          const entryCreated = new Date(entry.created_at || 0).getTime();
+          const existingCreated = new Date(existing.created_at || 0).getTime();
+          if (entryCreated > existingCreated) {
+            entriesMap.set(key, entry);
+          }
         }
       }
 
