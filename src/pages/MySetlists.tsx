@@ -407,8 +407,8 @@ export default function MySetlists() {
                     </div>
                   )}
 
-                  {/* Confirm button */}
-                  {!isConfirmed && (
+                  {/* Confirm button - only for users on the team roster for this setlist */}
+                  {!isConfirmed && setlist.amIOnRoster && (
                     <Button
                       onClick={() => confirmSetlist.mutate(setlist.id)}
                       disabled={confirmSetlist.isPending}
@@ -417,6 +417,12 @@ export default function MySetlists() {
                       <Check className="mr-2 h-4 w-4" />
                       Confirm I've Reviewed This Setlist
                     </Button>
+                  )}
+
+                  {!isConfirmed && setlist.amIOnRoster === false && (
+                    <p className="text-xs text-center text-muted-foreground">
+                      You're not on the team roster for this service, so you can't confirm.
+                    </p>
                   )}
 
                   {isConfirmed && setlist.myConfirmation && (

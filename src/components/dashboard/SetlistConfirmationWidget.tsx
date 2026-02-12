@@ -328,7 +328,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Ministries</SelectItem>
-              {MINISTRY_TYPES.map(m => (
+              {MINISTRY_TYPES.filter(m => m.value !== "weekend_team").map(m => (
                 <SelectItem key={m.value} value={m.value}>
                   {m.label}
                 </SelectItem>

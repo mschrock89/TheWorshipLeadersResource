@@ -30,6 +30,8 @@ export interface PublishedSetlist {
     isFirstUse?: boolean;
   }[];
   myConfirmation: SetlistConfirmation | null;
+  /** True if the current user is on the team roster for this setlist's date/campus/ministry (can confirm). */
+  amIOnRoster?: boolean;
 }
 
 // Fetch published setlists for the current user's campuses
@@ -214,6 +216,82 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       if (setlists.length === 0) return [];
 
+      // Build "am I on roster" per (plan_date, campus_id) for confirm-button visibility
+      const rosterKey = (date: string, campusId: string) => `${date}:${campusId}`;
+      const uniqueDateCampus = Array.from(
+        new Set(setlists.map(s => rosterKey(s.plan_date, s.campus_id || "")))
+      ).map(k => {
+        const [plan_date, campus_id] = k.split(":");
+        return { plan_date, campus_id };
+      });
+      const rosterByKey = new Map<string, { user_id: string; ministry_types: string[] }[]>();
+      for (const { plan_date, campus_id } of uniqueDateCampus) {
+        const { data: ts } = await supabase
+          .from("team_schedule")
+          .select("team_id")
+          .eq("schedule_date", plan_date)
+          .eq("campus_id", campus_id)
+          .limit(1)
+          .maybeSingle();
+        const { data: rp } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("campus_id", campus_id)
+          .lte("start_date", plan_date)
+          .gte("end_date", plan_date);
+        const rotationIds = (rp || []).map(r => r.id);
+        const { data: members } = ts?.team_id && rotationIds.length > 0
+          ? await supabase
+              .from("team_members")
+              .select("user_id, ministry_types")
+              .eq("team_id", ts.team_id)
+              .in("rotation_period_id", rotationIds)
+              .not("user_id", "is", null)
+          : { data: [] as { user_id: string; ministry_types: string[] | null }[] };
+        const rawUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
+        const { data: swapsOut } = await supabase
+          .from("swap_requests")
+          .select("requester_id, accepted_by_id")
+          .eq("original_date", plan_date)
+          .eq("status", "accepted");
+        const { data: swapsIn } = await supabase
+          .from("swap_requests")
+          .select("requester_id, accepted_by_id")
+          .eq("swap_date", plan_date)
+          .eq("status", "accepted")
+          .not("swap_date", "is", null);
+        const swappedOut = new Set<string>();
+        const swappedIn = new Set<string>();
+        for (const s of swapsOut || []) {
+          if (s.requester_id && rawUserIds.has(s.requester_id)) {
+            swappedOut.add(s.requester_id);
+            if (s.accepted_by_id) swappedIn.add(s.accepted_by_id);
+          }
+        }
+        for (const s of swapsIn || []) {
+          if (s.accepted_by_id && rawUserIds.has(s.accepted_by_id)) {
+            swappedOut.add(s.accepted_by_id);
+            if (s.requester_id) swappedIn.add(s.requester_id);
+          }
+        }
+        const seen = new Set<string>();
+        const roster: { user_id: string; ministry_types: string[] }[] = [];
+        for (const m of members || []) {
+          if (!m.user_id || swappedOut.has(m.user_id) || seen.has(m.user_id)) continue;
+          seen.add(m.user_id);
+          roster.push({
+            user_id: m.user_id,
+            ministry_types: (m.ministry_types as string[] | null) || [],
+          });
+        }
+        for (const uid of swappedIn) {
+          if (seen.has(uid)) continue;
+          seen.add(uid);
+          roster.push({ user_id: uid, ministry_types: [] });
+        }
+        rosterByKey.set(rosterKey(plan_date, campus_id), roster);
+      }
+
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
       
@@ -294,6 +372,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Map songs and confirmations to setlists
       return (setlists || []).map(setlist => {
         const { setlistSongItems, priorCounts } = setlistSongsWithPrior.find(p => p.setlist.id === setlist.id) ?? { setlistSongItems: [], priorCounts: new Map<string, number>() };
+        const roster = rosterByKey.get(rosterKey(setlist.plan_date, setlist.campus_id || "")) || [];
+        const amIOnRoster = roster.some(
+          m => m.user_id === user.id && (m.ministry_types.length === 0 || m.ministry_types.includes(setlist.ministry_type))
+        );
         return {
           ...setlist,
           songs: setlistSongItems.map(s => {
@@ -310,6 +392,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             };
           }),
           myConfirmation: (confirmations || []).find(c => c.draft_set_id === setlist.id) || null,
+          amIOnRoster,
         };
       });
     },
@@ -576,10 +659,14 @@ export function useConfirmSetlist() {
         description: "You've confirmed that you've reviewed this setlist.",
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      const message =
+        /policy|row-level security|violates/.test(error.message)
+          ? "You can only confirm setlists you're scheduled for."
+          : error.message;
       toast({
         title: "Error confirming setlist",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     },
