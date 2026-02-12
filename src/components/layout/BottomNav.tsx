@@ -9,12 +9,15 @@ import {
   ListMusic,
   Play,
   Pause,
+  Music,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
+import { isAuditionCandidateRole } from "@/lib/access";
 
 // Separate component to handle the music button with audio visualization
 function MusicButton({ 
@@ -142,8 +145,10 @@ function MusicButton({
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const audioPlayer = useAudioPlayerSafe();
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
 
   const isPlaying = audioPlayer?.isPlaying ?? false;
   const hasTrack = !!audioPlayer?.currentTrack;
@@ -173,7 +178,11 @@ export function BottomNav() {
 
   // Show different nav items based on auth state
   const leftNavItems = user
-    ? [
+    ? isAuditionCandidate
+      ? [
+          { to: "/songs", icon: Music, label: "Songs" },
+        ]
+      : [
         { to: "/", icon: HomeIcon, label: "Home" },
         { to: "/chat", icon: MessageCircle, label: "Chat", badge: totalUnread },
       ]

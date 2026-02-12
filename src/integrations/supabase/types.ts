@@ -92,6 +92,88 @@ export type Database = {
         }
         Relationships: []
       }
+      auditions: {
+        Row: {
+          audition_date: string
+          campus_id: string | null
+          candidate_id: string
+          candidate_track: string
+          created_at: string
+          created_by: string | null
+          end_time: string | null
+          harmony_song: string | null
+          id: string
+          lead_song: string | null
+          notes: string | null
+          song_one: string | null
+          song_two: string | null
+          stage: string
+          start_time: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          audition_date: string
+          campus_id?: string | null
+          candidate_id: string
+          candidate_track?: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          harmony_song?: string | null
+          id?: string
+          lead_song?: string | null
+          notes?: string | null
+          song_one?: string | null
+          song_two?: string | null
+          stage?: string
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          audition_date?: string
+          campus_id?: string | null
+          candidate_id?: string
+          candidate_track?: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          harmony_song?: string | null
+          id?: string
+          lead_song?: string | null
+          notes?: string | null
+          song_one?: string | null
+          song_two?: string | null
+          stage?: string
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auditions_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auditions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auditions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       break_requests: {
         Row: {
           created_at: string
@@ -1975,6 +2057,7 @@ export type Database = {
         | "network_worship_pastor"
         | "video_director"
         | "production_manager"
+        | "audition_candidate"
       swap_request_status: "pending" | "accepted" | "declined" | "cancelled"
       team_position:
         | "lead_vocals"
@@ -2154,6 +2237,7 @@ export const Constants = {
         "network_worship_pastor",
         "video_director",
         "production_manager",
+        "audition_candidate",
       ],
       swap_request_status: ["pending", "accepted", "declined", "cancelled"],
       team_position: [

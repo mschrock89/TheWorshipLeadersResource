@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, Event } from "@/hooks/useEvents";
 import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
@@ -28,6 +29,8 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useSyncPcoSchedule, usePcoConnection } from "@/hooks/usePlanningCenter";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
+import { isAuditionCandidateRole } from "@/lib/access";
+import { useUpcomingAudition } from "@/hooks/useAuditions";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const teamIcons: Record<string, React.ElementType> = {
@@ -36,7 +39,7 @@ const teamIcons: Record<string, React.ElementType> = {
   zap: Zap,
   diamond: Diamond
 };
-export default function Calendar() {
+function StandardCalendar() {
   const {
     canManageTeam,
     user
@@ -712,6 +715,79 @@ export default function Calendar() {
         <SwapsSheet open={isSwapsSheetOpen} onOpenChange={setIsSwapsSheetOpen} />
       </div>
     </RefreshableContainer>;
+}
+
+function AuditionCandidateCalendar() {
+  const { user } = useAuth();
+  const { data: audition, isLoading } = useUpcomingAudition(user?.id);
+
+  const formatTime = (time: string | null) => {
+    if (!time) return "";
+    const [hours, minutes] = time.split(":");
+    const h = Number(hours);
+    const period = h >= 12 ? "PM" : "AM";
+    const displayHour = h % 12 || 12;
+    return `${displayHour}:${minutes} ${period}`;
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-4 p-4">
+      <h1 className="text-2xl font-bold text-foreground">My Audition Calendar</h1>
+
+      {isLoading && (
+        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+          Loading audition details...
+        </div>
+      )}
+
+      {!isLoading && !audition && (
+        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+          No upcoming audition is scheduled yet.
+        </div>
+      )}
+
+      {!isLoading && audition && (
+        <div className="space-y-3 rounded-lg border border-border bg-card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-lg font-semibold text-foreground">
+              {new Date(`${audition.audition_date}T00:00:00`).toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
+            <Badge variant="secondary">
+              {audition.stage === "pre_audition" ? "Pre-Audition" : "Audition"}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {audition.campuses?.name || "Campus TBD"}
+            {(audition.start_time || audition.end_time) && (
+              <>
+                {" • "}
+                {formatTime(audition.start_time)}
+                {audition.start_time && audition.end_time ? ` - ${formatTime(audition.end_time)}` : ""}
+              </>
+            )}
+          </p>
+          {audition.notes && <p className="text-sm text-foreground">{audition.notes}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Calendar() {
+  const { user } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
+
+  if (isAuditionCandidate) {
+    return <AuditionCandidateCalendar />;
+  }
+
+  return <StandardCalendar />;
 }
 
 // Band Roster Component

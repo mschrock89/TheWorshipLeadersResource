@@ -7,6 +7,7 @@ import { useCampuses, useUserCampuses, useUpdateUserCampuses } from "@/hooks/use
 import { useUserRoles, useUserAdminCampuses, useAddUserRole, useRemoveUserRole, useToggleUserRole, useUpdateBaseRole } from "@/hooks/useUserRoles";
 import { useUserMinistryAssignments, useToggleMinistryAssignment } from "@/hooks/useMinistryAssignments";
 import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from "@/hooks/useCampusMinistryPositions";
+import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
 import { TestPushNotification } from "@/components/settings/TestPushNotification";
@@ -66,11 +67,14 @@ export default function Profile() {
   const removeUserRole = useRemoveUserRole();
   const toggleMinistryAssignment = useToggleMinistryAssignment();
   const toggleCampusMinistryPosition = useToggleCampusMinistryPosition();
+  const upsertAudition = useUpsertAudition();
+  const { data: candidateAudition } = useCandidateAudition(profileId);
   
   // Derived role info
   const hasRole = (role: string) => userRoles.some(r => r.role === role);
   const isOrgAdmin = hasRole('admin');
   const isCampusAdmin = hasRole('campus_admin');
+  const isAuditionCandidate = hasRole('audition_candidate');
   const baseRole = userRoles.find(r => BASE_ROLES.includes(r.role as any))?.role || 'volunteer';
 
   const [fullName, setFullName] = useState("");
@@ -85,6 +89,17 @@ export default function Profile() {
   const [shareContactWithCampus, setShareContactWithCampus] = useState(false);
   const [gender, setGender] = useState<string | null>(null);
   const [defaultCampusId, setDefaultCampusId] = useState<string | null>(null);
+  const [auditionDate, setAuditionDate] = useState("");
+  const [auditionStage, setAuditionStage] = useState<"pre_audition" | "audition">("pre_audition");
+  const [auditionTrack, setAuditionTrack] = useState<"vocalist" | "instrumentalist">("vocalist");
+  const [auditionCampusId, setAuditionCampusId] = useState<string>("");
+  const [auditionStartTime, setAuditionStartTime] = useState("");
+  const [auditionEndTime, setAuditionEndTime] = useState("");
+  const [leadSong, setLeadSong] = useState("");
+  const [harmonySong, setHarmonySong] = useState("");
+  const [songOne, setSongOne] = useState("");
+  const [songTwo, setSongTwo] = useState("");
+  const [auditionNotes, setAuditionNotes] = useState("");
   
   // Password change state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -112,6 +127,23 @@ export default function Profile() {
       setDefaultCampusId(profile.default_campus_id || null);
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (!candidateAudition) {
+      return;
+    }
+    setAuditionDate(candidateAudition.audition_date || "");
+    setAuditionStage(candidateAudition.stage);
+    setAuditionTrack(candidateAudition.candidate_track);
+    setAuditionCampusId(candidateAudition.campus_id || "");
+    setAuditionStartTime(candidateAudition.start_time || "");
+    setAuditionEndTime(candidateAudition.end_time || "");
+    setLeadSong(candidateAudition.lead_song || "");
+    setHarmonySong(candidateAudition.harmony_song || "");
+    setSongOne(candidateAudition.song_one || "");
+    setSongTwo(candidateAudition.song_two || "");
+    setAuditionNotes(candidateAudition.notes || "");
+  }, [candidateAudition]);
 
   useEffect(() => {
     if (userCampuses.length > 0) {
@@ -631,6 +663,145 @@ export default function Profile() {
                   />
                 </div>
               </div>
+
+              {/* Audition Candidate Setup */}
+              {isLeader && isAuditionCandidate && (
+                <Card className="border-primary/30">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-lg">Audition Plan</CardTitle>
+                    <CardDescription>
+                      Schedule the candidate's pre-audition or audition and assign their songs.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Stage</Label>
+                        <Select value={auditionStage} onValueChange={(value) => setAuditionStage(value as "pre_audition" | "audition")}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pre_audition">Pre-Audition</SelectItem>
+                            <SelectItem value="audition">Audition</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Candidate Type</Label>
+                        <Select value={auditionTrack} onValueChange={(value) => setAuditionTrack(value as "vocalist" | "instrumentalist")}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="vocalist">Vocalist</SelectItem>
+                            <SelectItem value="instrumentalist">Instrumentalist</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Audition Date</Label>
+                        <Input type="date" value={auditionDate} onChange={(e) => setAuditionDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Campus</Label>
+                        <Select value={auditionCampusId} onValueChange={setAuditionCampusId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select campus" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {campuses.map((campus) => (
+                              <SelectItem key={campus.id} value={campus.id}>
+                                {campus.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Start Time</Label>
+                        <Input type="time" value={auditionStartTime} onChange={(e) => setAuditionStartTime(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End Time</Label>
+                        <Input type="time" value={auditionEndTime} onChange={(e) => setAuditionEndTime(e.target.value)} />
+                      </div>
+                    </div>
+
+                    {auditionTrack === "vocalist" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Song to Lead</Label>
+                          <Input value={leadSong} onChange={(e) => setLeadSong(e.target.value)} placeholder="Song title" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Harmony Song</Label>
+                          <Input value={harmonySong} onChange={(e) => setHarmonySong(e.target.value)} placeholder="Song title" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Song 1</Label>
+                          <Input value={songOne} onChange={(e) => setSongOne(e.target.value)} placeholder="Song title" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Song 2</Label>
+                          <Input value={songTwo} onChange={(e) => setSongTwo(e.target.value)} placeholder="Song title" />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>Notes</Label>
+                      <Input
+                        value={auditionNotes}
+                        onChange={(e) => setAuditionNotes(e.target.value)}
+                        placeholder="Interview notes, instructions, reminders..."
+                      />
+                    </div>
+
+                    <Button
+                      type="button"
+                      disabled={!profileId || !auditionDate || upsertAudition.isPending}
+                      onClick={() => {
+                        if (!profileId || !auditionDate) return;
+                        upsertAudition.mutate({
+                          id: candidateAudition?.id,
+                          candidate_id: profileId,
+                          audition_date: auditionDate,
+                          campus_id: auditionCampusId || null,
+                          start_time: auditionStartTime || null,
+                          end_time: auditionEndTime || null,
+                          stage: auditionStage,
+                          candidate_track: auditionTrack,
+                          lead_song: auditionTrack === "vocalist" ? (leadSong || null) : null,
+                          harmony_song: auditionTrack === "vocalist" ? (harmonySong || null) : null,
+                          song_one: auditionTrack === "instrumentalist" ? (songOne || null) : null,
+                          song_two: auditionTrack === "instrumentalist" ? (songTwo || null) : null,
+                          notes: auditionNotes || null,
+                          status: "scheduled",
+                        });
+                      }}
+                    >
+                      {upsertAudition.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Audition Plan"
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Gender (for vocalists - swap matching) */}
               {canEdit && (

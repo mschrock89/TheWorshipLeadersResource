@@ -4,9 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
+import { canAuditionCandidateAccessPath, isAuditionCandidateRole } from "@/lib/access";
 import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import Auth from "./pages/Auth";
@@ -42,8 +44,12 @@ if ("serviceWorker" in navigator) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const location = useLocation();
+  const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
+  const roleNames = roles.map((r) => r.role);
+  const isAuditionCandidate = isAuditionCandidateRole(roleNames);
 
-  if (isLoading) {
+  if (isLoading || (user && rolesLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -53,6 +59,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (isAuditionCandidate && !canAuditionCandidateAccessPath(location.pathname)) {
+    return <Navigate to="/calendar" replace />;
   }
 
   return <>{children}</>;

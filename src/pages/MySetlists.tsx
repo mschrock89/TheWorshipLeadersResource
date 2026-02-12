@@ -29,11 +29,14 @@ import { useCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { isAuditionCandidateRole } from "@/lib/access";
+import { useUpcomingAudition } from "@/hooks/useAuditions";
 
-export default function MySetlists() {
+function StandardMySetlists() {
   const { isAdmin, user } = useAuth();
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
@@ -451,4 +454,81 @@ export default function MySetlists() {
       )}
     </div>
   );
+}
+
+function AuditionCandidateSetlists() {
+  const { user } = useAuth();
+  const { data: audition, isLoading } = useUpcomingAudition(user?.id);
+
+  const assignmentLines =
+    audition?.candidate_track === "vocalist"
+      ? [audition.lead_song, audition.harmony_song].filter(Boolean)
+      : [audition.song_one, audition.song_two].filter(Boolean);
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-foreground">My Audition Setlist</h1>
+
+      {isLoading && (
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">Loading audition setlist...</CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !audition && (
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            No upcoming audition has been assigned yet.
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && audition && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {new Date(`${audition.audition_date}T00:00:00`).toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {audition.stage === "pre_audition" ? "Pre-Audition Meeting" : "Audition"}
+              {audition.campuses?.name ? ` • ${audition.campuses.name}` : ""}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {assignmentLines.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No songs assigned yet.</p>
+            ) : (
+              assignmentLines.map((line, index) => (
+                <div key={`${line}-${index}`} className="rounded-lg bg-muted/50 p-3 text-sm text-foreground">
+                  {line}
+                </div>
+              ))
+            )}
+            {audition.notes && (
+              <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+                {audition.notes}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+export default function MySetlists() {
+  const { user } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
+
+  if (isAuditionCandidate) {
+    return <AuditionCandidateSetlists />;
+  }
+
+  return <StandardMySetlists />;
 }

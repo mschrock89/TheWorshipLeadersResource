@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useProfile } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
@@ -13,6 +14,7 @@ import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { useMemo, useEffect, useState } from "react";
 import { useCampusSelectionOptional } from "./CampusSelectionContext";
+import { isAuditionCandidateRole } from "@/lib/access";
 
 interface MainHeaderProps {
   selectedCampusId?: string | null;
@@ -30,6 +32,8 @@ export function MainHeader({
     isLeader
   } = useAuth();
   const location = useLocation();
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
   const {
     data: profile
   } = useProfile(user?.id);
@@ -114,7 +118,7 @@ export function MainHeader({
         {/* Right side - Notification bell and User menu */}
         <div className="flex items-center gap-2">
           {/* Notification bell */}
-          <NotificationBell />
+          {!isAuditionCandidate && <NotificationBell />}
           
           {/* User menu */}
           <DropdownMenu>
@@ -124,24 +128,30 @@ export function MainHeader({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover">
-              <DropdownMenuItem asChild>
-                <Link to="/dashboard" className="flex items-center gap-2">
-                  <LayoutDashboard className="h-4 w-4" />
-                  Dashboard
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link to="/team" className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Team Directory
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link to="/schedule" className="flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  My Schedule
-                </Link>
-              </DropdownMenuItem>
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/dashboard" className="flex items-center gap-2">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/team" className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Team Directory
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/schedule" className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    My Schedule
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem asChild>
                 <Link to="/songs" className="flex items-center gap-2">
                   <FolderOpen className="h-4 w-4" />
@@ -154,7 +164,7 @@ export function MainHeader({
                   Audio Library
                 </Link>
               </DropdownMenuItem>
-              {isApprover && <DropdownMenuItem asChild>
+              {!isAuditionCandidate && isApprover && <DropdownMenuItem asChild>
                   <Link to="/approvals" className="flex items-center gap-2">
                     <FileCheck className="h-4 w-4" />
                     Approvals
@@ -163,19 +173,23 @@ export function MainHeader({
                       </Badge>}
                   </Link>
                 </DropdownMenuItem>}
-              {canManageTeam && <DropdownMenuItem asChild>
+              {!isAuditionCandidate && canManageTeam && <DropdownMenuItem asChild>
                   <Link to="/settings/planning-center" className="flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
                     Planning Center
                   </Link>
                 </DropdownMenuItem>}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link to="/profile" className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  My Profile
-                </Link>
-              </DropdownMenuItem>
+              {!isAuditionCandidate && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/profile" className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      My Profile
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={signOut} className="text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />

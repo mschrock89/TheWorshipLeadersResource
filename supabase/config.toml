@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.send-welcome-email]
 verify_jwt = false
 
+[functions.create-audition-candidate]
+verify_jwt = false
+
 [functions.pco-auth-callback]
 verify_jwt = false
 

@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useProfiles, TeamPosition, Profile } from "@/hooks/useProfiles";
-import { useProfilesWithCampuses } from "@/hooks/useCampuses";
+import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { TeamMemberCard } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { TeamImportDialog } from "@/components/team/TeamImportDialog";
+import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
 import { WelcomeEmailDialog } from "@/components/team/WelcomeEmailDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { Button } from "@/components/ui/button";
@@ -34,13 +35,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Upload, Mail, ChevronDown, Send, RefreshCw, Home } from "lucide-react";
+import { Users, Upload, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
+  const { data: campuses = [] } = useCampuses();
   const { isLeader, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -49,6 +51,7 @@ export default function Team() {
   const [campusFilter, setCampusFilter] = useState("all");
   const [genderFilter, setGenderFilter] = useState("all");
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailDialogMode, setEmailDialogMode] = useState<"bulk" | "individual" | "resend">("bulk");
   const [selectedMemberForEmail, setSelectedMemberForEmail] = useState<Profile | undefined>();
@@ -243,6 +246,10 @@ export default function Team() {
         </div>
         {isLeader && (
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCandidateDialogOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              New Candidate
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -336,6 +343,16 @@ export default function Team() {
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         onImportComplete={handleImportComplete}
+      />
+
+      <CreateAuditionCandidateDialog
+        open={candidateDialogOpen}
+        onOpenChange={setCandidateDialogOpen}
+        campuses={campuses}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+        }}
       />
 
       {/* Welcome Email Dialog */}

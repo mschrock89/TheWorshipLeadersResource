@@ -27,7 +27,7 @@ export function useUserRole(userId: string | undefined) {
       const roles = data || [];
       
       // Return highest priority role for display
-      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor', 'leader', 'volunteer', 'member'];
+      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor', 'leader', 'audition_candidate', 'volunteer', 'member'];
       for (const priorityRole of priorityOrder) {
         const matchedRole = roles.find(r => r.role === priorityRole);
         if (matchedRole) {
@@ -253,7 +253,7 @@ export function useUpdateBaseRole() {
 
   return useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const baseRoles: AppRole[] = ['campus_worship_pastor', 'student_worship_pastor', 'volunteer', 'leader', 'member'];
+      const baseRoles: AppRole[] = ['campus_worship_pastor', 'student_worship_pastor', 'audition_candidate', 'volunteer', 'leader', 'member'];
       
       // Delete existing base roles
       const { error: deleteError } = await supabase

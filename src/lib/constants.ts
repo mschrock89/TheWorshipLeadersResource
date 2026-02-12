@@ -6,6 +6,7 @@ export const ROLE_LABELS: Record<string, string> = {
   student_worship_pastor: "Student Worship Leader",
   video_director: "Video Director",
   production_manager: "Production Manager",
+  audition_candidate: "Audition Candidate",
   volunteer: "Volunteer",
 };
 
@@ -13,7 +14,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'video_director', 'production_manager', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -184,4 +185,3 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   all: null, // null means show all teams
 };
-
