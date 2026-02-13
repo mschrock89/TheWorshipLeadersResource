@@ -236,31 +236,44 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       const rosterByKey = new Map<string, { user_id: string; ministry_types: string[] }[]>();
       const rosterTeamIdByKey = new Map<string, string | null>();
       for (const { plan_date, campus_id, ministry_type } of uniqueDateCampus) {
+        const scheduleDatesToCheck = [plan_date];
+        if (isWeekend(plan_date)) {
+          const pair = getWeekendPairDate(plan_date);
+          if (pair) scheduleDatesToCheck.push(pair);
+        }
+
         let teamScheduleQuery = supabase
           .from("team_schedule")
-          .select("team_id")
-          .eq("schedule_date", plan_date)
+          .select("team_id, schedule_date")
+          .in("schedule_date", scheduleDatesToCheck)
           .eq("campus_id", campus_id)
-          .limit(1);
+          .order("schedule_date", { ascending: true });
 
         if (ministry_type) {
-          teamScheduleQuery = teamScheduleQuery.eq("ministry_type", ministry_type);
+          if (ministry_type === "weekend") {
+            teamScheduleQuery = teamScheduleQuery.in("ministry_type", ["weekend", "sunday_am", "weekend_team"]);
+          } else {
+            teamScheduleQuery = teamScheduleQuery.eq("ministry_type", ministry_type);
+          }
         }
 
         let ts: { team_id: string } | null = null;
-        const { data: exactTeamSchedule } = await teamScheduleQuery.maybeSingle();
-        ts = exactTeamSchedule;
+        const { data: exactTeamSchedules } = await teamScheduleQuery;
+        if (exactTeamSchedules && exactTeamSchedules.length > 0) {
+          ts = { team_id: exactTeamSchedules[0].team_id };
+        }
 
-        // Fallback to any team for this date/campus if exact ministry match isn't present.
+        // Fallback to any team for this weekend date pair/campus if exact ministry match isn't present.
         if (!ts) {
-          const { data: fallbackTeamSchedule } = await supabase
+          const { data: fallbackTeamSchedules } = await supabase
             .from("team_schedule")
-            .select("team_id")
-            .eq("schedule_date", plan_date)
+            .select("team_id, schedule_date")
+            .in("schedule_date", scheduleDatesToCheck)
             .eq("campus_id", campus_id)
-            .limit(1)
-            .maybeSingle();
-          ts = fallbackTeamSchedule;
+            .order("schedule_date", { ascending: true });
+          if (fallbackTeamSchedules && fallbackTeamSchedules.length > 0) {
+            ts = { team_id: fallbackTeamSchedules[0].team_id };
+          }
         }
 
         const { data: rp } = await supabase
@@ -453,7 +466,12 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             return viaOriginalDate || viaSwapDate;
           }),
         );
-        const amIOnRoster = rosterMatch || swapInMatch;
+        const isVocalistAssignedInSet = setlistSongItems.some((song) => {
+          const junctionVocalistIds = songVocalistMap.get(song.id) || [];
+          if (junctionVocalistIds.length > 0) return junctionVocalistIds.includes(user.id);
+          return song.vocalist_id === user.id;
+        });
+        const amIOnRoster = rosterMatch || swapInMatch || isVocalistAssignedInSet;
         return {
           ...setlist,
           songs: setlistSongItems.map(s => {
