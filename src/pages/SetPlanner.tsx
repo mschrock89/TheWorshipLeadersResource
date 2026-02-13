@@ -270,10 +270,6 @@ export default function SetPlanner() {
     }
   }, [selectedMinistry]);
 
-  useEffect(() => {
-    setSelectedCustomServiceKey("none");
-  }, [selectedMinistry, selectedCampusId, selectedDate]);
-
   // When campus changes, reset the loaded date to force reload
   useEffect(() => {
     if (selectedCampusId) {
@@ -410,6 +406,14 @@ export default function SetPlanner() {
       }),
     [customServiceOccurrences, selectedMinistry, planDateStr],
   );
+
+  useEffect(() => {
+    if (selectedCustomServiceKey === "none") return;
+    const stillValid = availableCustomServices.some((s) => s.occurrence_key === selectedCustomServiceKey);
+    if (!stillValid) {
+      setSelectedCustomServiceKey("none");
+    }
+  }, [selectedCustomServiceKey, availableCustomServices]);
 
   const servicesOnSelectedDate = useMemo(
     () =>
