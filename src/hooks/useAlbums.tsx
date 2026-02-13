@@ -295,3 +295,56 @@ export function useReorderAlbumTracks() {
     },
   });
 }
+
+export function useUpdateAlbumTrackTitle() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      albumId,
+      trackId,
+      songId,
+      title,
+    }: {
+      albumId: string;
+      trackId: string;
+      songId: string | null;
+      title: string;
+    }) => {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) {
+        throw new Error("Title is required");
+      }
+
+      if (songId) {
+        const { error } = await supabase
+          .from("songs")
+          .update({ title: trimmedTitle })
+          .eq("id", songId);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("album_tracks")
+          .update({ title: trimmedTitle })
+          .eq("id", trackId);
+
+        if (error) throw error;
+      }
+
+      return { albumId };
+    },
+    onSuccess: ({ albumId }) => {
+      queryClient.invalidateQueries({ queryKey: ["album", albumId] });
+      toast({ title: "Song title updated" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update song title",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}

@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { ArrowLeft, Play, Pause, Music, Plus, Trash2, MoreVertical, Edit, Upload, FolderUp, Shuffle, GripVertical, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AlbumWithTracks, useDeleteAlbum, useRemoveTrackFromAlbum, useReorderAlbumTracks } from "@/hooks/useAlbums";
+import { AlbumWithTracks, useDeleteAlbum, useRemoveTrackFromAlbum, useReorderAlbumTracks, useUpdateAlbumTrackTitle } from "@/hooks/useAlbums";
 import { useAudioPlayer, Track } from "@/hooks/useAudioPlayer";
 import { AddTrackToAlbumDialog } from "./AddTrackToAlbumDialog";
 import { EditAlbumDialog } from "./EditAlbumDialog";
@@ -32,11 +33,14 @@ export function AlbumDetailView({ album, isLoading, onBack, isAdmin }: AlbumDeta
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [audioUploadSong, setAudioUploadSong] = useState<{ id: string; title: string; audioUrl?: string | null } | null>(null);
   const [linkTrackDialog, setLinkTrackDialog] = useState<{ trackId: string; title: string; songId: string | null } | null>(null);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
   
   const { setPlaylist, play, pause, currentTrack, isPlaying, togglePlay } = useAudioPlayer();
   const deleteAlbum = useDeleteAlbum();
   const removeTrack = useRemoveTrackFromAlbum();
   const reorderTracks = useReorderAlbumTracks();
+  const updateTrackTitle = useUpdateAlbumTrackTitle();
   
   // Drag and drop state
   const [draggedTrackId, setDraggedTrackId] = useState<string | null>(null);
@@ -179,6 +183,37 @@ export function AlbumDetailView({ album, isLoading, onBack, isAdmin }: AlbumDeta
     if (confirm("Remove this track from the album?")) {
       removeTrack.mutate({ trackId, albumId: album.id });
     }
+  };
+
+  const startTitleEdit = (track: (typeof album.album_tracks)[0]) => {
+    const info = getTrackInfo(track);
+    setEditingTrackId(track.id);
+    setEditingTitle(info.title);
+  };
+
+  const cancelTitleEdit = () => {
+    setEditingTrackId(null);
+    setEditingTitle("");
+  };
+
+  const saveTitleEdit = (track: (typeof album.album_tracks)[0]) => {
+    const nextTitle = editingTitle.trim();
+    if (!nextTitle) return;
+
+    updateTrackTitle.mutate(
+      {
+        albumId: album.id,
+        trackId: track.id,
+        songId: track.song_id,
+        title: nextTitle,
+      },
+      {
+        onSuccess: () => {
+          setEditingTrackId(null);
+          setEditingTitle("");
+        },
+      }
+    );
   };
 
   // Drag handlers
@@ -428,24 +463,71 @@ export function AlbumDetailView({ album, isLoading, onBack, isAdmin }: AlbumDeta
                   
                   {/* Track Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={cn(
-                        "font-medium truncate text-[15px]",
-                        isCurrentTrackPlaying ? "text-primary" : "text-foreground"
-                      )}>
-                        {trackInfo.title}
-                      </p>
-                      {/* Linked song indicator */}
-                      {track.song_id && (
-                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 shrink-0 gap-0.5">
-                          <Link2 className="h-2.5 w-2.5" />
-                          Linked
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {trackInfo.author}
-                    </p>
+                    {editingTrackId === track.id ? (
+                      <div
+                        className="flex flex-col gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Input
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              saveTitleEdit(track);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelTitleEdit();
+                            }
+                          }}
+                          className="h-8"
+                          autoFocus
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => saveTitleEdit(track)}
+                            disabled={!editingTitle.trim() || updateTrackTitle.isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2"
+                            onClick={cancelTitleEdit}
+                            disabled={updateTrackTitle.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <p className={cn(
+                            "font-medium truncate text-[15px]",
+                            isCurrentTrackPlaying ? "text-primary" : "text-foreground"
+                          )}>
+                            {trackInfo.title}
+                          </p>
+                          {/* Linked song indicator */}
+                          {track.song_id && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 shrink-0 gap-0.5">
+                              <Link2 className="h-2.5 w-2.5" />
+                              Linked
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {trackInfo.author}
+                        </p>
+                      </>
+                    )}
                   </div>
                   
                   {/* Admin Actions */}
@@ -471,6 +553,12 @@ export function AlbumDetailView({ album, isLoading, onBack, isAdmin }: AlbumDeta
                         >
                           <Link2 className="h-4 w-4 mr-2" />
                           {track.song_id ? "Change Linked Song" : "Link to Song"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => startTitleEdit(track)}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Title
                         </DropdownMenuItem>
                         {!hasAudio && track.songs && (
                           <DropdownMenuItem
