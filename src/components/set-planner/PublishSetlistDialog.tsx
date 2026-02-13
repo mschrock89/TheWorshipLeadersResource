@@ -58,14 +58,14 @@ export function PublishSetlistDialog({
     queryKey: ["custom-service-assignment-count", customServiceId, planDate],
     enabled: !!customServiceId,
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from("custom_service_assignments")
-        .select("id", { count: "exact", head: true })
+        .select("user_id")
         .eq("custom_service_id", customServiceId!)
         .eq("assignment_date", planDate);
 
       if (error) throw error;
-      return count || 0;
+      return new Set((data || []).map((row) => row.user_id)).size;
     },
   });
 
