@@ -30,7 +30,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useQuery } from "@tanstack/react-query";
 import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday, subMonths, addMonths } from "date-fns";
-import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Trash2, Users } from "lucide-react";
+import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
@@ -483,6 +483,39 @@ export default function SetPlanner() {
     selectedCustomService?.campus_id || effectiveCampusId || undefined,
   );
 
+  const groupedCustomServiceAssignments = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        userId: string;
+        userName: string;
+        assignments: typeof customServiceAssignments;
+      }
+    >();
+
+    for (const assignment of customServiceAssignments) {
+      const existing = grouped.get(assignment.user_id);
+      if (existing) {
+        existing.assignments.push(assignment);
+      } else {
+        grouped.set(assignment.user_id, {
+          userId: assignment.user_id,
+          userName: assignment.profiles?.full_name || "Unknown Member",
+          assignments: [assignment],
+        });
+      }
+    }
+
+    return Array.from(grouped.values())
+      .map((entry) => ({
+        ...entry,
+        assignments: [...entry.assignments].sort((a, b) =>
+          (POSITION_LABELS[a.role] || a.role).localeCompare(POSITION_LABELS[b.role] || b.role),
+        ),
+      }))
+      .sort((a, b) => a.userName.localeCompare(b.userName));
+  }, [customServiceAssignments]);
+
   useEffect(() => {
     if (!selectedCustomService) {
       setCustomServiceMemberId("");
@@ -767,34 +800,36 @@ export default function SetPlanner() {
                 <p className="text-sm text-muted-foreground">No team members assigned to this custom service yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {customServiceAssignments.map((assignment) => (
+                  {groupedCustomServiceAssignments.map((member) => (
                     <div
-                      key={assignment.id}
-                      className="flex items-center justify-between rounded-md border border-border p-3"
+                      key={member.userId}
+                      className="rounded-md border border-border p-3"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {assignment.profiles?.full_name || "Unknown Member"}
-                        </p>
-                        <Badge variant="secondary" className="mt-1 text-xs">
-                          {POSITION_LABELS[assignment.role] || assignment.role}
-                        </Badge>
+                        <p className="text-sm font-medium truncate">{member.userName}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {member.assignments.map((assignment) => (
+                            <Badge key={assignment.id} variant="secondary" className="text-xs pr-1">
+                              {POSITION_LABELS[assignment.role] || assignment.role}
+                              <button
+                                type="button"
+                                className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-black/10"
+                                onClick={() =>
+                                  removeCustomServiceAssignment.mutate({
+                                    id: assignment.id,
+                                    custom_service_id: assignment.custom_service_id,
+                                    assignment_date: assignment.assignment_date,
+                                  })
+                                }
+                                disabled={removeCustomServiceAssignment.isPending}
+                                aria-label={`Remove ${POSITION_LABELS[assignment.role] || assignment.role} role`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() =>
-                          removeCustomServiceAssignment.mutate({
-                            id: assignment.id,
-                            custom_service_id: assignment.custom_service_id,
-                            assignment_date: assignment.assignment_date,
-                          })
-                        }
-                        disabled={removeCustomServiceAssignment.isPending}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   ))}
                 </div>
