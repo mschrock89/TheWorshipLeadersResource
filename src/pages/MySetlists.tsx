@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { Home, ListMusic, Check, Clock, Music2, Mic2, ChevronLeft, ChevronRight, Headphones, MapPin } from "lucide-react";
@@ -34,7 +35,7 @@ import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirm
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { isAuditionCandidateRole } from "@/lib/access";
-import { useUpcomingAudition } from "@/hooks/useAuditions";
+import { supabase } from "@/integrations/supabase/client";
 
 function StandardMySetlists() {
   const { isAdmin, user } = useAuth();
@@ -458,65 +459,173 @@ function StandardMySetlists() {
 
 function AuditionCandidateSetlists() {
   const { user } = useAuth();
-  const { data: audition, isLoading } = useUpcomingAudition(user?.id);
+  const confirmSetlist = useConfirmSetlist();
+  const { data: playlists = [], isLoading: playlistsLoading } = useMySetlistPlaylists();
+  const { data: assignedSetlists = [], isLoading } = useQuery({
+    queryKey: ["audition-assigned-setlists", user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const today = new Date().toISOString().split("T")[0];
 
-  const assignmentLines =
-    audition?.candidate_track === "vocalist"
-      ? [audition.lead_song, audition.harmony_song].filter(Boolean)
-      : [audition.song_one, audition.song_two].filter(Boolean);
+      const { data: assignments, error: assignmentError } = await supabase
+        .from("audition_setlist_assignments")
+        .select("draft_set_id")
+        .eq("user_id", user!.id);
+
+      if (assignmentError) throw assignmentError;
+
+      const setIds = (assignments || []).map((a) => a.draft_set_id);
+      if (setIds.length === 0) return [];
+
+      const { data: sets, error: setsError } = await supabase
+        .from("draft_sets")
+        .select(
+          `
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            notes,
+            status,
+            published_at,
+            campuses(name),
+            draft_set_songs(
+              id,
+              song_id,
+              sequence_order,
+              song_key,
+              vocalist_id,
+              songs(title, author),
+              vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+            )
+          `,
+        )
+        .in("id", setIds)
+        .eq("status", "published")
+        .eq("ministry_type", "audition")
+        .gte("plan_date", today)
+        .order("plan_date", { ascending: true });
+
+      if (setsError) throw setsError;
+
+      const { data: confirmations, error: confirmationError } = await supabase
+        .from("setlist_confirmations")
+        .select("id, draft_set_id, user_id, confirmed_at, created_at")
+        .eq("user_id", user!.id)
+        .in("draft_set_id", setIds);
+
+      if (confirmationError) throw confirmationError;
+      const confirmationsBySet = new Map((confirmations || []).map((c) => [c.draft_set_id, c]));
+
+      return (sets || []).map((set: any) => ({
+        ...set,
+        songs: (set.draft_set_songs || [])
+          .slice()
+          .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+          .map((item: any) => ({
+            ...item,
+            song: item.songs,
+          })),
+        myConfirmation: confirmationsBySet.get(set.id) || null,
+        amIOnRoster: true,
+      }));
+    },
+  });
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">My Audition Setlist</h1>
+      <h1 className="text-2xl font-bold text-foreground">My Audition Setlists</h1>
 
-      {isLoading && (
+      {(isLoading || playlistsLoading) && (
         <Card>
           <CardContent className="py-8 text-sm text-muted-foreground">Loading audition setlist...</CardContent>
         </Card>
       )}
 
-      {!isLoading && !audition && (
+      {!isLoading && assignedSetlists.length === 0 && (
         <Card>
           <CardContent className="py-8 text-sm text-muted-foreground">
-            No upcoming audition has been assigned yet.
+            No upcoming audition setlist has been assigned yet.
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && audition && (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {new Date(`${audition.audition_date}T00:00:00`).toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {audition.stage === "pre_audition" ? "Pre-Audition Meeting" : "Audition"}
-              {audition.campuses?.name ? ` • ${audition.campuses.name}` : ""}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {assignmentLines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No songs assigned yet.</p>
-            ) : (
-              assignmentLines.map((line, index) => (
-                <div key={`${line}-${index}`} className="rounded-lg bg-muted/50 p-3 text-sm text-foreground">
-                  {line}
-                </div>
-              ))
-            )}
-            {audition.notes && (
-              <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
-                {audition.notes}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {!isLoading &&
+        assignedSetlists.map((setlist: any) => {
+          const isConfirmed = !!setlist.myConfirmation;
+          const setlistPlaylists = playlists.filter((p) => p.draft_set_id === setlist.id);
+
+          return (
+            <Card key={setlist.id}>
+              <CardHeader>
+                <CardTitle>
+                  {new Date(`${setlist.plan_date}T00:00:00`).toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Audition
+                  {setlist.campuses?.name ? ` • ${setlist.campuses.name}` : ""}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {setlist.songs?.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No songs assigned yet.</p>
+                ) : (
+                  setlist.songs.map((item: any, index: number) => (
+                    <div key={item.id} className="rounded-lg bg-muted/50 p-3 text-sm">
+                      <p className="font-medium">{index + 1}. {item.song?.title || "Unknown Song"}</p>
+                      {item.song?.author && (
+                        <p className="text-xs text-muted-foreground mt-1">{item.song.author}</p>
+                      )}
+                      {item.song_key && (
+                        <Badge variant="outline" className="mt-2 text-xs">
+                          Key: {item.song_key}
+                        </Badge>
+                      )}
+                    </div>
+                  ))
+                )}
+
+                {setlist.notes && (
+                  <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+                    {setlist.notes}
+                  </div>
+                )}
+
+                {!isConfirmed ? (
+                  <Button
+                    onClick={() => confirmSetlist.mutate(setlist.id)}
+                    disabled={confirmSetlist.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Confirm I've Reviewed This Setlist
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
+                  </p>
+                )}
+
+                {setlistPlaylists.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <div className="flex items-center gap-2">
+                      <Headphones className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">Practice Playlist</span>
+                    </div>
+                    {setlistPlaylists.map((playlist) => (
+                      <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
     </div>
   );
 }

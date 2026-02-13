@@ -174,6 +174,52 @@ export type Database = {
           },
         ]
       }
+      audition_setlist_assignments: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          draft_set_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          draft_set_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          draft_set_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audition_setlist_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audition_setlist_assignments_draft_set_id_fkey"
+            columns: ["draft_set_id"]
+            isOneToOne: false
+            referencedRelation: "draft_sets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audition_setlist_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       break_requests: {
         Row: {
           created_at: string
@@ -253,6 +299,69 @@ export type Database = {
           sunday_service_time?: string[] | null
         }
         Relationships: []
+      }
+      custom_services: {
+        Row: {
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          end_time: string | null
+          id: string
+          is_active: boolean
+          ministry_type: string
+          repeat_until: string | null
+          repeats_weekly: boolean
+          service_date: string
+          service_name: string
+          start_time: string | null
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          is_active?: boolean
+          ministry_type: string
+          repeat_until?: string | null
+          repeats_weekly?: boolean
+          service_date: string
+          service_name: string
+          start_time?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          end_time?: string | null
+          id?: string
+          is_active?: boolean
+          ministry_type?: string
+          repeat_until?: string | null
+          repeats_weekly?: boolean
+          service_date?: string
+          service_name?: string
+          start_time?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_services_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_services_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       chat_messages: {
         Row: {

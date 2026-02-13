@@ -144,8 +144,17 @@ export const MINISTRY_TYPES = [
   { value: "eon_weekend", label: "EON Weekend", shortLabel: "EONW", color: "bg-violet-500" },
   { value: "evident", label: "Evident", shortLabel: "EV", color: "bg-zinc-900 ring-1 ring-zinc-500" },
   { value: "er", label: "ER", shortLabel: "ER", color: "bg-red-500" },
+  { value: "audition", label: "Audition", shortLabel: "AUD", color: "bg-sky-600" },
   { value: "production", label: "Production", shortLabel: "PROD", color: "bg-emerald-500" },
   { value: "video", label: "Video", shortLabel: "VID", color: "bg-rose-500" },
+] as const;
+
+export const SET_PLANNER_MINISTRY_OPTIONS = [
+  { value: "weekend", label: "Weekend Services" },
+  { value: "encounter", label: "Encounter" },
+  { value: "eon", label: "EON" },
+  { value: "eon_weekend", label: "EON Weekend" },
+  { value: "evident", label: "Evident Life" },
 ] as const;
 
 // Service Flow item types

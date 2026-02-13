@@ -21,23 +21,17 @@ import { SetPlannerSkeleton } from "@/components/set-planner/SetPlannerSkeleton"
 import { PublishSetlistDialog } from "@/components/set-planner/PublishSetlistDialog";
 import { useSongAvailability, useSaveDraftSet, useExistingSet, usePublishedSetlistSongs, SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledVocalists } from "@/hooks/useScheduledVocalists";
+import { useCustomServiceOccurrences } from "@/hooks/useCustomServices";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday } from "date-fns";
-import { CalendarIcon, ListMusic, Home, Music, Settings } from "lucide-react";
+import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday, subMonths, addMonths } from "date-fns";
+import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-
-const MINISTRY_OPTIONS = [
-  { value: 'weekend', label: 'Weekend Services' },
-  { value: 'encounter', label: 'Encounter' },
-  { value: 'eon', label: 'EON' },
-  { value: 'eon_weekend', label: 'EON Weekend' },
-  { value: 'evident', label: 'Evident Life' },
-];
+import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 
 
 export default function SetPlanner() {
@@ -76,6 +70,7 @@ export default function SetPlanner() {
   }, [isMidweekMinistry]);
   
   const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
+  const [selectedCustomServiceKey, setSelectedCustomServiceKey] = useState<string>("none");
   const [buildingSongs, setBuildingSongs] = useState<BuildingSetSong[]>([]);
   const [notes, setNotes] = useState('');
 
@@ -144,6 +139,13 @@ export default function SetPlanner() {
 
   // Fetch existing set for this date/campus/ministry
   const planDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const rangeStart = format(subMonths(selectedDate, 1), "yyyy-MM-dd");
+  const rangeEnd = format(addMonths(selectedDate, 3), "yyyy-MM-dd");
+  const { data: customServiceOccurrences = [] } = useCustomServiceOccurrences({
+    campusId: effectiveCampusId || undefined,
+    startDate: rangeStart,
+    endDate: rangeEnd,
+  });
   const { data: existingSet, isLoading: existingSetLoading } = useExistingSet(
     effectiveCampusId,
     selectedMinistry,
@@ -261,6 +263,10 @@ export default function SetPlanner() {
       setSelectedDate(nextSaturday(new Date()));
     }
   }, [selectedMinistry]);
+
+  useEffect(() => {
+    setSelectedCustomServiceKey("none");
+  }, [selectedMinistry, selectedCampusId, selectedDate]);
 
   // When campus changes, reset the loaded date to force reload
   useEffect(() => {
@@ -400,6 +406,36 @@ export default function SetPlanner() {
     // The existing set query will refresh and show the published status
   };
 
+  const availableCustomServices = useMemo(
+    () =>
+      customServiceOccurrences.filter((s) => {
+        if (s.ministry_type !== selectedMinistry) return false;
+        return s.occurrence_date >= planDateStr;
+      }),
+    [customServiceOccurrences, selectedMinistry, planDateStr],
+  );
+
+  const servicesOnSelectedDate = useMemo(
+    () =>
+      customServiceOccurrences.filter(
+        (s) => s.ministry_type === selectedMinistry && s.occurrence_date === planDateStr,
+      ),
+    [customServiceOccurrences, selectedMinistry, planDateStr],
+  );
+
+  const applyCustomService = (serviceKey: string) => {
+    if (serviceKey === "none") {
+      setSelectedCustomServiceKey("none");
+      return;
+    }
+    const service = customServiceOccurrences.find((s) => s.occurrence_key === serviceKey);
+    if (!service) return;
+
+    setSelectedCustomServiceKey(serviceKey);
+    setSelectedMinistry(service.ministry_type);
+    setSelectedDate(new Date(`${service.occurrence_date}T12:00:00`));
+  };
+
   return (
     <>
       <div className="space-y-4 overflow-hidden">
@@ -507,9 +543,28 @@ export default function SetPlanner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MINISTRY_OPTIONS.map(opt => (
+                    {SET_PLANNER_MINISTRY_OPTIONS.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Custom service quick selector */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Custom Service</label>
+                <Select value={selectedCustomServiceKey} onValueChange={applyCustomService}>
+                  <SelectTrigger className="w-[260px]">
+                    <SelectValue placeholder="Select a custom service" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {availableCustomServices.map((service) => (
+                      <SelectItem key={service.occurrence_key} value={service.occurrence_key}>
+                        {service.service_name} • {format(new Date(`${service.occurrence_date}T12:00:00`), "MMM d")}
+                        {service.start_time ? ` • ${service.start_time.slice(0, 5)}` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -522,6 +577,25 @@ export default function SetPlanner() {
               <span>• Standard songs: 8 week wait</span>
               <span>• New songs (&lt;3 uses): 4 week wait</span>
             </div>
+
+            {servicesOnSelectedDate.length > 0 && (
+              <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 p-3">
+                <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Custom service{servicesOnSelectedDate.length > 1 ? "s" : ""} on this date
+                </p>
+                <div className="mt-1.5 space-y-1">
+                  {servicesOnSelectedDate.map((service) => (
+                    <p key={service.occurrence_key} className="text-xs text-muted-foreground">
+                      {service.service_name}
+                      {service.start_time ? ` • ${service.start_time.slice(0, 5)}` : ""}
+                      {service.end_time ? `-${service.end_time.slice(0, 5)}` : ""}
+                      {service.repeats_weekly ? " • repeats weekly" : ""}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

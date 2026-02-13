@@ -82,6 +82,7 @@ export default function Home() {
             <span className="text-gradient-blue">Worship Leader's</span>
             <br />
             <span className="text-foreground">Resource</span>
+
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
             Your central hub for team schedules, resources, and collaboration.

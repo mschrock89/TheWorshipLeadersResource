@@ -25,7 +25,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft } from "lucide-react";
+import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft, ListMusic } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES } from "@/lib/constants";
@@ -799,6 +799,18 @@ export default function Profile() {
                         "Save Audition Plan"
                       )}
                     </Button>
+
+                    {profileId && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => navigate(`/set-planner/audition/${profileId}`)}
+                        className="w-full sm:w-auto"
+                      >
+                        <ListMusic className="mr-2 h-4 w-4" />
+                        Create Audition Setlist
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               )}

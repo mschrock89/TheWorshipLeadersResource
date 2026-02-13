@@ -191,10 +191,14 @@ export function BottomNav() {
       ];
 
   const rightNavItems = user
-    ? [
-        { to: "/calendar", icon: Calendar, label: "Calendar" },
-        { to: "/my-setlists", icon: ListMusic, label: "Setlists" },
-      ]
+    ? isAuditionCandidate
+      ? [
+          { to: "/calendar", icon: Calendar, label: "Calendar" },
+        ]
+      : [
+          { to: "/calendar", icon: Calendar, label: "Calendar" },
+          { to: "/my-setlists", icon: ListMusic, label: "Setlists" },
+        ]
     : [];
 
   return (

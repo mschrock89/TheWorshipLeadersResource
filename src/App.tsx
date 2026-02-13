@@ -23,6 +23,7 @@ import PlanningCenter from "./pages/PlanningCenter";
 import SwapRequests from "./pages/SwapRequests";
 import Songs from "./pages/Songs";
 import SetPlanner from "./pages/SetPlanner";
+import AuditionSetPlanner from "./pages/AuditionSetPlanner";
 import ManageSets from "./pages/ManageSets";
 import MySetlists from "./pages/MySetlists";
 import TeamBuilder from "./pages/TeamBuilder";
@@ -224,6 +225,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><SetPlanner /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/set-planner/audition/:candidateId"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><AuditionSetPlanner /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }
