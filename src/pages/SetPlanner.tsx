@@ -368,16 +368,6 @@ export default function SetPlanner() {
     return false;
   };
 
-  // Show loading skeleton while checking role
-  if (roleLoading) {
-    return <SetPlannerSkeleton />;
-  }
-
-  // Don't render if volunteer (will redirect)
-  if (isVolunteer) {
-    return null;
-  }
-
   const handleSave = async () => {
     if (!user || !effectiveCampusId) return;
 
@@ -479,6 +469,16 @@ export default function SetPlanner() {
     ) as Database["public"]["Enums"]["team_position"][];
     return unique.sort((a, b) => POSITION_LABELS[a].localeCompare(POSITION_LABELS[b]));
   }, []);
+
+  // Show loading skeleton while checking role
+  if (roleLoading) {
+    return <SetPlannerSkeleton />;
+  }
+
+  // Don't render if volunteer (will redirect)
+  if (isVolunteer) {
+    return null;
+  }
 
   return (
     <>
