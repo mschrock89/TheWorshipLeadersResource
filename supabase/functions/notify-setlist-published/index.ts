@@ -37,6 +37,7 @@ serve(async (req) => {
       .select(`
         id,
         campus_id,
+        custom_service_id,
         plan_date,
         ministry_type,
         notes,
@@ -69,90 +70,104 @@ serve(async (req) => {
 
     const songCount = setlistSongs?.length || 0;
 
-    // 3. Find the team scheduled for this date
-    const { data: teamSchedule, error: scheduleError } = await supabase
-      .from("team_schedule")
-      .select("team_id")
-      .eq("schedule_date", draftSet.plan_date)
-      .limit(1)
-      .maybeSingle();
-
-    if (scheduleError) {
-      console.error("Error fetching team schedule:", scheduleError);
-    }
-
-    // 4. Get rotation periods for this campus and date
-    const { data: rotationPeriods, error: rotationError } = await supabase
-      .from("rotation_periods")
-      .select("id")
-      .eq("campus_id", draftSet.campus_id)
-      .lte("start_date", draftSet.plan_date)
-      .gte("end_date", draftSet.plan_date);
-
-    if (rotationError) {
-      console.error("Error fetching rotation periods:", rotationError);
-    }
-
-    const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-
-    // 5. Get team members for this team, rotation period, and ministry type
+    // 3. Build notification recipient list
     let userIdsToNotify: string[] = [];
 
-    if (teamSchedule?.team_id && rotationPeriodIds.length > 0) {
-      const { data: teamMembers, error: membersError } = await supabase
-        .from("team_members")
-        .select("user_id, ministry_types")
-        .eq("team_id", teamSchedule.team_id)
-        .in("rotation_period_id", rotationPeriodIds)
-        .not("user_id", "is", null);
+    if (draftSet.custom_service_id) {
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from("custom_service_assignments")
+        .select("user_id")
+        .eq("custom_service_id", draftSet.custom_service_id)
+        .eq("assignment_date", draftSet.plan_date);
 
-      if (membersError) {
-        console.error("Error fetching team members:", membersError);
+      if (assignmentsError) {
+        console.error("Error fetching custom service assignments:", assignmentsError);
       }
 
-      // Filter by ministry type
-      const filteredMembers = (teamMembers || []).filter(m => {
-        if (!m.ministry_types || m.ministry_types.length === 0) return true;
-        return m.ministry_types.includes(draftSet.ministry_type);
-      });
+      userIdsToNotify = Array.from(
+        new Set((assignments || []).map((a) => a.user_id).filter(Boolean))
+      ) as string[];
+    } else {
+      // Fall back to standard scheduled-team recipient resolution
+      const { data: teamSchedule, error: scheduleError } = await supabase
+        .from("team_schedule")
+        .select("team_id")
+        .eq("schedule_date", draftSet.plan_date)
+        .limit(1)
+        .maybeSingle();
 
-      const potentialUserIds = filteredMembers
-        .map(m => m.user_id)
-        .filter(Boolean) as string[];
+      if (scheduleError) {
+        console.error("Error fetching team schedule:", scheduleError);
+      }
 
-      // 6. Filter to only include volunteers (exclude leadership roles)
-      if (potentialUserIds.length > 0) {
-        const { data: userRoles, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("user_id, role")
-          .in("user_id", potentialUserIds);
+      const { data: rotationPeriods, error: rotationError } = await supabase
+        .from("rotation_periods")
+        .select("id")
+        .eq("campus_id", draftSet.campus_id)
+        .lte("start_date", draftSet.plan_date)
+        .gte("end_date", draftSet.plan_date);
 
-        if (rolesError) {
-          console.error("Error fetching user roles:", rolesError);
+      if (rotationError) {
+        console.error("Error fetching rotation periods:", rotationError);
+      }
+
+      const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
+
+      if (teamSchedule?.team_id && rotationPeriodIds.length > 0) {
+        const { data: teamMembers, error: membersError } = await supabase
+          .from("team_members")
+          .select("user_id, ministry_types")
+          .eq("team_id", teamSchedule.team_id)
+          .in("rotation_period_id", rotationPeriodIds)
+          .not("user_id", "is", null);
+
+        if (membersError) {
+          console.error("Error fetching team members:", membersError);
         }
 
-        const leadershipRoles = [
-          "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
-          "network_worship_pastor", "network_worship_leader", "leader",
-          "video_director", "production_manager", "campus_pastor"
-        ];
-
-        // Build a map of user_id -> roles
-        const userRolesMap = new Map<string, string[]>();
-        for (const ur of userRoles || []) {
-          const existing = userRolesMap.get(ur.user_id) || [];
-          existing.push(ur.role);
-          userRolesMap.set(ur.user_id, existing);
-        }
-
-        // Only include users who are volunteers/members AND don't have leadership roles
-        userIdsToNotify = potentialUserIds.filter(userId => {
-          const roles = userRolesMap.get(userId) || [];
-          const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
-          const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-          // Only notify if they're a volunteer AND don't have leadership role
-          return isVolunteer && !hasLeadershipRole;
+        // Filter by ministry type
+        const filteredMembers = (teamMembers || []).filter(m => {
+          if (!m.ministry_types || m.ministry_types.length === 0) return true;
+          return m.ministry_types.includes(draftSet.ministry_type);
         });
+
+        const potentialUserIds = filteredMembers
+          .map(m => m.user_id)
+          .filter(Boolean) as string[];
+
+        // Filter to only include volunteers (exclude leadership roles)
+        if (potentialUserIds.length > 0) {
+          const { data: userRoles, error: rolesError } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", potentialUserIds);
+
+          if (rolesError) {
+            console.error("Error fetching user roles:", rolesError);
+          }
+
+          const leadershipRoles = [
+            "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
+            "network_worship_pastor", "network_worship_leader", "leader",
+            "video_director", "production_manager", "campus_pastor"
+          ];
+
+          // Build a map of user_id -> roles
+          const userRolesMap = new Map<string, string[]>();
+          for (const ur of userRoles || []) {
+            const existing = userRolesMap.get(ur.user_id) || [];
+            existing.push(ur.role);
+            userRolesMap.set(ur.user_id, existing);
+          }
+
+          // Only include users who are volunteers/members AND don't have leadership role
+          userIdsToNotify = potentialUserIds.filter(userId => {
+            const roles = userRolesMap.get(userId) || [];
+            const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
+            const isVolunteer = roles.includes("volunteer") || roles.includes("member");
+            return isVolunteer && !hasLeadershipRole;
+          });
+        }
       }
     }
 

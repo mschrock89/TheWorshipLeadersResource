@@ -23,6 +23,7 @@ export interface SongAvailability {
 export interface DraftSet {
   id: string;
   campus_id: string;
+  custom_service_id?: string | null;
   plan_date: string;
   ministry_type: string;
   created_by: string;
@@ -211,13 +212,18 @@ export function useDraftSets(campusId: string | null) {
 }
 
 // Fetch existing draft/published set for a specific date, campus, and ministry
-export function useExistingSet(campusId: string | null, ministryType: string, planDate: string) {
+export function useExistingSet(
+  campusId: string | null,
+  ministryType: string,
+  planDate: string,
+  customServiceId?: string | null
+) {
   return useQuery({
-    queryKey: ['existing-set', campusId, ministryType, planDate],
+    queryKey: ['existing-set', campusId, ministryType, planDate, customServiceId || null],
     queryFn: async () => {
       if (!campusId || !planDate) return null;
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('draft_sets')
         .select(`
           *,
@@ -231,7 +237,15 @@ export function useExistingSet(campusId: string | null, ministryType: string, pl
         `)
         .eq('campus_id', campusId)
         .eq('ministry_type', ministryType)
-        .eq('plan_date', planDate)
+        .eq('plan_date', planDate);
+
+      if (customServiceId) {
+        query = query.eq('custom_service_id', customServiceId);
+      } else {
+        query = query.is('custom_service_id', null);
+      }
+
+      const { data, error } = await query
         // If duplicates exist (e.g., multiple saves), prefer the published/most-recent one
         .order('published_at', { ascending: false })
         .order('updated_at', { ascending: false })
@@ -385,6 +399,7 @@ export function useSaveDraftSet() {
             ministry_type: draftSet.ministry_type,
             notes: draftSet.notes,
             status: draftSet.status,
+            custom_service_id: draftSet.custom_service_id || null,
           })
           .eq('id', setId);
 
@@ -400,6 +415,7 @@ export function useSaveDraftSet() {
             campus_id: draftSet.campus_id,
             plan_date: draftSet.plan_date,
             ministry_type: draftSet.ministry_type,
+            custom_service_id: draftSet.custom_service_id || null,
             created_by: draftSet.created_by,
             notes: draftSet.notes,
             status: draftSet.status,
@@ -457,7 +473,7 @@ export function useSaveDraftSet() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['draft-sets'] });
       queryClient.invalidateQueries({ queryKey: ['draft-set-songs'] });
-      queryClient.invalidateQueries({ queryKey: ['existing-set', variables.draftSet.campus_id, variables.draftSet.ministry_type, variables.draftSet.plan_date] });
+      queryClient.invalidateQueries({ queryKey: ['existing-set', variables.draftSet.campus_id, variables.draftSet.ministry_type, variables.draftSet.plan_date, variables.draftSet.custom_service_id || null] });
       toast({
         title: variables.draftSet.id ? 'Set updated' : 'Set saved',
         description: 'Your set has been saved successfully.',

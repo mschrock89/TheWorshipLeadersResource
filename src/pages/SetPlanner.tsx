@@ -190,10 +190,15 @@ export default function SetPlanner() {
     startDate: rangeStart,
     endDate: rangeEnd,
   });
+  const selectedCustomServiceIdForQuery = useMemo(() => {
+    if (selectedCustomServiceKey === "none") return null;
+    return customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey)?.id || null;
+  }, [selectedCustomServiceKey, customServiceOccurrences]);
   const { data: existingSet, isLoading: existingSetLoading } = useExistingSet(
     effectiveCampusId,
     selectedMinistry,
-    planDateStr
+    planDateStr,
+    selectedCustomServiceIdForQuery
   );
 
   // Fetch approval status for the current set
@@ -414,6 +419,7 @@ export default function SetPlanner() {
         campus_id: effectiveCampusId,
         plan_date: format(selectedDate, 'yyyy-MM-dd'),
         ministry_type: selectedMinistry,
+        custom_service_id: selectedCustomService?.id || null,
         created_by: user.id,
         status: existingSet?.status || 'draft', // Preserve published status
         notes: notes || null,
@@ -899,6 +905,7 @@ export default function SetPlanner() {
                   targetDate={selectedDate}
                   ministryType={selectedMinistry}
                   campusId={effectiveCampusId}
+                  customServiceId={selectedCustomService?.id || undefined}
                   onPublished={handlePublished}
                 />
               ) : null

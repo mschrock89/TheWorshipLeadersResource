@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,7 @@ interface PublishSetlistDialogProps {
   targetDate: Date;
   ministryType: string;
   campusId: string;
+  customServiceId?: string;
   onPublished?: () => void;
 }
 
@@ -34,6 +36,7 @@ export function PublishSetlistDialog({
   targetDate,
   ministryType,
   campusId,
+  customServiceId,
   onPublished,
 }: PublishSetlistDialogProps) {
   const [open, setOpen] = useState(false);
@@ -50,6 +53,21 @@ export function PublishSetlistDialog({
     ministryType,
     campusId
   );
+  const planDate = format(targetDate, "yyyy-MM-dd");
+  const { data: customAssignedCount = 0 } = useQuery({
+    queryKey: ["custom-service-assignment-count", customServiceId, planDate],
+    enabled: !!customServiceId,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("custom_service_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("custom_service_id", customServiceId!)
+        .eq("assignment_date", planDate);
+
+      if (error) throw error;
+      return count || 0;
+    },
+  });
 
   // Check if the draft set is already pending approval
   useEffect(() => {
@@ -69,7 +87,7 @@ export function PublishSetlistDialog({
     }
   }, [draftSetId]);
 
-  const teamMemberCount = roster?.length || 0;
+  const teamMemberCount = customServiceId ? customAssignedCount : (roster?.length || 0);
 
   // Check for existing sets (published or draft) when dialog opens
   useEffect(() => {
@@ -165,7 +183,7 @@ export function PublishSetlistDialog({
 
               <p>
                 This will submit the setlist to <span className="font-semibold">Kyle Elkins</span> for approval.
-                Once approved, push notifications will be sent to all scheduled team members.
+                Once approved, push notifications will be sent to all {customServiceId ? "assigned custom service members" : "scheduled team members"}.
               </p>
               
               <div className="rounded-lg border bg-muted/50 p-3 space-y-2">

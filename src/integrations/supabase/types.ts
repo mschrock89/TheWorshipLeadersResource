@@ -555,6 +555,7 @@ export type Database = {
           campus_id: string
           created_at: string
           created_by: string
+          custom_service_id: string | null
           id: string
           ministry_type: string
           notes: string | null
@@ -570,6 +571,7 @@ export type Database = {
           campus_id: string
           created_at?: string
           created_by: string
+          custom_service_id?: string | null
           id?: string
           ministry_type?: string
           notes?: string | null
@@ -585,6 +587,7 @@ export type Database = {
           campus_id?: string
           created_at?: string
           created_by?: string
+          custom_service_id?: string | null
           id?: string
           ministry_type?: string
           notes?: string | null
@@ -614,6 +617,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_sets_custom_service_id_fkey"
+            columns: ["custom_service_id"]
+            isOneToOne: false
+            referencedRelation: "custom_services"
             referencedColumns: ["id"]
           },
         ]
