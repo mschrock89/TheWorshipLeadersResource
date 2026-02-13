@@ -471,7 +471,8 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           if (junctionVocalistIds.length > 0) return junctionVocalistIds.includes(user.id);
           return song.vocalist_id === user.id;
         });
-        const amIOnRoster = rosterMatch || swapInMatch || isVocalistAssignedInSet;
+        const scheduleDateEligible = isVolunteerOnly && !!scheduledDates?.has(setlist.plan_date);
+        const amIOnRoster = rosterMatch || swapInMatch || isVocalistAssignedInSet || scheduleDateEligible;
         return {
           ...setlist,
           songs: setlistSongItems.map(s => {
