@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -105,7 +106,8 @@ export default function SetPlanner() {
   const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
   const [selectedCustomServiceKey, setSelectedCustomServiceKey] = useState<string>("none");
   const [customServiceMemberId, setCustomServiceMemberId] = useState<string>("");
-  const [customServiceRole, setCustomServiceRole] = useState<Database["public"]["Enums"]["team_position"]>("vocalist");
+  const [customServiceRoles, setCustomServiceRoles] = useState<Array<Database["public"]["Enums"]["team_position"]>>(["vocalist"]);
+  const [customRolePopoverOpen, setCustomRolePopoverOpen] = useState(false);
   const [buildingSongs, setBuildingSongs] = useState<BuildingSetSong[]>([]);
   const [notes, setNotes] = useState('');
 
@@ -484,6 +486,7 @@ export default function SetPlanner() {
   useEffect(() => {
     if (!selectedCustomService) {
       setCustomServiceMemberId("");
+      setCustomServiceRoles(["vocalist"]);
       return;
     }
     if (customServiceCampusMembers.length > 0) {
@@ -492,6 +495,19 @@ export default function SetPlanner() {
       setCustomServiceMemberId("");
     }
   }, [selectedCustomService, customServiceCampusMembers]);
+
+  const toggleCustomRole = (role: Database["public"]["Enums"]["team_position"]) => {
+    setCustomServiceRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
+  };
+
+  const selectedRoleSummary =
+    customServiceRoles.length === 0
+      ? "Select roles"
+      : customServiceRoles.length === 1
+      ? CUSTOM_SERVICE_ROLE_OPTIONS.find((r) => r.value === customServiceRoles[0])?.label || "1 role"
+      : `${customServiceRoles.length} roles selected`;
 
   // Show loading skeleton while checking role
   if (roleLoading) {
@@ -696,35 +712,52 @@ export default function SetPlanner() {
                   </SelectContent>
                 </Select>
 
-                <Select
-                  value={customServiceRole}
-                  onValueChange={(value) =>
-                    setCustomServiceRole(value as Database["public"]["Enums"]["team_position"])
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CUSTOM_SERVICE_ROLE_OPTIONS.map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        {role.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={customRolePopoverOpen} onOpenChange={setCustomRolePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" className="justify-between">
+                      <span className="truncate">{selectedRoleSummary}</span>
+                      <span className="text-xs text-muted-foreground">▼</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[260px] p-0" align="start">
+                    <div className="border-b px-3 py-2">
+                      <p className="text-sm font-medium">Assign Role(s)</p>
+                      <p className="text-xs text-muted-foreground">Select one or more roles</p>
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto p-1">
+                      {CUSTOM_SERVICE_ROLE_OPTIONS.map((role) => {
+                        const checked = customServiceRoles.includes(role.value);
+                        return (
+                          <button
+                            key={role.value}
+                            type="button"
+                            onClick={() => toggleCustomRole(role.value)}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                          >
+                            <Checkbox checked={checked} />
+                            <span className="text-sm">{role.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
                 <Button
-                  onClick={() => {
-                    if (!customServiceMemberId) return;
-                    addCustomServiceAssignment.mutate({
-                      custom_service_id: selectedCustomService.id,
-                      assignment_date: selectedCustomService.occurrence_date,
-                      user_id: customServiceMemberId,
-                      role: customServiceRole,
-                    });
+                  onClick={async () => {
+                    if (!customServiceMemberId || customServiceRoles.length === 0) return;
+                    await Promise.all(
+                      customServiceRoles.map((role) =>
+                        addCustomServiceAssignment.mutateAsync({
+                          custom_service_id: selectedCustomService.id,
+                          assignment_date: selectedCustomService.occurrence_date,
+                          user_id: customServiceMemberId,
+                          role,
+                        }),
+                      ),
+                    );
                   }}
-                  disabled={!customServiceMemberId || addCustomServiceAssignment.isPending}
+                  disabled={!customServiceMemberId || customServiceRoles.length === 0 || addCustomServiceAssignment.isPending}
                 >
                   Assign
                 </Button>
