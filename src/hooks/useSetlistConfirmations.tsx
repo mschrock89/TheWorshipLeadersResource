@@ -35,6 +35,17 @@ export interface PublishedSetlist {
   amIOnRoster?: boolean;
 }
 
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+
+function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
+  if (!memberMinistry || !setMinistry) return false;
+  if (memberMinistry === setMinistry) return true;
+  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(setMinistry)) {
+    return true;
+  }
+  return false;
+}
+
 // Fetch published setlists for the current user's campuses
 export function usePublishedSetlists(campusId?: string, ministryType?: string, includePast: boolean = false) {
   const { user } = useAuth();
@@ -129,9 +140,11 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             
             // If no ministry types set, include all dates
             // Otherwise, only include if ministry type matches
-            if (userMinistryTypes.length === 0 || 
-                !schedule.ministry_type ||
-                userMinistryTypes.includes(schedule.ministry_type)) {
+            if (
+              userMinistryTypes.length === 0 ||
+              !schedule.ministry_type ||
+              userMinistryTypes.some((memberMinistry) => ministriesMatch(memberMinistry, schedule.ministry_type))
+            ) {
               scheduledDates.add(schedule.schedule_date);
             }
           }
@@ -448,7 +461,12 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           rosterKey(setlist.plan_date, setlist.campus_id || "", setlist.ministry_type || ""),
         ) || [];
         const rosterMatch = roster.some(
-          m => m.user_id === user.id && (m.ministry_types.length === 0 || m.ministry_types.includes(setlist.ministry_type))
+          (m) =>
+            m.user_id === user.id &&
+            (m.ministry_types.length === 0 ||
+              m.ministry_types.some((memberMinistry) =>
+                ministriesMatch(memberMinistry, setlist.ministry_type),
+              )),
         );
         const key = rosterKey(setlist.plan_date, setlist.campus_id || "", setlist.ministry_type || "");
         const setTeamId = rosterTeamIdByKey.get(key);
