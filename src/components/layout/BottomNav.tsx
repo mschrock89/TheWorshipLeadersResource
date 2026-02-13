@@ -18,6 +18,7 @@ import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { isAuditionCandidateRole } from "@/lib/access";
+import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 
 // Separate component to handle the music button with audio visualization
 function MusicButton({ 
@@ -147,6 +148,8 @@ export function BottomNav() {
   const { user } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
+  const { data: isApprover = false } = useIsApprover();
+  const { data: pendingApprovalCount = 0 } = usePendingApprovalCount();
   const audioPlayer = useAudioPlayerSafe();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
 
@@ -197,7 +200,7 @@ export function BottomNav() {
         ]
       : [
           { to: "/calendar", icon: Calendar, label: "Calendar" },
-          { to: "/my-setlists", icon: ListMusic, label: "Setlists" },
+          { to: "/my-setlists", icon: ListMusic, label: "Setlists", badge: isApprover ? pendingApprovalCount : undefined },
         ]
     : [];
 
@@ -245,16 +248,26 @@ export function BottomNav() {
         )}
 
         {/* Right nav items */}
-        {rightNavItems.map(({ to, icon: Icon, label }) => {
+        {rightNavItems.map(({ to, icon: Icon, label, badge }) => {
           const isActive = location.pathname === to;
           
           return (
             <Link key={to} to={to} className="flex-1">
               <Button
                 variant={isActive ? "secondary" : "ghost"}
-                className="w-full gap-2"
+                className="w-full gap-2 relative"
               >
-                <Icon className="h-5 w-5" />
+                <div className="relative">
+                  <Icon className="h-5 w-5" />
+                  {badge !== undefined && badge > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-2 -right-2 h-4 min-w-4 px-1 text-[10px] flex items-center justify-center animate-pulse"
+                    >
+                      {badge > 99 ? "99+" : badge}
+                    </Badge>
+                  )}
+                </div>
                 <span className="hidden sm:inline">{label}</span>
               </Button>
             </Link>

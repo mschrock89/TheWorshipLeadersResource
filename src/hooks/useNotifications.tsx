@@ -69,7 +69,7 @@ export function useNotifications() {
     setIsLoading(true);
     try {
       // Fetch all notification sources in PARALLEL
-      const [memberResult, incomingResult, resolvedResult, newSetsResult, newEventsResult, userCampusesResult, pendingApprovalsResult, approvalStatusResult, userDraftSetsResult] = await Promise.all([
+      const [memberResult, incomingResult, resolvedResult, newSetsResult, newEventsResult, userCampusesResult, approvalStatusResult, userDraftSetsResult] = await Promise.all([
         // Get user's positions
         supabase
           .from("team_members")
@@ -141,17 +141,6 @@ export function useNotifications() {
           .from("user_campuses")
           .select("campus_id")
           .eq("user_id", user.id),
-        // Pending approvals (for Kyle/approvers)
-        supabase
-          .from("setlist_approvals")
-          .select(`
-            id,
-            submitted_at,
-            draft_set_id
-          `)
-          .eq("status", "pending")
-          .order("submitted_at", { ascending: false })
-          .limit(10),
         // Approval status changes for user's submitted setlists
         supabase
           .from("setlist_approvals")
@@ -182,12 +171,8 @@ export function useNotifications() {
       const resolvedRequests = resolvedResult.data || [];
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
-      const pendingApprovals = pendingApprovalsResult.data || [];
       const approvalStatuses = approvalStatusResult.data || [];
       const userDraftSets = userDraftSetsResult.data || [];
-
-      // Check if user is an approver (Kyle Elkins only)
-      const isApprover = user.id === "22c10f05-955a-498c-b18f-2ac570868b35";
 
       const notifs: Notification[] = [];
 
@@ -266,21 +251,8 @@ export function useNotifications() {
         }
       });
 
-      // Process pending approvals (only for Kyle Elkins)
-      if (isApprover) {
-        pendingApprovals.forEach((approval) => {
-          const notifId = `approval-pending-${approval.id}`;
-          notifs.push({
-            id: notifId,
-            type: "pending_approval",
-            title: "Setlist Pending Approval",
-            message: "A setlist needs your review and approval",
-            timestamp: approval.submitted_at,
-            read: currentReadIds.has(notifId),
-            link: "/approvals",
-          });
-        });
-      }
+      // Pending approval indicator for approvers is shown on the bottom Setlists nav badge,
+      // not in the top notification bell.
 
       // Process approval status updates (for submitters)
       approvalStatuses.forEach((approval) => {
