@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, RefreshCw, Building2, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -28,12 +29,12 @@ import { SwapButton } from "@/components/calendar/SwapButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { SwapsSheet } from "@/components/calendar/SwapsSheet";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
-import { useSyncPcoSchedule, usePcoConnection } from "@/hooks/usePlanningCenter";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { useUpcomingAudition } from "@/hooks/useAuditions";
+import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -92,6 +93,43 @@ function StandardCalendar() {
     startDate: monthStart,
     endDate: monthEnd,
   });
+  const { data: customAssignedDates = [] } = useQuery({
+    queryKey: [
+      "calendar-custom-assignment-dates",
+      user?.id,
+      monthStart,
+      monthEnd,
+      campusFilter,
+      ministryFilter,
+    ],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      let query = supabase
+        .from("custom_service_assignments")
+        .select("assignment_date, custom_services!inner(campus_id, ministry_type)")
+        .eq("user_id", user!.id)
+        .gte("assignment_date", monthStart)
+        .lte("assignment_date", monthEnd);
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.eq("custom_services.campus_id", campusFilter);
+      }
+
+      if (ministryFilter && ministryFilter !== "all") {
+        if (ministryFilter === "weekend_team") {
+          query = query.in("custom_services.ministry_type", ["weekend", "production", "video"]);
+        } else {
+          query = query.eq("custom_services.ministry_type", ministryFilter);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      return Array.from(new Set((data || []).map((row) => row.assignment_date)));
+    },
+  });
+  const customAssignedDateSet = useMemo(() => new Set(customAssignedDates), [customAssignedDates]);
   // Get team schedule filtered by selected campus and rotation period (aligns with Team Builder)
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
   // Use 15th of displayed month to determine which rotation period applies (matches Team Builder)
@@ -164,22 +202,6 @@ function StandardCalendar() {
     if (!defaultCampusId) return;
     setNewEvent((prev) => ({ ...prev, campus_id: defaultCampusId }));
   }, [newEvent.campus_id, campusFilter, userCampuses, campuses]);
-
-  // PCO sync
-  const {
-    data: pcoConnection
-  } = usePcoConnection();
-  const syncPcoSchedule = useSyncPcoSchedule();
-  const handleSyncPco = () => {
-    if (!selectedDate) return;
-    const dateStr = selectedDate.toISOString().split('T')[0];
-    // Pass the teamId to sync audio/video members to the scheduled team
-    syncPcoSchedule.mutate({
-      date: dateStr,
-      team_type: 'both',
-      team_id: selectedDayTeam?.team_id
-    });
-  };
 
   // Helper to get service times for a selected date
   const getServiceTimesForDate = (date: Date) => {
@@ -419,7 +441,7 @@ function StandardCalendar() {
     const h12 = h % 12 || 12;
     return `${h12}:${minutes} ${ampm}`;
   };
-  return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"]]}>
+  return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
       <div className="min-h-screen bg-background p-3 md:p-6 overflow-x-hidden">
         <div className="mx-auto max-w-4xl w-full">
           {/* Breadcrumb Navigation - hidden on mobile for space */}
@@ -517,6 +539,7 @@ function StandardCalendar() {
 
               // Check swap status for this day
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const hasCustomAssignment = customAssignedDateSet.has(dateStrForDay);
               const swapStatus = getSwapStatusForDate(dateStrForDay, allUserSwaps);
 
               // Effective schedule: user is playing if (scheduled AND NOT swapped out) OR (swapped in)
@@ -545,9 +568,13 @@ function StandardCalendar() {
               } : undefined;
               // Show highlight when user is scheduled OR when a team is scheduled (colored border + background)
               const showTeamHighlight = (isUserEffectivelyScheduled || teamEntry) && !isSelected(day) && effectiveTeamColor;
+              const showCustomAssignmentHighlight = hasCustomAssignment && !isSelected(day) && !showTeamHighlight;
               return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
+              } : showCustomAssignmentHighlight ? {
+                boxShadow: "inset 0 0 0 2px #0ea5e9",
+                backgroundColor: "rgba(14, 165, 233, 0.12)"
               } : isMidweekService && !isSelected(day) ? {
                 backgroundColor: `${teamColor}10`
               } : undefined}>
@@ -560,6 +587,7 @@ function StandardCalendar() {
                     color: teamColor
                   }} />}
                       {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                      {hasCustomAssignment && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-sky-500" />}
                     </div>
                   </button>;
             })}
@@ -676,11 +704,6 @@ function StandardCalendar() {
                 {/* Band Roster Section */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
-                  {pcoConnection && canManageTeam && <Button size="sm" variant="outline" className="gap-1 h-6 sm:h-7 text-[10px] sm:text-xs px-2" onClick={handleSyncPco} disabled={syncPcoSchedule.isPending}>
-                      <RefreshCw className={`h-3 w-3 ${syncPcoSchedule.isPending ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">{syncPcoSchedule.isPending ? 'Syncing...' : 'Sync from PCO'}</span>
-                      <span className="sm:hidden">{syncPcoSchedule.isPending ? 'Sync...' : 'PCO'}</span>
-                    </Button>}
                 </div>
                 
                 {/* Team roster */}

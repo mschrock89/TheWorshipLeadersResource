@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, ChevronLeft, ChevronRight, Headphones, MapPin } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
@@ -27,6 +28,7 @@ import {
 import { usePublishedSetlists, useConfirmSetlist } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useApproveSetlist, useIsApprover, usePendingApprovals, useRejectSetlist } from "@/hooks/useSetlistApprovals";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,6 +44,7 @@ function StandardMySetlists() {
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
+  const { data: isApprover = false } = useIsApprover();
   
   // Use global campus selection context if available
   const campusContext = useCampusSelectionOptional();
@@ -108,6 +111,16 @@ function StandardMySetlists() {
   }, [initialIndex, allGroupedSetlists.length]);
 
   const isLoading = loadingUpcoming || loadingPast;
+
+  if (isApprover) {
+    return (
+      <ApproverMySetlists
+        campuses={campuses || []}
+        selectedCampusId={selectedCampusId}
+        setSelectedCampusId={setSelectedCampusId}
+      />
+    );
+  }
 
   // Handle deep-link navigation to specific setlist
   useEffect(() => {
@@ -452,6 +465,266 @@ function StandardMySetlists() {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ApproverMySetlists({
+  campuses,
+  selectedCampusId,
+  setSelectedCampusId,
+}: {
+  campuses: Array<{ id: string; name: string }>;
+  selectedCampusId: string;
+  setSelectedCampusId: (value: string) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const approveSetlist = useApproveSetlist();
+  const rejectSetlist = useRejectSetlist();
+  const { data: pendingApprovals = [], isLoading: loadingPending } = usePendingApprovals();
+  const [rejectNotesBySetId, setRejectNotesBySetId] = useState<Record<string, string>>({});
+
+  const { data: approvedSetlists = [], isLoading: loadingApproved } = useQuery({
+    queryKey: ["approver-published-setlists", selectedCampusId, today],
+    queryFn: async () => {
+      let query = supabase
+        .from("draft_sets")
+        .select(`
+          id,
+          campus_id,
+          plan_date,
+          ministry_type,
+          notes,
+          status,
+          published_at,
+          campuses(name),
+          draft_set_songs(
+            id,
+            sequence_order,
+            song_key,
+            songs(title, author),
+            vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+          )
+        `)
+        .eq("status", "published")
+        .gte("plan_date", today)
+        .order("plan_date", { ascending: true });
+
+      if (selectedCampusId !== "all") {
+        query = query.eq("campus_id", selectedCampusId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  const filteredPendingApprovals = useMemo(() => {
+    return pendingApprovals.filter((approval) => {
+      if (!approval.draft_set?.plan_date || approval.draft_set.plan_date < today) return false;
+      if (selectedCampusId !== "all" && approval.draft_set.campus_id !== selectedCampusId) return false;
+      return true;
+    });
+  }, [pendingApprovals, selectedCampusId, today]);
+
+  const getMinistryLabel = (type: string) => {
+    return MINISTRY_TYPES.find(m => m.value === type)?.label || type;
+  };
+
+  const handleReject = async (approvalId: string, draftSetId: string) => {
+    const notes = (rejectNotesBySetId[draftSetId] || "").trim();
+    if (!notes) return;
+    await rejectSetlist.mutateAsync({ approvalId, draftSetId, notes });
+    setRejectNotesBySetId((prev) => ({ ...prev, [draftSetId]: "" }));
+  };
+
+  const isLoading = loadingPending || loadingApproved;
+
+  return (
+    <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link to="/dashboard" className="flex items-center gap-1.5">
+                <Home className="h-3.5 w-3.5" />
+                Dashboard
+              </Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>My Setlists</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ListMusic className="h-6 w-6" />
+            Setlist Review
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Review upcoming drafts and approved setlists
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <MapPin className="h-4 w-4 text-muted-foreground" />
+          <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
+            <SelectTrigger className="w-auto min-w-[160px]">
+              <SelectValue placeholder="All Campuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Campuses</SelectItem>
+              {campuses.map((campus) => (
+                <SelectItem key={campus.id} value={campus.id}>
+                  {campus.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="space-y-4">
+          {[1, 2].map(i => <Skeleton key={i} className="h-44 w-full" />)}
+        </div>
+      )}
+
+      {!isLoading && (
+        <>
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Drafts Awaiting Approval</h2>
+              <Badge variant="secondary">{filteredPendingApprovals.length}</Badge>
+            </div>
+
+            {filteredPendingApprovals.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">No upcoming drafts awaiting approval.</CardContent>
+              </Card>
+            ) : (
+              filteredPendingApprovals.map((approval) => (
+                <Card key={approval.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {format(parseLocalDate(approval.draft_set.plan_date), "EEEE, MMMM d, yyyy")}
+                        </CardTitle>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary">{getMinistryLabel(approval.draft_set.ministry_type)}</Badge>
+                          {approval.draft_set.campuses?.name && (
+                            <Badge variant="outline">{approval.draft_set.campuses.name}</Badge>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Submitted by {approval.submitter?.full_name || "Unknown"} on{" "}
+                          {format(parseISO(approval.submitted_at), "MMM d 'at' h:mm a")}
+                        </p>
+                      </div>
+                      <Badge className="gap-1 bg-amber-600 text-white">
+                        <Clock className="h-3 w-3" />
+                        Pending
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      {approval.songs.map((song, index) => (
+                        <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
+                          <span className="truncate">{index + 1}. {song.song?.title || "Unknown Song"}</span>
+                          {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Revision message (required to deny)</p>
+                      <Textarea
+                        value={rejectNotesBySetId[approval.draft_set_id] || ""}
+                        onChange={(e) =>
+                          setRejectNotesBySetId((prev) => ({ ...prev, [approval.draft_set_id]: e.target.value }))
+                        }
+                        placeholder="Tell the worship pastor what needs to change..."
+                        className="min-h-[80px]"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        disabled={approveSetlist.isPending || rejectSetlist.isPending}
+                        onClick={() => approveSetlist.mutate({ approvalId: approval.id, draftSetId: approval.draft_set_id })}
+                      >
+                        <Check className="mr-2 h-4 w-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        disabled={
+                          approveSetlist.isPending ||
+                          rejectSetlist.isPending ||
+                          !(rejectNotesBySetId[approval.draft_set_id] || "").trim()
+                        }
+                        onClick={() => handleReject(approval.id, approval.draft_set_id)}
+                      >
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Deny
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Approved Setlists</h2>
+              <Badge variant="secondary">{approvedSetlists.length}</Badge>
+            </div>
+            {approvedSetlists.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">No upcoming approved setlists.</CardContent>
+              </Card>
+            ) : (
+              approvedSetlists.map((setlist) => (
+                <Card key={setlist.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-lg">
+                          {format(parseLocalDate(setlist.plan_date), "EEEE, MMMM d, yyyy")}
+                        </CardTitle>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary">{getMinistryLabel(setlist.ministry_type)}</Badge>
+                          {setlist.campuses?.name && <Badge variant="outline">{setlist.campuses.name}</Badge>}
+                        </div>
+                      </div>
+                      <Badge className="bg-green-600 text-white">Approved</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {(setlist.draft_set_songs || [])
+                      .slice()
+                      .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+                      .map((song: any, index: number) => (
+                        <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
+                          <span className="truncate">{index + 1}. {song.songs?.title || "Unknown Song"}</span>
+                          {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+                        </div>
+                      ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </section>
+        </>
       )}
     </div>
   );

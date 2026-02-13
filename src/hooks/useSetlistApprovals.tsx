@@ -360,6 +360,7 @@ export function useApproveSetlist() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
       queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
+      queryClient.invalidateQueries({ queryKey: ["approver-published-setlists"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
       queryClient.invalidateQueries({ queryKey: ["service-flow"] });
@@ -442,6 +443,7 @@ export function useRejectSetlist() {
       queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
+      queryClient.invalidateQueries({ queryKey: ["approver-published-setlists"] });
       
       toast({
         title: "Setlist returned for revision",

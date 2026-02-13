@@ -192,12 +192,47 @@ export function useDeleteCustomService() {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // Clean up pending approval notifications for sets linked to this custom service.
+      // Without this, deleting the service leaves approval cards that no longer map to an active service.
+      const { data: linkedSets, error: linkedSetsError } = await supabase
+        .from("draft_sets")
+        .select("id")
+        .eq("custom_service_id", id);
+
+      if (linkedSetsError) throw linkedSetsError;
+
+      const linkedSetIds = (linkedSets || []).map((s) => s.id);
+
+      if (linkedSetIds.length > 0) {
+        const { error: approvalsError } = await supabase
+          .from("setlist_approvals")
+          .delete()
+          .eq("status", "pending")
+          .in("draft_set_id", linkedSetIds);
+
+        if (approvalsError) throw approvalsError;
+
+        // Reset pending state on linked draft sets now that their approval entry is removed.
+        const { error: resetError } = await supabase
+          .from("draft_sets")
+          .update({
+            status: "draft",
+            submitted_for_approval_at: null,
+          })
+          .eq("status", "pending_approval")
+          .in("id", linkedSetIds);
+
+        if (resetError) throw resetError;
+      }
+
       const { error } = await supabase.from("custom_services").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custom-service-definitions"] });
       queryClient.invalidateQueries({ queryKey: ["custom-service-occurrences"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
       toast({ title: "Custom service deleted" });
     },
     onError: (error) => {

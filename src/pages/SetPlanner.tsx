@@ -115,6 +115,8 @@ export default function SetPlanner() {
   const [customServiceMemberId, setCustomServiceMemberId] = useState<string>("");
   const [customServiceRoles, setCustomServiceRoles] = useState<Array<Database["public"]["Enums"]["team_position"]>>(["vocalist"]);
   const [customRolePopoverOpen, setCustomRolePopoverOpen] = useState(false);
+  const [assignmentSaveState, setAssignmentSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [assignmentSavedAt, setAssignmentSavedAt] = useState<Date | null>(null);
   const [buildingSongs, setBuildingSongs] = useState<BuildingSetSong[]>([]);
   const [notes, setNotes] = useState('');
 
@@ -575,6 +577,15 @@ export default function SetPlanner() {
       ? CUSTOM_SERVICE_ROLE_OPTIONS.find((r) => r.value === customServiceRoles[0])?.label || "1 role"
       : `${customServiceRoles.length} roles selected`;
 
+  const customAssignmentStatusText = useMemo(() => {
+    if (assignmentSaveState === "saving") return "Saving assignments...";
+    if (assignmentSaveState === "saved" && assignmentSavedAt) {
+      return `Saved at ${format(assignmentSavedAt, "h:mm a")}`;
+    }
+    if (assignmentSaveState === "error") return "Could not save. Please try again.";
+    return "Assignments auto-save instantly.";
+  }, [assignmentSaveState, assignmentSavedAt]);
+
   // Show loading skeleton while checking role
   if (roleLoading) {
     return <SetPlannerSkeleton />;
@@ -762,6 +773,15 @@ export default function SetPlanner() {
               <p className="text-sm text-muted-foreground">
                 {selectedCustomService.service_name} • {selectedCustomService.occurrence_date}
               </p>
+              <p className={cn(
+                "text-xs",
+                assignmentSaveState === "saving" && "text-amber-500",
+                assignmentSaveState === "saved" && "text-emerald-500",
+                assignmentSaveState === "error" && "text-destructive",
+                assignmentSaveState === "idle" && "text-muted-foreground",
+              )}>
+                {customAssignmentStatusText}
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
@@ -812,18 +832,25 @@ export default function SetPlanner() {
                 <Button
                   onClick={async () => {
                     if (!customServiceMemberId || customServiceRoles.length === 0) return;
-                    await Promise.all(
-                      customServiceRoles.map((role) =>
-                        addCustomServiceAssignment.mutateAsync({
-                          custom_service_id: selectedCustomService.id,
-                          assignment_date: selectedCustomService.occurrence_date,
-                          user_id: customServiceMemberId,
-                          role,
-                        }),
-                      ),
-                    );
+                    setAssignmentSaveState("saving");
+                    try {
+                      await Promise.all(
+                        customServiceRoles.map((role) =>
+                          addCustomServiceAssignment.mutateAsync({
+                            custom_service_id: selectedCustomService.id,
+                            assignment_date: selectedCustomService.occurrence_date,
+                            user_id: customServiceMemberId,
+                            role,
+                          }),
+                        ),
+                      );
+                      setAssignmentSaveState("saved");
+                      setAssignmentSavedAt(new Date());
+                    } catch {
+                      setAssignmentSaveState("error");
+                    }
                   }}
-                  disabled={!customServiceMemberId || customServiceRoles.length === 0 || addCustomServiceAssignment.isPending}
+                  disabled={!customServiceMemberId || customServiceRoles.length === 0 || addCustomServiceAssignment.isPending || assignmentSaveState === "saving"}
                 >
                   Assign
                 </Button>
@@ -847,14 +874,21 @@ export default function SetPlanner() {
                               <button
                                 type="button"
                                 className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-black/10"
-                                onClick={() =>
-                                  removeCustomServiceAssignment.mutate({
-                                    id: assignment.id,
-                                    custom_service_id: assignment.custom_service_id,
-                                    assignment_date: assignment.assignment_date,
-                                  })
-                                }
-                                disabled={removeCustomServiceAssignment.isPending}
+                                onClick={async () => {
+                                  setAssignmentSaveState("saving");
+                                  try {
+                                    await removeCustomServiceAssignment.mutateAsync({
+                                      id: assignment.id,
+                                      custom_service_id: assignment.custom_service_id,
+                                      assignment_date: assignment.assignment_date,
+                                    });
+                                    setAssignmentSaveState("saved");
+                                    setAssignmentSavedAt(new Date());
+                                  } catch {
+                                    setAssignmentSaveState("error");
+                                  }
+                                }}
+                                disabled={removeCustomServiceAssignment.isPending || assignmentSaveState === "saving"}
                                 aria-label={`Remove ${POSITION_LABELS[assignment.role] || assignment.role} role`}
                               >
                                 <X className="h-3 w-3" />
