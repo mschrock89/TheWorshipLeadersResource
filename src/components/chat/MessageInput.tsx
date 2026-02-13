@@ -74,12 +74,8 @@ export function MessageInput({
   // Handle iOS keyboard focus - scroll input into view
   const handleFocus = useCallback(() => {
     setIsKeyboardOpen(true);
-    if (isIOSDevice && inputRef.current) {
-      // Small delay to let keyboard animation start
-      setTimeout(() => {
-        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 300);
-    }
+    // Avoid forced center scrolling on iOS. It creates a large blank gap
+    // above the keyboard in sticky chat composers.
   }, [isIOSDevice]);
 
   // Handle blur - keyboard closing
@@ -330,8 +326,8 @@ export function MessageInput({
 
   return (
     <div 
-      className={`relative px-3 bg-black transition-all duration-200 ${isKeyboardOpen ? 'py-1' : 'pt-0 pb-2'}`}
-      style={isKeyboardOpen ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}
+      className={`relative px-3 bg-black transition-all duration-200 ${isKeyboardOpen ? 'pt-0.5 pb-0' : 'pt-0 pb-2'}`}
+      style={isKeyboardOpen ? { paddingBottom: isIOSDevice ? '0px' : 'env(safe-area-inset-bottom, 0px)' } : undefined}
       onWheel={(e) => e.stopPropagation()}
     >
       {/* Mention picker */}
