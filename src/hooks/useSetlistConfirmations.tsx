@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
+import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 
 export interface SetlistConfirmation {
   id: string;
@@ -84,10 +85,17 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .eq("status", "accepted")
         .not("swap_date", "is", null);
 
-      const swapDates = [
+      const rawSwapDates = [
         ...(swapsAsAcceptor || []).map(s => s.original_date),
         ...(swapsAsRequester || []).map(s => s.swap_date),
       ].filter(Boolean) as string[];
+      const swapDatesSet = new Set<string>(rawSwapDates);
+      for (const date of rawSwapDates) {
+        if (!isWeekend(date)) continue;
+        const pair = getWeekendPairDate(date);
+        if (pair) swapDatesSet.add(pair);
+      }
+      const swapDates = Array.from(swapDatesSet);
 
       // For volunteers, get their scheduled dates based on team assignments
       let scheduledDates: Set<string> | null = null;
@@ -216,23 +224,45 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       if (setlists.length === 0) return [];
 
-      // Build "am I on roster" per (plan_date, campus_id) for confirm-button visibility
-      const rosterKey = (date: string, campusId: string) => `${date}:${campusId}`;
+      // Build "am I on roster" per (plan_date, campus_id, ministry_type) for confirm-button visibility.
+      // Using date+campus only can pick the wrong scheduled team when multiple ministries share a date.
+      const rosterKey = (date: string, campusId: string, ministryType: string) => `${date}:${campusId}:${ministryType}`;
       const uniqueDateCampus = Array.from(
-        new Set(setlists.map(s => rosterKey(s.plan_date, s.campus_id || "")))
+        new Set(setlists.map(s => rosterKey(s.plan_date, s.campus_id || "", s.ministry_type || "")))
       ).map(k => {
-        const [plan_date, campus_id] = k.split(":");
-        return { plan_date, campus_id };
+        const [plan_date, campus_id, ministry_type] = k.split(":");
+        return { plan_date, campus_id, ministry_type };
       });
       const rosterByKey = new Map<string, { user_id: string; ministry_types: string[] }[]>();
-      for (const { plan_date, campus_id } of uniqueDateCampus) {
-        const { data: ts } = await supabase
+      const rosterTeamIdByKey = new Map<string, string | null>();
+      for (const { plan_date, campus_id, ministry_type } of uniqueDateCampus) {
+        let teamScheduleQuery = supabase
           .from("team_schedule")
           .select("team_id")
           .eq("schedule_date", plan_date)
           .eq("campus_id", campus_id)
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+
+        if (ministry_type) {
+          teamScheduleQuery = teamScheduleQuery.eq("ministry_type", ministry_type);
+        }
+
+        let ts: { team_id: string } | null = null;
+        const { data: exactTeamSchedule } = await teamScheduleQuery.maybeSingle();
+        ts = exactTeamSchedule;
+
+        // Fallback to any team for this date/campus if exact ministry match isn't present.
+        if (!ts) {
+          const { data: fallbackTeamSchedule } = await supabase
+            .from("team_schedule")
+            .select("team_id")
+            .eq("schedule_date", plan_date)
+            .eq("campus_id", campus_id)
+            .limit(1)
+            .maybeSingle();
+          ts = fallbackTeamSchedule;
+        }
+
         const { data: rp } = await supabase
           .from("rotation_periods")
           .select("id")
@@ -249,15 +279,21 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
               .not("user_id", "is", null)
           : { data: [] as { user_id: string; ministry_types: string[] | null }[] };
         const rawUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
+        const swapDatesToCheck = [plan_date];
+        if (isWeekend(plan_date)) {
+          const pair = getWeekendPairDate(plan_date);
+          if (pair) swapDatesToCheck.push(pair);
+        }
+
         const { data: swapsOut } = await supabase
           .from("swap_requests")
           .select("requester_id, accepted_by_id")
-          .eq("original_date", plan_date)
+          .in("original_date", swapDatesToCheck)
           .eq("status", "accepted");
         const { data: swapsIn } = await supabase
           .from("swap_requests")
           .select("requester_id, accepted_by_id")
-          .eq("swap_date", plan_date)
+          .in("swap_date", swapDatesToCheck)
           .eq("status", "accepted")
           .not("swap_date", "is", null);
         const swappedOut = new Set<string>();
@@ -289,8 +325,31 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           seen.add(uid);
           roster.push({ user_id: uid, ministry_types: [] });
         }
-        rosterByKey.set(rosterKey(plan_date, campus_id), roster);
+        const key = rosterKey(plan_date, campus_id, ministry_type);
+        rosterByKey.set(key, roster);
+        rosterTeamIdByKey.set(key, ts?.team_id || null);
       }
+
+      // Explicit swap-in fallback for confirmation eligibility:
+      // if the user has an accepted swap-in for the scheduled team on this weekend,
+      // they should be able to confirm even if roster derivation missed them.
+      const relevantTeamIds = Array.from(
+        new Set(Array.from(rosterTeamIdByKey.values()).filter((id): id is string => Boolean(id))),
+      );
+      const { data: myAcceptedSwaps } = relevantTeamIds.length > 0
+        ? await supabase
+            .from("swap_requests")
+            .select("team_id, original_date, swap_date, requester_id, accepted_by_id")
+            .eq("status", "accepted")
+            .in("team_id", relevantTeamIds)
+            .or(`accepted_by_id.eq.${user.id},requester_id.eq.${user.id}`)
+        : { data: [] as Array<{
+            team_id: string;
+            original_date: string;
+            swap_date: string | null;
+            requester_id: string;
+            accepted_by_id: string | null;
+          }> };
 
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
@@ -372,10 +431,29 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Map songs and confirmations to setlists
       return (setlists || []).map(setlist => {
         const { setlistSongItems, priorCounts } = setlistSongsWithPrior.find(p => p.setlist.id === setlist.id) ?? { setlistSongItems: [], priorCounts: new Map<string, number>() };
-        const roster = rosterByKey.get(rosterKey(setlist.plan_date, setlist.campus_id || "")) || [];
-        const amIOnRoster = roster.some(
+        const roster = rosterByKey.get(
+          rosterKey(setlist.plan_date, setlist.campus_id || "", setlist.ministry_type || ""),
+        ) || [];
+        const rosterMatch = roster.some(
           m => m.user_id === user.id && (m.ministry_types.length === 0 || m.ministry_types.includes(setlist.ministry_type))
         );
+        const key = rosterKey(setlist.plan_date, setlist.campus_id || "", setlist.ministry_type || "");
+        const setTeamId = rosterTeamIdByKey.get(key);
+        const setDates = [setlist.plan_date];
+        if (isWeekend(setlist.plan_date)) {
+          const pair = getWeekendPairDate(setlist.plan_date);
+          if (pair) setDates.push(pair);
+        }
+        const swapInMatch = Boolean(
+          setTeamId &&
+          (myAcceptedSwaps || []).some((swap) => {
+            if (swap.team_id !== setTeamId) return false;
+            const viaOriginalDate = swap.accepted_by_id === user.id && setDates.includes(swap.original_date);
+            const viaSwapDate = swap.requester_id === user.id && !!swap.swap_date && setDates.includes(swap.swap_date);
+            return viaOriginalDate || viaSwapDate;
+          }),
+        );
+        const amIOnRoster = rosterMatch || swapInMatch;
         return {
           ...setlist,
           songs: setlistSongItems.map(s => {
