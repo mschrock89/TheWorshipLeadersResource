@@ -67,6 +67,13 @@ const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   { value: "switcher", label: "Switcher" },
 ];
 
+const CUSTOM_SERVICE_VOCAL_ROLES = new Set<Database["public"]["Enums"]["team_position"]>([
+  "vocalist",
+  "lead_vocals",
+  "harmony_vocals",
+  "background_vocals",
+]);
+
 
 export default function SetPlanner() {
   const { user, isAdmin } = useAuth();
@@ -169,7 +176,7 @@ export default function SetPlanner() {
   );
 
   // Get scheduled vocalists for the date and campus
-  const { data: vocalists = [] } = useScheduledVocalists(selectedDate, selectedMinistry, effectiveCampusId);
+  const { data: scheduledVocalists = [] } = useScheduledVocalists(selectedDate, selectedMinistry, effectiveCampusId);
 
   // Get songs from published setlists for this campus/ministry (to filter from suggestions)
   const { data: publishedSetlistSongIds = new Set<string>() } = usePublishedSetlistSongs(effectiveCampusId, selectedMinistry);
@@ -515,6 +522,24 @@ export default function SetPlanner() {
       }))
       .sort((a, b) => a.userName.localeCompare(b.userName));
   }, [customServiceAssignments]);
+
+  const effectiveVocalists = useMemo(() => {
+    if (!selectedCustomService) return scheduledVocalists;
+
+    const byUser = new Map<string, { userId: string; name: string; avatarUrl: string | null; position: string; isSwappedIn?: boolean }>();
+    for (const assignment of customServiceAssignments) {
+      if (!CUSTOM_SERVICE_VOCAL_ROLES.has(assignment.role)) continue;
+      if (byUser.has(assignment.user_id)) continue;
+      byUser.set(assignment.user_id, {
+        userId: assignment.user_id,
+        name: assignment.profiles?.full_name || "Unknown",
+        avatarUrl: assignment.profiles?.avatar_url || null,
+        position: assignment.role,
+        isSwappedIn: false,
+      });
+    }
+    return Array.from(byUser.values());
+  }, [selectedCustomService, scheduledVocalists, customServiceAssignments]);
 
   const canOverrideSongRestrictions = isAdmin && !!selectedCustomService;
 
@@ -862,7 +887,7 @@ export default function SetPlanner() {
             notes={notes}
             onNotesChange={setNotes}
             hasConflicts={hasConflicts}
-            vocalists={vocalists}
+            vocalists={effectiveVocalists}
             isPublished={existingSet?.status === 'published'}
             approvalStatus={approvalStatus}
             rejectionNotes={rejectionNotes}
