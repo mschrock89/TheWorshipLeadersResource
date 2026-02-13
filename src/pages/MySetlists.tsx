@@ -63,13 +63,21 @@ function StandardMySetlists() {
     }
   };
   
+  const normalizedCampusId = useMemo(() => {
+    if (!selectedCampusId || selectedCampusId === "network-wide") return "all";
+    if (selectedCampusId !== "all" && campuses && !campuses.some((c) => c.id === selectedCampusId)) {
+      return "all";
+    }
+    return selectedCampusId;
+  }, [selectedCampusId, campuses]);
+
   const { data: upcomingSetlists, isLoading: loadingUpcoming } = usePublishedSetlists(
-    selectedCampusId === "all" ? undefined : selectedCampusId, 
+    normalizedCampusId === "all" ? undefined : normalizedCampusId, 
     undefined, 
     false
   );
   const { data: pastSetlists, isLoading: loadingPast } = usePublishedSetlists(
-    selectedCampusId === "all" ? undefined : selectedCampusId, 
+    normalizedCampusId === "all" ? undefined : normalizedCampusId, 
     undefined, 
     true
   );
@@ -114,9 +122,9 @@ function StandardMySetlists() {
 
   if (isApprover) {
     return (
-      <ApproverMySetlists
-        campuses={campuses || []}
-        selectedCampusId={selectedCampusId}
+        <ApproverMySetlists
+          campuses={campuses || []}
+        selectedCampusId={normalizedCampusId}
         setSelectedCampusId={setSelectedCampusId}
       />
     );
@@ -482,10 +490,10 @@ function ApproverMySetlists({
   const today = new Date().toISOString().split("T")[0];
   const approveSetlist = useApproveSetlist();
   const rejectSetlist = useRejectSetlist();
-  const { data: pendingApprovals = [], isLoading: loadingPending } = usePendingApprovals();
+  const { data: pendingApprovals = [], isLoading: loadingPending, error: pendingError } = usePendingApprovals();
   const [rejectNotesBySetId, setRejectNotesBySetId] = useState<Record<string, string>>({});
 
-  const { data: approvedSetlists = [], isLoading: loadingApproved } = useQuery({
+  const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
     queryFn: async () => {
       let query = supabase
@@ -541,6 +549,7 @@ function ApproverMySetlists({
   };
 
   const isLoading = loadingPending || loadingApproved;
+  const hasError = pendingError || approvedError;
 
   return (
     <div className="space-y-6">
@@ -595,7 +604,15 @@ function ApproverMySetlists({
         </div>
       )}
 
-      {!isLoading && (
+      {!isLoading && hasError && (
+        <Card>
+          <CardContent className="py-6 text-sm text-destructive">
+            Unable to load setlist review data. Please refresh and try again.
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !hasError && (
         <>
           <section className="space-y-3">
             <div className="flex items-center justify-between">
@@ -635,7 +652,7 @@ function ApproverMySetlists({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      {approval.songs.map((song, index) => (
+                      {(approval.songs || []).map((song, index) => (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
                           <span className="truncate">{index + 1}. {song.song?.title || "Unknown Song"}</span>
                           {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}

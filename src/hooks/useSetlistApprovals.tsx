@@ -25,8 +25,11 @@ export interface PendingApproval extends SetlistApproval {
     campus_id: string;
     plan_date: string;
     ministry_type: string;
+    custom_service_id: string | null;
+    status: string;
     notes: string | null;
     campuses: { name: string } | null;
+    custom_services?: { service_name: string } | null;
   };
   submitter: { full_name: string | null; avatar_url: string | null } | null;
   songs: {
@@ -94,8 +97,11 @@ export function usePendingApprovals() {
           campus_id,
           plan_date,
           ministry_type,
+          custom_service_id,
+          status,
           notes,
-          campuses(name)
+          campuses(name),
+          custom_services(service_name)
         `)
         .in("id", draftSetIds);
 
@@ -124,7 +130,7 @@ export function usePendingApprovals() {
       const draftSetMap = new Map((draftSets || []).map(ds => [ds.id, ds]));
       const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
-      return approvals.map(approval => ({
+      const normalized = approvals.map(approval => ({
         ...approval,
         status: approval.status as "pending" | "approved" | "rejected",
         draft_set: draftSetMap.get(approval.draft_set_id) || {
@@ -132,8 +138,11 @@ export function usePendingApprovals() {
           campus_id: "",
           plan_date: "",
           ministry_type: "",
+          custom_service_id: null,
+          status: "",
           notes: null,
           campuses: null,
+          custom_services: null,
         },
         submitter: profileMap.get(approval.submitted_by) || null,
         songs: (allSongs || [])
@@ -147,6 +156,29 @@ export function usePendingApprovals() {
             vocalist: s.profiles as { full_name: string | null } | null,
           })),
       }));
+
+      // Keep only valid pending draft-set records and hide stale duplicates.
+      // If multiple pending records exist for the same campus/date/ministry/service context,
+      // keep the most recently submitted one.
+      const deduped = new Map<string, PendingApproval>();
+      for (const item of normalized) {
+        if (!item.draft_set?.id) continue;
+        if (item.draft_set.status !== "pending_approval") continue;
+        const key = [
+          item.draft_set.campus_id,
+          item.draft_set.plan_date,
+          item.draft_set.ministry_type,
+          item.draft_set.custom_service_id || "none",
+        ].join("|");
+        const existing = deduped.get(key);
+        if (!existing || new Date(item.submitted_at).getTime() > new Date(existing.submitted_at).getTime()) {
+          deduped.set(key, item as PendingApproval);
+        }
+      }
+
+      return Array.from(deduped.values()).sort(
+        (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime(),
+      );
     },
     enabled: !!user?.id && isApprover === true,
   });
