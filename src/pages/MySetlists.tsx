@@ -654,8 +654,15 @@ function ApproverMySetlists({
                     <div className="space-y-2">
                       {(approval.songs || []).map((song, index) => (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
-                          <span className="truncate">{index + 1}. {song.song?.title || "Unknown Song"}</span>
-                          {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">{index + 1}. {song.song?.title || "Unknown Song"}</p>
+                            {song.vocalist?.full_name && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                Vocalist: {song.vocalist.full_name}
+                              </p>
+                            )}
+                          </div>
+                          {song.song_key && <Badge variant="outline" className="text-xs shrink-0">{song.song_key}</Badge>}
                         </div>
                       ))}
                     </div>
@@ -732,8 +739,15 @@ function ApproverMySetlists({
                       .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
                       .map((song: any, index: number) => (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
-                          <span className="truncate">{index + 1}. {song.songs?.title || "Unknown Song"}</span>
-                          {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate">{index + 1}. {song.songs?.title || "Unknown Song"}</p>
+                            {song.vocalist?.full_name && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                Vocalist: {song.vocalist.full_name}
+                              </p>
+                            )}
+                          </div>
+                          {song.song_key && <Badge variant="outline" className="text-xs shrink-0">{song.song_key}</Badge>}
                         </div>
                       ))}
                   </CardContent>
