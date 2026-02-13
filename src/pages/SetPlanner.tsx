@@ -21,17 +21,19 @@ import { SetPlannerSkeleton } from "@/components/set-planner/SetPlannerSkeleton"
 import { PublishSetlistDialog } from "@/components/set-planner/PublishSetlistDialog";
 import { useSongAvailability, useSaveDraftSet, useExistingSet, usePublishedSetlistSongs, SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledVocalists } from "@/hooks/useScheduledVocalists";
-import { useCustomServiceOccurrences } from "@/hooks/useCustomServices";
+import { useAddCustomServiceAssignment, useCustomServiceAssignments, useCustomServiceCampusMembers, useCustomServiceOccurrences, useRemoveCustomServiceAssignment } from "@/hooks/useCustomServices";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
 import { supabase } from "@/integrations/supabase/client";
+import { Database } from "@/integrations/supabase/types";
 import { useQuery } from "@tanstack/react-query";
 import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday, subMonths, addMonths } from "date-fns";
-import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles } from "lucide-react";
+import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Trash2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { Badge } from "@/components/ui/badge";
 
 
 export default function SetPlanner() {
@@ -71,6 +73,8 @@ export default function SetPlanner() {
   
   const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
   const [selectedCustomServiceKey, setSelectedCustomServiceKey] = useState<string>("none");
+  const [customServiceMemberId, setCustomServiceMemberId] = useState<string>("");
+  const [customServiceRole, setCustomServiceRole] = useState<Database["public"]["Enums"]["team_position"]>("vocalist");
   const [buildingSongs, setBuildingSongs] = useState<BuildingSetSong[]>([]);
   const [notes, setNotes] = useState('');
 
@@ -182,6 +186,8 @@ export default function SetPlanner() {
   const rejectionNotes = approvalData?.status === "rejected" ? approvalData.notes : null;
 
   const saveDraftSet = useSaveDraftSet();
+  const addCustomServiceAssignment = useAddCustomServiceAssignment();
+  const removeCustomServiceAssignment = useRemoveCustomServiceAssignment();
 
   const addedSongIds = useMemo(
     () => new Set(buildingSongs.map(s => s.song.id)),
@@ -436,6 +442,44 @@ export default function SetPlanner() {
     setSelectedDate(new Date(`${service.occurrence_date}T12:00:00`));
   };
 
+  const selectedCustomService = useMemo(
+    () => customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey) || null,
+    [customServiceOccurrences, selectedCustomServiceKey],
+  );
+
+  const { data: customServiceAssignments = [] } = useCustomServiceAssignments(
+    selectedCustomService?.id,
+    selectedCustomService?.occurrence_date,
+  );
+
+  const { data: customServiceCampusMembers = [] } = useCustomServiceCampusMembers(
+    selectedCustomService?.campus_id || effectiveCampusId || undefined,
+  );
+
+  const availableCustomServiceMembers = useMemo(() => {
+    const assignedUserIds = new Set(customServiceAssignments.map((a) => a.user_id));
+    return customServiceCampusMembers.filter((m) => !assignedUserIds.has(m.id));
+  }, [customServiceCampusMembers, customServiceAssignments]);
+
+  useEffect(() => {
+    if (!selectedCustomService) {
+      setCustomServiceMemberId("");
+      return;
+    }
+    if (availableCustomServiceMembers.length > 0) {
+      setCustomServiceMemberId((prev) => prev || availableCustomServiceMembers[0].id);
+    } else {
+      setCustomServiceMemberId("");
+    }
+  }, [selectedCustomService, availableCustomServiceMembers]);
+
+  const customRoleOptions = useMemo(() => {
+    const unique = Array.from(
+      new Set(Object.keys(POSITION_LABELS)),
+    ) as Database["public"]["Enums"]["team_position"][];
+    return unique.sort((a, b) => POSITION_LABELS[a].localeCompare(POSITION_LABELS[b]));
+  }, []);
+
   return (
     <>
       <div className="space-y-4 overflow-hidden">
@@ -601,6 +645,107 @@ export default function SetPlanner() {
 
         {/* Team Roster - full width */}
         <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+
+        {/* Custom Service Team Assignments */}
+        {selectedCustomService && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Custom Service Team Assignments
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {selectedCustomService.service_name} • {selectedCustomService.occurrence_date}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+                <Select value={customServiceMemberId} onValueChange={setCustomServiceMemberId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCustomServiceMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.full_name || "Unnamed Member"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={customServiceRole}
+                  onValueChange={(value) =>
+                    setCustomServiceRole(value as Database["public"]["Enums"]["team_position"])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customRoleOptions.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {POSITION_LABELS[role]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  onClick={() => {
+                    if (!customServiceMemberId) return;
+                    addCustomServiceAssignment.mutate({
+                      custom_service_id: selectedCustomService.id,
+                      assignment_date: selectedCustomService.occurrence_date,
+                      user_id: customServiceMemberId,
+                      role: customServiceRole,
+                    });
+                  }}
+                  disabled={!customServiceMemberId || addCustomServiceAssignment.isPending}
+                >
+                  Assign
+                </Button>
+              </div>
+
+              {customServiceAssignments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No team members assigned to this custom service yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {customServiceAssignments.map((assignment) => (
+                    <div
+                      key={assignment.id}
+                      className="flex items-center justify-between rounded-md border border-border p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {assignment.profiles?.full_name || "Unknown Member"}
+                        </p>
+                        <Badge variant="secondary" className="mt-1 text-xs">
+                          {POSITION_LABELS[assignment.role] || assignment.role}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() =>
+                          removeCustomServiceAssignment.mutate({
+                            id: assignment.id,
+                            custom_service_id: assignment.custom_service_id,
+                            assignment_date: assignment.assignment_date,
+                          })
+                        }
+                        disabled={removeCustomServiceAssignment.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Smart suggestions - under team roster */}
         <SuggestionCards

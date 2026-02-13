@@ -363,6 +363,58 @@ export type Database = {
           },
         ]
       }
+      custom_service_assignments: {
+        Row: {
+          assigned_by: string | null
+          assignment_date: string
+          created_at: string
+          custom_service_id: string
+          id: string
+          role: Database["public"]["Enums"]["team_position"]
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          assignment_date: string
+          created_at?: string
+          custom_service_id: string
+          id?: string
+          role: Database["public"]["Enums"]["team_position"]
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          assignment_date?: string
+          created_at?: string
+          custom_service_id?: string
+          id?: string
+          role?: Database["public"]["Enums"]["team_position"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_service_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_service_assignments_custom_service_id_fkey"
+            columns: ["custom_service_id"]
+            isOneToOne: false
+            referencedRelation: "custom_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_service_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           attachments: string[] | null
