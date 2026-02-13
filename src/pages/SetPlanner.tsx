@@ -35,6 +35,37 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 
+const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
+  value: Database["public"]["Enums"]["team_position"];
+  label: string;
+}> = [
+  { value: "vocalist", label: "Vocalist" },
+  { value: "acoustic_1", label: "AG 1" },
+  { value: "acoustic_2", label: "AG 2" },
+  { value: "electric_1", label: "EG 1" },
+  { value: "electric_2", label: "EG 2" },
+  { value: "bass", label: "Bass" },
+  { value: "drums", label: "Drums" },
+  { value: "keys", label: "Keys" },
+  { value: "sound_tech", label: "FOH" },
+  { value: "mon", label: "MON" },
+  { value: "broadcast", label: "Broadcast" },
+  { value: "audio_shadow", label: "Audio Shadow" },
+  { value: "lighting", label: "Lighting" },
+  { value: "media", label: "Lyrics" },
+  { value: "producer", label: "Producer" },
+  { value: "camera_1", label: "Camera 1" },
+  { value: "camera_2", label: "Camera 2" },
+  { value: "camera_3", label: "Camera 3" },
+  { value: "camera_4", label: "Camera 4" },
+  { value: "camera_5", label: "Camera 5" },
+  { value: "camera_6", label: "Camera 6" },
+  { value: "chat_host", label: "Chat Host" },
+  { value: "director", label: "Director" },
+  { value: "graphics", label: "Graphics" },
+  { value: "switcher", label: "Switcher" },
+];
+
 
 export default function SetPlanner() {
   const { user } = useAuth();
@@ -467,13 +498,6 @@ export default function SetPlanner() {
     }
   }, [selectedCustomService, availableCustomServiceMembers]);
 
-  const customRoleOptions = useMemo(() => {
-    const unique = Array.from(
-      new Set(Object.keys(POSITION_LABELS)),
-    ) as Database["public"]["Enums"]["team_position"][];
-    return unique.sort((a, b) => POSITION_LABELS[a].localeCompare(POSITION_LABELS[b]));
-  }, []);
-
   // Show loading skeleton while checking role
   if (roleLoading) {
     return <SetPlannerSkeleton />;
@@ -687,9 +711,9 @@ export default function SetPlanner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {customRoleOptions.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {POSITION_LABELS[role]}
+                    {CUSTOM_SERVICE_ROLE_OPTIONS.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
