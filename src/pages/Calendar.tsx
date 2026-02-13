@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, Event } from "@/hooks/useEvents";
+import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
@@ -29,8 +31,11 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useSyncPcoSchedule, usePcoConnection } from "@/hooks/usePlanningCenter";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
+import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { useUpcomingAudition } from "@/hooks/useAuditions";
+import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
+import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const teamIcons: Record<string, React.ElementType> = {
@@ -57,10 +62,14 @@ function StandardCalendar() {
   const setCampusFilter = campusContext?.setSelectedCampusId || setLocalCampusFilter;
   const [ministryFilter, setMinistryFilter] = useState<string>("weekend_team");
   const [newEvent, setNewEvent] = useState({
+    event_type: "team_event" as "team_event" | "service",
     title: "",
     description: "",
     start_time: "",
-    end_time: ""
+    end_time: "",
+    ministry_type: "weekend",
+    campus_id: "",
+    repeats_weekly: false,
   });
 
   // Scroll to top on mount
@@ -73,6 +82,16 @@ function StandardCalendar() {
     data: events = [],
     isLoading
   } = useEventsForMonth(year, month);
+  const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+  const {
+    data: customServices = [],
+  } = useCustomServiceOccurrences({
+    campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
+    ministryType: ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : undefined,
+    startDate: monthStart,
+    endDate: monthEnd,
+  });
   // Get team schedule filtered by selected campus and rotation period (aligns with Team Builder)
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
   // Use 15th of displayed month to determine which rotation period applies (matches Team Builder)
@@ -92,6 +111,8 @@ function StandardCalendar() {
     uniqueTeams
   } = useMyTeamAssignments();
   const createEvent = useCreateEvent();
+  const createCustomService = useCreateCustomService();
+  const deleteCustomService = useDeleteCustomService();
   const deleteEvent = useDeleteEvent();
   const {
     data: pendingSwaps = 0
@@ -133,6 +154,16 @@ function StandardCalendar() {
       }
     }
   }, [userCampuses, localCampusFilter, campusContext]);
+
+  useEffect(() => {
+    if (newEvent.campus_id) return;
+    const defaultCampusId =
+      campusFilter && campusFilter !== "network-wide"
+        ? campusFilter
+        : userCampuses[0]?.campus_id || campuses[0]?.id || "";
+    if (!defaultCampusId) return;
+    setNewEvent((prev) => ({ ...prev, campus_id: defaultCampusId }));
+  }, [newEvent.campus_id, campusFilter, userCampuses, campuses]);
 
   // PCO sync
   const {
@@ -263,9 +294,15 @@ function StandardCalendar() {
     }
     return filteredEvents;
   };
+  const getCustomServicesForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return customServices.filter((service) => service.occurrence_date === dateStr);
+  };
 
   // Get events for selected date
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
+  const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
+  const selectedPrimaryService = selectedDayServices[0] || null;
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. Encounter) should still show even if the user isn't personally scheduled.
@@ -341,18 +378,36 @@ function StandardCalendar() {
   const handleAddEvent = async () => {
     if (!selectedDate || !newEvent.title.trim()) return;
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`;
-    await createEvent.mutateAsync({
-      title: newEvent.title,
-      description: newEvent.description || undefined,
-      event_date: dateStr,
-      start_time: newEvent.start_time || undefined,
-      end_time: newEvent.end_time || undefined
-    });
+    if (newEvent.event_type === "service") {
+      if (!newEvent.campus_id) return;
+      await createCustomService.mutateAsync({
+        campus_id: newEvent.campus_id,
+        ministry_type: newEvent.ministry_type,
+        service_name: newEvent.title,
+        service_date: dateStr,
+        start_time: newEvent.start_time || undefined,
+        end_time: newEvent.end_time || undefined,
+        repeats_weekly: newEvent.repeats_weekly,
+      });
+    } else {
+      await createEvent.mutateAsync({
+        title: newEvent.title,
+        description: newEvent.description || undefined,
+        event_date: dateStr,
+        start_time: newEvent.start_time || undefined,
+        end_time: newEvent.end_time || undefined,
+        campus_id: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
+      });
+    }
     setNewEvent({
+      event_type: "team_event",
       title: "",
       description: "",
       start_time: "",
-      end_time: ""
+      end_time: "",
+      ministry_type: "weekend",
+      campus_id: "",
+      repeats_weekly: false,
     });
     setIsAddOpen(false);
   };
@@ -453,7 +508,8 @@ function StandardCalendar() {
                 return <div key={`empty-${index}`} className="aspect-square" />;
               }
               const dayEvents = getEventsForDay(day);
-              const hasEvents = dayEvents.length > 0;
+              const dayServices = getCustomServicesForDay(day);
+              const hasEvents = dayEvents.length > 0 || dayServices.length > 0;
               const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
               const teamColor = teamEntry?.worship_teams?.color;
@@ -605,8 +661,17 @@ function StandardCalendar() {
                       </span>}
                   </div>}
 
-                {/* Songs Section - filtered by campus and ministry */}
-                <SongsPreview date={selectedDate} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} ministryFilter={ministryFilter} />
+                {/* Songs Section */}
+                {selectedPrimaryService ? (
+                  <CustomServiceSongsPreview
+                    customServiceId={selectedPrimaryService.id}
+                    planDate={selectedPrimaryService.occurrence_date}
+                    campusId={selectedPrimaryService.campus_id}
+                    ministryType={selectedPrimaryService.ministry_type}
+                  />
+                ) : (
+                  <SongsPreview date={selectedDate} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} ministryFilter={ministryFilter} />
+                )}
 
                 {/* Band Roster Section */}
                 <div className="flex items-center justify-between mb-2 gap-2">
@@ -618,8 +683,13 @@ function StandardCalendar() {
                     </Button>}
                 </div>
                 
-                {/* Team roster (filtered to the ministries actually scheduled on this date) */}
-                {(() => {
+                {/* Team roster */}
+                {selectedPrimaryService ? (
+                  <CustomServiceRoster
+                    customServiceId={selectedPrimaryService.id}
+                    assignmentDate={selectedPrimaryService.occurrence_date}
+                  />
+                ) : (() => {
               const dateStr = selectedDate.toISOString().split("T")[0];
               let scheduleEntries = teamSchedule.filter(s => s.schedule_date === dateStr);
               if (ministryFilter && ministryFilter !== "all") {
@@ -633,7 +703,9 @@ function StandardCalendar() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      {selectedDayEvents.length === 0 ? "No events" : `${selectedDayEvents.length} event${selectedDayEvents.length > 1 ? "s" : ""}`}
+                      {selectedDayEvents.length + selectedDayServices.length === 0
+                        ? "No events"
+                        : `${selectedDayEvents.length + selectedDayServices.length} item${selectedDayEvents.length + selectedDayServices.length > 1 ? "s" : ""}`}
                     </p>
                     {canManageTeam && <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                         <DialogTrigger asChild>
@@ -648,19 +720,68 @@ function StandardCalendar() {
                           </DialogHeader>
                           <div className="space-y-4 pt-4">
                             <div>
-                              <Label htmlFor="title">Title</Label>
+                              <Label htmlFor="event_type">Event Type</Label>
+                              <Select value={newEvent.event_type} onValueChange={(value: "team_event" | "service") => setNewEvent({
+                          ...newEvent,
+                          event_type: value
+                        })}>
+                                <SelectTrigger id="event_type">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="service">Service</SelectItem>
+                                  <SelectItem value="team_event">Team Event</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="title">{newEvent.event_type === "service" ? "Service Name" : "Title"}</Label>
                               <Input id="title" value={newEvent.title} onChange={e => setNewEvent({
                           ...newEvent,
                           title: e.target.value
                         })} placeholder="Event title" />
                             </div>
-                            <div>
-                              <Label htmlFor="description">Description (optional)</Label>
-                              <Textarea id="description" value={newEvent.description} onChange={e => setNewEvent({
+                            {newEvent.event_type === "team_event" && <div>
+                                <Label htmlFor="description">Description (optional)</Label>
+                                <Textarea id="description" value={newEvent.description} onChange={e => setNewEvent({
                           ...newEvent,
                           description: e.target.value
                         })} placeholder="Event description" />
-                            </div>
+                              </div>}
+                            {newEvent.event_type === "service" && <>
+                                <div>
+                                  <Label htmlFor="service-campus">Campus</Label>
+                                  <Select value={newEvent.campus_id} onValueChange={value => setNewEvent({
+                            ...newEvent,
+                            campus_id: value
+                          })}>
+                                    <SelectTrigger id="service-campus">
+                                      <SelectValue placeholder="Select campus" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {campuses.map(campus => <SelectItem key={campus.id} value={campus.id}>
+                                          {campus.name}
+                                        </SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label htmlFor="service-ministry">Ministry</Label>
+                                  <Select value={newEvent.ministry_type} onValueChange={value => setNewEvent({
+                            ...newEvent,
+                            ministry_type: value
+                          })}>
+                                    <SelectTrigger id="service-ministry">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {SET_PLANNER_MINISTRY_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </>}
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <Label htmlFor="start_time">Start Time</Label>
@@ -677,8 +798,15 @@ function StandardCalendar() {
                           })} />
                               </div>
                             </div>
-                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || createEvent.isPending} className="w-full">
-                              {createEvent.isPending ? "Creating..." : "Create Event"}
+                            {newEvent.event_type === "service" && <div className="flex items-center gap-2">
+                                <Checkbox id="repeats_weekly" checked={newEvent.repeats_weekly} onCheckedChange={checked => setNewEvent({
+                            ...newEvent,
+                            repeats_weekly: Boolean(checked)
+                          })} />
+                                <Label htmlFor="repeats_weekly" className="font-normal">Repeat weekly</Label>
+                              </div>}
+                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || createEvent.isPending || createCustomService.isPending} className="w-full">
+                              {createEvent.isPending || createCustomService.isPending ? "Creating..." : newEvent.event_type === "service" ? "Create Service" : "Create Event"}
                             </Button>
                           </div>
                         </DialogContent>
@@ -686,6 +814,26 @@ function StandardCalendar() {
                   </div>
 
                   {/* Event List */}
+                  {selectedDayServices.map(service => {
+                    const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
+                    return <div key={service.occurrence_key} className="flex items-start justify-between rounded-md border-l-4 border-sky-500 bg-muted/50 p-3">
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <div>
+                            <h3 className="font-medium text-foreground">{service.service_name}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{campusName} • Service</p>
+                            {(service.start_time || service.end_time) && <p className="mt-1 text-xs text-primary">
+                                {formatTime(service.start_time)}
+                                {service.start_time && service.end_time && " – "}
+                                {formatTime(service.end_time)}
+                              </p>}
+                          </div>
+                          <Badge variant="secondary">Service</Badge>
+                        </div>
+                        {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>}
+                      </div>;
+                  })}
                   {selectedDayEvents.map(event => <div key={event.id} className="flex items-start justify-between rounded-md border-l-4 border-primary bg-muted/50 p-3">
                       <div>
                         <h3 className="font-medium text-foreground">{event.title}</h3>
@@ -1230,6 +1378,118 @@ function SongsPreview({
         {allSongs.length > 6 && <p className="text-xs text-muted-foreground pt-1">
             +{allSongs.length - 6} more songs
           </p>}
+      </div>
+    </div>;
+}
+
+function CustomServiceSongsPreview({
+  customServiceId,
+  planDate,
+  campusId,
+  ministryType,
+}: {
+  customServiceId: string;
+  planDate: string;
+  campusId: string;
+  ministryType: string;
+}) {
+  const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, ministryType, planDate, customServiceId);
+  const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
+
+  if (isSetLoading || isSongsLoading) {
+    return <div className="mb-4">
+        <div className="animate-pulse space-y-2">
+          {[1, 2].map(i => <div key={i} className="h-6 bg-muted rounded" />)}
+        </div>
+      </div>;
+  }
+
+  if (!existingSet || draftSongs.length === 0) {
+    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        No setlist has been saved for this custom service yet.
+      </div>;
+  }
+
+  return <div className="mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
+          <Music className="h-3.5 w-3.5" />
+          Song Set
+        </h3>
+        <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
+      </div>
+      <div className="space-y-1.5">
+        {draftSongs.map((song, index) => <div key={song.id} className="flex items-center justify-between text-sm py-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-xs text-muted-foreground w-5">{index + 1}.</span>
+              <span className="text-foreground truncate">{song.song?.title || "Untitled Song"}</span>
+            </div>
+            {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+          </div>)}
+      </div>
+    </div>;
+}
+
+function CustomServiceRoster({
+  customServiceId,
+  assignmentDate,
+}: {
+  customServiceId: string;
+  assignmentDate: string;
+}) {
+  const { data: assignments = [], isLoading } = useCustomServiceAssignments(customServiceId, assignmentDate);
+
+  if (isLoading) {
+    return <div className="mb-4">
+        <div className="animate-pulse space-y-2">
+          {[1, 2, 3].map(i => <div key={i} className="h-8 bg-muted rounded" />)}
+        </div>
+      </div>;
+  }
+
+  if (assignments.length === 0) {
+    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        No team members assigned to this custom service yet.
+      </div>;
+  }
+
+  const grouped = Array.from(assignments.reduce((map, assignment) => {
+    const existing = map.get(assignment.user_id) || {
+      userId: assignment.user_id,
+      name: assignment.profiles?.full_name || "Team Member",
+      avatarUrl: assignment.profiles?.avatar_url || null,
+      roles: new Set<string>(),
+    };
+    existing.roles.add(assignment.role);
+    map.set(assignment.user_id, existing);
+    return map;
+  }, new Map<string, {
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    roles: Set<string>;
+  }>()).values()).sort((a, b) => a.name.localeCompare(b.name));
+
+  return <div className="mb-4">
+      <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5 mb-2">
+        <MicVocal className="h-3.5 w-3.5" />
+        Team Roster
+      </h3>
+      <div className="space-y-1.5">
+        {grouped.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2">
+            <Avatar className="h-6 w-6">
+              <AvatarImage src={member.avatarUrl || undefined} />
+              <AvatarFallback className="text-[10px]">
+                {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-foreground flex-1 truncate">{member.name}</span>
+            <div className="flex flex-wrap gap-1 justify-end">
+              {Array.from(member.roles).sort().map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className="text-xs">
+                  {POSITION_LABELS[role] || role}
+                </Badge>)}
+            </div>
+          </div>)}
       </div>
     </div>;
 }
