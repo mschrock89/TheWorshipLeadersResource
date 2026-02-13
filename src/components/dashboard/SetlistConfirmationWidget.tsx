@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { Music, ChevronDown, CheckCircle2, Clock, Users, ArrowRightLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MINISTRY_TYPES } from "@/lib/constants";
+import { POSITION_CATEGORIES } from "@/lib/constants";
 
 interface SetlistWithConfirmations {
   id: string;
@@ -37,6 +38,41 @@ interface SetlistWithConfirmations {
 
 interface SetlistConfirmationWidgetProps {
   selectedCampusId: string;
+}
+
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+
+function ministryMatchesFilter(memberMinistry: string, filterMinistry: string): boolean {
+  if (!memberMinistry || !filterMinistry) return false;
+  if (memberMinistry === filterMinistry) return true;
+  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(filterMinistry)) {
+    return true;
+  }
+  return false;
+}
+
+function memberMatchesMinistryFilter(
+  memberMinistries: string[] | null | undefined,
+  memberPosition: string | null | undefined,
+  filterMinistry: string,
+): boolean {
+  if (filterMinistry === "all") return true;
+
+  const ministries = memberMinistries || [];
+  if (ministries.length > 0) {
+    return ministries.some((memberMinistry) => ministryMatchesFilter(memberMinistry, filterMinistry));
+  }
+
+  // Legacy fallback: rows without ministry_types should still classify by position.
+  if (!memberPosition) return false;
+  if (filterMinistry === "production") {
+    return POSITION_CATEGORIES.audio.includes(memberPosition);
+  }
+  if (filterMinistry === "video") {
+    return POSITION_CATEGORIES.video.includes(memberPosition);
+  }
+
+  return false;
 }
 
 export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmationWidgetProps) {
@@ -68,7 +104,9 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         query = query.eq("campus_id", selectedCampusId);
       }
 
-      if (ministryFilter !== "all") {
+      // Production/Video teams confirm on all published service sets for their date.
+      // Do not restrict the published-set query to only draft_sets.ministry_type in these cases.
+      if (ministryFilter !== "all" && ministryFilter !== "production" && ministryFilter !== "video") {
         query = query.eq("ministry_type", ministryFilter);
       }
 
@@ -80,6 +118,8 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       const results: SetlistWithConfirmations[] = [];
 
       for (const setlist of publishedSets) {
+        const targetRosterMinistry = ministryFilter === "all" ? setlist.ministry_type : ministryFilter;
+
         // Get team scheduled for this date AND campus
         let teamScheduleQuery = supabase
           .from("team_schedule")
@@ -118,13 +158,18 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         const { data: members } = teamSchedule?.team_id && rotationPeriodIds.length > 0
           ? await supabase
               .from("team_members")
-              .select("user_id, member_name, ministry_types")
+              .select("user_id, member_name, ministry_types, position")
               .eq("team_id", teamSchedule.team_id)
               .in("rotation_period_id", rotationPeriodIds)
               .not("user_id", "is", null)
           : { data: [] as any[] };
 
         const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
+        const memberByUserId = new Map(
+          (members || [])
+            .filter((m) => !!m.user_id)
+            .map((m) => [m.user_id as string, m]),
+        );
 
         // Get swaps where original_date matches (requester out, accepted_by in)
         const { data: swapsOnOriginalDate } = await supabase
@@ -157,7 +202,16 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
 
         // On original_date: requester is out, accepted_by is in (apply only if requester is on this team's roster)
         for (const swap of swapsOnOriginalDate || []) {
-          if (swap.requester_id && rawTeamUserIds.has(swap.requester_id)) {
+          const swappedOutMember = swap.requester_id ? memberByUserId.get(swap.requester_id) : null;
+          const appliesToFilteredRoster = swappedOutMember
+            ? memberMatchesMinistryFilter(
+                swappedOutMember.ministry_types,
+                swappedOutMember.position,
+                targetRosterMinistry,
+              )
+            : false;
+
+          if (swap.requester_id && rawTeamUserIds.has(swap.requester_id) && appliesToFilteredRoster) {
             swappedOutUserIds.add(swap.requester_id);
             if (swap.accepted_by_id) {
               swappedInMembers.push({
@@ -170,7 +224,16 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
 
         // On swap_date: accepted_by is out, requester is in (apply only if accepted_by is on this team's roster)
         for (const swap of swapsOnSwapDate || []) {
-          if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id)) {
+          const swappedOutMember = swap.accepted_by_id ? memberByUserId.get(swap.accepted_by_id) : null;
+          const appliesToFilteredRoster = swappedOutMember
+            ? memberMatchesMinistryFilter(
+                swappedOutMember.ministry_types,
+                swappedOutMember.position,
+                targetRosterMinistry,
+              )
+            : false;
+
+          if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id) && appliesToFilteredRoster) {
             swappedOutUserIds.add(swap.accepted_by_id);
             if (swap.requester_id) {
               swappedInMembers.push({
@@ -198,9 +261,8 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         // Deduplicate by user_id (a person can have multiple positions like vocalist + instrument)
         const seenUserIds = new Set<string>();
         scheduledMembers = (members || [])
-          .filter(m => {
-            if (!m.ministry_types || m.ministry_types.length === 0) return true;
-            return m.ministry_types.includes(setlist.ministry_type);
+          .filter((m) => {
+            return memberMatchesMinistryFilter(m.ministry_types, m.position, targetRosterMinistry);
           })
           // Exclude members who swapped out
           .filter(m => !swappedOutUserIds.has(m.user_id!))
@@ -230,12 +292,17 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           .select("user_id, confirmed_at")
           .eq("draft_set_id", setlist.id);
 
-        const confirmedUserIds = new Set((confirmations || []).map(c => c.user_id));
+        // Keep confirmations scoped to the currently filtered roster.
+        // Without this, users outside the selected ministry (e.g. non-video)
+        // can inflate confirmation totals.
+        const scheduledUserIdSet = new Set(scheduledMembers.map((m) => m.user_id));
+        const scopedConfirmations = (confirmations || []).filter((c) => scheduledUserIdSet.has(c.user_id));
+        const confirmedUserIds = new Set(scopedConfirmations.map((c) => c.user_id));
 
         // Get profile info
         const allUserIds = [...new Set([
           ...scheduledMembers.map(m => m.user_id),
-          ...(confirmations || []).map(c => c.user_id)
+          ...scopedConfirmations.map(c => c.user_id)
         ])];
 
         const { data: profiles } = await supabase
@@ -246,7 +313,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
         // Build confirmed list
-        const confirmed = (confirmations || []).map(c => {
+        const confirmed = scopedConfirmations.map(c => {
           const profile = profileMap.get(c.user_id);
           const member = scheduledMembers.find(m => m.user_id === c.user_id);
           return {

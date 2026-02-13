@@ -36,6 +36,7 @@ export interface PublishedSetlist {
 }
 
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
 
 function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
   if (!memberMinistry || !setMinistry) return false;
@@ -43,6 +44,28 @@ function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
   if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(setMinistry)) {
     return true;
   }
+  return false;
+}
+
+function shouldIncludeScheduledDateForMember(
+  memberMinistries: string[],
+  scheduleMinistryType: string | null,
+): boolean {
+  // No explicit ministry restrictions on the member record means include by default.
+  if (memberMinistries.length === 0) return true;
+  if (!scheduleMinistryType) return true;
+
+  // Standard direct/alias match.
+  if (memberMinistries.some((memberMinistry) => ministriesMatch(memberMinistry, scheduleMinistryType))) {
+    return true;
+  }
+
+  // Weekend services always involve Production + Video teams.
+  // If a weekend schedule exists, include members tagged for production/video.
+  if (WEEKEND_MINISTRY_ALIASES.has(scheduleMinistryType)) {
+    return memberMinistries.some((memberMinistry) => WEEKEND_SUPPORTING_MINISTRIES.has(memberMinistry));
+  }
+
   return false;
 }
 
@@ -140,11 +163,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             
             // If no ministry types set, include all dates
             // Otherwise, only include if ministry type matches
-            if (
-              userMinistryTypes.length === 0 ||
-              !schedule.ministry_type ||
-              userMinistryTypes.some((memberMinistry) => ministriesMatch(memberMinistry, schedule.ministry_type))
-            ) {
+            if (shouldIncludeScheduledDateForMember(userMinistryTypes, schedule.ministry_type)) {
               scheduledDates.add(schedule.schedule_date);
             }
           }
