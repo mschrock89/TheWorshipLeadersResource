@@ -481,22 +481,17 @@ export default function SetPlanner() {
     selectedCustomService?.campus_id || effectiveCampusId || undefined,
   );
 
-  const availableCustomServiceMembers = useMemo(() => {
-    const assignedUserIds = new Set(customServiceAssignments.map((a) => a.user_id));
-    return customServiceCampusMembers.filter((m) => !assignedUserIds.has(m.id));
-  }, [customServiceCampusMembers, customServiceAssignments]);
-
   useEffect(() => {
     if (!selectedCustomService) {
       setCustomServiceMemberId("");
       return;
     }
-    if (availableCustomServiceMembers.length > 0) {
-      setCustomServiceMemberId((prev) => prev || availableCustomServiceMembers[0].id);
+    if (customServiceCampusMembers.length > 0) {
+      setCustomServiceMemberId((prev) => prev || customServiceCampusMembers[0].id);
     } else {
       setCustomServiceMemberId("");
     }
-  }, [selectedCustomService, availableCustomServiceMembers]);
+  }, [selectedCustomService, customServiceCampusMembers]);
 
   // Show loading skeleton while checking role
   if (roleLoading) {
@@ -693,7 +688,7 @@ export default function SetPlanner() {
                     <SelectValue placeholder="Select team member" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableCustomServiceMembers.map((member) => (
+                    {customServiceCampusMembers.map((member) => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.full_name || "Unnamed Member"}
                       </SelectItem>

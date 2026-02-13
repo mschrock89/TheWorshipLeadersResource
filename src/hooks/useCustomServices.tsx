@@ -274,7 +274,7 @@ export function useAddCustomServiceAssignment() {
             ...payload,
             assigned_by: user?.id ?? null,
           },
-          { onConflict: "custom_service_id,assignment_date,user_id" },
+          { onConflict: "custom_service_id,assignment_date,user_id,role" },
         )
         .select("*, profiles!custom_service_assignments_user_id_fkey(full_name, avatar_url)")
         .single();
