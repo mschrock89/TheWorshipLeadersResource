@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { usePublishedSetlists, useConfirmSetlist } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
-import { useCampuses } from "@/hooks/useCampuses";
+import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useApproveSetlist, useIsApprover, usePendingApprovals, useRejectSetlist } from "@/hooks/useSetlistApprovals";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
@@ -44,40 +44,52 @@ function StandardMySetlists() {
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
+  const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const { data: isApprover = false } = useIsApprover();
   
   // Use global campus selection context if available
   const campusContext = useCampusSelectionOptional();
-  const [localCampusId, setLocalCampusId] = useState<string>("all");
+  const [localCampusId, setLocalCampusId] = useState<string>("");
+
+  const assignedCampusIds = useMemo(
+    () => new Set(userCampuses.map((uc) => uc.campus_id)),
+    [userCampuses]
+  );
+  const assignedCampuses = useMemo(() => {
+    if (!campuses) return [];
+    return campuses.filter((campus) => assignedCampusIds.has(campus.id));
+  }, [campuses, assignedCampusIds]);
   
   // Sync with global context - use context value if set, otherwise use local state
   const selectedCampusId = campusContext?.selectedCampusId || localCampusId;
   const setSelectedCampusId = (value: string) => {
-    if (value === "all") {
-      // "All" is local-only - don't update global context
-      setLocalCampusId("all");
-    } else if (campusContext) {
+    if (campusContext) {
       campusContext.setSelectedCampusId(value);
     } else {
       setLocalCampusId(value);
     }
   };
-  
+
   const normalizedCampusId = useMemo(() => {
-    if (!selectedCampusId || selectedCampusId === "network-wide") return "all";
-    if (selectedCampusId !== "all" && campuses && !campuses.some((c) => c.id === selectedCampusId)) {
-      return "all";
+    if (selectedCampusId && assignedCampusIds.has(selectedCampusId)) return selectedCampusId;
+    if (assignedCampuses.length > 0) return assignedCampuses[0].id;
+    return "__none__";
+  }, [selectedCampusId, assignedCampusIds, assignedCampuses]);
+
+  useEffect(() => {
+    if (normalizedCampusId === "__none__") return;
+    if (selectedCampusId !== normalizedCampusId) {
+      setSelectedCampusId(normalizedCampusId);
     }
-    return selectedCampusId;
-  }, [selectedCampusId, campuses]);
+  }, [normalizedCampusId, selectedCampusId]);
 
   const { data: upcomingSetlists, isLoading: loadingUpcoming } = usePublishedSetlists(
-    normalizedCampusId === "all" ? undefined : normalizedCampusId, 
+    normalizedCampusId,
     undefined, 
     false
   );
   const { data: pastSetlists, isLoading: loadingPast } = usePublishedSetlists(
-    normalizedCampusId === "all" ? undefined : normalizedCampusId, 
+    normalizedCampusId,
     undefined, 
     true
   );
@@ -123,7 +135,7 @@ function StandardMySetlists() {
   if (isApprover) {
     return (
         <ApproverMySetlists
-          campuses={campuses || []}
+          campuses={assignedCampuses}
         selectedCampusId={normalizedCampusId}
         setSelectedCampusId={setSelectedCampusId}
       />
@@ -242,13 +254,12 @@ function StandardMySetlists() {
         {/* Campus Filter */}
         <div className="flex items-center gap-2 shrink-0">
           <MapPin className="h-4 w-4 text-muted-foreground" />
-          <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
+          <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={assignedCampuses.length === 0}>
             <SelectTrigger className="w-auto min-w-[160px]">
-              <SelectValue placeholder="All Campuses" />
+              <SelectValue placeholder="Select Campus" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Campuses</SelectItem>
-              {campuses?.map((campus) => (
+              {assignedCampuses.map((campus) => (
                 <SelectItem key={campus.id} value={campus.id}>
                   {campus.name}
                 </SelectItem>
@@ -260,16 +271,20 @@ function StandardMySetlists() {
 
       {/* Admin Setlist Confirmation Widget */}
       {isAdmin && (
-        <SetlistConfirmationWidget selectedCampusId={selectedCampusId} />
+        <SetlistConfirmationWidget selectedCampusId={normalizedCampusId} />
       )}
 
       {allGroupedSetlists.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Music2 className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No setlists found</p>
+            <p className="text-muted-foreground">
+              {normalizedCampusId === "__none__" ? "No campus assigned" : "No setlists found"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              You'll see setlists here when they're published for your scheduled dates
+              {normalizedCampusId === "__none__"
+                ? "Ask an admin to assign you to at least one campus."
+                : "You'll see setlists here when they're published for your scheduled dates"}
             </p>
           </CardContent>
         </Card>
@@ -496,7 +511,7 @@ function ApproverMySetlists({
   const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from("draft_sets")
         .select(`
           id,
@@ -516,12 +531,9 @@ function ApproverMySetlists({
           )
         `)
         .eq("status", "published")
+        .eq("campus_id", selectedCampusId)
         .gte("plan_date", today)
         .order("plan_date", { ascending: true });
-
-      if (selectedCampusId !== "all") {
-        query = query.eq("campus_id", selectedCampusId);
-      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -532,7 +544,7 @@ function ApproverMySetlists({
   const filteredPendingApprovals = useMemo(() => {
     return pendingApprovals.filter((approval) => {
       if (!approval.draft_set?.plan_date || approval.draft_set.plan_date < today) return false;
-      if (selectedCampusId !== "all" && approval.draft_set.campus_id !== selectedCampusId) return false;
+      if (approval.draft_set.campus_id !== selectedCampusId) return false;
       return true;
     });
   }, [pendingApprovals, selectedCampusId, today]);
@@ -584,10 +596,9 @@ function ApproverMySetlists({
           <MapPin className="h-4 w-4 text-muted-foreground" />
           <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
             <SelectTrigger className="w-auto min-w-[160px]">
-              <SelectValue placeholder="All Campuses" />
+              <SelectValue placeholder="Select Campus" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Campuses</SelectItem>
               {campuses.map((campus) => (
                 <SelectItem key={campus.id} value={campus.id}>
                   {campus.name}

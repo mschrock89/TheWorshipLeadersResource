@@ -217,6 +217,8 @@ export default function AuditionSetPlanner() {
 
       if (assignError) throw assignError;
 
+      // Some leadership roles can publish audition sets but are not allowed to upsert
+      // setlist_playlists via current RLS policies. Publish/assign should still succeed.
       const { error: playlistError } = await supabase
         .from("setlist_playlists")
         .upsert(
@@ -228,8 +230,15 @@ export default function AuditionSetPlanner() {
           },
           { onConflict: "draft_set_id" },
         );
-
-      if (playlistError) throw playlistError;
+      if (playlistError) {
+        const message = playlistError.message || "";
+        const isRlsDenied =
+          playlistError.code === "42501" ||
+          message.toLowerCase().includes("row-level security");
+        if (!isRlsDenied) {
+          throw playlistError;
+        }
+      }
 
       if (candidateAudition?.id) {
         const { error: auditionUpdateError } = await supabase
@@ -451,17 +460,32 @@ export default function AuditionSetPlanner() {
 
           <div className="space-y-2">
             <Label>Date</Label>
-            <Input type="date" value={selectedDateStr} onChange={(e) => setSelectedDateStr(e.target.value)} />
+            <Input
+              type="date"
+              value={selectedDateStr}
+              onChange={(e) => setSelectedDateStr(e.target.value)}
+              className="audition-date-input"
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Start Time</Label>
-            <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            <Input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="audition-time-input"
+            />
           </div>
 
           <div className="space-y-2">
             <Label>End Time</Label>
-            <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            <Input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className="audition-time-input"
+            />
           </div>
 
           <div className="space-y-2 lg:col-span-1 md:col-span-2">

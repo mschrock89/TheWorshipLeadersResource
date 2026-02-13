@@ -13,7 +13,7 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, Settings } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, Settings, ListChecks } from "lucide-react";
 export default function Dashboard() {
   const {
     user,
@@ -153,6 +153,24 @@ export default function Dashboard() {
               <Link to="/team-builder">
                 <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
                   <Users className="h-4 w-4" />
+                  View
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-display text-xl font-semibold">Auditions</h2>
+                <p className="mt-1 text-muted-foreground">
+                  Manage the audition queue and schedule candidates quickly.
+                </p>
+              </div>
+              <Link to="/auditions">
+                <Button className="gap-2 bg-sky-600 text-white hover:bg-sky-700">
+                  <ListChecks className="h-4 w-4" />
                   View
                   <ArrowRight className="h-4 w-4" />
                 </Button>
