@@ -18,6 +18,7 @@ interface SongAvailabilityListProps {
   addedSongIds: Set<string>;
   publishedSetlistSongIds?: Set<string>;
   isLoading?: boolean;
+  allowSchedulingOverrides?: boolean;
 }
 
 type FilterType = 'all' | 'available' | 'new-songs' | 'deep-cuts';
@@ -28,6 +29,7 @@ export function SongAvailabilityList({
   addedSongIds,
   publishedSetlistSongIds = new Set(),
   isLoading,
+  allowSchedulingOverrides = false,
 }: SongAvailabilityListProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -59,17 +61,17 @@ export function SongAvailabilityList({
           a.isInRegularRotation &&
           !a.isNewSong &&
           a.status === 'available' &&
-          !isOnActiveSetlist(a.song.id)
+          (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id))
         );
         break;
       }
       case 'new-songs': {
         // "New" = songs that have been scheduled 1-2 times (until they hit 3)
         // Exclude songs on active setlists
-        filtered = filtered.filter(a => 
+        filtered = filtered.filter(a =>
           a.totalUses > 0 && 
           a.totalUses < 3 && 
-          !isOnActiveSetlist(a.song.id)
+          (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id))
         );
         break;
       }
@@ -80,7 +82,7 @@ export function SongAvailabilityList({
         filtered = filtered.filter(a => {
           if (!a.lastUsedDate) return false; // Never played = not a deep cut
           const daysSinceLastUse = Math.floor((now.getTime() - new Date(a.lastUsedDate).getTime()) / (1000 * 60 * 60 * 24));
-          return daysSinceLastUse >= 365 && !isOnActiveSetlist(a.song.id);
+          return daysSinceLastUse >= 365 && (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id));
         });
         // Sort by total plays (most to least) for deep cuts
         return [...filtered].sort((a, b) => b.totalUses - a.totalUses);
@@ -105,7 +107,7 @@ export function SongAvailabilityList({
         return bWeeks - aWeeks;
       }
     });
-  }, [availability, search, filter, sortDirection, publishedSetlistSongIds]);
+  }, [availability, search, filter, sortDirection, publishedSetlistSongIds, allowSchedulingOverrides]);
 
   // Helper to calculate weeks since last played and get theme-aligned colors
   const getWeeksInfo = (lastUsedDate: string | null) => {
@@ -197,7 +199,10 @@ export function SongAvailabilityList({
             filteredSongs.map(item => {
               const isAdded = addedSongIds.has(item.song.id);
               const isScheduledOnActiveSet = isOnActiveSetlist(item.song.id);
-              const isDisabled = isAdded || item.status === 'upcoming' || isScheduledOnActiveSet;
+              const isDisabled =
+                isAdded ||
+                item.status === 'upcoming' ||
+                (isScheduledOnActiveSet && !allowSchedulingOverrides);
               const weeksInfo = getWeeksInfo(item.lastUsedDate);
 
               return (

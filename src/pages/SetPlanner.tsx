@@ -69,7 +69,7 @@ const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
 
 
 export default function SetPlanner() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { data: userRole, isLoading: roleLoading } = useUserRole(user?.id);
   const { data: allUserRoles = [] } = useUserRoles(user?.id);
   const navigate = useNavigate();
@@ -516,6 +516,8 @@ export default function SetPlanner() {
       .sort((a, b) => a.userName.localeCompare(b.userName));
   }, [customServiceAssignments]);
 
+  const canOverrideSongRestrictions = isAdmin && !!selectedCustomService;
+
   useEffect(() => {
     if (!selectedCustomService) {
       setCustomServiceMemberId("");
@@ -890,6 +892,7 @@ export default function SetPlanner() {
                 addedSongIds={addedSongIds}
                 publishedSetlistSongIds={publishedSetlistSongIds}
                 isLoading={isLoading}
+                allowSchedulingOverrides={canOverrideSongRestrictions}
               />
             </CardContent>
           </Card>
