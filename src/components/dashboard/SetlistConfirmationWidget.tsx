@@ -114,10 +114,52 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       if (error) throw error;
       if (!publishedSets || publishedSets.length === 0) return [];
 
+      // De-duplicate stale published rows.
+      // Keep the most recently published set for each campus/date/ministry context.
+      // For audition ministry, also key by assigned candidate so one candidate doesn't show duplicates.
+      const auditionSetIds = publishedSets
+        .filter((set) => set.ministry_type === "audition")
+        .map((set) => set.id);
+      const auditionAssignmentMap = new Map<string, string>();
+      if (auditionSetIds.length > 0) {
+        const { data: auditionAssignments } = await supabase
+          .from("audition_setlist_assignments")
+          .select("draft_set_id, user_id")
+          .in("draft_set_id", auditionSetIds);
+
+        for (const row of auditionAssignments || []) {
+          // Keep the first candidate assignment as the dedupe dimension.
+          if (!auditionAssignmentMap.has(row.draft_set_id)) {
+            auditionAssignmentMap.set(row.draft_set_id, row.user_id);
+          }
+        }
+      }
+
+      const dedupedPublishedMap = new Map<string, (typeof publishedSets)[number]>();
+      for (const set of publishedSets) {
+        const auditionCandidateId = set.ministry_type === "audition"
+          ? (auditionAssignmentMap.get(set.id) || "")
+          : "";
+        const dedupeKey = `${set.campus_id}|${set.plan_date}|${set.ministry_type}|${auditionCandidateId}`;
+        const existing = dedupedPublishedMap.get(dedupeKey);
+        if (!existing) {
+          dedupedPublishedMap.set(dedupeKey, set);
+          continue;
+        }
+        const existingPublishedAt = existing.published_at ? new Date(existing.published_at).getTime() : 0;
+        const nextPublishedAt = set.published_at ? new Date(set.published_at).getTime() : 0;
+        if (nextPublishedAt >= existingPublishedAt) {
+          dedupedPublishedMap.set(dedupeKey, set);
+        }
+      }
+
+      const dedupedPublishedSets = Array.from(dedupedPublishedMap.values())
+        .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
+
       // For each setlist, get confirmation status
       const results: SetlistWithConfirmations[] = [];
 
-      for (const setlist of publishedSets) {
+      for (const setlist of dedupedPublishedSets) {
         const targetRosterMinistry = ministryFilter === "all" ? setlist.ministry_type : ministryFilter;
 
         // Get team scheduled for this date AND campus
@@ -409,7 +451,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           <div className="text-center py-8 text-muted-foreground">
             <Music className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p>No published setlists found</p>
-            <p className="text-sm mt-1">Publish a setlist from Set Planner to track confirmations</p>
+            <p className="text-sm mt-1">Publish a setlist from Set Builder to track confirmations</p>
           </div>
         ) : (
           <ScrollArea className="max-h-[500px]">

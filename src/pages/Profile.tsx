@@ -914,7 +914,7 @@ export default function Profile() {
                     Default Campus
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    This campus will be pre-selected when you open the Calendar, Set Planner, Team Builder, and other campus-filtered views.
+                    This campus will be pre-selected when you open the Calendar, Set Builder, Team Builder, and other campus-filtered views.
                   </p>
                   <Select value={defaultCampusId || ""} onValueChange={(value) => setDefaultCampusId(value || null)}>
                     <SelectTrigger className="w-full sm:w-[280px]">

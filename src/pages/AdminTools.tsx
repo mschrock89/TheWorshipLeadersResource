@@ -502,7 +502,7 @@ export default function AdminTools() {
             Custom Service Builder
           </CardTitle>
           <CardDescription>
-            Create one-off or repeating services and make them available in Set Planner.
+            Create one-off or repeating services and make them available in Set Builder.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

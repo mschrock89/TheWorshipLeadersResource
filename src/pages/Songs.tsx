@@ -431,7 +431,7 @@ export default function Songs() {
                   className="gap-3 px-8 py-6 text-base font-semibold"
                 >
                   <ListMusic className="h-5 w-5" />
-                  Set Planner
+                  Set Builder
                 </Button>
               </Link>
               <BpmImportDialog />

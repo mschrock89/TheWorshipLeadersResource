@@ -200,7 +200,7 @@ export default function ManageSets() {
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link to="/set-planner">Set Planner</Link>
+                <Link to="/set-planner">Set Builder</Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

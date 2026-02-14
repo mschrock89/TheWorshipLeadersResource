@@ -621,7 +621,7 @@ export default function SetPlanner() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbPage>Set Planner</BreadcrumbPage>
+              <BreadcrumbPage>Set Builder</BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
@@ -631,7 +631,7 @@ export default function SetPlanner() {
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <ListMusic className="h-6 w-6" />
-              Set Planner
+              Set Builder
             </h1>
             <p className="text-sm text-muted-foreground">
               Plan your worship sets with smart song rotation rules

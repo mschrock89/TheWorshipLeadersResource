@@ -387,6 +387,16 @@ export interface PositionMember {
 
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+
+function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string): boolean {
+  if (!memberMinistry || !targetMinistry) return false;
+  if (memberMinistry === targetMinistry) return true;
+  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(targetMinistry)) {
+    return true;
+  }
+  return false;
+}
 
 export function usePositionMembers(
   position: string,
@@ -584,7 +594,12 @@ async function hydrateAndFilterMembers(args: {
     filteredMembers = filteredMembers.filter((m) => {
       const memberMinistryTypes = (m as any).ministry_types || [];
       // Include if member has no ministry types set (legacy data) or matches
-      return memberMinistryTypes.length === 0 || memberMinistryTypes.includes(ministryType);
+      return (
+        memberMinistryTypes.length === 0 ||
+        memberMinistryTypes.some((memberMinistry: string) =>
+          ministriesMatchForSwap(memberMinistry, ministryType)
+        )
+      );
     });
   }
 
@@ -662,6 +677,9 @@ export function usePositionMembersForCover(
   ministryType?: string,
   requesterGender?: string | null
 ) {
+  const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+  const isWeekendLikeMinistry = !!ministryType && WEEKEND_MINISTRY_ALIASES.has(ministryType);
+
   return useQuery({
     queryKey: [
       "position-members-for-cover",
@@ -695,8 +713,9 @@ export function usePositionMembersForCover(
         query = query.neq("user_id", excludeUserId);
       }
 
-      // Filter by rotation period if provided
-      if (rotationPeriodId) {
+      // For vocalist cover requests on weekend ministries, allow candidates
+      // across rotation periods within the campus/ministry (queue-wide visibility).
+      if (rotationPeriodId && !(isVocalistPosition && isWeekendLikeMinistry)) {
         query = query.eq("rotation_period_id", rotationPeriodId);
       }
 

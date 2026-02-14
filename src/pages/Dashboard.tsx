@@ -129,7 +129,7 @@ export default function Dashboard() {
           <div className="rounded-xl border border-secondary/50 bg-secondary/10 p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="font-display text-xl font-semibold text-secondary-foreground">Set Planner</h2>
+                <h2 className="font-display text-xl font-semibold text-secondary-foreground">Set Builder</h2>
                 <p className="mt-1 text-muted-foreground">
                   Plan and build song sets for upcoming services
                 </p>
