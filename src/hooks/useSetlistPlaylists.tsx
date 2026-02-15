@@ -93,8 +93,9 @@ export interface SetlistPlaylistWithTracks extends SetlistPlaylist {
 
 /**
  * Hook to fetch setlist playlists accessible to the current user.
- * Only returns playlists for services the user is scheduled on,
- * with service_date >= today.
+ * Returns playlists for setlists the user can access.
+ * Do not date-filter here, otherwise weekend playlists can disappear mid-weekend
+ * (e.g. Saturday playlist hidden on Sunday).
  */
 export function useMySetlistPlaylists() {
   const { user } = useAuth();
@@ -128,7 +129,6 @@ export function useMySetlistPlaylists() {
             )
           )
         `)
-        .gte("service_date", new Date().toISOString().split("T")[0])
         .order("service_date", { ascending: true });
 
       if (error) {
