@@ -244,6 +244,41 @@ function StandardCalendar() {
     return times.map(t => formatServiceTime(t)).join(", ");
   };
 
+  const selectedCampusConfig = useMemo(() => {
+    if (!campusFilter || campusFilter === "network-wide") return null;
+    return campuses.find((c) => c.id === campusFilter) || null;
+  }, [campusFilter, campuses]);
+
+  // True when the currently-scoped campus context actually has a weekend service on this date.
+  // Prevents false weekend highlights for campuses that only run Sunday services.
+  const hasServiceForDateInScope = (date: Date): boolean => {
+    const dayOfWeek = date.getDay();
+    const isSaturday = dayOfWeek === 6;
+    const isSunday = dayOfWeek === 0;
+
+    if (!isSaturday && !isSunday) return true;
+
+    if (selectedCampusConfig) {
+      return isSaturday
+        ? !!selectedCampusConfig.has_saturday_service
+        : !!selectedCampusConfig.has_sunday_service;
+    }
+
+    // Network-wide admin view hides weekends entirely.
+    if (isCampusAdmin && campusFilter === "network-wide") return false;
+
+    // For users without a single selected campus, use their assigned campuses when possible.
+    const scopedCampuses =
+      !isCampusAdmin && userCampuses.length > 0
+        ? campuses.filter((c) => userCampuses.some((uc) => uc.campus_id === c.id))
+        : campuses;
+
+    if (scopedCampuses.length === 0) return false;
+    return scopedCampuses.some((c) =>
+      isSaturday ? !!c.has_saturday_service : !!c.has_sunday_service
+    );
+  };
+
   // Check if user is scheduled on a specific day (filtered by campus for volunteers)
   const getUserScheduleForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -541,10 +576,12 @@ function StandardCalendar() {
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const hasCustomAssignment = customAssignedDateSet.has(dateStrForDay);
               const swapStatus = getSwapStatusForDate(dateStrForDay, allUserSwaps);
+              const dateForDay = new Date(year, month, day);
+              const hasServiceForDayInScope = hasServiceForDateInScope(dateForDay);
 
               // Effective schedule: user is playing if (scheduled AND NOT swapped out) OR (swapped in)
               const isScheduledAndNotSwappedOut = !!userSchedule && !swapStatus.swappedOut;
-              const isSwappedIn = swapStatus.swappedIn;
+              const isSwappedIn = swapStatus.swappedIn && hasServiceForDayInScope;
               const isSwappedOut = swapStatus.swappedOut && !!userSchedule; // Only show swapped-out styling if originally scheduled
               const isUserEffectivelyScheduled = isScheduledAndNotSwappedOut || isSwappedIn;
 
@@ -556,7 +593,6 @@ function StandardCalendar() {
               : teamColor || userSchedule?.teamColor;
 
               // Check if this is a midweek (Wednesday) service that the user is scheduled for
-              const dateForDay = new Date(year, month, day);
               const isWednesday = dateForDay.getDay() === 3;
               // Only show midweek highlighting if user is actually scheduled for this midweek date
               const isMidweekService = isWednesday && teamEntry && isUserEffectivelyScheduled;
@@ -567,7 +603,7 @@ function StandardCalendar() {
                 opacity: 0.5
               } : undefined;
               // Show highlight when user is scheduled OR when a team is scheduled (colored border + background)
-              const showTeamHighlight = (isUserEffectivelyScheduled || teamEntry) && !isSelected(day) && effectiveTeamColor;
+              const showTeamHighlight = hasServiceForDayInScope && (isUserEffectivelyScheduled || teamEntry) && !isSelected(day) && effectiveTeamColor;
               const showCustomAssignmentHighlight = hasCustomAssignment && !isSelected(day) && !showTeamHighlight;
               return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
@@ -603,7 +639,7 @@ function StandardCalendar() {
           // - If user has swapped OUT, they're NOT playing on this date (even if on home team)
           // - If user has swapped IN, they ARE playing on this date (covering for someone)
           const hasSwappedOut = userSwapStatus?.swappedOut || false;
-          const hasSwappedIn = userSwapStatus?.swappedIn || false;
+          const hasSwappedIn = (userSwapStatus?.swappedIn || false) && hasServiceForDateInScope(selectedDate);
           const swapInDetails = userSwapStatus?.swapInDetails;
 
           // User is playing if: (on home team AND NOT swapped out) OR (swapped in)
