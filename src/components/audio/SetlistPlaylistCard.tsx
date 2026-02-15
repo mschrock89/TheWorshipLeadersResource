@@ -356,7 +356,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                            className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDownload(track);
@@ -370,7 +370,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openEditMarkers(track);
@@ -387,7 +387,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                                  className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-destructive"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />

@@ -260,7 +260,7 @@ export function MessageBubble({
             /* Show emoji picker when no reactions */
             <Popover>
               <PopoverTrigger asChild>
-                <button className="flex items-center justify-center h-7 w-7 rounded-full bg-zinc-800/60 hover:bg-zinc-700 transition-colors opacity-0 group-hover:opacity-100">
+                <button className="flex items-center justify-center h-7 w-7 rounded-full bg-zinc-800/60 hover:bg-zinc-700 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100">
                   <Smile className="h-3.5 w-3.5 text-zinc-400" />
                 </button>
               </PopoverTrigger>

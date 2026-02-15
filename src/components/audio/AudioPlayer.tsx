@@ -71,12 +71,20 @@ export function AudioPlayer() {
 
   // Handle touch/swipe gestures for closing (only on header grab area)
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const target = e.target as Element | null;
+    if (target?.closest("[data-audio-close]")) {
+      return;
+    }
     touchStartY.current = e.touches[0].clientY;
     touchStartTime.current = Date.now();
     setIsDragging(true);
   }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const target = e.target as Element | null;
+    if (target?.closest("[data-audio-close]")) {
+      return;
+    }
     if (!isDragging) return;
     const currentY = e.touches[0].clientY;
     const diff = currentY - touchStartY.current;
@@ -86,7 +94,12 @@ export function AudioPlayer() {
     }
   }, [isDragging]);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const target = e.target as Element | null;
+    if (target?.closest("[data-audio-close]")) {
+      handleClose();
+      return;
+    }
     if (!isDragging) return;
     
     const velocity = dragY / (Date.now() - touchStartTime.current);
@@ -191,6 +204,12 @@ export function AudioPlayer() {
             variant="ghost"
             size="icon"
             onClick={handleClose}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClose();
+            }}
+            data-audio-close
             className="text-foreground hover:text-foreground h-11 w-11 -ml-1"
           >
             <ChevronDown className="h-8 w-8" />
@@ -205,6 +224,12 @@ export function AudioPlayer() {
             variant="ghost"
             size="icon"
             onClick={handleClose}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClose();
+            }}
+            data-audio-close
             className="text-muted-foreground hover:text-foreground h-11 w-11 -mr-1"
           >
             <X className="h-6 w-6" />

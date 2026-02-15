@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,75 +26,22 @@ function MusicButton({
   hasTrack, 
   audioLevel, 
   onClick,
-  onLongPress,
 }: { 
   isPlaying: boolean; 
   hasTrack: boolean; 
   audioLevel: number;
   onClick: () => void;
-  onLongPress?: () => void;
 }) {
   // Scale the rings based on audio level (0.8 to 1.4 scale range)
   const ringScale = 1 + (audioLevel * 0.5);
   const ringOpacity = 0.2 + (audioLevel * 0.4);
-
-  // Long press and double-tap handling
-  const longPressTimerRef = useRef<number | null>(null);
-  const isLongPressRef = useRef(false);
-  const lastTapRef = useRef<number>(0);
-
-  const handlePointerDown = () => {
-    isLongPressRef.current = false;
-    longPressTimerRef.current = window.setTimeout(() => {
-      isLongPressRef.current = true;
-      onLongPress?.();
-    }, 500); // 500ms for long press
-  };
-
-  const handlePointerUp = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    
-    // Don't trigger click if it was a long press
-    if (isLongPressRef.current) {
-      isLongPressRef.current = false;
-      return;
-    }
-    
-    // Double-tap detection
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      // Double tap - open full player
-      onLongPress?.();
-      lastTapRef.current = 0;
-    } else {
-      // Single tap - toggle play/pause
-      onClick();
-      lastTapRef.current = now;
-    }
-    
-    isLongPressRef.current = false;
-  };
-
-  const handlePointerLeave = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    isLongPressRef.current = false;
-  };
 
   return (
     <div className="flex-1 flex justify-center">
       <Button
         variant="ghost"
         size="icon"
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerLeave}
-        onPointerCancel={handlePointerLeave}
+        onClick={onClick}
         className={cn(
           "relative h-12 w-12 rounded-full transition-all duration-150 select-none",
           isPlaying 
@@ -164,18 +111,11 @@ export function BottomNav() {
   const handleMusicClick = () => {
     haptic('medium');
     if (hasTrack) {
-      // If a track is loaded, toggle play/pause
-      audioPlayer?.togglePlay();
+      // Single tap opens full player on mobile/desktop.
+      audioPlayer?.setExpanded(true);
     } else {
       // Otherwise navigate to resources/music library
       window.location.href = '/resources';
-    }
-  };
-
-  const handleMusicLongPress = () => {
-    if (hasTrack) {
-      haptic('medium');
-      audioPlayer?.setExpanded(true);
     }
   };
 
@@ -243,7 +183,6 @@ export function BottomNav() {
             hasTrack={hasTrack}
             audioLevel={audioPlayer?.audioLevel ?? 0}
             onClick={handleMusicClick}
-            onLongPress={handleMusicLongPress}
           />
         )}
 
