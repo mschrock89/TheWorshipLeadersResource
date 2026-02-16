@@ -214,7 +214,7 @@ export function useSubmitForApproval() {
     mutationFn: async (draftSetId: string) => {
       if (!user?.id) throw new Error("Not authenticated");
 
-      // First, get the details of this set to find others to delete
+      // First, get the details of this set to find replaceable draft duplicates
       const { data: thisSet, error: fetchError } = await supabase
         .from("draft_sets")
         .select("campus_id, ministry_type, plan_date, custom_service_id")
@@ -223,13 +223,15 @@ export function useSubmitForApproval() {
 
       if (fetchError) throw fetchError;
 
-      // Find and delete any other sets (published or draft) for the same date/campus/ministry
+      // Only clean up other in-progress drafts in the same service context.
+      // Never auto-delete already published/approved sets.
       let duplicateQuery = supabase
         .from("draft_sets")
         .select("id")
         .eq("campus_id", thisSet.campus_id)
         .eq("ministry_type", thisSet.ministry_type)
         .eq("plan_date", thisSet.plan_date)
+        .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId);
 
       if (thisSet.custom_service_id) {

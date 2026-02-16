@@ -661,24 +661,33 @@ export function usePublishSetlist() {
 
   return useMutation({
     mutationFn: async (draftSetId: string) => {
-      // First, get the details of this set to find others to unpublish
+      // First, get the details of this set to find replaceable draft duplicates
       const { data: thisSet, error: fetchError } = await supabase
         .from("draft_sets")
-        .select("campus_id, ministry_type, plan_date")
+        .select("campus_id, ministry_type, plan_date, custom_service_id")
         .eq("id", draftSetId)
         .single();
 
       if (fetchError) throw fetchError;
 
-      // Find and delete any other sets (published or draft) for the same date/campus/ministry
-      // This keeps only the current set being published
-      const { data: duplicateSets } = await supabase
+      // Only clean up other in-progress drafts in the same service context.
+      // Never auto-delete already published/approved sets.
+      let duplicateQuery = supabase
         .from("draft_sets")
         .select("id")
         .eq("campus_id", thisSet.campus_id)
         .eq("ministry_type", thisSet.ministry_type)
         .eq("plan_date", thisSet.plan_date)
+        .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId);
+
+      if (thisSet.custom_service_id) {
+        duplicateQuery = duplicateQuery.eq("custom_service_id", thisSet.custom_service_id);
+      } else {
+        duplicateQuery = duplicateQuery.is("custom_service_id", null);
+      }
+
+      const { data: duplicateSets } = await duplicateQuery;
 
       const deletedCount = duplicateSets?.length || 0;
 

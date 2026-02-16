@@ -89,25 +89,33 @@ export function PublishSetlistDialog({
 
   const teamMemberCount = customServiceId ? customAssignedCount : (roster?.length || 0);
 
-  // Check for existing sets (published or draft) when dialog opens
+  // Check for existing in-progress draft sets when dialog opens
   useEffect(() => {
     if (open && draftSetId && campusId) {
       setCheckingExisting(true);
       const planDate = format(targetDate, "yyyy-MM-dd");
       
-      supabase
+      let existingQuery = supabase
         .from("draft_sets")
         .select("id")
         .eq("campus_id", campusId)
         .eq("ministry_type", ministryType)
         .eq("plan_date", planDate)
+        .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId)
-        .then(({ data }) => {
+      
+      if (customServiceId) {
+        existingQuery = existingQuery.eq("custom_service_id", customServiceId);
+      } else {
+        existingQuery = existingQuery.is("custom_service_id", null);
+      }
+
+      existingQuery.then(({ data }) => {
           setExistingPublishedCount(data?.length || 0);
           setCheckingExisting(false);
         });
     }
-  }, [open, draftSetId, campusId, ministryType, targetDate]);
+  }, [open, draftSetId, campusId, ministryType, targetDate, customServiceId]);
 
   const handleSubmit = async () => {
     if (!draftSetId) return;
@@ -172,10 +180,10 @@ export function PublishSetlistDialog({
                   <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-amber-700 dark:text-amber-400">
                     <span className="font-medium">
-                      {existingPublishedCount} older set{existingPublishedCount > 1 ? 's' : ''} will be deleted.
+                      {existingPublishedCount} older draft version{existingPublishedCount > 1 ? 's' : ''} will be replaced.
                     </span>
                     <p className="text-amber-600 dark:text-amber-500 mt-1">
-                      Duplicate sets for this date will be removed to keep things clean.
+                      Published/approved sets will not be deleted.
                     </p>
                   </div>
                 </div>
