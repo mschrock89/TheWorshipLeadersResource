@@ -18,6 +18,7 @@ export interface PublishedSetlist {
   campus_id: string;
   plan_date: string;
   ministry_type: string;
+  custom_service_id: string | null;
   notes: string | null;
   published_at: string;
   campuses: { name: string } | null;
@@ -188,6 +189,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             campus_id,
             plan_date,
             ministry_type,
+            custom_service_id,
             notes,
             published_at,
             campuses(name)
@@ -219,6 +221,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             campus_id,
             plan_date,
             ministry_type,
+            custom_service_id,
             notes,
             published_at,
             campuses(name)

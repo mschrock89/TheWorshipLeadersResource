@@ -460,6 +460,7 @@ function StandardMySetlists() {
                     planDate={setlist.plan_date}
                     campusId={setlist.campus_id}
                     ministryType={setlist.ministry_type}
+                    customServiceId={setlist.custom_service_id}
                     getInitials={getInitials}
                   />
 
@@ -513,14 +514,40 @@ function SetlistTeamRoster({
   planDate,
   campusId,
   ministryType,
+  customServiceId,
   getInitials,
 }: {
   planDate: string;
   campusId: string;
   ministryType: string;
+  customServiceId?: string | null;
   getInitials: (name: string) => string;
 }) {
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
+
+  const { data: customAssignments = [], isLoading: loadingCustomAssignments } = useQuery({
+    queryKey: ["my-setlists-custom-service-roster", customServiceId, planDate],
+    queryFn: async () => {
+      if (!customServiceId) return [];
+      const { data, error } = await supabase
+        .from("custom_service_assignments")
+        .select(`
+          id,
+          user_id,
+          role,
+          profiles!custom_service_assignments_user_id_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq("custom_service_id", customServiceId)
+        .eq("assignment_date", planDate);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!customServiceId && !!planDate,
+  });
 
   const { data: teamEntry, isLoading: loadingTeam } = useQuery({
     queryKey: ["my-setlists-team-entry", planDate, campusId, ministryType],
@@ -562,7 +589,7 @@ function SetlistTeamRoster({
 
       return sorted[0];
     },
-    enabled: !!planDate && !!campusId,
+    enabled: !!planDate && !!campusId && !customServiceId,
   });
 
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
@@ -619,6 +646,63 @@ function SetlistTeamRoster({
   );
 
   const rosterRows = useMemo(() => {
+    if (customServiceId) {
+      const byPerson = new Map<
+        string,
+        {
+          id: string;
+          memberName: string;
+          avatarUrl: string | null;
+          isSwapped: boolean;
+          positions: Set<string>;
+          positionSlots: Set<string>;
+          hasVocalistRole: boolean;
+          hasBandRole: boolean;
+        }
+      >();
+
+      for (const assignment of customAssignments as any[]) {
+        const name = assignment.profiles?.full_name || "Team Member";
+        const role = assignment.role as string;
+        const key = assignment.user_id || name;
+        const existing = byPerson.get(key);
+        const roleCategory = slotCategoryBySlot.get(role);
+        const hasVocalistRole = roleCategory === "Vocalists" || role === "vocalist";
+        const hasBandRole = roleCategory === "Band" || bandFallbackPositions.has(role);
+
+        if (!existing) {
+          byPerson.set(key, {
+            id: assignment.id,
+            memberName: name,
+            avatarUrl: assignment.profiles?.avatar_url || null,
+            isSwapped: false,
+            positions: new Set([role]),
+            positionSlots: new Set([role]),
+            hasVocalistRole,
+            hasBandRole,
+          });
+        } else {
+          existing.positions.add(role);
+          existing.positionSlots.add(role);
+          existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
+          existing.hasBandRole = existing.hasBandRole || hasBandRole;
+        }
+      }
+
+      return Array.from(byPerson.values())
+        .map((member) => {
+          const roleLabels = Array.from(member.positions)
+            .map((position) => POSITION_LABELS_SHORT[position] || POSITION_LABELS[position] || position)
+            .filter((label, idx, arr) => arr.indexOf(label) === idx);
+
+          return {
+            ...member,
+            roleLabels,
+          };
+        })
+        .sort((a, b) => a.memberName.localeCompare(b.memberName));
+    }
+
     const byPerson = new Map<
       string,
       {
@@ -682,11 +766,19 @@ function SetlistTeamRoster({
     [rosterRows]
   );
 
-  if (loadingTeam || loadingRoster) {
+  if (customServiceId && loadingCustomAssignments) {
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (!teamEntry || (!vocalistRows.length && !bandRows.length)) {
+  if (!customServiceId && (loadingTeam || loadingRoster)) {
+    return <Skeleton className="h-20 w-full" />;
+  }
+
+  if (customServiceId && !vocalistRows.length && !bandRows.length) {
+    return null;
+  }
+
+  if (!customServiceId && (!teamEntry || (!vocalistRows.length && !bandRows.length))) {
     return null;
   }
 
