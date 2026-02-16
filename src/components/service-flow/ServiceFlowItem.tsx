@@ -2,6 +2,7 @@ import { GripVertical, X, Music, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
 
 interface ServiceFlowItemProps {
