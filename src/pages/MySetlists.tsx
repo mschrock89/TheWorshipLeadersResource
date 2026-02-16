@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirm
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { isAuditionCandidateRole } from "@/lib/access";
+import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
+import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
 
 function StandardMySetlists() {
@@ -311,9 +313,6 @@ function StandardMySetlists() {
                 {isPast && (
                   <Badge variant="secondary" className="text-xs">Past</Badge>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  {currentIndex + 1} of {allGroupedSetlists.length}
-                </span>
               </div>
             </div>
             
@@ -447,6 +446,13 @@ function StandardMySetlists() {
                     </div>
                   )}
 
+                  <SetlistTeamRoster
+                    planDate={setlist.plan_date}
+                    campusId={setlist.campus_id}
+                    ministryType={setlist.ministry_type}
+                    getInitials={getInitials}
+                  />
+
                   {/* Confirm button - only for users on the team roster for this setlist */}
                   {!isConfirmed && setlist.amIOnRoster && (
                     <Button
@@ -487,6 +493,260 @@ function StandardMySetlists() {
               </Card>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SetlistTeamRoster({
+  planDate,
+  campusId,
+  ministryType,
+  getInitials,
+}: {
+  planDate: string;
+  campusId: string;
+  ministryType: string;
+  getInitials: (name: string) => string;
+}) {
+  const date = useMemo(() => parseLocalDate(planDate), [planDate]);
+
+  const { data: teamEntry, isLoading: loadingTeam } = useQuery({
+    queryKey: ["my-setlists-team-entry", planDate, campusId, ministryType],
+    queryFn: async () => {
+      const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
+      const datesToCheck = [planDate];
+
+      const isWeekendDate = date.getDay() === 0 || date.getDay() === 6;
+      if (isWeekendDate) {
+        const pair = new Date(date);
+        pair.setDate(date.getDay() === 6 ? date.getDate() + 1 : date.getDate() - 1);
+        datesToCheck.push(pair.toISOString().split("T")[0]);
+      }
+
+      let query = supabase
+        .from("team_schedule")
+        .select("team_id, campus_id, ministry_type, schedule_date")
+        .in("schedule_date", datesToCheck)
+        .or(`campus_id.eq.${campusId},campus_id.is.null`);
+
+      if (ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "sunday_am") {
+        query = query.in("ministry_type", weekendAliases);
+      } else {
+        query = query.eq("ministry_type", ministryType);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      if (!data || data.length === 0) return null;
+
+      const sorted = [...data].sort((a, b) => {
+        const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
+        if (campusPriority !== 0) return campusPriority;
+        if (a.schedule_date === planDate && b.schedule_date !== planDate) return -1;
+        if (b.schedule_date === planDate && a.schedule_date !== planDate) return 1;
+        return 0;
+      });
+
+      return sorted[0];
+    },
+    enabled: !!planDate && !!campusId,
+  });
+
+  const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
+    date,
+    teamEntry?.team_id,
+    ministryType,
+    campusId
+  );
+
+  const slotCategoryBySlot = useMemo(
+    () => new Map(POSITION_SLOTS.map((slot) => [slot.slot, slot.category])),
+    []
+  );
+
+  const bandFallbackPositions = useMemo(
+    () =>
+      new Set([
+        "acoustic_guitar",
+        "acoustic_1",
+        "acoustic_2",
+        "electric_guitar",
+        "electric_1",
+        "electric_2",
+        "bass",
+        "drums",
+        "keys",
+        "piano",
+      ]),
+    []
+  );
+
+  const vocalists = useMemo(
+    () =>
+      roster.filter((member) => {
+        const hasVocalistSlot = member.positionSlots.some(
+          (slot) => slotCategoryBySlot.get(slot) === "Vocalists"
+        );
+        if (hasVocalistSlot) return true;
+        return member.positions.some((position) => position === "vocalist");
+      }),
+    [roster, slotCategoryBySlot]
+  );
+
+  const band = useMemo(
+    () =>
+      roster.filter((member) => {
+        const hasBandSlot = member.positionSlots.some(
+          (slot) => slotCategoryBySlot.get(slot) === "Band"
+        );
+        if (hasBandSlot) return true;
+        return member.positions.some((position) => bandFallbackPositions.has(position));
+      }),
+    [roster, slotCategoryBySlot, bandFallbackPositions]
+  );
+
+  const rosterRows = useMemo(() => {
+    const byPerson = new Map<
+      string,
+      {
+        id: string;
+        memberName: string;
+        avatarUrl: string | null;
+        isSwapped: boolean;
+        positions: Set<string>;
+        positionSlots: Set<string>;
+        hasVocalistRole: boolean;
+        hasBandRole: boolean;
+      }
+    >();
+
+    const allMembers = [...vocalists, ...band];
+    for (const member of allMembers) {
+      const key = member.userId || member.memberName;
+      const existing = byPerson.get(key);
+      const hasVocalistRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Vocalists") || member.positions.includes("vocalist");
+      const hasBandRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Band") || member.positions.some((position) => bandFallbackPositions.has(position));
+
+      if (!existing) {
+        byPerson.set(key, {
+          id: member.id,
+          memberName: member.memberName,
+          avatarUrl: member.avatarUrl,
+          isSwapped: member.isSwapped,
+          positions: new Set(member.positions),
+          positionSlots: new Set(member.positionSlots),
+          hasVocalistRole,
+          hasBandRole,
+        });
+      } else {
+        member.positions.forEach((position) => existing.positions.add(position));
+        member.positionSlots.forEach((slot) => existing.positionSlots.add(slot));
+        existing.isSwapped = existing.isSwapped || member.isSwapped;
+        existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
+        existing.hasBandRole = existing.hasBandRole || hasBandRole;
+      }
+    }
+
+    return Array.from(byPerson.values()).map((member) => {
+      const roleLabels = Array.from(member.positions)
+        .map((position) => POSITION_LABELS_SHORT[position] || POSITION_LABELS[position] || position)
+        .filter((label, idx, arr) => arr.indexOf(label) === idx);
+
+      return {
+        ...member,
+        roleLabels,
+      };
+    });
+  }, [vocalists, band, slotCategoryBySlot, bandFallbackPositions]);
+
+  const vocalistRows = useMemo(
+    () => rosterRows.filter((member) => member.hasVocalistRole),
+    [rosterRows]
+  );
+
+  const bandRows = useMemo(
+    () => rosterRows.filter((member) => member.hasBandRole && !member.hasVocalistRole),
+    [rosterRows]
+  );
+
+  if (loadingTeam || loadingRoster) {
+    return <Skeleton className="h-20 w-full" />;
+  }
+
+  if (!teamEntry || (!vocalistRows.length && !bandRows.length)) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
+      <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
+
+      {vocalistRows.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-primary">
+            <Mic2 className="h-4 w-4" />
+            <p className="text-sm font-medium">Vocalists</p>
+          </div>
+          <div className="space-y-1">
+            {vocalistRows.map((member) => (
+              <div
+                key={`vox-${member.id}-${member.memberName}`}
+                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
+                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[11px]">
+                      {getInitials(member.memberName || "?")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm">{member.memberName}</span>
+                  {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+                </div>
+                <span className="text-xs text-muted-foreground text-right">
+                  {member.roleLabels.join(", ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {bandRows.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-primary">
+            <Guitar className="h-4 w-4" />
+            <p className="text-sm font-medium">Band</p>
+          </div>
+          <div className="space-y-1">
+            {bandRows.map((member) => (
+              <div
+                key={`band-${member.id}-${member.memberName}`}
+                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
+                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[11px]">
+                      {getInitials(member.memberName || "?")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm">{member.memberName}</span>
+                  {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+                </div>
+                <span className="text-xs text-muted-foreground text-right">
+                  {member.roleLabels.join(", ")}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

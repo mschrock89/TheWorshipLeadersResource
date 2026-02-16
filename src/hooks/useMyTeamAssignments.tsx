@@ -9,6 +9,7 @@ export interface MyTeamAssignment {
   teamColor: string;
   teamIcon: string;
   position: string;
+  serviceDay: string | null;
   displayOrder: number;
 }
 
@@ -59,6 +60,7 @@ export function useMyTeamAssignments() {
         .select(`
           id,
           position,
+          service_day,
           display_order,
           team_id,
           rotation_period_id,
@@ -91,6 +93,7 @@ export function useMyTeamAssignments() {
         teamColor: member.worship_teams.color,
         teamIcon: member.worship_teams.icon,
         position: member.position,
+        serviceDay: member.service_day || null,
         displayOrder: member.display_order,
         campusId: member.rotation_periods?.campus_id || fallbackCampusId,
         campusName: member.rotation_periods?.campuses?.name || fallbackCampusName,
@@ -178,6 +181,31 @@ export function useMyTeamAssignments() {
         return null; // Not a weekend day
       };
 
+      const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
+        const dayOfWeek = parseLocalDate(dateStr).getDay();
+        if (dayOfWeek === 6) return "saturday";
+        if (dayOfWeek === 0) return "sunday";
+        return null;
+      };
+
+      const assignmentMatchesServiceDay = (assignment: { serviceDay?: string | null }, dateStr: string) => {
+        if (!assignment.serviceDay) return true;
+        const serviceDay = assignment.serviceDay.toLowerCase();
+        if (serviceDay === "both" || serviceDay === "weekend") return true;
+        const dateServiceDay = getServiceDayForDate(dateStr);
+        if (!dateServiceDay) return true;
+        return serviceDay === dateServiceDay;
+      };
+
+      const shouldExpandSwapToWeekendPair = (swap: (typeof acceptedSwaps)[number]) => {
+        const matchingAssignment = assignments.find(
+          (a) => a.teamId === swap.team_id && a.position === swap.position
+        );
+        if (!matchingAssignment) return true;
+        const serviceDay = (matchingAssignment.serviceDay || "").toLowerCase();
+        return serviceDay === "" || serviceDay === "both" || serviceDay === "weekend";
+      };
+
       // Build sets for dates user has swapped out/in
       const swappedOutDates = new Set<string>(); // Dates user gave away
       const swappedInDates = new Map<string, typeof acceptedSwaps[0]>(); // Dates user accepted
@@ -186,27 +214,35 @@ export function useMyTeamAssignments() {
         if (swap.requester_id === user.id) {
           // User gave away their original_date
           swappedOutDates.add(swap.original_date);
-          // For weekend services, also add the paired day
-          const originalPair = getWeekendPair(swap.original_date);
-          if (originalPair) swappedOutDates.add(originalPair);
+          // For full-weekend assignments, also add the paired day.
+          if (shouldExpandSwapToWeekendPair(swap)) {
+            const originalPair = getWeekendPair(swap.original_date);
+            if (originalPair) swappedOutDates.add(originalPair);
+          }
           
           // For a "swap" request_type, they also receive swap_date in return
           if (swap.request_type === "swap" && swap.swap_date) {
             swappedInDates.set(swap.swap_date, swap);
-            const swapPair = getWeekendPair(swap.swap_date);
-            if (swapPair) swappedInDates.set(swapPair, swap);
+            if (shouldExpandSwapToWeekendPair(swap)) {
+              const swapPair = getWeekendPair(swap.swap_date);
+              if (swapPair) swappedInDates.set(swapPair, swap);
+            }
           }
         } else if (swap.accepted_by_id === user.id) {
           // User accepted someone else's original_date
           swappedInDates.set(swap.original_date, swap);
-          const originalPair = getWeekendPair(swap.original_date);
-          if (originalPair) swappedInDates.set(originalPair, swap);
+          if (shouldExpandSwapToWeekendPair(swap)) {
+            const originalPair = getWeekendPair(swap.original_date);
+            if (originalPair) swappedInDates.set(originalPair, swap);
+          }
           
           if (swap.request_type === "swap" && swap.swap_date) {
             // User gave away swap_date in return
             swappedOutDates.add(swap.swap_date);
-            const swapPair = getWeekendPair(swap.swap_date);
-            if (swapPair) swappedOutDates.add(swapPair);
+            if (shouldExpandSwapToWeekendPair(swap)) {
+              const swapPair = getWeekendPair(swap.swap_date);
+              if (swapPair) swappedOutDates.add(swapPair);
+            }
           }
         }
       }
@@ -226,6 +262,7 @@ export function useMyTeamAssignments() {
         // Find ALL assignments for this team that match the schedule's ministry type
         const teamAssignments = assignments.filter((a) => {
           if (a.teamId !== entry.worship_teams.id) return false;
+          if (!assignmentMatchesServiceDay(a, entry.schedule_date)) return false;
           
           // Get the user's ministry types for this assignment
           const userMinistryTypes = (a as any)?.ministryTypes || [];
