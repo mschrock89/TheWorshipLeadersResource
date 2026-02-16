@@ -73,10 +73,19 @@ function StandardMySetlists() {
   };
 
   const normalizedCampusId = useMemo(() => {
+    if (isApprover) {
+      const allCampuses = campuses || [];
+      if (selectedCampusId && allCampuses.some((campus) => campus.id === selectedCampusId)) {
+        return selectedCampusId;
+      }
+      if (allCampuses.length > 0) return allCampuses[0].id;
+      return "__none__";
+    }
+
     if (selectedCampusId && assignedCampusIds.has(selectedCampusId)) return selectedCampusId;
     if (assignedCampuses.length > 0) return assignedCampuses[0].id;
     return "__none__";
-  }, [selectedCampusId, assignedCampusIds, assignedCampuses]);
+  }, [selectedCampusId, assignedCampusIds, assignedCampuses, isApprover, campuses]);
 
   useEffect(() => {
     if (normalizedCampusId === "__none__") return;
@@ -135,9 +144,10 @@ function StandardMySetlists() {
   const isLoading = loadingUpcoming || loadingPast;
 
   if (isApprover) {
+    const approverCampuses = campuses || [];
     return (
         <ApproverMySetlists
-          campuses={assignedCampuses}
+          campuses={approverCampuses}
         selectedCampusId={normalizedCampusId}
         setSelectedCampusId={setSelectedCampusId}
       />
