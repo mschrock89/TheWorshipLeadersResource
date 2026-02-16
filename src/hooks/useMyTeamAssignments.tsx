@@ -151,6 +151,10 @@ export function useMyTeamAssignments() {
         .select(`
           schedule_date,
           team_id,
+          campus_id,
+          campuses (
+            name
+          ),
           ministry_type,
           worship_teams!inner (
             id,
@@ -255,6 +259,8 @@ export function useMyTeamAssignments() {
       
       for (const entry of data || []) {
         const scheduleMinistryType = (entry as any).ministry_type || 'weekend';
+        const scheduleCampusId = (entry as any).campus_id || null;
+        const scheduleCampusName = (entry as any)?.campuses?.name || null;
         
         // Skip dates user has swapped out
         if (swappedOutDates.has(entry.schedule_date)) continue;
@@ -263,6 +269,17 @@ export function useMyTeamAssignments() {
         const teamAssignments = assignments.filter((a) => {
           if (a.teamId !== entry.worship_teams.id) return false;
           if (!assignmentMatchesServiceDay(a, entry.schedule_date)) return false;
+
+          const assignmentCampusId = (a as any)?.campusId || null;
+          if (scheduleCampusId) {
+            // Campus-specific schedules should only match assignments (or campus memberships)
+            // for that same campus.
+            if (assignmentCampusId && assignmentCampusId !== scheduleCampusId) return false;
+            if (!assignmentCampusId) {
+              const hasCampusMembership = userCampuses.some((uc: any) => uc.campus_id === scheduleCampusId);
+              if (!hasCampusMembership) return false;
+            }
+          }
           
           // Get the user's ministry types for this assignment
           const userMinistryTypes = (a as any)?.ministryTypes || [];
@@ -282,7 +299,8 @@ export function useMyTeamAssignments() {
         const ministryTypesByCampus = new Map<string | null, string[]>();
         
         for (const assignment of teamAssignments) {
-          const campusId = (assignment as any)?.campusId || null;
+          const assignmentCampusId = (assignment as any)?.campusId || null;
+          const campusId = scheduleCampusId || assignmentCampusId;
           const campusKey = campusId || 'null';
           
           // Merge ministry types for same campus
@@ -305,7 +323,8 @@ export function useMyTeamAssignments() {
         
         // Create one entry per unique schedule_date + team + campus
         for (const [campusKey, assignment] of campusAssignmentMap.entries()) {
-          const campusId = (assignment as any)?.campusId || null;
+          const assignmentCampusId = (assignment as any)?.campusId || null;
+          const campusId = scheduleCampusId || assignmentCampusId;
           const dedupeKey = `${entry.schedule_date}-${entry.worship_teams.id}-${campusId || 'null'}`;
           
           if (seen.has(dedupeKey)) continue;
@@ -319,7 +338,7 @@ export function useMyTeamAssignments() {
             teamColor: entry.worship_teams.color,
             position: (assignment as any)?.position || "",
             campusId: campusId,
-            campusName: (assignment as any)?.campusName || null,
+            campusName: scheduleCampusName || (assignment as any)?.campusName || null,
             ministryTypes: ministryTypesByCampus.get(campusKey) || [],
             rotationPeriodId: (assignment as any)?.rotationPeriodId || null,
             ministryType: scheduleMinistryType,
