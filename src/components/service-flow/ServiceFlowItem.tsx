@@ -2,7 +2,6 @@ import { GripVertical, X, Music, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
 
 interface ServiceFlowItemProps {
@@ -11,33 +10,6 @@ interface ServiceFlowItemProps {
   onDelete: () => void;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
-}
-
-const KEY_COLORS: Record<string, string> = {
-  C: "bg-black",
-  "C#": "bg-black",
-  Db: "bg-black",
-  D: "bg-black",
-  "D#": "bg-black",
-  Eb: "bg-black",
-  E: "bg-black",
-  F: "bg-black",
-  "F#": "bg-black",
-  Gb: "bg-black",
-  G: "bg-black",
-  "G#": "bg-black",
-  Ab: "bg-black",
-  A: "bg-black",
-  "A#": "bg-black",
-  Bb: "bg-black",
-  B: "bg-black",
-};
-
-function getKeyColor(key: string | null): string {
-  if (!key) return "bg-muted";
-  // Extract just the note (e.g., "C" from "Cm" or "C major")
-  const note = key.replace(/[mM].*$/, "").replace(/\s.*$/, "").trim();
-  return KEY_COLORS[note] || "bg-muted";
 }
 
 export function ServiceFlowItem({
@@ -99,11 +71,8 @@ export function ServiceFlowItem({
         )}
         {item.song_key && (
           <Badge
-            variant="secondary"
-            className={cn(
-              "text-xs font-medium text-white",
-              getKeyColor(item.song_key)
-            )}
+            variant="outline"
+            className="text-xs font-medium"
           >
             {item.song_key}
           </Badge>
