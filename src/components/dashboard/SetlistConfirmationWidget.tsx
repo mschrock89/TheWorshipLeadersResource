@@ -18,6 +18,7 @@ interface SetlistWithConfirmations {
   id: string;
   plan_date: string;
   ministry_type: string;
+  custom_service_id: string | null;
   published_at: string;
   campuses: { name: string } | null;
   confirmed: Array<{
@@ -91,6 +92,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           campus_id,
           plan_date,
           ministry_type,
+          custom_service_id,
           published_at,
           campuses(name)
         `)
@@ -161,6 +163,88 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
 
       for (const setlist of dedupedPublishedSets) {
         const targetRosterMinistry = ministryFilter === "all" ? setlist.ministry_type : ministryFilter;
+        const isCustomServiceSet = !!setlist.custom_service_id;
+
+        if (isCustomServiceSet) {
+          const { data: assignments } = await supabase
+            .from("custom_service_assignments")
+            .select(`
+              user_id,
+              role,
+              profiles!custom_service_assignments_user_id_fkey(full_name, avatar_url)
+            `)
+            .eq("custom_service_id", setlist.custom_service_id!)
+            .eq("assignment_date", setlist.plan_date);
+
+          const customRoleMatchesFilter = (role: string): boolean => {
+            if (targetRosterMinistry === "all") return true;
+            if (targetRosterMinistry === "production") return POSITION_CATEGORIES.audio.includes(role);
+            if (targetRosterMinistry === "video") return POSITION_CATEGORIES.video.includes(role);
+            if (WEEKEND_MINISTRY_ALIASES.has(targetRosterMinistry)) {
+              return !POSITION_CATEGORIES.audio.includes(role) && !POSITION_CATEGORIES.video.includes(role);
+            }
+            return false;
+          };
+
+          const membersByUser = new Map<string, { user_id: string; member_name: string; avatar_url: string | null }>();
+          for (const assignment of assignments || []) {
+            if (!assignment.user_id) continue;
+            if (!customRoleMatchesFilter(assignment.role)) continue;
+            if (!membersByUser.has(assignment.user_id)) {
+              membersByUser.set(assignment.user_id, {
+                user_id: assignment.user_id,
+                member_name: (assignment as any).profiles?.full_name || "Unknown",
+                avatar_url: (assignment as any).profiles?.avatar_url || null,
+              });
+            }
+          }
+
+          const scheduledMembers = Array.from(membersByUser.values()).map((m) => ({
+            user_id: m.user_id,
+            member_name: m.member_name,
+            isSwappedIn: false,
+          }));
+
+          const { data: confirmations } = await supabase
+            .from("setlist_confirmations")
+            .select("user_id, confirmed_at")
+            .eq("draft_set_id", setlist.id);
+
+          const scheduledUserIdSet = new Set(scheduledMembers.map((m) => m.user_id));
+          const scopedConfirmations = (confirmations || []).filter((c) => scheduledUserIdSet.has(c.user_id));
+          const confirmedUserIds = new Set(scopedConfirmations.map((c) => c.user_id));
+
+          const confirmed = scopedConfirmations.map((c) => {
+            const member = membersByUser.get(c.user_id);
+            return {
+              userId: c.user_id,
+              name: member?.member_name || "Unknown",
+              avatarUrl: member?.avatar_url || null,
+              confirmedAt: c.confirmed_at,
+              isSwappedIn: false,
+            };
+          });
+
+          const unconfirmed = scheduledMembers
+            .filter((m) => !confirmedUserIds.has(m.user_id))
+            .map((m) => {
+              const member = membersByUser.get(m.user_id);
+              return {
+                userId: m.user_id,
+                name: member?.member_name || m.member_name,
+                avatarUrl: member?.avatar_url || null,
+                isSwappedIn: false,
+              };
+            });
+
+          results.push({
+            ...setlist,
+            confirmed,
+            unconfirmed,
+            totalScheduled: scheduledMembers.length,
+          });
+          continue;
+        }
 
         // Get team scheduled for this date AND campus
         let teamScheduleQuery = supabase
