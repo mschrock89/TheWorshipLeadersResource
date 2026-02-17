@@ -187,6 +187,16 @@
 /* Print Styles for Service Flow Export */
 html.service-flow-export-mode,
 html.service-flow-export-mode body {
+  --background: 0 0% 100% !important;
+  --foreground: 220 13% 12% !important;
+  --card: 0 0% 100% !important;
+  --card-foreground: 220 13% 12% !important;
+  --popover: 0 0% 100% !important;
+  --popover-foreground: 220 13% 12% !important;
+  --muted: 0 0% 96% !important;
+  --muted-foreground: 220 10% 35% !important;
+  --border: 0 0% 80% !important;
+  --input: 0 0% 80% !important;
   background: white !important;
   color: black !important;
   font-size: 9pt !important;
@@ -274,6 +284,11 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   border-radius: 1px !important;
 }
 
+html.service-flow-export-mode .service-flow-page,
+html.service-flow-export-mode .service-flow-page * {
+  box-shadow: none !important;
+}
+
 html.service-flow-export-mode .service-flow-page .service-flow-header {
   background: white !important;
   color: #1a1a1a !important;
@@ -288,6 +303,14 @@ html.service-flow-export-mode .service-flow-page .service-flow-header * {
 
 html.service-flow-export-mode .service-flow-page .bg-card {
   background: white !important;
+}
+
+html.service-flow-export-mode .service-flow-page input,
+html.service-flow-export-mode .service-flow-page textarea,
+html.service-flow-export-mode .service-flow-page select {
+  background: white !important;
+  color: #1a1a1a !important;
+  border-color: #666 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {

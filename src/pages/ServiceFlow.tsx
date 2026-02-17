@@ -72,12 +72,23 @@ export default function ServiceFlow() {
       html.classList.remove(EXPORT_MODE_CLASS);
       body.classList.remove(EXPORT_MODE_CLASS);
       window.removeEventListener("afterprint", cleanup);
+      window.removeEventListener("focus", cleanup);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        cleanup();
+      }
     };
 
     window.addEventListener("afterprint", cleanup, { once: true });
+    window.addEventListener("focus", cleanup, { once: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // iOS Safari can skip afterprint in some share-sheet flows.
-    window.setTimeout(cleanup, 5000);
+    // Keep export mode active long enough for PDF/share generation.
+    window.setTimeout(cleanup, 60000);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
