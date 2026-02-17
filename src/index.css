@@ -185,6 +185,156 @@
 }
 
 /* Print Styles for Service Flow Export */
+html.service-flow-export-mode,
+html.service-flow-export-mode body {
+  background: white !important;
+  color: black !important;
+  font-size: 9pt !important;
+  line-height: 1.15 !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+html.service-flow-export-mode header,
+html.service-flow-export-mode nav,
+html.service-flow-export-mode aside,
+html.service-flow-export-mode footer,
+html.service-flow-export-mode .sidebar,
+html.service-flow-export-mode .bottom-nav,
+html.service-flow-export-mode [data-radix-popper-content-wrapper],
+html.service-flow-export-mode .toaster,
+html.service-flow-export-mode .screen-header {
+  display: none !important;
+}
+
+html.service-flow-export-mode main,
+html.service-flow-export-mode .service-flow-page {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  position: relative !important;
+}
+
+html.service-flow-export-mode .service-flow-page.space-y-6 {
+  gap: 2px !important;
+}
+
+html.service-flow-export-mode .print-header {
+  display: flex !important;
+  border-color: #333 !important;
+  margin-bottom: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+html.service-flow-export-mode .print-header img {
+  height: 32px !important;
+  width: auto !important;
+}
+
+html.service-flow-export-mode .print-header h1 {
+  font-size: 12pt !important;
+}
+
+html.service-flow-export-mode .print-header p {
+  font-size: 9pt !important;
+}
+
+html.service-flow-export-mode .print-title {
+  color: #35B0E5 !important;
+}
+
+html.service-flow-export-mode .print-date {
+  color: #444 !important;
+}
+
+html.service-flow-export-mode .service-flow-page .flex.flex-wrap.gap-3 {
+  display: none !important;
+}
+
+html.service-flow-export-mode .service-flow-page .border-b {
+  border-bottom: 1px solid #333 !important;
+  margin-bottom: 2px !important;
+  padding-bottom: 2px !important;
+  font-size: 7pt !important;
+}
+
+html.service-flow-export-mode .service-flow-page .space-y-2 {
+  gap: 0 !important;
+  min-height: auto !important;
+}
+
+html.service-flow-export-mode .service-flow-page .space-y-2 > div {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  background: white !important;
+  border: 1px solid #ddd !important;
+  margin-bottom: 0 !important;
+  padding: 2px 4px !important;
+  border-radius: 1px !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-header {
+  background: white !important;
+  color: #1a1a1a !important;
+  font-weight: 600 !important;
+  padding: 2px 6px !important;
+  border: 2px solid #35B0E5 !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-header * {
+  color: #1a1a1a !important;
+}
+
+html.service-flow-export-mode .service-flow-page .bg-card {
+  background: white !important;
+}
+
+html.service-flow-export-mode .service-flow-page .border-t {
+  position: absolute !important;
+  top: 0.7in !important;
+  right: 0.2in !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 9pt !important;
+  font-weight: 600 !important;
+}
+
+html.service-flow-export-mode .service-flow-page .border-t button {
+  display: none !important;
+}
+
+html.service-flow-export-mode .service-flow-page [class*="cursor-grab"],
+html.service-flow-export-mode .service-flow-page button[class*="hover:text-destructive"] {
+  display: none !important;
+}
+
+html.service-flow-export-mode .service-flow-page .space-y-2 * {
+  color: #1a1a1a !important;
+}
+
+html.service-flow-export-mode .service-flow-page .text-muted-foreground {
+  color: #555 !important;
+}
+
+html.service-flow-export-mode .service-flow-page [class*="Badge"],
+html.service-flow-export-mode .service-flow-page .bg-black {
+  background: #333 !important;
+  color: white !important;
+  padding: 1px 4px !important;
+  border-radius: 2px !important;
+  font-size: 7pt !important;
+}
+
+html.service-flow-export-mode .service-flow-page .text-sm {
+  font-size: 8pt !important;
+}
+
+html.service-flow-export-mode .service-flow-page .text-xs {
+  font-size: 7pt !important;
+}
+
 @media print {
   /* Reset page margins - tight for one-page fit */
   @page {

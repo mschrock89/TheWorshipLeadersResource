@@ -5,6 +5,8 @@ import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
 import { useAuth } from "@/hooks/useAuth";
 import emLogo from "@/assets/em-logo-print.png";
 
+const EXPORT_MODE_CLASS = "service-flow-export-mode";
+
 export default function ServiceFlow() {
   const { isLeader } = useAuth();
   const navigate = useNavigate();
@@ -57,13 +59,40 @@ export default function ServiceFlow() {
     }
   };
 
+  const printWithExportMode = () => {
+    const html = document.documentElement;
+    const body = document.body;
+    html.classList.add(EXPORT_MODE_CLASS);
+    body.classList.add(EXPORT_MODE_CLASS);
+
+    let didCleanup = false;
+    const cleanup = () => {
+      if (didCleanup) return;
+      didCleanup = true;
+      html.classList.remove(EXPORT_MODE_CLASS);
+      body.classList.remove(EXPORT_MODE_CLASS);
+      window.removeEventListener("afterprint", cleanup);
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+
+    // iOS Safari can skip afterprint in some share-sheet flows.
+    window.setTimeout(cleanup, 5000);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+      });
+    });
+  };
+
   const handlePrint = () => {
-    window.print();
+    printWithExportMode();
   };
 
   const handleExport = () => {
-    // Trigger print dialog which allows saving as PDF
-    window.print();
+    // Trigger print/share flow which allows saving as PDF
+    printWithExportMode();
   };
 
   return (
