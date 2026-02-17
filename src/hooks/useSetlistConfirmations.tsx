@@ -259,11 +259,74 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       if (setlists.length === 0) return [];
 
+      // Backfill legacy published rows missing custom_service_id by inferring from
+      // a unique active custom service on the same date/campus/ministry.
+      const unresolved = setlists.filter((s) => !s.custom_service_id);
+      if (unresolved.length > 0) {
+        const dates = [...new Set(unresolved.map((s) => s.plan_date))];
+        const campusIds = [...new Set(unresolved.map((s) => s.campus_id))];
+        const ministryTypes = [...new Set(unresolved.map((s) => s.ministry_type))];
+
+        const { data: customServices } = await supabase
+          .from("custom_services")
+          .select("id, service_date, campus_id, ministry_type, is_active")
+          .eq("is_active", true)
+          .in("service_date", dates)
+          .in("campus_id", campusIds)
+          .in("ministry_type", ministryTypes);
+
+        const customByKey = new Map<string, string[]>();
+        for (const service of customServices || []) {
+          const key = `${service.service_date}|${service.campus_id}|${service.ministry_type}`;
+          const existing = customByKey.get(key) || [];
+          existing.push(service.id);
+          customByKey.set(key, existing);
+        }
+
+        setlists = setlists.map((setlist) => {
+          if (setlist.custom_service_id) return setlist;
+          const key = `${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`;
+          const matches = customByKey.get(key) || [];
+          if (matches.length === 1) {
+            return { ...setlist, custom_service_id: matches[0] };
+          }
+          return setlist;
+        });
+      }
+
       // Resolve confirm-button eligibility from a single DB source of truth
       // so only rostered users (including accepted swaps) can confirm.
       const rosterEligibilityBySetId = new Map<string, boolean>();
+      const customServiceSetlists = setlists.filter((s) => !!s.custom_service_id);
+      const customServiceAssignmentKeys = new Set<string>();
+
+      if (customServiceSetlists.length > 0) {
+        const customServiceIds = [
+          ...new Set(customServiceSetlists.map((s) => s.custom_service_id!).filter(Boolean)),
+        ];
+        const customServiceDates = [...new Set(customServiceSetlists.map((s) => s.plan_date))];
+        const { data: myCustomAssignments } = await supabase
+          .from("custom_service_assignments")
+          .select("custom_service_id, assignment_date")
+          .eq("user_id", user.id)
+          .in("custom_service_id", customServiceIds)
+          .in("assignment_date", customServiceDates);
+
+        for (const assignment of myCustomAssignments || []) {
+          customServiceAssignmentKeys.add(`${assignment.custom_service_id}|${assignment.assignment_date}`);
+        }
+      }
+
       await Promise.all(
         (setlists || []).map(async (setlist) => {
+          if (setlist.custom_service_id) {
+            const isAssigned = customServiceAssignmentKeys.has(
+              `${setlist.custom_service_id}|${setlist.plan_date}`
+            );
+            rosterEligibilityBySetId.set(setlist.id, isAssigned);
+            return;
+          }
+
           const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
             p_draft_set_id: setlist.id,
             p_user_id: user.id,
