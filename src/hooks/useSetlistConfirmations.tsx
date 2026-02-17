@@ -278,6 +278,36 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         })
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
 
+      // If a specific campus is selected, never show setlists from any other campus.
+      if (campusId) {
+        setlists = setlists.filter((s) => s.campus_id === campusId);
+      }
+
+      // Guard against invalid weekend dates for a campus (e.g. Saturday at campuses with no Saturday service).
+      // This keeps My Setlists consistent with campus service-day rules.
+      if (setlists.length > 0) {
+        const campusIds = [...new Set(setlists.map((s) => s.campus_id).filter(Boolean))];
+        if (campusIds.length > 0) {
+          const { data: campusConfigs } = await supabase
+            .from("campuses")
+            .select("id, has_saturday_service, has_sunday_service")
+            .in("id", campusIds);
+
+          const campusMap = new Map(
+            (campusConfigs || []).map((c) => [c.id, c])
+          );
+
+          setlists = setlists.filter((s) => {
+            const config = campusMap.get(s.campus_id);
+            if (!config) return true;
+            const day = new Date(`${s.plan_date}T00:00:00`).getDay(); // 0 Sun, 6 Sat
+            if (day === 6 && !config.has_saturday_service) return false;
+            if (day === 0 && !config.has_sunday_service) return false;
+            return true;
+          });
+        }
+      }
+
       // For volunteers, filter to only scheduled dates
       if (isVolunteerOnly && scheduledDates) {
         setlists = setlists.filter(s => scheduledDates!.has(s.plan_date));
