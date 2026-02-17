@@ -361,9 +361,6 @@ export default function Profile() {
     .join("")
     .toUpperCase() || profile.email.substring(0, 2).toUpperCase();
 
-  // Check if user came from team directory
-  const cameFromDirectory = sessionStorage.getItem('teamDirectoryScrollPosition') !== null;
-
   const handleBackToDirectory = () => {
     navigate('/team');
   };

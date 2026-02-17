@@ -60,19 +60,9 @@ export default function Team() {
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Scroll to top on mount, or restore position when returning from a profile
+  // Always start at top when opening Team Directory.
   useEffect(() => {
-    const savedPosition = sessionStorage.getItem('teamDirectoryScrollPosition');
-    if (savedPosition) {
-      // Returning from a profile - restore scroll position after content loads
-      if (!isLoading) {
-        setTimeout(() => {
-          window.scrollTo(0, parseInt(savedPosition, 10));
-          sessionStorage.removeItem('teamDirectoryScrollPosition');
-        }, 100);
-      }
-    } else {
-      // First navigation to page - scroll to top immediately
+    if (!isLoading) {
       window.scrollTo(0, 0);
     }
   }, [isLoading]);

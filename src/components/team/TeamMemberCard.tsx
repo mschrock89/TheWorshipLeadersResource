@@ -34,8 +34,6 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
 
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    // Save scroll position before navigating
-    sessionStorage.setItem('teamDirectoryScrollPosition', window.scrollY.toString());
     navigate(`/team/${member.id}`);
   };
 
