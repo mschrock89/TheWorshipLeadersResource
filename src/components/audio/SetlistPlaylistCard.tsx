@@ -46,6 +46,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
   const serviceDate = parseLocalDate(playlist.service_date);
   const formattedDate = format(serviceDate, "EEEE, MMM d");
+  const customServiceName = playlist.draft_sets?.custom_services?.service_name || null;
   
   // Ensure referenceTracks is always an array (may be undefined from other contexts)
   const referenceTracks = playlist.referenceTracks || [];
@@ -150,7 +151,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               </div>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Headphones className="h-5 w-5 text-primary" />
-                Practice Playlist
+                {customServiceName ? `${customServiceName} Playlist` : "Practice Playlist"}
               </CardTitle>
               <div className="flex items-center gap-2 mt-2">
                 <Badge variant="secondary" className="text-xs font-medium">

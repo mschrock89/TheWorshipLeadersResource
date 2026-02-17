@@ -53,6 +53,9 @@ interface SetlistPlaylist {
     id: string;
     plan_date: string;
     notes: string | null;
+    custom_services?: {
+      service_name: string;
+    } | null;
     draft_set_songs: Array<{
       id: string;
       sequence_order: number;
@@ -120,6 +123,9 @@ export function useMySetlistPlaylists() {
             id,
             plan_date,
             notes,
+            custom_services(
+              service_name
+            ),
             draft_set_songs(
               id,
               sequence_order,

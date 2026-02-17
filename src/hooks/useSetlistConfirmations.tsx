@@ -132,6 +132,19 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       }
       const swapDates = Array.from(swapDatesSet);
 
+      // Dates where user is assigned to a custom service.
+      const { data: customAssignments } = await supabase
+        .from("custom_service_assignments")
+        .select("assignment_date")
+        .eq("user_id", user.id);
+
+      const customAssignmentDates = new Set<string>();
+      for (const row of customAssignments || []) {
+        if (!row.assignment_date) continue;
+        if (!includePast && row.assignment_date < new Date().toISOString().split("T")[0]) continue;
+        customAssignmentDates.add(row.assignment_date);
+      }
+
       // For volunteers, get their scheduled dates based on team assignments
       let scheduledDates: Set<string> | null = null;
       if (isVolunteerOnly) {
@@ -173,9 +186,14 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           for (const date of swapDates) {
             scheduledDates.add(date);
           }
+
+          // Include custom-service assigned dates
+          for (const date of customAssignmentDates) {
+            scheduledDates.add(date);
+          }
         } else {
-          // No team memberships - only show swap dates
-          scheduledDates = new Set(swapDates);
+          // No team memberships - still show swap dates + custom-service assigned dates
+          scheduledDates = new Set([...swapDates, ...customAssignmentDates]);
         }
       }
 
