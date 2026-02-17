@@ -284,6 +284,18 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   border-radius: 1px !important;
 }
 
+/* Keep end-of-service rows together in export output */
+html.service-flow-export-mode .service-flow-page [data-flow-item-title="closing-prayer"] {
+  break-after: avoid-page !important;
+  page-break-after: avoid !important;
+}
+
+html.service-flow-export-mode .service-flow-page [data-flow-item-title="post-service"],
+html.service-flow-export-mode .service-flow-page [data-flow-item-title="walk-out-music"] {
+  break-before: avoid-page !important;
+  page-break-before: avoid !important;
+}
+
 html.service-flow-export-mode .service-flow-page,
 html.service-flow-export-mode .service-flow-page * {
   box-shadow: none !important;
@@ -311,6 +323,13 @@ html.service-flow-export-mode .service-flow-page select {
   background: white !important;
   color: #1a1a1a !important;
   border-color: #666 !important;
+}
+
+html.service-flow-export-mode .service-flow-page input {
+  height: 1.6rem !important;
+  min-height: 1.6rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
@@ -459,6 +478,18 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     border-radius: 1px !important;
   }
 
+  /* Keep end-of-service rows together in print output */
+  .service-flow-page [data-flow-item-title="closing-prayer"] {
+    break-after: avoid-page !important;
+    page-break-after: avoid !important;
+  }
+
+  .service-flow-page [data-flow-item-title="post-service"],
+  .service-flow-page [data-flow-item-title="walk-out-music"] {
+    break-before: avoid-page !important;
+    page-break-before: avoid !important;
+  }
+
   /* ECC Blue (#35B0E5) outline/border around header sections */
   .service-flow-page .service-flow-header {
     background: white !important;
@@ -526,5 +557,12 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 
   .service-flow-page .text-xs {
     font-size: 7pt !important;
+  }
+
+  .service-flow-page input {
+    height: 1.6rem !important;
+    min-height: 1.6rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
   }
 }

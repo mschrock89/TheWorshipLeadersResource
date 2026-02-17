@@ -20,9 +20,17 @@ export function ServiceFlowItem({
   dragHandleProps,
   isDragging,
 }: ServiceFlowItemProps) {
+  const printTitleSlug = (item.song?.title || item.title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
   if (item.item_type === "header") {
     return (
       <div
+        data-flow-item-type={item.item_type}
+        data-flow-item-title={printTitleSlug}
         className={cn(
           "service-flow-header flex items-center gap-2 px-3 py-2 bg-muted rounded-md",
           isDragging && "opacity-50"
@@ -49,6 +57,8 @@ export function ServiceFlowItem({
   if (item.item_type === "song") {
     return (
       <div
+        data-flow-item-type={item.item_type}
+        data-flow-item-title={printTitleSlug}
         className={cn(
           "flex items-center gap-2 px-3 py-2 bg-card border rounded-md",
           isDragging && "opacity-50 shadow-lg"
@@ -99,6 +109,8 @@ export function ServiceFlowItem({
   // Regular item
   return (
     <div
+      data-flow-item-type={item.item_type}
+      data-flow-item-title={printTitleSlug}
       className={cn(
         "flex items-center gap-2 px-3 py-2 bg-card border rounded-md",
         isDragging && "opacity-50 shadow-lg"
