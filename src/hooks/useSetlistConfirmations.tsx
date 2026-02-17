@@ -225,6 +225,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           query = query.eq("ministry_type", ministryType);
         }
 
+        if (isVolunteerOnly) {
+          query = query.neq("ministry_type", "audition");
+        }
+
         const { data } = await query;
         setlistsFromCampuses = data || [];
       }
@@ -256,6 +260,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           query = query.eq("ministry_type", ministryType);
         }
 
+        if (isVolunteerOnly) {
+          query = query.neq("ministry_type", "audition");
+        }
+
         const { data } = await query;
         setlistsFromSwaps = data || [];
       }
@@ -273,6 +281,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // For volunteers, filter to only scheduled dates
       if (isVolunteerOnly && scheduledDates) {
         setlists = setlists.filter(s => scheduledDates!.has(s.plan_date));
+      }
+
+      if (isVolunteerOnly) {
+        setlists = setlists.filter((s) => s.ministry_type !== "audition");
       }
 
       if (setlists.length === 0) return [];

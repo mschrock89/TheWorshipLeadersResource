@@ -73,7 +73,10 @@ serve(async (req) => {
     // 3. Build notification recipient list
     let userIdsToNotify: string[] = [];
 
-    if (draftSet.custom_service_id) {
+    if (draftSet.ministry_type === "audition") {
+      // Audition setlists are handled through explicit assignment flows.
+      userIdsToNotify = [];
+    } else if (draftSet.custom_service_id) {
       const { data: assignments, error: assignmentsError } = await supabase
         .from("custom_service_assignments")
         .select("user_id")
@@ -87,6 +90,38 @@ serve(async (req) => {
       userIdsToNotify = Array.from(
         new Set((assignments || []).map((a) => a.user_id).filter(Boolean))
       ) as string[];
+
+      // Only notify volunteer/member accounts that are actually on this set's roster.
+      if (userIdsToNotify.length > 0) {
+        const { data: userRoles, error: rolesError } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .in("user_id", userIdsToNotify);
+
+        if (rolesError) {
+          console.error("Error fetching user roles:", rolesError);
+        }
+
+        const leadershipRoles = [
+          "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
+          "network_worship_pastor", "network_worship_leader", "leader",
+          "video_director", "production_manager", "campus_pastor"
+        ];
+
+        const userRolesMap = new Map<string, string[]>();
+        for (const ur of userRoles || []) {
+          const existing = userRolesMap.get(ur.user_id) || [];
+          existing.push(ur.role);
+          userRolesMap.set(ur.user_id, existing);
+        }
+
+        userIdsToNotify = userIdsToNotify.filter((userId) => {
+          const roles = userRolesMap.get(userId) || [];
+          const hasLeadershipRole = roles.some((r) => leadershipRoles.includes(r));
+          const isVolunteer = roles.includes("volunteer") || roles.includes("member");
+          return isVolunteer && !hasLeadershipRole;
+        });
+      }
     } else {
       // Fall back to standard scheduled-team recipient resolution
       const { data: teamSchedule, error: scheduleError } = await supabase
@@ -161,12 +196,30 @@ serve(async (req) => {
           }
 
           // Only include users who are volunteers/members AND don't have leadership role
-          userIdsToNotify = potentialUserIds.filter(userId => {
+          const volunteerUserIds = potentialUserIds.filter(userId => {
             const roles = userRolesMap.get(userId) || [];
             const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
             const isVolunteer = roles.includes("volunteer") || roles.includes("member");
             return isVolunteer && !hasLeadershipRole;
           });
+
+          // Final roster guard: only notify users who are actually on this set's roster.
+          // This uses the same source of truth as confirm permissions.
+          const rosterChecks = await Promise.all(
+            volunteerUserIds.map(async (userId) => {
+              const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
+                p_draft_set_id: draftSetId,
+                p_user_id: userId,
+              });
+              if (error) {
+                console.error("Roster check failed for user", userId, error);
+                return null;
+              }
+              return data ? userId : null;
+            })
+          );
+
+          userIdsToNotify = rosterChecks.filter(Boolean) as string[];
         }
       }
     }
