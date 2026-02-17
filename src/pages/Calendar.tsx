@@ -579,10 +579,10 @@ function StandardCalendar() {
               const dateForDay = new Date(year, month, day);
               const hasServiceForDayInScope = hasServiceForDateInScope(dateForDay);
 
-              // Grid highlighting should come from the assignment engine (service_day + swaps),
-              // not ad-hoc swap pair expansion.
-              const isUserEffectivelyScheduled = !!userSchedule;
-              const isSwappedIn = !!userSchedule?.isSwappedIn;
+              // Grid highlighting should come from the assignment engine (service_day + swaps).
+              // Team symbols are always visible, but highlight only when user is effectively rostered.
+              const isSwappedIn = !!userSchedule?.isSwappedIn || (!!swapStatus.swappedIn && !!teamEntry);
+              const isUserEffectivelyScheduled = !!userSchedule || (isSwappedIn && hasServiceForDayInScope);
               const isSwappedOut = swapStatus.swappedOut && !isUserEffectivelyScheduled;
 
               // Determine the effective team color for highlighting.
@@ -620,7 +620,7 @@ function StandardCalendar() {
                       {isSwappedIn && <ArrowRightLeft className="h-2.5 w-2.5 text-amber-500" />}
                       {isSwappedOut && <ArrowRightLeft className="h-2.5 w-2.5 text-red-400" />}
                       {isMidweekService && <span className="text-[8px] font-medium text-purple-500 mr-0.5">MID</span>}
-                      {TeamIcon && isUserEffectivelyScheduled && !isSwappedOut && <TeamIcon className="h-3 w-3" style={{
+                      {TeamIcon && <TeamIcon className="h-3 w-3" style={{
                     color: teamColor
                   }} />}
                       {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
