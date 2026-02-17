@@ -287,7 +287,7 @@ export function TemplateManager() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MINISTRY_TYPES.map((m) => (
+            {MINISTRY_TYPES.filter((m) => m.value !== "weekend").map((m) => (
               <SelectItem key={m.value} value={m.value}>
                 {m.label}
               </SelectItem>

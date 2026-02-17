@@ -39,6 +39,14 @@ export interface CustomServiceAssignment {
   } | null;
 }
 
+const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
+
+function normalizeCustomServiceMinistry(service: Pick<CustomService, "ministry_type" | "service_name">): string {
+  if (service.ministry_type === "prayer_night") return "prayer_night";
+  if (PRAYER_NIGHT_PATTERN.test(service.service_name || "")) return "prayer_night";
+  return service.ministry_type;
+}
+
 function expandServiceOccurrences(
   services: CustomService[],
   rangeStart: string,
@@ -56,6 +64,7 @@ function expandServiceOccurrences(
       if (!isBefore(baseDate, start) && !isAfter(baseDate, end)) {
         occurrences.push({
           ...service,
+          ministry_type: normalizeCustomServiceMinistry(service),
           occurrence_key: `${service.id}:${service.service_date}`,
           occurrence_date: service.service_date,
         });
@@ -72,6 +81,7 @@ function expandServiceOccurrences(
       if (repeatUntil && isAfter(current, repeatUntil)) break;
       occurrences.push({
         ...service,
+        ministry_type: normalizeCustomServiceMinistry(service),
         occurrence_key: `${service.id}:${format(current, "yyyy-MM-dd")}`,
         occurrence_date: format(current, "yyyy-MM-dd"),
       });
@@ -102,7 +112,10 @@ export function useCustomServiceDefinitions(campusId?: string) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as CustomService[];
+      return ((data || []) as CustomService[]).map((service) => ({
+        ...service,
+        ministry_type: normalizeCustomServiceMinistry(service),
+      }));
     },
   });
 }
@@ -132,14 +145,18 @@ export function useCustomServiceOccurrences({
       if (campusId) {
         query = query.eq("campus_id", campusId);
       }
-      if (ministryType) {
+      // Prayer Night supports legacy custom services that may still be stored as weekend
+      // but named "Prayer Night". Filter after normalization for that case.
+      if (ministryType && ministryType !== "prayer_night") {
         query = query.eq("ministry_type", ministryType);
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
-      return expandServiceOccurrences((data || []) as CustomService[], startDate, endDate);
+      const expanded = expandServiceOccurrences((data || []) as CustomService[], startDate, endDate);
+      if (!ministryType) return expanded;
+      return expanded.filter((service) => service.ministry_type === ministryType);
     },
   });
 }

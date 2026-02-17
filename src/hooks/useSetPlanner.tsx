@@ -222,37 +222,53 @@ export function useExistingSet(
     queryKey: ['existing-set', campusId, ministryType, planDate, customServiceId || null],
     queryFn: async () => {
       if (!campusId || !planDate) return null;
-      
-      let query = supabase
-        .from('draft_sets')
-        .select(`
-          *,
-          draft_set_songs(
-            id,
-            song_id,
-            sequence_order,
-            song_key,
-            vocalist_id
-          )
-        `)
-        .eq('campus_id', campusId)
-        .eq('ministry_type', ministryType)
-        .eq('plan_date', planDate);
 
-      if (customServiceId) {
-        query = query.eq('custom_service_id', customServiceId);
-      } else {
-        query = query.is('custom_service_id', null);
+      const baseSelect = `
+        *,
+        draft_set_songs(
+          id,
+          song_id,
+          sequence_order,
+          song_key,
+          vocalist_id
+        )
+      `;
+
+      const runLookup = async (options: { includeMinistry: boolean }) => {
+        let query = supabase
+          .from('draft_sets')
+          .select(baseSelect)
+          .eq('campus_id', campusId)
+          .eq('plan_date', planDate);
+
+        if (options.includeMinistry) {
+          query = query.eq('ministry_type', ministryType);
+        }
+
+        if (customServiceId) {
+          query = query.eq('custom_service_id', customServiceId);
+        } else {
+          query = query.is('custom_service_id', null);
+        }
+
+        const { data, error } = await query
+          .order('published_at', { ascending: false })
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        return data;
+      };
+
+      // Primary lookup: strict ministry match.
+      let data = await runLookup({ includeMinistry: true });
+
+      // Fallback for legacy custom-service sets (e.g. old Prayer Night saved as weekend).
+      if (!data && customServiceId) {
+        data = await runLookup({ includeMinistry: false });
       }
 
-      const { data, error } = await query
-        // If duplicates exist (e.g., multiple saves), prefer the published/most-recent one
-        .order('published_at', { ascending: false })
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
       if (!data) return null;
 
       // Fetch vocalist IDs from junction table for all draft_set_songs

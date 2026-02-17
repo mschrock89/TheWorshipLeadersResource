@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -37,6 +37,7 @@ import { useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
+import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const teamIcons: Record<string, React.ElementType> = {
@@ -359,7 +360,6 @@ function StandardCalendar() {
   // Get events for selected date
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
   const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
-  const selectedPrimaryService = selectedDayServices[0] || null;
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. Encounter) should still show even if the user isn't personally scheduled.
@@ -726,38 +726,56 @@ function StandardCalendar() {
                       </span>}
                   </div>}
 
-                {/* Songs Section */}
-                {selectedPrimaryService ? (
-                  <CustomServiceSongsPreview
-                    customServiceId={selectedPrimaryService.id}
-                    planDate={selectedPrimaryService.occurrence_date}
-                    campusId={selectedPrimaryService.campus_id}
-                    ministryType={selectedPrimaryService.ministry_type}
-                  />
-                ) : (
-                  <SongsPreview date={selectedDate} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} ministryFilter={ministryFilter} />
-                )}
-
-                {/* Band Roster Section */}
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
-                </div>
-                
-                {/* Team roster */}
-                {selectedPrimaryService ? (
-                  <CustomServiceRoster
-                    customServiceId={selectedPrimaryService.id}
-                    assignmentDate={selectedPrimaryService.occurrence_date}
-                  />
+                {/* Songs + Team Roster Section */}
+                {selectedDayServices.length > 0 ? (
+                  <div className="space-y-5 mb-4">
+                    {selectedDayServices.map((service) => (
+                      <div key={service.occurrence_key} className="rounded-md border border-border/70 p-3 sm:p-4">
+                        <div className="mb-2">
+                          <p className="text-sm font-medium text-foreground">{service.service_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {service.start_time ? formatTime(service.start_time) : "Time TBD"}
+                            {service.end_time ? ` - ${formatTime(service.end_time)}` : ""}
+                          </p>
+                        </div>
+                        <CustomServiceSongsPreview
+                          customServiceId={service.id}
+                          planDate={service.occurrence_date}
+                          campusId={service.campus_id}
+                          ministryType={service.ministry_type}
+                        />
+                        <CustomServiceRoster
+                          customServiceId={service.id}
+                          assignmentDate={service.occurrence_date}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 ) : (() => {
-              const dateStr = selectedDate.toISOString().split("T")[0];
-              let scheduleEntries = teamSchedule.filter(s => s.schedule_date === dateStr);
-              if (ministryFilter && ministryFilter !== "all") {
-                scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
-              }
-              const scheduledMinistries = scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
-              return <BandRoster date={selectedDate} teamId={selectedDayTeam?.team_id} showAudioVideo={canManageTeam} ministryFilter={ministryFilter} scheduledMinistries={scheduledMinistries} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} />;
-            })()}
+                  return (
+                    <>
+                      <SongsPreview date={selectedDate} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} ministryFilter={ministryFilter} />
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
+                      </div>
+                      <BandRoster
+                        date={selectedDate}
+                        teamId={selectedDayTeam?.team_id}
+                        showAudioVideo={canManageTeam}
+                        ministryFilter={ministryFilter}
+                        scheduledMinistries={(() => {
+                          const dateStr = selectedDate.toISOString().split("T")[0];
+                          let scheduleEntries = teamSchedule.filter(s => s.schedule_date === dateStr);
+                          if (ministryFilter && ministryFilter !== "all") {
+                            scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
+                          }
+                          return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
+                        })()}
+                        campusId={campusFilter !== "network-wide" ? campusFilter : undefined}
+                      />
+                    </>
+                  );
+                })()}
 
                 {/* Events Section */}
                 <div className="space-y-2">
@@ -1455,6 +1473,7 @@ function CustomServiceSongsPreview({
 }) {
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, ministryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
+  const serviceFlowLink = `/service-flow?date=${planDate}&campus=${campusId}&ministry=${ministryType}&customServiceId=${customServiceId}${existingSet?.id ? `&draftSetId=${existingSet.id}` : ""}`;
 
   if (isSetLoading || isSongsLoading) {
     return <div className="mb-4">
@@ -1466,6 +1485,15 @@ function CustomServiceSongsPreview({
 
   if (!existingSet || draftSongs.length === 0) {
     return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        <div className="mb-2 flex items-center justify-end">
+          <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+            </span>
+            LIVE
+          </Link>
+        </div>
         No setlist has been saved for this custom service yet.
       </div>;
   }
@@ -1476,7 +1504,16 @@ function CustomServiceSongsPreview({
           <Music className="h-3.5 w-3.5" />
           Song Set
         </h3>
-        <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
+          <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+            </span>
+            LIVE
+          </Link>
+        </div>
       </div>
       <div className="space-y-1.5">
         {draftSongs.map((song, index) => <div key={song.id} className="flex items-center justify-between text-sm py-1">
@@ -1487,7 +1524,123 @@ function CustomServiceSongsPreview({
             {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
           </div>)}
       </div>
+      <CustomServiceFlowTitleEditor
+        campusId={campusId}
+        ministryType={ministryType}
+        planDate={planDate}
+        customServiceId={customServiceId}
+        draftSetId={existingSet?.id || null}
+      />
     </div>;
+}
+
+function CustomServiceFlowTitleEditor({
+  campusId,
+  ministryType,
+  planDate,
+  customServiceId,
+  draftSetId,
+}: {
+  campusId: string;
+  ministryType: string;
+  planDate: string;
+  customServiceId: string;
+  draftSetId: string | null;
+}) {
+  const { data: flow } = useServiceFlow(campusId, ministryType, planDate, draftSetId, customServiceId);
+  const { data: flowItems = [], isLoading } = useServiceFlowItems(flow?.id || null);
+  const saveFlowItem = useSaveServiceFlowItem();
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const beginEdit = (itemId: string, currentTitle: string) => {
+    setEditingItemId(itemId);
+    setEditingTitle(currentTitle);
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setEditingTitle("");
+  };
+
+  const saveTitle = async (item: any) => {
+    const trimmed = editingTitle.trim();
+    if (!trimmed || !flow?.id) return;
+
+    await saveFlowItem.mutateAsync({
+      id: item.id,
+      service_flow_id: flow.id,
+      item_type: item.item_type,
+      title: trimmed,
+      duration_seconds: item.duration_seconds,
+      sequence_order: item.sequence_order,
+      song_id: item.song_id,
+      song_key: item.song_key,
+      vocalist_id: item.vocalist_id,
+      notes: item.notes,
+    });
+
+    cancelEdit();
+  };
+
+  if (!flow?.id || isLoading) return null;
+
+  if (flowItems.length === 0) {
+    return (
+      <div className="mt-3 rounded-md border border-border/70 p-2.5 text-xs text-muted-foreground">
+        Service flow has no items yet. Open LIVE for this service to generate/edit the flow, then titles will be editable here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-border/70 p-2.5">
+      <h4 className="text-xs font-medium text-muted-foreground mb-2">Service Flow Item Titles</h4>
+      <div className="space-y-1.5">
+        {flowItems.map((item) => {
+          const isEditing = editingItemId === item.id;
+          return (
+            <div key={item.id} className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5">
+              <span className="text-[11px] text-muted-foreground w-5">{item.sequence_order + 1}</span>
+              {isEditing ? (
+                <>
+                  <Input
+                    value={editingTitle}
+                    onChange={(e) => setEditingTitle(e.target.value)}
+                    className="h-8"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-emerald-500"
+                    onClick={() => saveTitle(item)}
+                    disabled={saveFlowItem.isPending || !editingTitle.trim()}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={cancelEdit}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm flex-1 truncate">{item.title}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => beginEdit(item.id, item.title)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function CustomServiceRoster({

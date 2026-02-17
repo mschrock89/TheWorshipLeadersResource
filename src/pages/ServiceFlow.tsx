@@ -17,6 +17,8 @@ export default function ServiceFlow() {
   const initialDate = searchParams.get("date") || undefined;
   const initialCampus = searchParams.get("campus") || undefined;
   const initialMinistry = searchParams.get("ministry") || undefined;
+  const initialDraftSetId = searchParams.get("draftSetId") || undefined;
+  const initialCustomServiceId = searchParams.get("customServiceId") || undefined;
 
   // Format date for print header
   const formatPrintDate = () => {
@@ -107,7 +109,7 @@ export default function ServiceFlow() {
   };
 
   return (
-    <div className="service-flow-page space-y-6 p-4 md:p-6">
+    <div className="service-flow-page service-flow-print-fit space-y-6 p-4 md:p-6">
       {/* Print-only header - hidden on screen, uses print-specific colors in CSS */}
       <div className="print-header hidden print:flex flex-row items-center justify-between mb-8 pb-4 border-b-2">
         <img 
@@ -157,6 +159,8 @@ export default function ServiceFlow() {
         initialDate={initialDate}
         initialCampusId={initialCampus}
         initialMinistryType={initialMinistry}
+        initialDraftSetId={initialDraftSetId}
+        initialCustomServiceId={initialCustomServiceId}
       />
     </div>
   );

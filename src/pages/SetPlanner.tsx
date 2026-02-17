@@ -89,9 +89,11 @@ export default function SetPlanner() {
   const [localCampusId, setLocalCampusId] = useState<string>('');
   const [selectedMinistry, setSelectedMinistry] = useState<string>('weekend');
   const [lastSavedSetId, setLastSavedSetId] = useState<string | null>(null);
+  const isPrayerNightMinistry = selectedMinistry === "prayer_night";
   
-  // Determine if current ministry is a midweek service
+  // Determine ministry scheduling behavior
   const isMidweekMinistry = selectedMinistry === 'encounter' || selectedMinistry === 'eon';
+  const isWeekendStyleMinistry = selectedMinistry === 'weekend' || selectedMinistry === 'eon_weekend';
   
   // Get appropriate default date based on ministry type
   const defaultDate = useMemo(() => {
@@ -107,8 +109,10 @@ export default function SetPlanner() {
     if (isSunday(today)) {
       return subDays(today, 1); // Use yesterday (Saturday)
     }
-    return nextSaturday(today);
-  }, [isMidweekMinistry]);
+    if (isWeekendStyleMinistry) return nextSaturday(today);
+    // Non-weekend ministries (e.g. Prayer Night) use exact date
+    return today;
+  }, [isMidweekMinistry, isWeekendStyleMinistry]);
   
   const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
   const [selectedCustomServiceKey, setSelectedCustomServiceKey] = useState<string>("none");
@@ -312,10 +316,10 @@ export default function SetPlanner() {
   useEffect(() => {
     if (isMidweekMinistry && !isWednesday(selectedDate)) {
       setSelectedDate(nextWednesday(new Date()));
-    } else if (!isMidweekMinistry && isWednesday(selectedDate)) {
+    } else if (isWeekendStyleMinistry && isWednesday(selectedDate)) {
       setSelectedDate(nextSaturday(new Date()));
     }
-  }, [selectedMinistry]);
+  }, [selectedMinistry, isMidweekMinistry, isWeekendStyleMinistry, selectedDate]);
 
   // When campus changes, reset the loaded date to force reload
   useEffect(() => {
@@ -373,7 +377,7 @@ export default function SetPlanner() {
       } else {
         setSelectedDate(nextWednesday(date));
       }
-    } else if (isWeekendCampus) {
+    } else if (isWeekendStyleMinistry && isWeekendCampus) {
       // If Sunday is selected, use the previous Saturday
       if (isSunday(date)) {
         setSelectedDate(subDays(date, 1));
@@ -393,7 +397,7 @@ export default function SetPlanner() {
     if (isMidweekMinistry) {
       return format(selectedDate, 'EEE, MMM d, yyyy');
     }
-    if (isWeekendCampus) {
+    if (isWeekendStyleMinistry && isWeekendCampus) {
       const saturday = isSaturday(selectedDate) ? selectedDate : nextSaturday(selectedDate);
       const sunday = addDays(saturday, 1);
       return `${format(saturday, 'MMM d')}-${format(sunday, 'd, yyyy')}`;
@@ -652,7 +656,7 @@ export default function SetPlanner() {
               {/* Date picker */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Target {isMidweekMinistry ? 'Wednesday' : isWeekendCampus ? 'Weekend' : 'Date'}
+                  Target {isMidweekMinistry ? 'Wednesday' : isWeekendStyleMinistry && isWeekendCampus ? 'Weekend' : 'Date'}
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -760,10 +764,12 @@ export default function SetPlanner() {
         </Card>
 
         {/* Team Roster - full width */}
-        <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+        {!isPrayerNightMinistry && (
+          <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+        )}
 
         {/* Custom Service Team Assignments */}
-        {selectedCustomService && (
+        {selectedCustomService && !isPrayerNightMinistry && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -865,6 +871,140 @@ export default function SetPlanner() {
                       key={member.userId}
                       className="rounded-md border border-border p-3"
                     >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{member.userName}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {member.assignments.map((assignment) => (
+                            <Badge key={assignment.id} variant="secondary" className="text-xs pr-1">
+                              {POSITION_LABELS[assignment.role] || assignment.role}
+                              <button
+                                type="button"
+                                className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-black/10"
+                                onClick={async () => {
+                                  setAssignmentSaveState("saving");
+                                  try {
+                                    await removeCustomServiceAssignment.mutateAsync({
+                                      id: assignment.id,
+                                      custom_service_id: assignment.custom_service_id,
+                                      assignment_date: assignment.assignment_date,
+                                    });
+                                    setAssignmentSaveState("saved");
+                                    setAssignmentSavedAt(new Date());
+                                  } catch {
+                                    setAssignmentSaveState("error");
+                                  }
+                                }}
+                                disabled={removeCustomServiceAssignment.isPending || assignmentSaveState === "saving"}
+                                aria-label={`Remove ${POSITION_LABELS[assignment.role] || assignment.role} role`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedCustomService && isPrayerNightMinistry && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Prayer Night
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {selectedCustomService.service_name} • {selectedCustomService.occurrence_date}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Prayer Night roster supports optional role assignments.
+              </p>
+
+              <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+                <Select value={customServiceMemberId} onValueChange={setCustomServiceMemberId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customServiceCampusMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.full_name || "Unnamed Member"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Popover open={customRolePopoverOpen} onOpenChange={setCustomRolePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" className="justify-between">
+                      <span className="truncate">{selectedRoleSummary}</span>
+                      <span className="text-xs text-muted-foreground">▼</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[260px] p-0" align="start">
+                    <div className="border-b px-3 py-2">
+                      <p className="text-sm font-medium">Assign Role(s)</p>
+                      <p className="text-xs text-muted-foreground">Select one or more roles</p>
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto p-1">
+                      {CUSTOM_SERVICE_ROLE_OPTIONS.map((role) => {
+                        const checked = customServiceRoles.includes(role.value);
+                        return (
+                          <button
+                            key={role.value}
+                            type="button"
+                            onClick={() => toggleCustomRole(role.value)}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                          >
+                            <Checkbox checked={checked} />
+                            <span className="text-sm">{role.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <Button
+                  onClick={async () => {
+                    if (!customServiceMemberId || customServiceRoles.length === 0) return;
+                    setAssignmentSaveState("saving");
+                    try {
+                      await Promise.all(
+                        customServiceRoles.map((role) =>
+                          addCustomServiceAssignment.mutateAsync({
+                            custom_service_id: selectedCustomService.id,
+                            assignment_date: selectedCustomService.occurrence_date,
+                            user_id: customServiceMemberId,
+                            role,
+                          }),
+                        ),
+                      );
+                      setAssignmentSaveState("saved");
+                      setAssignmentSavedAt(new Date());
+                    } catch {
+                      setAssignmentSaveState("error");
+                    }
+                  }}
+                  disabled={!customServiceMemberId || customServiceRoles.length === 0 || addCustomServiceAssignment.isPending || assignmentSaveState === "saving"}
+                >
+                  Assign
+                </Button>
+              </div>
+
+              {customServiceAssignments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No team members assigned to this Prayer Night yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {groupedCustomServiceAssignments.map((member) => (
+                    <div key={member.userId} className="rounded-md border border-border p-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{member.userName}</p>
                         <div className="mt-2 flex flex-wrap gap-2">

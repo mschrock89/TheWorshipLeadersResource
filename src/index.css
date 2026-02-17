@@ -205,6 +205,12 @@ html.service-flow-export-mode body {
   print-color-adjust: exact !important;
 }
 
+html.service-flow-export-mode #root,
+html.service-flow-export-mode #root > div {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
 html.service-flow-export-mode header,
 html.service-flow-export-mode nav,
 html.service-flow-export-mode aside,
@@ -224,6 +230,18 @@ html.service-flow-export-mode .service-flow-page {
   width: 100% !important;
   max-width: 100% !important;
   position: relative !important;
+}
+
+html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
+  zoom: 0.84 !important;
+}
+
+@supports not (zoom: 1) {
+  html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
+    transform: scale(0.84) !important;
+    transform-origin: top left !important;
+    width: 119% !important;
+  }
 }
 
 html.service-flow-export-mode .service-flow-page.space-y-6 {
@@ -380,7 +398,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 @media print {
   /* Reset page margins - tight for one-page fit */
   @page {
-    margin: 0.2in;
+    margin: 0.1in;
     size: letter;
   }
 
@@ -405,6 +423,12 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     line-height: 1.15 !important;
   }
 
+  #root,
+  #root > div {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
   /* Make main content full width */
   main,
   .service-flow-page {
@@ -413,6 +437,18 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     width: 100% !important;
     max-width: 100% !important;
     position: relative !important;
+  }
+
+  .service-flow-page.service-flow-print-fit {
+    zoom: 0.84 !important;
+  }
+
+  @supports not (zoom: 1) {
+    .service-flow-page.service-flow-print-fit {
+      transform: scale(0.84) !important;
+      transform-origin: top left !important;
+      width: 119% !important;
+    }
   }
 
   /* Reduce spacing in the page */

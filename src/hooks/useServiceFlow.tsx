@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 export interface ServiceFlow {
   id: string;
   draft_set_id: string | null;
+  custom_service_id: string | null;
   campus_id: string;
   ministry_type: string;
   service_date: string;
@@ -40,22 +41,86 @@ export interface ServiceFlowItem {
   } | null;
 }
 
-export function useServiceFlow(campusId: string | null, ministryType: string, serviceDate: string | null) {
+export function useServiceFlow(
+  campusId: string | null,
+  ministryType: string,
+  serviceDate: string | null,
+  draftSetId?: string | null,
+  customServiceId?: string | null
+) {
   return useQuery({
-    queryKey: ["service-flow", campusId, ministryType, serviceDate],
+    queryKey: ["service-flow", campusId, ministryType, serviceDate, draftSetId || null, customServiceId || null],
     queryFn: async () => {
       if (!campusId || !serviceDate) return null;
-      
-      const { data, error } = await supabase
-        .from("service_flows")
-        .select("*")
-        .eq("campus_id", campusId)
-        .eq("ministry_type", ministryType)
-        .eq("service_date", serviceDate)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as ServiceFlow | null;
+
+      const fetchSingle = async (
+        builder: ReturnType<typeof supabase.from<"service_flows", ServiceFlow>>
+      ) => {
+        const { data, error } = await builder
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return (data as ServiceFlow | null) || null;
+      };
+
+      // 1) Prefer exact draft-set linkage when available.
+      if (draftSetId) {
+        const byDraftSet = await fetchSingle(
+          supabase.from("service_flows").eq("draft_set_id", draftSetId)
+        );
+        if (byDraftSet) return byDraftSet;
+      }
+
+      // 2) For custom services, try custom-service scoped flow.
+      if (customServiceId) {
+        const byCustomService = await fetchSingle(
+          supabase
+            .from("service_flows")
+            .eq("campus_id", campusId)
+            .eq("ministry_type", ministryType)
+            .eq("service_date", serviceDate)
+            .eq("custom_service_id", customServiceId)
+        );
+        if (byCustomService) return byCustomService;
+      }
+
+      // 3) Legacy fallback: older flows were only campus+ministry+date scoped.
+      const legacy = await fetchSingle(
+        supabase
+          .from("service_flows")
+          .eq("campus_id", campusId)
+          .eq("ministry_type", ministryType)
+          .eq("service_date", serviceDate)
+      );
+      if (legacy) return legacy;
+
+      // 4) Prayer Night migration fallback: older flows may still be stored as weekend.
+      if (ministryType === "prayer_night") {
+        if (customServiceId) {
+          const legacyPrayerCustom = await fetchSingle(
+            supabase
+              .from("service_flows")
+              .eq("campus_id", campusId)
+              .eq("ministry_type", "weekend")
+              .eq("service_date", serviceDate)
+              .eq("custom_service_id", customServiceId)
+          );
+          if (legacyPrayerCustom) return legacyPrayerCustom;
+        }
+
+        const legacyPrayerGeneral = await fetchSingle(
+          supabase
+            .from("service_flows")
+            .eq("campus_id", campusId)
+            .eq("ministry_type", "weekend")
+            .eq("service_date", serviceDate)
+        );
+        if (legacyPrayerGeneral) return legacyPrayerGeneral;
+      }
+
+      return null;
     },
     enabled: !!campusId && !!serviceDate,
   });
@@ -94,6 +159,7 @@ export function useCreateServiceFlow() {
       ministryType: string;
       serviceDate: string;
       draftSetId?: string | null;
+      customServiceId?: string | null;
       createdFromTemplateId?: string | null;
       createdBy: string;
     }) => {
@@ -104,6 +170,7 @@ export function useCreateServiceFlow() {
           ministry_type: params.ministryType,
           service_date: params.serviceDate,
           draft_set_id: params.draftSetId || null,
+          custom_service_id: params.customServiceId || null,
           created_from_template_id: params.createdFromTemplateId || null,
           created_by: params.createdBy,
         })
@@ -355,47 +422,207 @@ export async function generateServiceFlowFromTemplate(params: {
     vocalistId?: string | null;
   }>;
 }) {
-  // Check for existing template
-  const { data: template } = await supabase
-    .from("service_flow_templates")
-    .select("*")
-    .eq("campus_id", params.campusId)
-    .eq("ministry_type", params.ministryType)
+  const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
+
+  // Detect whether this published set is tied to a Prayer Night custom service.
+  const { data: setContext } = await supabase
+    .from("draft_sets")
+    .select("custom_service_id, custom_services(ministry_type, service_name)")
+    .eq("id", params.draftSetId)
     .maybeSingle();
 
-  // Check if service flow already exists
-  const { data: existingFlow } = await supabase
-    .from("service_flows")
-    .select("id")
-    .eq("campus_id", params.campusId)
-    .eq("ministry_type", params.ministryType)
-    .eq("service_date", params.serviceDate)
-    .maybeSingle();
+  const resolvedCustomServiceId = (setContext as any)?.custom_service_id || null;
+  const customService = (setContext as any)?.custom_services;
+  const isPrayerNightService =
+    customService?.ministry_type === "prayer_night" ||
+    PRAYER_NIGHT_PATTERN.test(customService?.service_name || "");
 
-  if (existingFlow) {
-    // Update existing flow's draft_set_id
-    await supabase
-      .from("service_flows")
-      .update({ draft_set_id: params.draftSetId })
-      .eq("id", existingFlow.id);
-    return existingFlow.id;
+  // Resolve template ministry:
+  // - Prayer Night services should use prayer_night templates first
+  // - fallback to weekend template for legacy setups
+  const templateMinistryCandidates = Array.from(
+    new Set(
+      isPrayerNightService
+        ? ["prayer_night", "weekend", params.ministryType]
+        : [params.ministryType]
+    )
+  );
+
+  let template: any = null;
+  let resolvedMinistryType = params.ministryType;
+
+  for (const candidate of templateMinistryCandidates) {
+    const { data: candidateTemplate } = await supabase
+      .from("service_flow_templates")
+      .select("*")
+      .eq("campus_id", params.campusId)
+      .eq("ministry_type", candidate)
+      .maybeSingle();
+
+    if (candidateTemplate) {
+      template = candidateTemplate;
+      resolvedMinistryType = candidate;
+      break;
+    }
+  }
+
+  // If it's prayer night without a template, still classify generated flow as prayer_night.
+  if (!template && isPrayerNightService) {
+    resolvedMinistryType = "prayer_night";
   }
 
   // Get song durations from reference track markers
   const songDurations = await getSongDurationsFromMarkers(
     params.campusId,
-    params.ministryType,
+    resolvedMinistryType,
     params.serviceDate
   );
+
+  // Check if service flow already exists
+  const { data: existingFlow } = await supabase
+    .from("service_flows")
+    .select("id")
+    .eq("draft_set_id", params.draftSetId)
+    .maybeSingle();
+
+  if (existingFlow) {
+    // Update existing flow linkage and ensure it has items.
+    await supabase
+      .from("service_flows")
+      .update({
+        draft_set_id: params.draftSetId,
+        ministry_type: resolvedMinistryType,
+        custom_service_id: resolvedCustomServiceId,
+      })
+      .eq("id", existingFlow.id);
+
+    const { data: existingItems } = await supabase
+      .from("service_flow_items")
+      .select("id")
+      .eq("service_flow_id", existingFlow.id)
+      .limit(1);
+
+    if (existingItems && existingItems.length > 0) {
+      return existingFlow.id;
+    }
+
+    // If flow exists but has no items, populate it below using template/song data.
+    const { data: reusedFlow } = await supabase
+      .from("service_flows")
+      .select("*")
+      .eq("id", existingFlow.id)
+      .single();
+
+    if (reusedFlow) {
+      const newFlow = reusedFlow as { id: string };
+
+      // Helper to get duration for a song from markers
+      const getDurationForSong = (songTitle: string): number | null => {
+        const normalized = normalizeTitle(songTitle);
+        return songDurations.get(normalized) ?? null;
+      };
+
+      if (template) {
+        const { data: templateItems } = await supabase
+          .from("service_flow_template_items")
+          .select("*")
+          .eq("template_id", template.id)
+          .order("sequence_order", { ascending: true });
+
+        if (templateItems && templateItems.length > 0) {
+          let songIndex = 0;
+          const flowItems: Array<{
+            service_flow_id: string;
+            item_type: string;
+            title: string;
+            duration_seconds: number | null;
+            sequence_order: number;
+            song_id: string | null;
+            song_key: string | null;
+            vocalist_id: string | null;
+          }> = [];
+
+          for (const templateItem of templateItems) {
+            if (templateItem.item_type === "song_placeholder") {
+              if (songIndex < params.songs.length) {
+                const song = params.songs[songIndex];
+                const markerDuration = getDurationForSong(song.title);
+                flowItems.push({
+                  service_flow_id: newFlow.id,
+                  item_type: "song",
+                  title: song.title,
+                  duration_seconds: markerDuration ?? templateItem.default_duration_seconds,
+                  sequence_order: templateItem.sequence_order,
+                  song_id: song.id,
+                  song_key: song.key || null,
+                  vocalist_id: song.vocalistId || null,
+                });
+                songIndex++;
+              }
+            } else {
+              flowItems.push({
+                service_flow_id: newFlow.id,
+                item_type: templateItem.item_type,
+                title: templateItem.title,
+                duration_seconds: templateItem.default_duration_seconds,
+                sequence_order: templateItem.sequence_order,
+                song_id: null,
+                song_key: null,
+                vocalist_id: null,
+              });
+            }
+          }
+
+          while (songIndex < params.songs.length) {
+            const song = params.songs[songIndex];
+            const markerDuration = getDurationForSong(song.title);
+            flowItems.push({
+              service_flow_id: newFlow.id,
+              item_type: "song",
+              title: song.title,
+              duration_seconds: markerDuration,
+              sequence_order: flowItems.length,
+              song_id: song.id,
+              song_key: song.key || null,
+              vocalist_id: song.vocalistId || null,
+            });
+            songIndex++;
+          }
+
+          if (flowItems.length > 0) {
+            await supabase.from("service_flow_items").insert(flowItems);
+          }
+        }
+      } else {
+        const flowItems = params.songs.map((song, index) => ({
+          service_flow_id: newFlow.id,
+          item_type: "song" as const,
+          title: song.title,
+          duration_seconds: getDurationForSong(song.title),
+          sequence_order: index,
+          song_id: song.id,
+          song_key: song.key || null,
+          vocalist_id: song.vocalistId || null,
+        }));
+
+        if (flowItems.length > 0) {
+          await supabase.from("service_flow_items").insert(flowItems);
+        }
+      }
+    }
+
+    return existingFlow.id;
+  }
 
   // Create new service flow
   const { data: newFlow, error: flowError } = await supabase
     .from("service_flows")
     .insert({
       campus_id: params.campusId,
-      ministry_type: params.ministryType,
+      ministry_type: resolvedMinistryType,
       service_date: params.serviceDate,
       draft_set_id: params.draftSetId,
+      custom_service_id: resolvedCustomServiceId,
       created_from_template_id: template?.id || null,
       created_by: params.createdBy,
     })
