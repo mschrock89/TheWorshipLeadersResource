@@ -158,23 +158,61 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       const dedupedPublishedSets = Array.from(dedupedPublishedMap.values())
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
 
+      // Resolve custom service linkage defensively for legacy rows.
+      const unresolved = dedupedPublishedSets.filter((s) => !s.custom_service_id);
+      const customServiceByKey = new Map<string, string>();
+      if (unresolved.length > 0) {
+        const dates = [...new Set(unresolved.map((s) => s.plan_date))];
+        const campusIds = [...new Set(unresolved.map((s) => s.campus_id))];
+        const ministryTypes = [...new Set(unresolved.map((s) => s.ministry_type))];
+        const { data: customServices } = await supabase
+          .from("custom_services")
+          .select("id, service_date, campus_id, ministry_type, is_active")
+          .eq("is_active", true)
+          .in("service_date", dates)
+          .in("campus_id", campusIds)
+          .in("ministry_type", ministryTypes);
+
+        const grouped = new Map<string, string[]>();
+        for (const cs of customServices || []) {
+          const key = `${cs.service_date}|${cs.campus_id}|${cs.ministry_type}`;
+          const existing = grouped.get(key) || [];
+          existing.push(cs.id);
+          grouped.set(key, existing);
+        }
+        for (const [key, ids] of grouped.entries()) {
+          if (ids.length === 1) customServiceByKey.set(key, ids[0]);
+        }
+      }
+
       // For each setlist, get confirmation status
       const results: SetlistWithConfirmations[] = [];
 
       for (const setlist of dedupedPublishedSets) {
         const targetRosterMinistry = ministryFilter === "all" ? setlist.ministry_type : ministryFilter;
-        const isCustomServiceSet = !!setlist.custom_service_id;
+        const effectiveCustomServiceId =
+          setlist.custom_service_id ||
+          customServiceByKey.get(`${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`) ||
+          null;
+        const isCustomServiceSet = !!effectiveCustomServiceId;
 
         if (isCustomServiceSet) {
           const { data: assignments } = await supabase
             .from("custom_service_assignments")
             .select(`
               user_id,
-              role,
-              profiles!custom_service_assignments_user_id_fkey(full_name, avatar_url)
+              role
             `)
-            .eq("custom_service_id", setlist.custom_service_id!)
+            .eq("custom_service_id", effectiveCustomServiceId!)
             .eq("assignment_date", setlist.plan_date);
+
+          const profileIds = [...new Set((assignments || []).map((a) => a.user_id).filter(Boolean))];
+          const { data: basicProfiles } = await supabase.rpc("get_basic_profiles");
+          const profileMap = new Map(
+            (basicProfiles || [])
+              .filter((p: any) => profileIds.includes(p.id))
+              .map((p: any) => [p.id, p]),
+          );
 
           const customRoleMatchesFilter = (role: string): boolean => {
             if (targetRosterMinistry === "all") return true;
@@ -191,10 +229,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             if (!assignment.user_id) continue;
             if (!customRoleMatchesFilter(assignment.role)) continue;
             if (!membersByUser.has(assignment.user_id)) {
+              const profile = profileMap.get(assignment.user_id);
               membersByUser.set(assignment.user_id, {
                 user_id: assignment.user_id,
-                member_name: (assignment as any).profiles?.full_name || "Unknown",
-                avatar_url: (assignment as any).profiles?.avatar_url || null,
+                member_name: profile?.full_name || "Unknown",
+                avatar_url: profile?.avatar_url || null,
               });
             }
           }
