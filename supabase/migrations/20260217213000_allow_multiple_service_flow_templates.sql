@@ -12,12 +12,12 @@ BEGIN
     AND t.relname = 'service_flow_templates'
     AND c.contype = 'u'
     AND (
-      SELECT array_agg(att.attname ORDER BY att.attname)
+      SELECT array_agg(att.attname::text ORDER BY att.attname::text)
       FROM unnest(c.conkey) AS ck(attnum)
       JOIN pg_attribute att
         ON att.attrelid = c.conrelid
        AND att.attnum = ck.attnum
-    ) = ARRAY['campus_id', 'ministry_type'];
+    ) = ARRAY['campus_id', 'ministry_type']::text[];
 
   IF constraint_name IS NOT NULL THEN
     EXECUTE format('ALTER TABLE public.service_flow_templates DROP CONSTRAINT %I', constraint_name);
