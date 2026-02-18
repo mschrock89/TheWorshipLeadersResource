@@ -13,6 +13,7 @@ import { Music, ChevronDown, CheckCircle2, Clock, Users, ArrowRightLeft } from "
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { POSITION_CATEGORIES } from "@/lib/constants";
+import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 
 interface SetlistWithConfirmations {
   id: string;
@@ -142,7 +143,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         const auditionCandidateId = set.ministry_type === "audition"
           ? (auditionAssignmentMap.get(set.id) || "")
           : "";
-        const dedupeKey = `${set.campus_id}|${set.plan_date}|${set.ministry_type}|${auditionCandidateId}`;
+        // Include custom_service_id in the dedupe key so multiple custom services
+        // on the same date/campus/ministry (e.g. Prayer Night + Prayer Night Mayday)
+        // do not collapse into one card.
+        const serviceScope = set.custom_service_id || "none";
+        const dedupeKey = `${set.campus_id}|${set.plan_date}|${set.ministry_type}|${serviceScope}|${auditionCandidateId}`;
         const existing = dedupedPublishedMap.get(dedupeKey);
         if (!existing) {
           dedupedPublishedMap.set(dedupeKey, set);
@@ -195,6 +200,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           customServiceByKey.get(`${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`) ||
           null;
         const isCustomServiceSet = !!effectiveCustomServiceId;
+        const datesToCheck = [setlist.plan_date];
+        if (isWeekend(setlist.plan_date)) {
+          const pairDate = getWeekendPairDate(setlist.plan_date);
+          if (pairDate) datesToCheck.push(pairDate);
+        }
 
         if (isCustomServiceSet) {
           const { data: assignments } = await supabase
@@ -344,7 +354,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             requester:profiles!swap_requests_requester_id_fkey(id, full_name),
             accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
           `)
-          .eq("original_date", setlist.plan_date)
+          .in("original_date", datesToCheck)
           .eq("status", "accepted");
 
         // Get swaps where swap_date matches (accepted_by out, requester in)
@@ -356,7 +366,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             requester:profiles!swap_requests_requester_id_fkey(id, full_name),
             accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
           `)
-          .eq("swap_date", setlist.plan_date)
+          .in("swap_date", datesToCheck)
           .eq("status", "accepted")
           .not("swap_date", "is", null);
 

@@ -402,6 +402,13 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }),
       );
 
+      // Volunteers should only see setlists where they are actually on the roster.
+      // This is required for dates that have multiple custom services (same campus/date/ministry)
+      // so users only receive the specific custom service they were assigned to.
+      if (isVolunteerOnly) {
+        setlists = setlists.filter((setlist) => rosterEligibilityBySetId.get(setlist.id) === true);
+      }
+
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
       
