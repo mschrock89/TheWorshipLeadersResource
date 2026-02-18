@@ -900,7 +900,7 @@ export default function Songs() {
               <Card>
                 <CardContent className="p-8 text-center text-muted-foreground">
                   <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No upcoming plans found. Sync from Planning Center.</p>
+                  <p>No upcoming plans found in Set Builder yet.</p>
                 </CardContent>
               </Card>
             ) : (

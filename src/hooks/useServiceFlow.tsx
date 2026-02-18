@@ -2,6 +2,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
+  const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
+  return (
+    message.includes("custom_service_id") &&
+    message.includes("service_flows") &&
+    (message.includes("schema cache") || message.includes("column"))
+  );
+}
+
 export interface ServiceFlow {
   id: string;
   draft_set_id: string | null;
@@ -75,15 +84,21 @@ export function useServiceFlow(
 
       // 2) For custom services, try custom-service scoped flow.
       if (customServiceId) {
-        const byCustomService = await fetchSingle(
-          supabase
-            .from("service_flows")
-            .eq("campus_id", campusId)
-            .eq("ministry_type", ministryType)
-            .eq("service_date", serviceDate)
-            .eq("custom_service_id", customServiceId)
-        );
-        if (byCustomService) return byCustomService;
+        try {
+          const byCustomService = await fetchSingle(
+            supabase
+              .from("service_flows")
+              .eq("campus_id", campusId)
+              .eq("ministry_type", ministryType)
+              .eq("service_date", serviceDate)
+              .eq("custom_service_id", customServiceId)
+          );
+          if (byCustomService) return byCustomService;
+        } catch (error) {
+          if (!isMissingServiceFlowCustomServiceColumn(error)) {
+            throw error;
+          }
+        }
       }
 
       // 3) Legacy fallback: older flows were only campus+ministry+date scoped.
@@ -99,15 +114,21 @@ export function useServiceFlow(
       // 4) Prayer Night migration fallback: older flows may still be stored as weekend.
       if (ministryType === "prayer_night") {
         if (customServiceId) {
-          const legacyPrayerCustom = await fetchSingle(
-            supabase
-              .from("service_flows")
-              .eq("campus_id", campusId)
-              .eq("ministry_type", "weekend")
-              .eq("service_date", serviceDate)
-              .eq("custom_service_id", customServiceId)
-          );
-          if (legacyPrayerCustom) return legacyPrayerCustom;
+          try {
+            const legacyPrayerCustom = await fetchSingle(
+              supabase
+                .from("service_flows")
+                .eq("campus_id", campusId)
+                .eq("ministry_type", "weekend")
+                .eq("service_date", serviceDate)
+                .eq("custom_service_id", customServiceId)
+            );
+            if (legacyPrayerCustom) return legacyPrayerCustom;
+          } catch (error) {
+            if (!isMissingServiceFlowCustomServiceColumn(error)) {
+              throw error;
+            }
+          }
         }
 
         const legacyPrayerGeneral = await fetchSingle(
@@ -163,7 +184,7 @@ export function useCreateServiceFlow() {
       createdFromTemplateId?: string | null;
       createdBy: string;
     }) => {
-      const { data, error } = await supabase
+      const insertWithCustom = await supabase
         .from("service_flows")
         .insert({
           campus_id: params.campusId,
@@ -176,7 +197,25 @@ export function useCreateServiceFlow() {
         })
         .select()
         .single();
+      if (!insertWithCustom.error) {
+        return insertWithCustom.data as ServiceFlow;
+      }
+      if (!isMissingServiceFlowCustomServiceColumn(insertWithCustom.error)) {
+        throw insertWithCustom.error;
+      }
 
+      const { data, error } = await supabase
+        .from("service_flows")
+        .insert({
+          campus_id: params.campusId,
+          ministry_type: params.ministryType,
+          service_date: params.serviceDate,
+          draft_set_id: params.draftSetId || null,
+          created_from_template_id: params.createdFromTemplateId || null,
+          created_by: params.createdBy,
+        })
+        .select()
+        .single();
       if (error) throw error;
       return data as ServiceFlow;
     },
@@ -342,23 +381,61 @@ function normalizeTitle(title: string): string {
 }
 
 // Helper to calculate song durations from reference track markers
+type MarkerDurations = {
+  byTitle: Map<string, number>;
+  ordered: number[];
+};
+
 async function getSongDurationsFromMarkers(
   campusId: string,
   ministryType: string,
-  serviceDate: string
-): Promise<Map<string, number>> {
+  serviceDate: string,
+  draftSetId?: string | null
+): Promise<MarkerDurations> {
   const durationMap = new Map<string, number>();
+  const orderedDurations: number[] = [];
 
-  // Get the playlist for this service
-  const { data: playlist } = await supabase
-    .from("setlist_playlists")
-    .select("id")
-    .eq("campus_id", campusId)
-    .eq("ministry_type", ministryType)
-    .eq("service_date", serviceDate)
-    .maybeSingle();
+  // Get the playlist for this service.
+  // Prefer exact draft_set_id linkage to avoid ministry/date ambiguity on custom services.
+  let playlist: { id: string } | null = null;
+  if (draftSetId) {
+    const byDraftSet = await supabase
+      .from("setlist_playlists")
+      .select("id")
+      .eq("draft_set_id", draftSetId)
+      .maybeSingle();
+    if (byDraftSet.error) throw byDraftSet.error;
+    playlist = (byDraftSet.data as { id: string } | null) || null;
+  }
 
-  if (!playlist) return durationMap;
+  if (!playlist) {
+    const byScope = await supabase
+      .from("setlist_playlists")
+      .select("id")
+      .eq("campus_id", campusId)
+      .eq("ministry_type", ministryType)
+      .eq("service_date", serviceDate)
+      .maybeSingle();
+    if (byScope.error) throw byScope.error;
+    playlist = (byScope.data as { id: string } | null) || null;
+  }
+
+  // Weekend-based fallback: use same-campus same-date weekend playlist markers.
+  if (!playlist) {
+    const weekendFallback = await supabase
+      .from("setlist_playlists")
+      .select("id")
+      .eq("campus_id", campusId)
+      .eq("service_date", serviceDate)
+      .in("ministry_type", ["weekend", "weekend_team"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (weekendFallback.error) throw weekendFallback.error;
+    playlist = (weekendFallback.data as { id: string } | null) || null;
+  }
+
+  if (!playlist) return { byTitle: durationMap, ordered: orderedDurations };
 
   // Get reference tracks and their markers (include duration_seconds for last song calc)
   const { data: refTracks } = await supabase
@@ -375,7 +452,7 @@ async function getSongDurationsFromMarkers(
     .eq("playlist_id", playlist.id)
     .order("sequence_order", { ascending: true });
 
-  if (!refTracks || refTracks.length === 0) return durationMap;
+  if (!refTracks || refTracks.length === 0) return { byTitle: durationMap, ordered: orderedDurations };
 
   // Process each reference track's markers
   for (const track of refTracks) {
@@ -401,11 +478,12 @@ async function getSongDurationsFromMarkers(
       if (duration && duration > 0) {
         const normalizedTitle = normalizeTitle(marker.title);
         durationMap.set(normalizedTitle, duration);
+        orderedDurations.push(duration);
       }
     }
   }
 
-  return durationMap;
+  return { byTitle: durationMap, ordered: orderedDurations };
 }
 
 // Helper to generate service flow from template when setlist is published
@@ -423,6 +501,32 @@ export async function generateServiceFlowFromTemplate(params: {
   }>;
 }) {
   const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
+
+  const resolveTemplateForCandidate = async (campusId: string, candidateMinistry: string) => {
+    const { data: candidateTemplates, error: templateError } = await supabase
+      .from("service_flow_templates")
+      .select("id, campus_id, ministry_type, name, updated_at")
+      .eq("campus_id", campusId)
+      .eq("ministry_type", candidateMinistry)
+      .order("updated_at", { ascending: false });
+
+    if (templateError) throw templateError;
+    if (!candidateTemplates || candidateTemplates.length === 0) return null;
+
+    for (const candidate of candidateTemplates) {
+      const { data: existingItems, error: itemsError } = await supabase
+        .from("service_flow_template_items")
+        .select("id")
+        .eq("template_id", candidate.id)
+        .limit(1);
+      if (itemsError) throw itemsError;
+      if (existingItems && existingItems.length > 0) {
+        return candidate as any;
+      }
+    }
+
+    return candidateTemplates[0] as any;
+  };
 
   // Detect whether this published set is tied to a Prayer Night custom service.
   const { data: setContext } = await supabase
@@ -452,12 +556,7 @@ export async function generateServiceFlowFromTemplate(params: {
   let resolvedMinistryType = params.ministryType;
 
   for (const candidate of templateMinistryCandidates) {
-    const { data: candidateTemplate } = await supabase
-      .from("service_flow_templates")
-      .select("*")
-      .eq("campus_id", params.campusId)
-      .eq("ministry_type", candidate)
-      .maybeSingle();
+    const candidateTemplate = await resolveTemplateForCandidate(params.campusId, candidate);
 
     if (candidateTemplate) {
       template = candidateTemplate;
@@ -472,37 +571,131 @@ export async function generateServiceFlowFromTemplate(params: {
   }
 
   // Get song durations from reference track markers
-  const songDurations = await getSongDurationsFromMarkers(
+  const markerDurations = await getSongDurationsFromMarkers(
     params.campusId,
     resolvedMinistryType,
-    params.serviceDate
+    params.serviceDate,
+    params.draftSetId
   );
 
   // Check if service flow already exists
-  const { data: existingFlow } = await supabase
+  let { data: existingFlow } = await supabase
     .from("service_flows")
     .select("id")
     .eq("draft_set_id", params.draftSetId)
     .maybeSingle();
 
+  // If not directly linked yet, reuse an existing flow in the same service scope
+  // (campus + ministry + date [+ custom service]) to avoid unique index collisions.
+  if (!existingFlow) {
+    const scopedBase = supabase
+      .from("service_flows")
+      .select("id")
+      .eq("campus_id", params.campusId)
+      .eq("ministry_type", resolvedMinistryType)
+      .eq("service_date", params.serviceDate)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (resolvedCustomServiceId) {
+      const scopedWithCustom = await scopedBase
+        .eq("custom_service_id", resolvedCustomServiceId)
+        .maybeSingle();
+
+      if (scopedWithCustom.error) {
+        if (!isMissingServiceFlowCustomServiceColumn(scopedWithCustom.error)) {
+          throw scopedWithCustom.error;
+        }
+        const scopedFallback = await supabase
+          .from("service_flows")
+          .select("id")
+          .eq("campus_id", params.campusId)
+          .eq("ministry_type", resolvedMinistryType)
+          .eq("service_date", params.serviceDate)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (scopedFallback.error) throw scopedFallback.error;
+        existingFlow = scopedFallback.data;
+      } else {
+        existingFlow = scopedWithCustom.data;
+      }
+    } else {
+      const scopedStandard = await scopedBase.is("custom_service_id", null).maybeSingle();
+      if (scopedStandard.error) {
+        if (!isMissingServiceFlowCustomServiceColumn(scopedStandard.error)) {
+          throw scopedStandard.error;
+        }
+        const scopedFallback = await supabase
+          .from("service_flows")
+          .select("id")
+          .eq("campus_id", params.campusId)
+          .eq("ministry_type", resolvedMinistryType)
+          .eq("service_date", params.serviceDate)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (scopedFallback.error) throw scopedFallback.error;
+        existingFlow = scopedFallback.data;
+      } else {
+        existingFlow = scopedStandard.data;
+      }
+    }
+  }
+
   if (existingFlow) {
     // Update existing flow linkage and ensure it has items.
-    await supabase
+    const updatePayloadWithCustom = {
+      draft_set_id: params.draftSetId,
+      ministry_type: resolvedMinistryType,
+      custom_service_id: resolvedCustomServiceId,
+    };
+    const { error: updateWithCustomError } = await supabase
       .from("service_flows")
-      .update({
-        draft_set_id: params.draftSetId,
-        ministry_type: resolvedMinistryType,
-        custom_service_id: resolvedCustomServiceId,
-      })
+      .update(updatePayloadWithCustom)
       .eq("id", existingFlow.id);
+    if (updateWithCustomError) {
+      if (!isMissingServiceFlowCustomServiceColumn(updateWithCustomError)) {
+        throw updateWithCustomError;
+      }
+      const { error: updateFallbackError } = await supabase
+        .from("service_flows")
+        .update({
+          draft_set_id: params.draftSetId,
+          ministry_type: resolvedMinistryType,
+        })
+        .eq("id", existingFlow.id);
+      if (updateFallbackError) throw updateFallbackError;
+    }
 
     const { data: existingItems } = await supabase
       .from("service_flow_items")
-      .select("id")
+      .select("id, item_type, title, duration_seconds, sequence_order")
       .eq("service_flow_id", existingFlow.id)
-      .limit(1);
+      .order("sequence_order", { ascending: true });
 
     if (existingItems && existingItems.length > 0) {
+      const updates: Promise<any>[] = [];
+      const songItems = (existingItems as any[]).filter((i) => i.item_type === "song");
+
+      songItems.forEach((item, index) => {
+        const titleDuration = markerDurations.byTitle.get(normalizeTitle(item.title || ""));
+        const orderedDuration = markerDurations.ordered[index];
+        const duration = titleDuration ?? orderedDuration ?? null;
+
+        if (duration && duration > 0 && (!item.duration_seconds || item.duration_seconds <= 0)) {
+          updates.push(
+            supabase
+              .from("service_flow_items")
+              .update({ duration_seconds: duration })
+              .eq("id", item.id)
+          );
+        }
+      });
+
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
       return existingFlow.id;
     }
 
@@ -517,9 +710,9 @@ export async function generateServiceFlowFromTemplate(params: {
       const newFlow = reusedFlow as { id: string };
 
       // Helper to get duration for a song from markers
-      const getDurationForSong = (songTitle: string): number | null => {
+      const getDurationForSong = (songTitle: string, songIndex?: number): number | null => {
         const normalized = normalizeTitle(songTitle);
-        return songDurations.get(normalized) ?? null;
+        return markerDurations.byTitle.get(normalized) ?? (typeof songIndex === "number" ? markerDurations.ordered[songIndex] ?? null : null);
       };
 
       if (template) {
@@ -546,7 +739,7 @@ export async function generateServiceFlowFromTemplate(params: {
             if (templateItem.item_type === "song_placeholder") {
               if (songIndex < params.songs.length) {
                 const song = params.songs[songIndex];
-                const markerDuration = getDurationForSong(song.title);
+                const markerDuration = getDurationForSong(song.title, songIndex);
                 flowItems.push({
                   service_flow_id: newFlow.id,
                   item_type: "song",
@@ -575,7 +768,7 @@ export async function generateServiceFlowFromTemplate(params: {
 
           while (songIndex < params.songs.length) {
             const song = params.songs[songIndex];
-            const markerDuration = getDurationForSong(song.title);
+            const markerDuration = getDurationForSong(song.title, songIndex);
             flowItems.push({
               service_flow_id: newFlow.id,
               item_type: "song",
@@ -592,13 +785,28 @@ export async function generateServiceFlowFromTemplate(params: {
           if (flowItems.length > 0) {
             await supabase.from("service_flow_items").insert(flowItems);
           }
+        } else {
+          const flowItems = params.songs.map((song, index) => ({
+            service_flow_id: newFlow.id,
+            item_type: "song" as const,
+            title: song.title,
+            duration_seconds: getDurationForSong(song.title, index),
+            sequence_order: index,
+            song_id: song.id,
+            song_key: song.key || null,
+            vocalist_id: song.vocalistId || null,
+          }));
+
+          if (flowItems.length > 0) {
+            await supabase.from("service_flow_items").insert(flowItems);
+          }
         }
       } else {
         const flowItems = params.songs.map((song, index) => ({
           service_flow_id: newFlow.id,
           item_type: "song" as const,
           title: song.title,
-          duration_seconds: getDurationForSong(song.title),
+          duration_seconds: getDurationForSong(song.title, index),
           sequence_order: index,
           song_id: song.id,
           song_key: song.key || null,
@@ -615,26 +823,50 @@ export async function generateServiceFlowFromTemplate(params: {
   }
 
   // Create new service flow
-  const { data: newFlow, error: flowError } = await supabase
+  const flowInsertWithCustom = {
+    campus_id: params.campusId,
+    ministry_type: resolvedMinistryType,
+    service_date: params.serviceDate,
+    draft_set_id: params.draftSetId,
+    custom_service_id: resolvedCustomServiceId,
+    created_from_template_id: template?.id || null,
+    created_by: params.createdBy,
+  };
+
+  let newFlow: any = null;
+  const withCustomResult = await supabase
     .from("service_flows")
-    .insert({
-      campus_id: params.campusId,
-      ministry_type: resolvedMinistryType,
-      service_date: params.serviceDate,
-      draft_set_id: params.draftSetId,
-      custom_service_id: resolvedCustomServiceId,
-      created_from_template_id: template?.id || null,
-      created_by: params.createdBy,
-    })
+    .insert(flowInsertWithCustom)
     .select()
     .single();
+  if (withCustomResult.error) {
+    if (!isMissingServiceFlowCustomServiceColumn(withCustomResult.error)) {
+      throw withCustomResult.error;
+    }
 
-  if (flowError) throw flowError;
+    const { data: fallbackFlow, error: fallbackError } = await supabase
+      .from("service_flows")
+      .insert({
+        campus_id: params.campusId,
+        ministry_type: resolvedMinistryType,
+        service_date: params.serviceDate,
+        draft_set_id: params.draftSetId,
+        created_from_template_id: template?.id || null,
+        created_by: params.createdBy,
+      })
+      .select()
+      .single();
+
+    if (fallbackError) throw fallbackError;
+    newFlow = fallbackFlow;
+  } else {
+    newFlow = withCustomResult.data;
+  }
 
   // Helper to get duration for a song from markers
-  const getDurationForSong = (songTitle: string): number | null => {
+  const getDurationForSong = (songTitle: string, songIndex?: number): number | null => {
     const normalized = normalizeTitle(songTitle);
-    return songDurations.get(normalized) ?? null;
+    return markerDurations.byTitle.get(normalized) ?? (typeof songIndex === "number" ? markerDurations.ordered[songIndex] ?? null : null);
   };
 
   if (template) {
@@ -664,7 +896,7 @@ export async function generateServiceFlowFromTemplate(params: {
           if (songIndex < params.songs.length) {
             const song = params.songs[songIndex];
             // Try to get duration from markers, fallback to template default
-            const markerDuration = getDurationForSong(song.title);
+            const markerDuration = getDurationForSong(song.title, songIndex);
             flowItems.push({
               service_flow_id: newFlow.id,
               item_type: "song",
@@ -694,7 +926,7 @@ export async function generateServiceFlowFromTemplate(params: {
       // Add any remaining songs not covered by placeholders
       while (songIndex < params.songs.length) {
         const song = params.songs[songIndex];
-        const markerDuration = getDurationForSong(song.title);
+        const markerDuration = getDurationForSong(song.title, songIndex);
         flowItems.push({
           service_flow_id: newFlow.id,
           item_type: "song",
@@ -711,6 +943,22 @@ export async function generateServiceFlowFromTemplate(params: {
       if (flowItems.length > 0) {
         await supabase.from("service_flow_items").insert(flowItems);
       }
+    } else {
+      // Template exists but has no items yet: still populate flow with setlist songs.
+      const flowItems = params.songs.map((song, index) => ({
+        service_flow_id: newFlow.id,
+        item_type: "song" as const,
+        title: song.title,
+        duration_seconds: getDurationForSong(song.title, index),
+        sequence_order: index,
+        song_id: song.id,
+        song_key: song.key || null,
+        vocalist_id: song.vocalistId || null,
+      }));
+
+      if (flowItems.length > 0) {
+        await supabase.from("service_flow_items").insert(flowItems);
+      }
     }
   } else {
     // No template - just add songs with marker-based durations
@@ -718,7 +966,7 @@ export async function generateServiceFlowFromTemplate(params: {
       service_flow_id: newFlow.id,
       item_type: "song" as const,
       title: song.title,
-      duration_seconds: getDurationForSong(song.title),
+      duration_seconds: getDurationForSong(song.title, index),
       sequence_order: index,
       song_id: song.id,
       song_key: song.key || null,

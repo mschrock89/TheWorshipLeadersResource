@@ -56,6 +56,8 @@ export function useServiceFlowTemplate(campusId: string | null, ministryType: st
         .select("*")
         .eq("campus_id", campusId)
         .eq("ministry_type", ministryType)
+        .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       if (error) throw error;

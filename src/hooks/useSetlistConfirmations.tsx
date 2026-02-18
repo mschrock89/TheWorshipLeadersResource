@@ -517,7 +517,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
       // Get the draft set details
       const { data: draftSet, error: draftSetError } = await supabase
         .from("draft_sets")
-        .select("campus_id, plan_date, ministry_type")
+        .select("campus_id, plan_date, ministry_type, custom_service_id")
         .eq("id", draftSetId)
         .single();
 
@@ -525,138 +525,172 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
         throw new Error("Draft set not found");
       }
 
-      // Get team scheduled for this date
-      const { data: teamSchedule } = await supabase
-        .from("team_schedule")
-        .select("team_id")
-        .eq("schedule_date", draftSet.plan_date)
-        .limit(1)
-        .maybeSingle();
+      let effectiveCustomServiceId = draftSet.custom_service_id as string | null;
 
-      // Get rotation periods for this campus and date
-      const { data: rotationPeriods } = await supabase
-        .from("rotation_periods")
-        .select("id")
-        .eq("campus_id", draftSet.campus_id)
-        .lte("start_date", draftSet.plan_date)
-        .gte("end_date", draftSet.plan_date);
+      // Backward compatibility for older published rows that missed custom_service_id.
+      if (!effectiveCustomServiceId) {
+        const { data: matchingCustomServices } = await supabase
+          .from("custom_services")
+          .select("id")
+          .eq("is_active", true)
+          .eq("service_date", draftSet.plan_date)
+          .eq("campus_id", draftSet.campus_id)
+          .eq("ministry_type", draftSet.ministry_type);
 
-      const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-
-      // For a swap:
-      // - original_date: requester is OUT, accepted_by is IN
-      // - swap_date: accepted_by is OUT, requester is IN
-      //
-      // Cross-team rule: apply a swap to the scheduled roster for THIS date only
-      // if one of the swap participants is on the scheduled roster for THIS date.
-
-      // Fetch team members for this scheduled team (used for roster + to decide
-      // whether a swap applies to THIS scheduled team)
-      const { data: members } = teamSchedule?.team_id && rotationPeriodIds.length > 0
-        ? await supabase
-            .from("team_members")
-            .select("user_id, member_name, ministry_types")
-            .eq("team_id", teamSchedule.team_id)
-            .in("rotation_period_id", rotationPeriodIds)
-            .not("user_id", "is", null)
-        : { data: [] as any[] };
-
-      const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
-
-      // Get swaps where original_date matches (requester out, accepted_by in)
-      const { data: swapsOnOriginalDate } = await supabase
-        .from("swap_requests")
-        .select(`
-          requester_id,
-          accepted_by_id,
-          requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-          accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-        `)
-        .eq("original_date", draftSet.plan_date)
-        .eq("status", "accepted");
-
-      // Get swaps where swap_date matches (accepted_by out, requester in)
-      const { data: swapsOnSwapDate } = await supabase
-        .from("swap_requests")
-        .select(`
-          requester_id,
-          accepted_by_id,
-          requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-          accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-        `)
-        .eq("swap_date", draftSet.plan_date)
-        .eq("status", "accepted")
-        .not("swap_date", "is", null);
-
-      // Build sets for who's out and who's in FOR THIS TEAM on THIS DATE
-      const swappedOutUserIds = new Set<string>();
-      const swappedInMembers: { user_id: string; member_name: string }[] = [];
-
-      // On original_date: requester is out, accepted_by is in (apply only if requester is on this team's roster)
-      for (const swap of swapsOnOriginalDate || []) {
-        if (swap.requester_id && rawTeamUserIds.has(swap.requester_id)) {
-          swappedOutUserIds.add(swap.requester_id);
-          if (swap.accepted_by_id) {
-            swappedInMembers.push({
-              user_id: swap.accepted_by_id,
-              member_name: (swap.accepted_by as any)?.full_name || "Unknown",
-            });
-          }
+        if ((matchingCustomServices || []).length === 1) {
+          effectiveCustomServiceId = matchingCustomServices![0].id;
         }
       }
 
-      // On swap_date: accepted_by is out, requester is in (apply only if accepted_by is on this team's roster)
-      for (const swap of swapsOnSwapDate || []) {
-        if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id)) {
-          swappedOutUserIds.add(swap.accepted_by_id);
-          if (swap.requester_id) {
-            swappedInMembers.push({
-              user_id: swap.requester_id,
-              member_name: (swap.requester as any)?.full_name || "Unknown",
-            });
-          }
-        }
-      }
-
-      // Dedupe and filter swapped-in members
-      const seenSwappedIn = new Set<string>();
-      const uniqueSwappedInMembers = swappedInMembers
-        .filter(m => !swappedOutUserIds.has(m.user_id))
-        .filter(m => {
-          if (seenSwappedIn.has(m.user_id)) return false;
-          seenSwappedIn.add(m.user_id);
-          return true;
-        });
-      const swappedInUserIds = new Set(uniqueSwappedInMembers.map(m => m.user_id));
-
-      // Get scheduled team members
       let scheduledMembers: { user_id: string; member_name: string; isSwappedIn: boolean }[] = [];
+      const swappedInUserIds = new Set<string>();
 
-      // Deduplicate by user_id (a person can have multiple positions like vocalist + instrument)
-      const seenUserIds = new Set<string>();
-      scheduledMembers = (members || [])
-        .filter(m => {
-          if (!m.ministry_types || m.ministry_types.length === 0) return true;
-          return m.ministry_types.includes(draftSet.ministry_type);
-        })
-        .filter(m => !swappedOutUserIds.has(m.user_id!))
-        // Deduplicate by user_id
-        .filter(m => {
-          if (seenUserIds.has(m.user_id!)) return false;
-          seenUserIds.add(m.user_id!);
-          return true;
-        })
-        .map(m => ({ user_id: m.user_id!, member_name: m.member_name, isSwappedIn: false }));
+      if (effectiveCustomServiceId) {
+        const { data: customAssignments } = await supabase
+          .from("custom_service_assignments")
+          .select(`
+            user_id,
+            profiles!custom_service_assignments_user_id_fkey(full_name)
+          `)
+          .eq("custom_service_id", effectiveCustomServiceId)
+          .eq("assignment_date", draftSet.plan_date);
 
-      // Add members who swapped in
-      const existingUserIds = new Set(scheduledMembers.map(m => m.user_id));
-      for (const swappedIn of uniqueSwappedInMembers) {
-        if (!existingUserIds.has(swappedIn.user_id)) {
-          scheduledMembers.push({
-            user_id: swappedIn.user_id,
-            member_name: swappedIn.member_name,
-            isSwappedIn: true,
+        const seenAssignedUsers = new Set<string>();
+        scheduledMembers = (customAssignments || [])
+          .filter((assignment: any) => Boolean(assignment.user_id))
+          .filter((assignment: any) => {
+            if (seenAssignedUsers.has(assignment.user_id)) return false;
+            seenAssignedUsers.add(assignment.user_id);
+            return true;
+          })
+          .map((assignment: any) => ({
+            user_id: assignment.user_id,
+            member_name: assignment.profiles?.full_name || "Unknown",
+            isSwappedIn: false,
+          }));
+      } else {
+        // Get team scheduled for this date
+        const { data: teamSchedule } = await supabase
+          .from("team_schedule")
+          .select("team_id")
+          .eq("schedule_date", draftSet.plan_date)
+          .limit(1)
+          .maybeSingle();
+
+        // Get rotation periods for this campus and date
+        const { data: rotationPeriods } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("campus_id", draftSet.campus_id)
+          .lte("start_date", draftSet.plan_date)
+          .gte("end_date", draftSet.plan_date);
+
+        const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
+
+        // Fetch team members for this scheduled team (used for roster + to decide
+        // whether a swap applies to THIS scheduled team)
+        const { data: members } = teamSchedule?.team_id && rotationPeriodIds.length > 0
+          ? await supabase
+              .from("team_members")
+              .select("user_id, member_name, ministry_types")
+              .eq("team_id", teamSchedule.team_id)
+              .in("rotation_period_id", rotationPeriodIds)
+              .not("user_id", "is", null)
+          : { data: [] as any[] };
+
+        const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
+
+        // Get swaps where original_date matches (requester out, accepted_by in)
+        const { data: swapsOnOriginalDate } = await supabase
+          .from("swap_requests")
+          .select(`
+            requester_id,
+            accepted_by_id,
+            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
+            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
+          `)
+          .eq("original_date", draftSet.plan_date)
+          .eq("status", "accepted");
+
+        // Get swaps where swap_date matches (accepted_by out, requester in)
+        const { data: swapsOnSwapDate } = await supabase
+          .from("swap_requests")
+          .select(`
+            requester_id,
+            accepted_by_id,
+            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
+            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
+          `)
+          .eq("swap_date", draftSet.plan_date)
+          .eq("status", "accepted")
+          .not("swap_date", "is", null);
+
+        // Build sets for who's out and who's in FOR THIS TEAM on THIS DATE
+        const swappedOutUserIds = new Set<string>();
+        const swappedInMembers: { user_id: string; member_name: string }[] = [];
+
+        // On original_date: requester is out, accepted_by is in (apply only if requester is on this team's roster)
+        for (const swap of swapsOnOriginalDate || []) {
+          if (swap.requester_id && rawTeamUserIds.has(swap.requester_id)) {
+            swappedOutUserIds.add(swap.requester_id);
+            if (swap.accepted_by_id) {
+              swappedInMembers.push({
+                user_id: swap.accepted_by_id,
+                member_name: (swap.accepted_by as any)?.full_name || "Unknown",
+              });
+            }
+          }
+        }
+
+        // On swap_date: accepted_by is out, requester is in (apply only if accepted_by is on this team's roster)
+        for (const swap of swapsOnSwapDate || []) {
+          if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id)) {
+            swappedOutUserIds.add(swap.accepted_by_id);
+            if (swap.requester_id) {
+              swappedInMembers.push({
+                user_id: swap.requester_id,
+                member_name: (swap.requester as any)?.full_name || "Unknown",
+              });
+            }
+          }
+        }
+
+        // Dedupe and filter swapped-in members
+        const seenSwappedIn = new Set<string>();
+        const uniqueSwappedInMembers = swappedInMembers
+          .filter(m => !swappedOutUserIds.has(m.user_id))
+          .filter(m => {
+            if (seenSwappedIn.has(m.user_id)) return false;
+            seenSwappedIn.add(m.user_id);
+            return true;
           });
+        uniqueSwappedInMembers.forEach((member) => swappedInUserIds.add(member.user_id));
+
+        // Deduplicate by user_id (a person can have multiple positions like vocalist + instrument)
+        const seenUserIds = new Set<string>();
+        scheduledMembers = (members || [])
+          .filter(m => {
+            if (!m.ministry_types || m.ministry_types.length === 0) return true;
+            return m.ministry_types.includes(draftSet.ministry_type);
+          })
+          .filter(m => !swappedOutUserIds.has(m.user_id!))
+          .filter(m => {
+            if (seenUserIds.has(m.user_id!)) return false;
+            seenUserIds.add(m.user_id!);
+            return true;
+          })
+          .map(m => ({ user_id: m.user_id!, member_name: m.member_name, isSwappedIn: false }));
+
+        // Add members who swapped in
+        const existingUserIds = new Set(scheduledMembers.map(m => m.user_id));
+        for (const swappedIn of uniqueSwappedInMembers) {
+          if (!existingUserIds.has(swappedIn.user_id)) {
+            scheduledMembers.push({
+              user_id: swappedIn.user_id,
+              member_name: swappedIn.member_name,
+              isSwappedIn: true,
+            });
+          }
         }
       }
 

@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES } from "@/lib/constants";
+import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import {
   useServiceFlow,
   useServiceFlowItems,
@@ -66,6 +67,9 @@ export function ServiceFlowEditor({
   // Default to "weekend" if initialMinistryType is "weekend_team" (consolidated filter, not a real ministry)
   const effectiveInitialMinistry = initialMinistryType === "weekend_team" ? "weekend" : initialMinistryType;
   const [ministryType, setMinistryType] = useState(effectiveInitialMinistry || "weekend");
+  const [resolvedDraftSetId, setResolvedDraftSetId] = useState<string | null>(initialDraftSetId || null);
+  const [resolvedCustomServiceId, setResolvedCustomServiceId] = useState<string | null>(initialCustomServiceId || null);
+  const [boundServiceFlowId, setBoundServiceFlowId] = useState<string | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState<ServiceFlowItemType | null>(null);
   const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
@@ -90,23 +94,54 @@ export function ServiceFlowEditor({
     setSelectedCampusId(value);
   };
 
+  const { data: campusTemplates = [] } = useServiceFlowTemplates(effectiveCampusId || null, null);
+
+  const availableMinistryOptions = useMemo(() => {
+    const fromTemplates = Array.from(
+      new Set((campusTemplates || []).map((t) => t.ministry_type).filter(Boolean))
+    );
+
+    const include = new Set<string>(fromTemplates);
+    if (ministryType) include.add(ministryType);
+    if (effectiveInitialMinistry) include.add(effectiveInitialMinistry);
+    if (initialMinistryType && initialMinistryType !== "weekend_team") include.add(initialMinistryType);
+
+    return Array.from(include).map((value) => {
+      const known = MINISTRY_TYPES.find((m) => m.value === value);
+      return {
+        value,
+        label: known?.label || value,
+      };
+    });
+  }, [campusTemplates, ministryType, effectiveInitialMinistry, initialMinistryType]);
+
   const serviceDateStr = format(selectedDate, "yyyy-MM-dd");
+
+  // Reset live-scoped state when the selected service context changes.
+  useEffect(() => {
+    hasAttemptedAutoGenerate.current = false;
+    hasSyncedVocalists.current = false;
+    hasInvalidatedOnLive.current = false;
+    setResolvedDraftSetId(initialDraftSetId || null);
+    setResolvedCustomServiceId(initialCustomServiceId || null);
+    setBoundServiceFlowId(null);
+  }, [effectiveCampusId, ministryType, serviceDateStr, initialDraftSetId, initialCustomServiceId]);
 
   const { data: serviceFlow, isLoading: flowLoading } = useServiceFlow(
     effectiveCampusId,
     ministryType,
     serviceDateStr,
-    initialDraftSetId,
-    initialCustomServiceId
+    resolvedDraftSetId,
+    resolvedCustomServiceId
   );
 
   // When opened via Live button, force refetch to get latest data
   useEffect(() => {
     if (!cameFromLive || !effectiveCampusId || !serviceDateStr) return;
       queryClient.invalidateQueries({
-      queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, initialDraftSetId || null, initialCustomServiceId || null],
+      queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId],
     });
-  }, [cameFromLive, effectiveCampusId, ministryType, serviceDateStr, initialDraftSetId, initialCustomServiceId, queryClient]);
+  }, [cameFromLive, effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId, queryClient]);
 
   // Invalidate service flow items when opened via Live (after flow is loaded)
   useEffect(() => {
@@ -131,11 +166,12 @@ export function ServiceFlowEditor({
 
       try {
         let draftSetId = initialDraftSetId || null;
+        let draftSetCustomServiceId = initialCustomServiceId || null;
 
         if (!draftSetId) {
           let draftSetQuery = supabase
             .from("draft_sets")
-            .select("id")
+            .select("id, custom_service_id")
             .eq("campus_id", effectiveCampusId)
             .eq("ministry_type", ministryType)
             .eq("plan_date", serviceDateStr)
@@ -152,12 +188,100 @@ export function ServiceFlowEditor({
 
           if (draftSetError) throw draftSetError;
           draftSetId = draftSet?.id || null;
+          draftSetCustomServiceId = (draftSet as any)?.custom_service_id || null;
         }
 
         if (!draftSetId) {
           return;
         }
 
+        setResolvedDraftSetId(draftSetId);
+        if (draftSetCustomServiceId) {
+          setResolvedCustomServiceId(draftSetCustomServiceId);
+        }
+
+        const { data: draftSongs, error: draftSongsError } = await supabase
+          .from("draft_set_songs")
+          .select(
+            `
+              sequence_order,
+              song_key,
+              vocalist_id,
+              songs(
+                id,
+                title,
+                author
+              )
+            `
+          )
+          .eq("draft_set_id", draftSetId)
+          .order("sequence_order", { ascending: true });
+
+        if (draftSongsError) throw draftSongsError;
+
+        const songs = (draftSongs || [])
+          .filter((row: any) => row.songs?.id)
+          .map((row: any) => ({
+            id: row.songs.id as string,
+            title: row.songs.title as string,
+            key: (row.song_key as string | null) || null,
+            vocalistId: (row.vocalist_id as string | null) || null,
+          }));
+
+        const generatedFlowId = await generateServiceFlowFromTemplate({
+          campusId: effectiveCampusId,
+          ministryType,
+          serviceDate: serviceDateStr,
+          draftSetId,
+          createdBy: user.id,
+          songs,
+        });
+        setBoundServiceFlowId(generatedFlowId);
+
+        // Ensure the UI refetches after creating the flow/items
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, draftSetId, draftSetCustomServiceId || resolvedCustomServiceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow-items"],
+          }),
+        ]);
+
+        toast({
+          title: "Service Flow created",
+          description: "Generated from your template and published setlist.",
+        });
+      } catch (e: any) {
+        toast({
+          title: "Couldn't generate Service Flow",
+          description: e?.message || "Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsAutoGenerating(false);
+      }
+    };
+
+    run();
+  }, [effectiveCampusId, flowLoading, ministryType, queryClient, serviceDateStr, serviceFlow, toast, user?.id, initialDraftSetId, initialCustomServiceId, resolvedCustomServiceId]);
+
+  const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || null;
+  const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(activeServiceFlowId);
+
+  // If a flow already exists but is empty, backfill it from the linked setlist/template.
+  useEffect(() => {
+    const backfillEmptyFlow = async () => {
+      if (!cameFromLive) return;
+      if (!user?.id || !effectiveCampusId) return;
+      if (!activeServiceFlowId) return;
+      if (itemsLoading) return;
+      if (items.length > 0) return;
+
+      const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId;
+      if (!draftSetId) return;
+
+      try {
         const { data: draftSongs, error: draftSongsError } = await supabase
           .from("draft_set_songs")
           .select(
@@ -195,43 +319,22 @@ export function ServiceFlowEditor({
           songs,
         });
 
-        // Ensure the UI refetches after creating the flow/items
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, initialDraftSetId || null, initialCustomServiceId || null],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow-items"],
-          }),
-        ]);
-
-        toast({
-          title: "Service Flow created",
-          description: "Generated from your template and published setlist.",
+        await queryClient.invalidateQueries({
+          queryKey: ["service-flow-items", activeServiceFlowId],
         });
-      } catch (e: any) {
-        toast({
-          title: "Couldn't generate Service Flow",
-          description: e?.message || "Please try again.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsAutoGenerating(false);
+      } catch {
+        // Keep UI usable; primary generation flow already surfaces errors.
       }
     };
 
-    run();
-  }, [effectiveCampusId, flowLoading, ministryType, queryClient, serviceDateStr, serviceFlow, toast, user?.id, initialDraftSetId, initialCustomServiceId]);
-
-  const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(
-    serviceFlow?.id || null
-  );
+    backfillEmptyFlow();
+  }, [activeServiceFlowId, cameFromLive, effectiveCampusId, items, itemsLoading, ministryType, queryClient, resolvedDraftSetId, serviceDateStr, serviceFlow?.draft_set_id, user?.id]);
 
   // When opened via Live, sync vocalists from latest published draft to service flow items
   // (e.g. when Addie covered for Alex, draft_set_songs has Addie but service_flow_items had Alex)
   useEffect(() => {
     const syncVocalists = async () => {
-      if (!cameFromLive || !serviceFlow?.draft_set_id || !serviceFlow.id) return;
+      if (!cameFromLive || !serviceFlow?.draft_set_id || !activeServiceFlowId) return;
       if (hasSyncedVocalists.current) return;
       if (itemsLoading || items.length === 0) return;
 
@@ -266,13 +369,13 @@ export function ServiceFlowEditor({
 
       if (needsUpdate) {
         await queryClient.invalidateQueries({
-          queryKey: ["service-flow-items", serviceFlow.id],
+          queryKey: ["service-flow-items", activeServiceFlowId],
         });
       }
     };
 
     syncVocalists();
-  }, [cameFromLive, serviceFlow?.id, serviceFlow?.draft_set_id, items, itemsLoading, queryClient]);
+  }, [activeServiceFlowId, cameFromLive, serviceFlow?.draft_set_id, items, itemsLoading, queryClient]);
 
   // Sync local items with fetched items when not dragging
   useEffect(() => {
@@ -301,6 +404,9 @@ export function ServiceFlowEditor({
       if (!user?.id || !effectiveCampusId) return;
 
       let flowId = serviceFlow?.id;
+      if (!flowId && activeServiceFlowId) {
+        flowId = activeServiceFlowId;
+      }
 
       // Create flow if it doesn't exist
       if (!flowId) {
@@ -309,7 +415,7 @@ export function ServiceFlowEditor({
           ministryType,
           serviceDate: serviceDateStr,
           createdBy: user.id,
-          customServiceId: initialCustomServiceId || null,
+          customServiceId: resolvedCustomServiceId || null,
         });
         flowId = newFlow.id;
       }
@@ -324,17 +430,17 @@ export function ServiceFlowEditor({
         song_key: newItem.song_key,
       });
     },
-    [serviceFlow?.id, effectiveCampusId, ministryType, serviceDateStr, user?.id, localItems.length, createFlow, saveItem]
+    [activeServiceFlowId, serviceFlow?.id, effectiveCampusId, ministryType, serviceDateStr, user?.id, localItems.length, createFlow, saveItem]
   );
 
   const handleUpdateItem = useCallback(
     async (itemId: string, updates: Partial<ServiceFlowItemType>) => {
       const item = localItems.find((i) => i.id === itemId);
-      if (!item || !serviceFlow?.id) return;
+      if (!item || !activeServiceFlowId) return;
 
       await saveItem.mutateAsync({
         id: item.id,
-        service_flow_id: serviceFlow.id,
+        service_flow_id: activeServiceFlowId,
         item_type: updates.item_type || item.item_type,
         title: updates.title || item.title,
         duration_seconds: updates.duration_seconds ?? item.duration_seconds,
@@ -345,15 +451,15 @@ export function ServiceFlowEditor({
         notes: updates.notes ?? item.notes,
       });
     },
-    [localItems, serviceFlow?.id, saveItem]
+    [localItems, activeServiceFlowId, saveItem]
   );
 
   const handleDeleteItem = useCallback(
     async (itemId: string) => {
-      if (!serviceFlow?.id) return;
-      await deleteItem.mutateAsync({ id: itemId, serviceFlowId: serviceFlow.id });
+      if (!activeServiceFlowId) return;
+      await deleteItem.mutateAsync({ id: itemId, serviceFlowId: activeServiceFlowId });
     },
-    [serviceFlow?.id, deleteItem]
+    [activeServiceFlowId, deleteItem]
   );
 
   const handleDragStart = (e: React.DragEvent, item: ServiceFlowItemType) => {
@@ -376,7 +482,7 @@ export function ServiceFlowEditor({
   };
 
   const handleDragEnd = async () => {
-    if (!draggedItem || !serviceFlow?.id) {
+    if (!draggedItem || !activeServiceFlowId) {
       setDraggedItem(null);
       return;
     }
@@ -388,7 +494,7 @@ export function ServiceFlowEditor({
     }));
 
     await reorderItems.mutateAsync({
-      serviceFlowId: serviceFlow.id,
+      serviceFlowId: activeServiceFlowId,
       items: reorderedItems,
     });
 
@@ -419,7 +525,7 @@ export function ServiceFlowEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MINISTRY_TYPES.filter((m) => m.value !== "weekend_team").map((m) => (
+            {availableMinistryOptions.map((m) => (
               <SelectItem key={m.value} value={m.value}>
                 {m.label}
               </SelectItem>

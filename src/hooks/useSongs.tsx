@@ -117,6 +117,90 @@ export function useSongsWithStats() {
         })),
       }));
 
+      // Merge in app-native published setlist usage (draft_sets + draft_set_songs),
+      // since get_songs_with_stats() only includes PCO service_plans/plan_songs.
+      const { data: publishedDraftSongRows, error: publishedDraftSongsError } = await supabase
+        .from("draft_set_songs")
+        .select(`
+          song_id,
+          song_key,
+          draft_set:draft_sets!inner(
+            plan_date,
+            campus_id,
+            ministry_type,
+            status
+          )
+        `)
+        .eq("draft_set.status", "published");
+
+      if (publishedDraftSongsError) throw publishedDraftSongsError;
+
+      const ministryToServiceTypeName = (ministryType: string | null | undefined) => {
+        switch (ministryType) {
+          case "weekend":
+            return "Weekend Worship";
+          case "prayer_night":
+            return "Prayer Night";
+          case "encounter":
+            return "Encounter";
+          case "eon":
+            return "EON";
+          case "eon_weekend":
+            return "EON Weekend";
+          case "evident":
+            return "Evident";
+          case "er":
+            return "ER";
+          case "audition":
+            return "Audition";
+          case "production":
+            return "Production";
+          case "video":
+            return "Video";
+          default:
+            return ministryType || "";
+        }
+      };
+
+      const todayStr = new Date().toISOString().split("T")[0];
+      const bySongId = new Map<string, SongWithStats>();
+      songsWithStats.forEach((song) => bySongId.set(song.id, song));
+
+      for (const row of publishedDraftSongRows || []) {
+        const songId = (row as any).song_id as string | null;
+        const ds = (row as any).draft_set as {
+          plan_date?: string;
+          campus_id?: string | null;
+          ministry_type?: string | null;
+          status?: string | null;
+        } | null;
+        if (!songId || !ds?.plan_date || ds?.status !== "published") continue;
+
+        const targetSong = bySongId.get(songId);
+        if (!targetSong) continue;
+
+        targetSong.usages.push({
+          plan_date: ds.plan_date,
+          campus_id: ds.campus_id || null,
+          service_type_name: ministryToServiceTypeName(ds.ministry_type),
+          song_key: ((row as any).song_key as string | null) || null,
+        });
+      }
+
+      // Recompute usage_count / last_used / upcoming_uses from merged usages.
+      for (const song of songsWithStats) {
+        const pastUsages = song.usages.filter((u) => u.plan_date < todayStr);
+        const upcomingUsages = song.usages.filter((u) => u.plan_date >= todayStr);
+        const sortedPastDates = pastUsages
+          .map((u) => u.plan_date)
+          .sort((a, b) => a.localeCompare(b));
+
+        song.usage_count = pastUsages.length;
+        song.upcoming_uses = upcomingUsages.length;
+        song.first_used = sortedPastDates[0] || null;
+        song.last_used = sortedPastDates.length ? sortedPastDates[sortedPastDates.length - 1] : null;
+      }
+
       return songsWithStats;
     },
   });
@@ -128,6 +212,66 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
   return useQuery({
     queryKey: ["service-plans", options],
     queryFn: async () => {
+      const mapMinistryTypeToServiceTypeName = (ministryType: string | null | undefined) => {
+        switch (ministryType) {
+          case "weekend":
+            return "Weekend Worship";
+          case "prayer_night":
+            return "Prayer Night";
+          case "encounter":
+            return "Encounter";
+          case "eon":
+            return "EON";
+          case "eon_weekend":
+            return "EON Weekend";
+          case "evident":
+            return "Evident";
+          case "er":
+            return "ER";
+          case "audition":
+            return "Audition";
+          case "production":
+            return "Production";
+          case "video":
+            return "Video";
+          default:
+            return ministryType || "";
+        }
+      };
+
+      // Upcoming plans should come from in-app set planning (draft_sets), not PCO.
+      if (options?.upcoming) {
+        const { data, error } = await supabase
+          .from("draft_sets")
+          .select(`
+            id,
+            plan_date,
+            campus_id,
+            ministry_type,
+            notes,
+            status,
+            published_at,
+            created_at
+          `)
+          .gte("plan_date", today)
+          .in("status", ["draft", "pending_approval", "published"])
+          .order("plan_date", { ascending: true })
+          .limit(10000);
+
+        if (error) throw error;
+
+        return ((data || []) as any[]).map((ds) => ({
+          id: ds.id,
+          pco_plan_id: `draft-${ds.id}`,
+          campus_id: ds.campus_id,
+          service_type_name: mapMinistryTypeToServiceTypeName(ds.ministry_type),
+          plan_date: ds.plan_date,
+          plan_title: ds.notes || null,
+          synced_at: ds.published_at || ds.created_at || ds.plan_date,
+          created_at: ds.created_at || ds.published_at || ds.plan_date,
+        })) as ServicePlan[];
+      }
+
       // For "all" option, we want descending order (newest first) since we fetch all
       // For "upcoming" we want ascending (soonest first)
       // For "past" we want descending (most recent first)

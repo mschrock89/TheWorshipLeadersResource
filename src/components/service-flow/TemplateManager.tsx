@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import {
-  useServiceFlowTemplate,
+  useServiceFlowTemplates,
   useServiceFlowTemplateItems,
   useSaveServiceFlowTemplate,
   useDeleteServiceFlowTemplate,
@@ -55,6 +55,7 @@ export function TemplateManager() {
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
   const [ministryType, setMinistryType] = useState("weekend");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAddItemDialogOpen, setIsAddItemDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -69,13 +70,26 @@ export function TemplateManager() {
   const [localItems, setLocalItems] = useState<ServiceFlowTemplateItem[]>([]);
   const [draggedItem, setDraggedItem] = useState<ServiceFlowTemplateItem | null>(null);
 
-  const { data: template, isLoading: templateLoading } = useServiceFlowTemplate(
+  const { data: templates = [], isLoading: templatesLoading } = useServiceFlowTemplates(
     selectedCampusId,
     ministryType
   );
+  const template =
+    templates.find((t) => t.id === selectedTemplateId) || templates[0] || null;
 
   const { data: templateItems = [], isLoading: itemsLoading } =
     useServiceFlowTemplateItems(template?.id || null);
+
+  useEffect(() => {
+    if (!templates.length) {
+      setSelectedTemplateId(null);
+      return;
+    }
+
+    setSelectedTemplateId((current) =>
+      current && templates.some((t) => t.id === current) ? current : templates[0].id
+    );
+  }, [templates]);
 
   // Sync local items with fetched items when not dragging
   useEffect(() => {
@@ -93,20 +107,25 @@ export function TemplateManager() {
   const handleCreateTemplate = async () => {
     if (!selectedCampusId || !templateName.trim() || !user?.id) return;
 
-    await saveTemplate.mutateAsync({
+    const createdTemplate = await saveTemplate.mutateAsync({
       campus_id: selectedCampusId,
       ministry_type: ministryType,
       name: templateName.trim(),
       created_by: user.id,
     });
 
+    setSelectedTemplateId(createdTemplate.id);
     setTemplateName("");
     setIsCreateDialogOpen(false);
   };
 
   const handleDeleteTemplate = async () => {
     if (!template?.id) return;
-    await deleteTemplate.mutateAsync(template.id);
+    const deletedId = template.id;
+    await deleteTemplate.mutateAsync(deletedId);
+    if (selectedTemplateId === deletedId) {
+      setSelectedTemplateId(null);
+    }
     setDeleteConfirmOpen(false);
   };
 
@@ -263,7 +282,7 @@ export function TemplateManager() {
     }
   };
 
-  const isLoading = campusesLoading || templateLoading || itemsLoading;
+  const isLoading = campusesLoading || templatesLoading || itemsLoading;
 
   return (
     <div className="space-y-6">
@@ -287,13 +306,37 @@ export function TemplateManager() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MINISTRY_TYPES.filter((m) => m.value !== "weekend").map((m) => (
+            {MINISTRY_TYPES
+              .filter((m) => !["weekend_team", "audition", "production", "video"].includes(m.value))
+              .map((m) => (
               <SelectItem key={m.value} value={m.value}>
                 {m.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        <Select
+          value={selectedTemplateId || ""}
+          onValueChange={setSelectedTemplateId}
+          disabled={!selectedCampusId || isLoading || templates.length === 0}
+        >
+          <SelectTrigger className="w-[260px]">
+            <SelectValue placeholder={templates.length ? "Select Template" : "No templates yet"} />
+          </SelectTrigger>
+          <SelectContent>
+            {templates.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button size="sm" variant="outline" onClick={() => setIsCreateDialogOpen(true)} disabled={!selectedCampusId}>
+          <Plus className="h-4 w-4 mr-1" />
+          New Template
+        </Button>
       </div>
 
       {!selectedCampusId ? (

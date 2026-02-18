@@ -218,10 +218,9 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             if (targetRosterMinistry === "all") return true;
             if (targetRosterMinistry === "production") return POSITION_CATEGORIES.audio.includes(role);
             if (targetRosterMinistry === "video") return POSITION_CATEGORIES.video.includes(role);
-            if (WEEKEND_MINISTRY_ALIASES.has(targetRosterMinistry)) {
-              return !POSITION_CATEGORIES.audio.includes(role) && !POSITION_CATEGORIES.video.includes(role);
-            }
-            return false;
+            // For worship ministries (weekend, prayer night, encounter, etc), include all
+            // custom-service assignments and only split out Production/Video when explicitly filtered.
+            return true;
           };
 
           const membersByUser = new Map<string, { user_id: string; member_name: string; avatar_url: string | null }>();
