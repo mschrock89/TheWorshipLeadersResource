@@ -398,6 +398,88 @@ function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string):
   return false;
 }
 
+async function buildSyntheticCampusAssignmentMembers(args: {
+  campusId: string;
+  position: string;
+  ministryType?: string;
+  excludeUserId?: string;
+  candidateUserIds?: string[];
+}) {
+  const {
+    campusId,
+    position,
+    ministryType,
+    excludeUserId,
+    candidateUserIds,
+  } = args;
+
+  let assignmentQuery = supabase
+    .from("user_campus_ministry_positions")
+    .select("user_id, position, ministry_type")
+    .eq("campus_id", campusId);
+
+  if (candidateUserIds?.length) {
+    assignmentQuery = assignmentQuery.in("user_id", candidateUserIds);
+  }
+
+  if (VOCALIST_POSITIONS.includes(position)) {
+    assignmentQuery = assignmentQuery.in("position", VOCALIST_POSITIONS);
+  } else {
+    assignmentQuery = assignmentQuery.eq("position", position);
+  }
+
+  const { data: assignments, error: assignmentError } = await assignmentQuery;
+  if (assignmentError) throw assignmentError;
+
+  const grouped = new Map<string, { userId: string; position: string; ministryTypes: Set<string> }>();
+  for (const assignment of assignments || []) {
+    if (!assignment.user_id) continue;
+    if (excludeUserId && assignment.user_id === excludeUserId) continue;
+    if (
+      ministryType &&
+      assignment.ministry_type &&
+      !ministriesMatchForSwap(assignment.ministry_type, ministryType)
+    ) {
+      continue;
+    }
+
+    const key = `${assignment.user_id}|${assignment.position}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        userId: assignment.user_id,
+        position: assignment.position,
+        ministryTypes: new Set<string>(),
+      });
+    }
+    if (assignment.ministry_type) {
+      grouped.get(key)!.ministryTypes.add(assignment.ministry_type);
+    }
+  }
+
+  const groupedRows = Array.from(grouped.values());
+  if (!groupedRows.length) return [];
+
+  const userIds = [...new Set(groupedRows.map((row) => row.userId))];
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", userIds);
+  if (profileError) throw profileError;
+
+  const profileMap = new Map((profiles || []).map((profile: any) => [profile.id, profile.full_name]));
+
+  return groupedRows.map((row) => ({
+    id: `break-${row.userId}-${row.position}`,
+    user_id: row.userId,
+    member_name: profileMap.get(row.userId) || "Team Member",
+    position: row.position,
+    team_id: "",
+    rotation_period_id: null,
+    ministry_types: Array.from(row.ministryTypes),
+    worship_teams: null,
+  }));
+}
+
 export function usePositionMembers(
   position: string,
   excludeUserId?: string,
@@ -758,73 +840,41 @@ export function usePositionMembersForCover(
 
       let combinedMembers = (members as any[]) || [];
 
-      // Include approved "On Break This Trimester" members in cover candidates.
-      // This lets leaders ask off-rotation members to cover as needed.
+      // Include campus ministry-position assignments so fill-ins can include
+      // both currently scheduled and off-rotation/on-break members.
       if (campusId) {
-        let effectiveRotationId = rotationPeriodId;
-        if (!effectiveRotationId) {
-          const { data: activeRotation } = await supabase
-            .from("rotation_periods")
-            .select("id")
-            .eq("is_active", true)
-            .eq("campus_id", campusId)
-            .maybeSingle();
-          effectiveRotationId = (activeRotation as any)?.id;
+        const byUserAndPosition = new Map<string, any>();
+        for (const member of combinedMembers) {
+          const key = `${member.user_id || "none"}|${member.position || "none"}`;
+          byUserAndPosition.set(key, member);
         }
 
-        if (effectiveRotationId) {
-          const { data: approvedBreaks } = await supabase
-            .from("break_requests")
-            .select("user_id")
-            .eq("rotation_period_id", effectiveRotationId)
-            .eq("status", "approved");
+        const syntheticAssignmentMembers = await buildSyntheticCampusAssignmentMembers({
+          campusId,
+          position,
+          ministryType,
+          excludeUserId,
+        });
 
-          const breakUserIds = [...new Set((approvedBreaks || []).map((b: any) => b.user_id).filter(Boolean))];
-          if (breakUserIds.length > 0) {
-            let breakMembersQuery = supabase
-              .from("team_members")
-              .select(
-                `
-                id,
-                user_id,
-                member_name,
-                position,
-                team_id,
-                rotation_period_id,
-                ministry_types,
-                worship_teams(id, name)
-              `
-              )
-              .in("user_id", breakUserIds)
-              .not("user_id", "is", null);
-
-            if (isVocalistPosition) {
-              breakMembersQuery = breakMembersQuery.in("position", VOCALIST_POSITIONS);
-            } else {
-              breakMembersQuery = breakMembersQuery.eq("position", position);
-            }
-
-            if (excludeUserId) {
-              breakMembersQuery = breakMembersQuery.neq("user_id", excludeUserId);
-            }
-
-            const { data: breakMembers, error: breakMembersError } = await breakMembersQuery;
-            if (breakMembersError) throw breakMembersError;
-
-            const byUserAndPosition = new Map<string, any>();
-            for (const member of combinedMembers) {
-              const key = `${member.user_id || "none"}|${member.position || "none"}`;
-              byUserAndPosition.set(key, member);
-            }
-            for (const member of breakMembers || []) {
-              const key = `${member.user_id || "none"}|${member.position || "none"}`;
-              if (!byUserAndPosition.has(key)) {
-                byUserAndPosition.set(key, member);
-              }
-            }
-            combinedMembers = Array.from(byUserAndPosition.values());
+        for (const member of syntheticAssignmentMembers) {
+          const key = `${member.user_id || "none"}|${member.position || "none"}`;
+          const existing = byUserAndPosition.get(key);
+          if (!existing) {
+            byUserAndPosition.set(key, member);
+            continue;
           }
+          const mergedMinistryTypes = [
+            ...new Set([
+              ...(((existing.ministry_types as string[] | null) || [])),
+              ...(((member.ministry_types as string[] | null) || [])),
+            ]),
+          ];
+          byUserAndPosition.set(key, {
+            ...existing,
+            ministry_types: mergedMinistryTypes,
+          });
         }
+        combinedMembers = Array.from(byUserAndPosition.values());
       }
 
       return await hydrateAndFilterMembers({
@@ -977,6 +1027,31 @@ export function useOpenRequestRecipients(
               if (member.user_id && !byUser.has(member.user_id)) {
                 byUser.set(member.user_id, member);
               }
+            }
+
+            const syntheticBreakMembers = await buildSyntheticCampusAssignmentMembers({
+              campusId,
+              position,
+              ministryType,
+              candidateUserIds: breakUserIds.filter((id) => sameCampusUserIds.includes(id)),
+            });
+            for (const member of syntheticBreakMembers) {
+              if (!member.user_id) continue;
+              const existing = byUser.get(member.user_id);
+              if (!existing) {
+                byUser.set(member.user_id, member);
+                continue;
+              }
+              const mergedMinistryTypes = [
+                ...new Set([
+                  ...(((existing.ministry_types as string[] | null) || [])),
+                  ...(((member.ministry_types as string[] | null) || [])),
+                ]),
+              ];
+              byUser.set(member.user_id, {
+                ...existing,
+                ministry_types: mergedMinistryTypes,
+              });
             }
             combinedTeamMembers = Array.from(byUser.values());
           }
