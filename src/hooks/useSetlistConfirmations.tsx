@@ -92,6 +92,18 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         "video_director", "production_manager", "campus_pastor"
       ];
       const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
+      const isFullAdmin = roles.some((role) => ["admin", "campus_admin"].includes(role));
+      const canViewAllSetlists = roles.some((role) =>
+        [
+          "admin",
+          "campus_admin",
+          "campus_worship_pastor",
+          "student_worship_pastor",
+          "network_worship_pastor",
+          "network_worship_leader",
+          "campus_pastor",
+        ].includes(role),
+      );
       const isVolunteerOnly = (roles.includes("volunteer") || roles.includes("member")) && !hasLeadershipRole;
 
       // Get user's campuses
@@ -135,14 +147,21 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Dates where user is assigned to a custom service.
       const { data: customAssignments } = await supabase
         .from("custom_service_assignments")
-        .select("assignment_date")
+        .select("assignment_date, custom_service_id")
         .eq("user_id", user.id);
 
       const customAssignmentDates = new Set<string>();
+      const customAssignmentServiceIdsByDate = new Map<string, Set<string>>();
       for (const row of customAssignments || []) {
         if (!row.assignment_date) continue;
         if (!includePast && row.assignment_date < new Date().toISOString().split("T")[0]) continue;
         customAssignmentDates.add(row.assignment_date);
+        if (row.custom_service_id) {
+          if (!customAssignmentServiceIdsByDate.has(row.assignment_date)) {
+            customAssignmentServiceIdsByDate.set(row.assignment_date, new Set<string>());
+          }
+          customAssignmentServiceIdsByDate.get(row.assignment_date)!.add(row.custom_service_id);
+        }
       }
 
       // For volunteers, get their scheduled dates based on team assignments
@@ -322,6 +341,8 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Backfill legacy published rows missing custom_service_id by inferring from
       // a unique active custom service on the same date/campus/ministry.
       const unresolved = setlists.filter((s) => !s.custom_service_id);
+      const ambiguousCustomServiceKeys = new Set<string>();
+      const customServiceContextKeys = new Set<string>();
       if (unresolved.length > 0) {
         const dates = [...new Set(unresolved.map((s) => s.plan_date))];
         const campusIds = [...new Set(unresolved.map((s) => s.campus_id))];
@@ -343,6 +364,15 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           customByKey.set(key, existing);
         }
 
+        for (const [key, serviceIds] of customByKey.entries()) {
+          if (serviceIds.length > 0) {
+            customServiceContextKeys.add(key);
+          }
+          if (serviceIds.length > 1) {
+            ambiguousCustomServiceKeys.add(key);
+          }
+        }
+
         setlists = setlists.map((setlist) => {
           if (setlist.custom_service_id) return setlist;
           const key = `${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`;
@@ -350,8 +380,27 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           if (matches.length === 1) {
             return { ...setlist, custom_service_id: matches[0] };
           }
+          if (matches.length > 1 && isVolunteerOnly) {
+            const assignedOnDate = customAssignmentServiceIdsByDate.get(setlist.plan_date);
+            if (assignedOnDate) {
+              const assignedMatches = matches.filter((id) => assignedOnDate.has(id));
+              if (assignedMatches.length === 1) {
+                return { ...setlist, custom_service_id: assignedMatches[0] };
+              }
+            }
+          }
           return setlist;
         });
+
+        // For volunteers, do not show ambiguous custom-service rows when we cannot
+        // safely resolve which custom service the set belongs to.
+        if (isVolunteerOnly) {
+          setlists = setlists.filter((setlist) => {
+            if (setlist.custom_service_id) return true;
+            const key = `${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`;
+            return !ambiguousCustomServiceKeys.has(key);
+          });
+        }
       }
 
       // Resolve confirm-button eligibility from a single DB source of truth
@@ -402,11 +451,21 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }),
       );
 
-      // Volunteers should only see setlists where they are actually on the roster.
-      // This is required for dates that have multiple custom services (same campus/date/ministry)
-      // so users only receive the specific custom service they were assigned to.
-      if (isVolunteerOnly) {
+      // Non-leadership users should only see setlists where they are actually on the roster.
+      // This prevents cross-visibility when multiple custom services share a date/campus/ministry.
+      if (!canViewAllSetlists) {
         setlists = setlists.filter((setlist) => rosterEligibilityBySetId.get(setlist.id) === true);
+      }
+
+      // Even for non-admin leaders, custom-service contexts must stay roster-scoped.
+      // This avoids showing the wrong service when multiple services share the same date/campus/ministry.
+      if (!isFullAdmin) {
+        setlists = setlists.filter((setlist) => {
+          const key = `${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`;
+          const isCustomContext = Boolean(setlist.custom_service_id) || customServiceContextKeys.has(key);
+          if (!isCustomContext) return true;
+          return rosterEligibilityBySetId.get(setlist.id) === true;
+        });
       }
 
       // Fetch songs for each setlist

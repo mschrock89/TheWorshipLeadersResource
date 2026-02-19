@@ -128,18 +128,28 @@ function StandardMySetlists() {
     return groupByWeekend(allWithScheduleDate);
   }, [pastSetlists, upcomingSetlists, today]);
 
+  const visibleGroupedSetlists = useMemo(() => {
+    if (isAdmin) return allGroupedSetlists;
+    return allGroupedSetlists
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((setlist) => setlist.amIOnRoster === true),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [allGroupedSetlists, isAdmin]);
+
   // Find the index of the first upcoming/current setlist to start there
   const initialIndex = useMemo(() => {
-    const idx = allGroupedSetlists.findIndex(g => g.saturdayDate >= today);
-    return idx >= 0 ? idx : Math.max(0, allGroupedSetlists.length - 1);
-  }, [allGroupedSetlists, today]);
+    const idx = visibleGroupedSetlists.findIndex(g => g.saturdayDate >= today);
+    return idx >= 0 ? idx : Math.max(0, visibleGroupedSetlists.length - 1);
+  }, [visibleGroupedSetlists, today]);
 
   // Set initial index once data loads
   useEffect(() => {
-    if (allGroupedSetlists.length > 0) {
+    if (visibleGroupedSetlists.length > 0) {
       setCurrentIndex(initialIndex);
     }
-  }, [initialIndex, allGroupedSetlists.length]);
+  }, [initialIndex, visibleGroupedSetlists.length]);
 
   const isLoading = loadingUpcoming || loadingPast;
 
@@ -156,8 +166,8 @@ function StandardMySetlists() {
 
   // Handle deep-link navigation to specific setlist
   useEffect(() => {
-    if (highlightSetId && allGroupedSetlists.length > 0 && !isLoading) {
-      const groupIndex = allGroupedSetlists.findIndex(g => 
+    if (highlightSetId && visibleGroupedSetlists.length > 0 && !isLoading) {
+      const groupIndex = visibleGroupedSetlists.findIndex(g => 
         g.items.some(item => item.id === highlightSetId)
       );
       if (groupIndex !== -1) {
@@ -175,17 +185,17 @@ function StandardMySetlists() {
         }, 100);
       }
     }
-  }, [highlightSetId, allGroupedSetlists, isLoading]);
+  }, [highlightSetId, visibleGroupedSetlists, isLoading]);
 
   const goToPrevious = () => {
     setCurrentIndex(prev => Math.max(0, prev - 1));
   };
 
   const goToNext = () => {
-    setCurrentIndex(prev => Math.min(allGroupedSetlists.length - 1, prev + 1));
+    setCurrentIndex(prev => Math.min(visibleGroupedSetlists.length - 1, prev + 1));
   };
 
-  const currentGroup = allGroupedSetlists[currentIndex];
+  const currentGroup = visibleGroupedSetlists[currentIndex];
 
   // Determine if current group is past, present (this weekend), or future
   const isPast = currentGroup && currentGroup.sundayDate < today;
@@ -286,7 +296,7 @@ function StandardMySetlists() {
         <SetlistConfirmationWidget selectedCampusId={normalizedCampusId} />
       )}
 
-      {allGroupedSetlists.length === 0 ? (
+      {visibleGroupedSetlists.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Music2 className="h-12 w-12 text-muted-foreground mb-4" />
@@ -330,7 +340,7 @@ function StandardMySetlists() {
               variant="ghost"
               size="icon"
               onClick={goToNext}
-              disabled={currentIndex === allGroupedSetlists.length - 1}
+              disabled={currentIndex === visibleGroupedSetlists.length - 1}
               className="h-10 w-10"
             >
               <ChevronRight className="h-6 w-6" />

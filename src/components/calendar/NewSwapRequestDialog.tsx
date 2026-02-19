@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -121,8 +121,33 @@ export function NewSwapRequestDialog({
   const { data: openRequestRecipients, isLoading: loadingRecipients } = useOpenRequestRecipients(
     selectedSchedule?.position,
     user?.id,
+    selectedSchedule?.campusId || undefined,
+    selectedSchedule?.ministryType || undefined,
+    requestMode === "fill_in",
     step === "type" || (step === "details" && swapType === "open")
   );
+
+  const sortedPositionMembers = useMemo(() => {
+    const deduped = (positionMembers || [])
+      .filter((m) => m.user_id)
+      .filter((m, i, arr) => arr.findIndex((x) => x.user_id === m.user_id) === i);
+
+    const normalizeGender = (value?: string | null) => (value || "").toLowerCase();
+    const genderRank = (gender?: string | null) => {
+      const normalized = normalizeGender(gender);
+      if (!normalized) return 3;
+      if (isVocalistSwap && userGender && normalized === normalizeGender(userGender)) return 0;
+      if (normalized === "female") return 1;
+      if (normalized === "male") return 2;
+      return 3;
+    };
+
+    return deduped.sort((a, b) => {
+      const genderDiff = genderRank(a.gender) - genderRank(b.gender);
+      if (genderDiff !== 0) return genderDiff;
+      return a.member_name.localeCompare(b.member_name);
+    });
+  }, [positionMembers, isVocalistSwap, userGender]);
   
   // Check if user belongs to a campus with Saturday service
   const hasSaturdayService = userCampuses?.some(uc => uc.campuses?.has_saturday_service) ?? false;
@@ -637,7 +662,7 @@ export function NewSwapRequestDialog({
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading...
                 </div>
-              ) : positionMembers?.filter(m => m.user_id).length === 0 ? (
+              ) : sortedPositionMembers.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No available team members found for this position
                   {isVocalistSwap && userGender && " with matching gender"}
@@ -648,11 +673,7 @@ export function NewSwapRequestDialog({
                     <SelectValue placeholder="Select a person" />
                   </SelectTrigger>
                   <SelectContent>
-                    {positionMembers
-                      ?.filter(m => m.user_id)
-                      .filter((m, i, arr) => arr.findIndex(x => x.user_id === m.user_id) === i)
-                      .sort((a, b) => a.member_name.localeCompare(b.member_name))
-                      .map((member) => (
+                    {sortedPositionMembers.map((member) => (
                         <SelectItem key={member.user_id!} value={member.user_id!}>
                           <span className="flex items-center gap-2">
                             {member.member_name}

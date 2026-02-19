@@ -435,8 +435,13 @@ export function usePositionMembers(
           ministry_types,
           worship_teams(id, name)
         `
-        )
-        .eq("position", position);
+        );
+
+      if (isVocalist) {
+        query = query.in("position", VOCALIST_POSITIONS);
+      } else {
+        query = query.eq("position", position);
+      }
 
       if (excludeUserId) {
         query = query.neq("user_id", excludeUserId);
@@ -463,6 +468,7 @@ export function usePositionMembers(
         ministryType,
         requesterGender,
         position,
+        strictMinistryMatch: true,
       });
     },
     enabled: !!position,
@@ -486,6 +492,8 @@ export function usePositionMembersForDate(
   ministryType?: string,
   requesterGender?: string | null
 ) {
+  const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+
   return useQuery({
     queryKey: [
       "position-members-for-date",
@@ -536,8 +544,13 @@ export function usePositionMembersForDate(
           worship_teams(id, name)
         `
         )
-        .eq("position", position)
         .in("team_id", teamIds);
+
+      if (isVocalistPosition) {
+        membersQuery = membersQuery.in("position", VOCALIST_POSITIONS);
+      } else {
+        membersQuery = membersQuery.eq("position", position);
+      }
 
       if (excludeUserId) {
         membersQuery = membersQuery.neq("user_id", excludeUserId);
@@ -557,6 +570,7 @@ export function usePositionMembersForDate(
         ministryType,
         requesterGender,
         position,
+        strictMinistryMatch: true,
       });
     },
     enabled: !!position && !!scheduledDate,
@@ -570,8 +584,17 @@ async function hydrateAndFilterMembers(args: {
   ministryType?: string;
   requesterGender?: string | null;
   position: string;
+  strictMinistryMatch?: boolean;
 }): Promise<PositionMember[]> {
-  const { members, campusId, rotationPeriodId, ministryType, requesterGender, position } = args;
+  const {
+    members,
+    campusId,
+    rotationPeriodId,
+    ministryType,
+    requesterGender,
+    position,
+    strictMinistryMatch = false,
+  } = args;
 
   if (!members || members.length === 0) return [];
 
@@ -593,7 +616,12 @@ async function hydrateAndFilterMembers(args: {
   if (ministryType) {
     filteredMembers = filteredMembers.filter((m) => {
       const memberMinistryTypes = (m as any).ministry_types || [];
-      // Include if member has no ministry types set (legacy data) or matches
+      if (strictMinistryMatch) {
+        return memberMinistryTypes.some((memberMinistry: string) =>
+          ministriesMatchForSwap(memberMinistry, ministryType)
+        );
+      }
+      // Legacy fallback for call sites that intentionally allow untagged members.
       return (
         memberMinistryTypes.length === 0 ||
         memberMinistryTypes.some((memberMinistry: string) =>
@@ -706,8 +734,13 @@ export function usePositionMembersForCover(
           ministry_types,
           worship_teams(id, name)
         `
-        )
-        .eq("position", position);
+        );
+
+      if (isVocalistPosition) {
+        query = query.in("position", VOCALIST_POSITIONS);
+      } else {
+        query = query.eq("position", position);
+      }
 
       if (excludeUserId) {
         query = query.neq("user_id", excludeUserId);
@@ -729,6 +762,7 @@ export function usePositionMembersForCover(
         ministryType,
         requesterGender,
         position,
+        strictMinistryMatch: false,
       });
     },
     enabled: !!position,
@@ -774,10 +808,13 @@ export function useUserScheduledDates(userId: string | undefined, teamId?: strin
 export function useOpenRequestRecipients(
   position: string | undefined,
   requesterId: string | undefined,
+  campusId?: string,
+  ministryType?: string,
+  includeLegacyUntagged: boolean = false,
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: ["open-request-recipients", position, requesterId],
+    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, includeLegacyUntagged],
     queryFn: async () => {
       if (!position || !requesterId) return [];
 
@@ -790,13 +827,14 @@ export function useOpenRequestRecipients(
       if (campusError) throw campusError;
 
       const campusIds = requesterCampuses?.map((c) => c.campus_id) || [];
-      if (campusIds.length === 0) return [];
+      const scopedCampusIds = campusId ? [campusId] : campusIds;
+      if (scopedCampusIds.length === 0) return [];
 
       // Get users who share a campus with the requester
       const { data: sameCampusUsers, error: sameCampusError } = await supabase
         .from("user_campuses")
         .select("user_id")
-        .in("campus_id", campusIds)
+        .in("campus_id", scopedCampusIds)
         .neq("user_id", requesterId);
 
       if (sameCampusError) throw sameCampusError;
@@ -804,18 +842,38 @@ export function useOpenRequestRecipients(
       const sameCampusUserIds = [...new Set(sameCampusUsers?.map((u) => u.user_id) || [])];
       if (sameCampusUserIds.length === 0) return [];
 
-      // Get team members with the same position who are in the same campus
-      const { data: teamMembers, error: membersError } = await supabase
+      const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+
+      // Get team members with the same position family who are in the same campus
+      let membersQuery = supabase
         .from("team_members")
-        .select("user_id, member_name")
-        .eq("position", position)
+        .select("user_id, member_name, ministry_types")
         .not("user_id", "is", null)
         .in("user_id", sameCampusUserIds);
 
+      if (isVocalistPosition) {
+        membersQuery = membersQuery.in("position", VOCALIST_POSITIONS);
+      } else {
+        membersQuery = membersQuery.eq("position", position);
+      }
+
+      const { data: teamMembers, error: membersError } = await membersQuery;
+
       if (membersError) throw membersError;
 
+      const ministryScopedMembers = !ministryType
+        ? (teamMembers || [])
+        : (teamMembers || []).filter((member: any) =>
+            (includeLegacyUntagged && ((member.ministry_types as string[] | null) || []).length === 0) ||
+            ((member.ministry_types as string[] | null) || []).some((memberMinistry) =>
+              ministriesMatchForSwap(memberMinistry, ministryType)
+            )
+          );
+
       // Get unique user IDs
-      const uniqueUserIds = [...new Set(teamMembers?.map((m) => m.user_id!).filter(Boolean) || [])];
+      const uniqueUserIds = [
+        ...new Set(ministryScopedMembers.map((m: any) => m.user_id!).filter(Boolean)),
+      ];
       if (uniqueUserIds.length === 0) return [];
 
       // Fetch profiles for these users
