@@ -706,7 +706,6 @@ export function usePositionMembersForCover(
   requesterGender?: string | null
 ) {
   const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
-  const isWeekendLikeMinistry = !!ministryType && WEEKEND_MINISTRY_ALIASES.has(ministryType);
 
   return useQuery({
     queryKey: [
@@ -746,9 +745,9 @@ export function usePositionMembersForCover(
         query = query.neq("user_id", excludeUserId);
       }
 
-      // For vocalist cover requests on weekend ministries, allow candidates
-      // across rotation periods within the campus/ministry (queue-wide visibility).
-      if (rotationPeriodId && !(isVocalistPosition && isWeekendLikeMinistry)) {
+      // Cover requests should allow vocalist candidates across rotation periods
+      // within the same campus/ministry so all eligible vocalists are available.
+      if (rotationPeriodId && !isVocalistPosition) {
         query = query.eq("rotation_period_id", rotationPeriodId);
       }
 
