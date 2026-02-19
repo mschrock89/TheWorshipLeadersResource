@@ -1132,9 +1132,18 @@ function BandRoster({
   const broadcastPositions = ['camera_1', 'camera_2', 'camera_3', 'camera_4', 'camera_5', 'camera_6', 'chat_host', 'director', 'graphics', 'producer', 'switcher'];
 
   // Get production/video members separately (they serve across all ministries)
-  const productionVideoMembers = roster.filter(m => m.ministryTypes.some(mt => productionMinistryTypes.includes(mt)) ||
-  // Also include members with production/video positions regardless of ministry type
-  m.positions.some(p => [...audioPositions, ...broadcastPositions].some(ap => p.toLowerCase().includes(ap.toLowerCase()) || ap.toLowerCase().includes(p.toLowerCase()))));
+  // Only include explicit production/video ministries, or legacy untagged rows
+  // that clearly have production/video positions.
+  const productionVideoMembers = roster.filter((m) => {
+    const hasProdOrVideoMinistry = m.ministryTypes.some((mt) => productionMinistryTypes.includes(mt));
+    const hasProdOrVideoPosition = m.positions.some((p) =>
+      [...audioPositions, ...broadcastPositions].some(
+        (ap) => p.toLowerCase().includes(ap.toLowerCase()) || ap.toLowerCase().includes(p.toLowerCase())
+      )
+    );
+    const hasNoMinistryTags = !m.ministryTypes || m.ministryTypes.length === 0;
+    return hasProdOrVideoMinistry || (hasNoMinistryTags && hasProdOrVideoPosition);
+  });
 
   // Helper functions for categorizing members
   const isVocalist = (positions: string[]) => {

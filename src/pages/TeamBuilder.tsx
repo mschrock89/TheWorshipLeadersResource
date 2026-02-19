@@ -149,7 +149,12 @@ export default function TeamBuilder() {
 
   // Get members by team (uses all members, not filtered - filtering is done via slot visibility)
   const getMembersForTeam = (teamId: string) => {
-    return members.filter(m => m.team_id === teamId);
+    return members.filter((m) => {
+      if (m.team_id !== teamId) return false;
+      if (!selectedCampusId || !m.user_id) return true;
+      const memberCampuses = userCampusMap?.[m.user_id]?.ids || [];
+      return memberCampuses.includes(selectedCampusId);
+    });
   };
 
   const isTeamLocked = (teamId: string) => {

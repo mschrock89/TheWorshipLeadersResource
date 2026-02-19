@@ -127,48 +127,40 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   // For "weekend_team", we want all weekend/production/video members
   // The hook now handles "weekend_team" expansion internally
   const isWeekendTeam = ministryType === 'weekend_team';
+  const showProduction = ministryType === "production" || isWeekendTeam;
+  const showVideo = ministryType === "video" || isWeekendTeam;
   
-  // Keep worship roster filtered to the selected ministry, but fetch an unfiltered roster too
-  // so we can always show Production/Video teams (their ministry_types often differ).
-  const { data: worshipRoster, isLoading: worshipRosterLoading } = useTeamRosterForDate(
+  const { data: roster, isLoading: rosterLoading } = useTeamRosterForDate(
     targetDate,
     scheduledTeam?.teamId,
     isWeekendTeam ? 'weekend' : ministryType,
     campusId
   );
-
-  const { data: fullRoster, isLoading: fullRosterLoading } = useTeamRosterForDate(
-    targetDate,
-    scheduledTeam?.teamId,
-    undefined,
-    campusId
-  );
-
-  const isLoading = teamLoading || worshipRosterLoading || fullRosterLoading;
+  const isLoading = teamLoading || rosterLoading;
 
   // Filter members and positions by category
-  const vocalists = worshipRoster?.filter(member => 
+  const vocalists = roster?.filter(member => 
     member.positions.some(pos => isVocalPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVocalPosition(pos))
   })) || [];
 
-  const bandMembers = worshipRoster?.filter(member => 
+  const bandMembers = roster?.filter(member => 
     member.positions.some(pos => isBandPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isBandPosition(pos))
   })) || [];
 
-  const videoMembers = fullRoster?.filter(member => 
+  const videoMembers = roster?.filter(member => 
     member.positions.some(pos => isVideoPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVideoPosition(pos))
   })) || [];
 
-  const productionMembers = fullRoster?.filter(member => 
+  const productionMembers = roster?.filter(member => 
     member.positions.some(pos => isProductionPosition(pos))
   ).map(member => ({
     ...member,
@@ -230,7 +222,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             className="text-xs"
             style={{ borderColor: scheduledTeam.teamColor, color: scheduledTeam.teamColor }}
           >
-            {(vocalists.length + bandMembers.length + videoMembers.length + productionMembers.length)} members
+            {(vocalists.length + bandMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
           </Badge>
         </div>
         
@@ -247,18 +239,22 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             members={bandMembers} 
             teamColor={scheduledTeam.teamColor}
           />
-          <MemberSection 
-            icon={Headphones} 
-            title="Production" 
-            members={productionMembers} 
-            teamColor={scheduledTeam.teamColor}
-          />
-          <MemberSection 
-            icon={Video} 
-            title="Video" 
-            members={videoMembers} 
-            teamColor={scheduledTeam.teamColor}
-          />
+          {showProduction && (
+            <MemberSection 
+              icon={Headphones} 
+              title="Production" 
+              members={productionMembers} 
+              teamColor={scheduledTeam.teamColor}
+            />
+          )}
+          {showVideo && (
+            <MemberSection 
+              icon={Video} 
+              title="Video" 
+              members={videoMembers} 
+              teamColor={scheduledTeam.teamColor}
+            />
+          )}
         </div>
       </CardContent>
     </Card>

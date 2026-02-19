@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { format, parseISO } from "date-fns";
+import { addDays, format, getDay, parseISO, subDays } from "date-fns";
 import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,21 @@ import { isAuditionCandidateRole } from "@/lib/access";
 import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
+
+const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+
+function getSetlistDisplayDate(planDate: string, ministryType: string) {
+  const date = parseLocalDate(planDate);
+  const day = getDay(date);
+
+  if (WEEKEND_MINISTRY_TYPES.has(ministryType)) {
+    const saturday = day === 0 ? subDays(date, 1) : date;
+    const sunday = addDays(saturday, 1);
+    return `${format(saturday, "EEEE, MMMM d")} - ${format(sunday, "EEEE, MMMM d, yyyy")}`;
+  }
+
+  return format(date, "EEEE, MMMM d, yyyy");
+}
 
 function StandardMySetlists() {
   const { isAdmin, user } = useAuth();
@@ -362,19 +377,12 @@ function StandardMySetlists() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      {/* Show day label when in a weekend group */}
-                      {isWeekendGroup && (
-                        <p className="text-xs text-muted-foreground mb-1">
-                          {format(planDate, "EEEE")}
-                        </p>
-                      )}
                       <CardTitle className="text-lg">
                         <Link 
                           to={`/calendar?date=${setlist.scheduleDate}`}
                           className="hover:text-primary hover:underline transition-colors"
                         >
-                          {!isWeekendGroup && format(planDate, "EEEE, MMMM d, yyyy")}
-                          {isWeekendGroup && format(planDate, "MMMM d, yyyy")}
+                          {getSetlistDisplayDate(setlist.scheduleDate, setlist.ministry_type)}
                         </Link>
                       </CardTitle>
                       <div className="flex items-center gap-1.5 mt-2">
@@ -1014,7 +1022,7 @@ function ApproverMySetlists({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-lg">
-                          {format(parseLocalDate(approval.draft_set.plan_date), "EEEE, MMMM d, yyyy")}
+                          {getSetlistDisplayDate(approval.draft_set.plan_date, approval.draft_set.ministry_type)}
                         </CardTitle>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <Badge variant="secondary">{getMinistryLabel(approval.draft_set.ministry_type)}</Badge>
@@ -1106,7 +1114,7 @@ function ApproverMySetlists({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-lg">
-                          {format(parseLocalDate(setlist.plan_date), "EEEE, MMMM d, yyyy")}
+                          {getSetlistDisplayDate(setlist.plan_date, setlist.ministry_type)}
                         </CardTitle>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <Badge variant="secondary">{getMinistryLabel(setlist.ministry_type)}</Badge>

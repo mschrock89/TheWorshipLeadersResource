@@ -500,6 +500,7 @@ export default function SetPlanner() {
 
   const { data: customServiceCampusMembers = [] } = useCustomServiceCampusMembers(
     selectedCustomService?.campus_id || effectiveCampusId || undefined,
+    selectedMinistry,
   );
 
   const groupedCustomServiceAssignments = useMemo(() => {

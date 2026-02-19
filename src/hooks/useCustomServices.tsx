@@ -258,11 +258,34 @@ export function useDeleteCustomService() {
   });
 }
 
-export function useCustomServiceCampusMembers(campusId?: string) {
+export function useCustomServiceCampusMembers(campusId?: string, ministryType?: string) {
   return useQuery({
-    queryKey: ["custom-service-campus-members", campusId],
+    queryKey: ["custom-service-campus-members", campusId, ministryType || "all"],
     enabled: !!campusId,
     queryFn: async () => {
+      if (ministryType) {
+        const { data, error } = await supabase
+          .from("user_campus_ministry_positions")
+          .select("user_id, profiles!inner(id, full_name, avatar_url)")
+          .eq("campus_id", campusId!)
+          .eq("ministry_type", ministryType)
+          .order("user_id", { ascending: true });
+
+        if (error) throw error;
+
+        const unique = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
+        for (const row of data || []) {
+          const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+          if (!profile) continue;
+          unique.set(profile.id, {
+            id: profile.id,
+            full_name: profile.full_name,
+            avatar_url: profile.avatar_url,
+          });
+        }
+        return Array.from(unique.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+      }
+
       const { data, error } = await supabase
         .from("user_campuses")
         .select("user_id, profiles!inner(id, full_name, avatar_url)")
