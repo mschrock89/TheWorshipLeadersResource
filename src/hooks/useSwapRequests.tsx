@@ -754,8 +754,79 @@ export function usePositionMembersForCover(
       const { data: members, error } = await query;
       if (error) throw error;
 
+      let combinedMembers = (members as any[]) || [];
+
+      // Include approved "On Break This Trimester" members in cover candidates.
+      // This lets leaders ask off-rotation members to cover as needed.
+      if (campusId) {
+        let effectiveRotationId = rotationPeriodId;
+        if (!effectiveRotationId) {
+          const { data: activeRotation } = await supabase
+            .from("rotation_periods")
+            .select("id")
+            .eq("is_active", true)
+            .eq("campus_id", campusId)
+            .maybeSingle();
+          effectiveRotationId = (activeRotation as any)?.id;
+        }
+
+        if (effectiveRotationId) {
+          const { data: approvedBreaks } = await supabase
+            .from("break_requests")
+            .select("user_id")
+            .eq("rotation_period_id", effectiveRotationId)
+            .eq("status", "approved");
+
+          const breakUserIds = [...new Set((approvedBreaks || []).map((b: any) => b.user_id).filter(Boolean))];
+          if (breakUserIds.length > 0) {
+            let breakMembersQuery = supabase
+              .from("team_members")
+              .select(
+                `
+                id,
+                user_id,
+                member_name,
+                position,
+                team_id,
+                rotation_period_id,
+                ministry_types,
+                worship_teams(id, name)
+              `
+              )
+              .in("user_id", breakUserIds)
+              .not("user_id", "is", null);
+
+            if (isVocalistPosition) {
+              breakMembersQuery = breakMembersQuery.in("position", VOCALIST_POSITIONS);
+            } else {
+              breakMembersQuery = breakMembersQuery.eq("position", position);
+            }
+
+            if (excludeUserId) {
+              breakMembersQuery = breakMembersQuery.neq("user_id", excludeUserId);
+            }
+
+            const { data: breakMembers, error: breakMembersError } = await breakMembersQuery;
+            if (breakMembersError) throw breakMembersError;
+
+            const byUserAndPosition = new Map<string, any>();
+            for (const member of combinedMembers) {
+              const key = `${member.user_id || "none"}|${member.position || "none"}`;
+              byUserAndPosition.set(key, member);
+            }
+            for (const member of breakMembers || []) {
+              const key = `${member.user_id || "none"}|${member.position || "none"}`;
+              if (!byUserAndPosition.has(key)) {
+                byUserAndPosition.set(key, member);
+              }
+            }
+            combinedMembers = Array.from(byUserAndPosition.values());
+          }
+        }
+      }
+
       return await hydrateAndFilterMembers({
-        members: (members as any[]) || [],
+        members: combinedMembers,
         campusId,
         rotationPeriodId,
         ministryType,
@@ -810,10 +881,11 @@ export function useOpenRequestRecipients(
   campusId?: string,
   ministryType?: string,
   includeLegacyUntagged: boolean = false,
+  includeOnBreakCandidates: boolean = false,
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, includeLegacyUntagged],
+    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, includeLegacyUntagged, includeOnBreakCandidates],
     queryFn: async () => {
       if (!position || !requesterId) return [];
 
@@ -860,9 +932,58 @@ export function useOpenRequestRecipients(
 
       if (membersError) throw membersError;
 
+      let combinedTeamMembers = teamMembers || [];
+
+      if (includeOnBreakCandidates && campusId) {
+        const { data: activeRotation } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("is_active", true)
+          .eq("campus_id", campusId)
+          .maybeSingle();
+        const effectiveRotationId = (activeRotation as any)?.id;
+
+        if (effectiveRotationId) {
+          const { data: approvedBreaks } = await supabase
+            .from("break_requests")
+            .select("user_id")
+            .eq("rotation_period_id", effectiveRotationId)
+            .eq("status", "approved");
+
+          const breakUserIds = [...new Set((approvedBreaks || []).map((b: any) => b.user_id).filter(Boolean))];
+          if (breakUserIds.length > 0) {
+            let breakMembersQuery = supabase
+              .from("team_members")
+              .select("user_id, member_name, ministry_types, position")
+              .in("user_id", breakUserIds)
+              .not("user_id", "is", null);
+
+            if (isVocalistPosition) {
+              breakMembersQuery = breakMembersQuery.in("position", VOCALIST_POSITIONS);
+            } else {
+              breakMembersQuery = breakMembersQuery.eq("position", position);
+            }
+
+            const { data: breakMembers, error: breakMembersError } = await breakMembersQuery;
+            if (breakMembersError) throw breakMembersError;
+
+            const byUser = new Map<string, any>();
+            for (const member of combinedTeamMembers) {
+              if (member.user_id) byUser.set(member.user_id, member);
+            }
+            for (const member of breakMembers || []) {
+              if (member.user_id && !byUser.has(member.user_id)) {
+                byUser.set(member.user_id, member);
+              }
+            }
+            combinedTeamMembers = Array.from(byUser.values());
+          }
+        }
+      }
+
       const ministryScopedMembers = !ministryType
-        ? (teamMembers || [])
-        : (teamMembers || []).filter((member: any) =>
+        ? combinedTeamMembers
+        : combinedTeamMembers.filter((member: any) =>
             (includeLegacyUntagged && ((member.ministry_types as string[] | null) || []).length === 0) ||
             ((member.ministry_types as string[] | null) || []).some((memberMinistry) =>
               ministriesMatchForSwap(memberMinistry, ministryType)

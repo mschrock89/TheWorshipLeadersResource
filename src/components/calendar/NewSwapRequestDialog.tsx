@@ -124,6 +124,7 @@ export function NewSwapRequestDialog({
     selectedSchedule?.campusId || undefined,
     selectedSchedule?.ministryType || undefined,
     requestMode === "fill_in",
+    requestMode === "fill_in",
     step === "type" || (step === "details" && swapType === "open")
   );
 
