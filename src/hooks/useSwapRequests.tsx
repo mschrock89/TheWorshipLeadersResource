@@ -683,9 +683,11 @@ async function hydrateAndFilterMembers(args: {
 
   // Filter by same gender for vocalist positions
   if (isVocalistPosition && requesterGender) {
+    const normalizedRequesterGender = requesterGender.trim().toLowerCase();
     result = result.filter((m) => {
       // Include if same gender OR if gender not set (so they can still be shown with warning)
-      return m.gender === requesterGender || !m.gender;
+      const normalizedMemberGender = m.gender ? m.gender.trim().toLowerCase() : "";
+      return normalizedMemberGender === normalizedRequesterGender || !normalizedMemberGender;
     });
   }
 
