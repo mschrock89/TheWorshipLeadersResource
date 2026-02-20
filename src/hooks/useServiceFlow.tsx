@@ -79,7 +79,25 @@ export function useServiceFlow(
         const byDraftSet = await fetchSingle(
           supabase.from("service_flows").eq("draft_set_id", draftSetId)
         );
-        if (byDraftSet) return byDraftSet;
+        if (byDraftSet) {
+          // For custom-service contexts, guard against legacy/mismatched draft-set links
+          // (e.g. Prayer Night custom service accidentally linked to a weekend flow).
+          if (customServiceId) {
+            const byDraftSetCustomServiceId =
+              (byDraftSet as { custom_service_id?: string | null }).custom_service_id ?? null;
+            const byDraftSetMinistryType =
+              (byDraftSet as { ministry_type?: string | null }).ministry_type ?? null;
+
+            const customServiceMatches = byDraftSetCustomServiceId === customServiceId;
+            const ministryMatches = byDraftSetMinistryType === ministryType;
+
+            if (customServiceMatches && ministryMatches) {
+              return byDraftSet;
+            }
+          } else {
+            return byDraftSet;
+          }
+        }
       }
 
       // 2) For custom services, try custom-service scoped flow.
@@ -99,6 +117,13 @@ export function useServiceFlow(
             throw error;
           }
         }
+
+        // Important: when a specific custom service is requested, do NOT fall back to
+        // a generic campus/ministry/date flow, because multiple custom services can share
+        // the same date/ministry (e.g. Prayer Night + Prayer Night Mayday).
+        // Returning null here allows Live mode to generate/bind the correct scoped flow
+        // from the selected custom service template/setlist context.
+        return null;
       }
 
       // 3) Legacy fallback: older flows were only campus+ministry+date scoped.
