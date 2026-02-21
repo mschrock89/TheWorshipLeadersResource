@@ -75,6 +75,7 @@ export function ServiceFlowEditor({
   const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
+  const hasAttemptedLiveTemplateSync = useRef(false);
   const hasSyncedVocalists = useRef(false);
   const hasInvalidatedOnLive = useRef(false);
 
@@ -120,6 +121,7 @@ export function ServiceFlowEditor({
   // Reset live-scoped state when the selected service context changes.
   useEffect(() => {
     hasAttemptedAutoGenerate.current = false;
+    hasAttemptedLiveTemplateSync.current = false;
     hasSyncedVocalists.current = false;
     hasInvalidatedOnLive.current = false;
     setResolvedDraftSetId(initialDraftSetId || null);
@@ -268,6 +270,87 @@ export function ServiceFlowEditor({
 
   const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || null;
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(activeServiceFlowId);
+
+  // When opened via LIVE and a flow already exists, run one sync pass to ensure
+  // the flow matches the selected template context (fixes stale template carryover).
+  useEffect(() => {
+    const syncExistingLiveFlowToTemplate = async () => {
+      if (!cameFromLive) return;
+      if (!user?.id || !effectiveCampusId) return;
+      if (!serviceFlow?.id) return;
+      if (hasAttemptedLiveTemplateSync.current) return;
+      if (itemsLoading) return;
+
+      const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId;
+      if (!draftSetId) return;
+
+      hasAttemptedLiveTemplateSync.current = true;
+
+      try {
+        const { data: draftSongs, error: draftSongsError } = await supabase
+          .from("draft_set_songs")
+          .select(
+            `
+              sequence_order,
+              song_key,
+              vocalist_id,
+              songs(
+                id,
+                title,
+                author
+              )
+            `
+          )
+          .eq("draft_set_id", draftSetId)
+          .order("sequence_order", { ascending: true });
+
+        if (draftSongsError) throw draftSongsError;
+
+        const songs = (draftSongs || [])
+          .filter((row: any) => row.songs?.id)
+          .map((row: any) => ({
+            id: row.songs.id as string,
+            title: row.songs.title as string,
+            key: (row.song_key as string | null) || null,
+            vocalistId: (row.vocalist_id as string | null) || null,
+          }));
+
+        await generateServiceFlowFromTemplate({
+          campusId: effectiveCampusId,
+          ministryType,
+          serviceDate: serviceDateStr,
+          draftSetId,
+          createdBy: user.id,
+          songs,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", serviceFlow.id],
+          }),
+        ]);
+      } catch {
+        // Keep the page usable even if sync fails; generation/toast paths already handle errors.
+      }
+    };
+
+    syncExistingLiveFlowToTemplate();
+  }, [
+    cameFromLive,
+    user?.id,
+    effectiveCampusId,
+    serviceFlow?.id,
+    serviceFlow?.draft_set_id,
+    itemsLoading,
+    resolvedDraftSetId,
+    ministryType,
+    serviceDateStr,
+    queryClient,
+    resolvedCustomServiceId,
+  ]);
 
   // If a flow already exists but is empty, backfill it from the linked setlist/template.
   useEffect(() => {

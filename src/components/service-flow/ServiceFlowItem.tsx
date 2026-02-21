@@ -1,8 +1,10 @@
-import { GripVertical, X, Music, Paperclip } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GripVertical, X, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
 
 interface ServiceFlowItemProps {
@@ -20,6 +22,31 @@ export function ServiceFlowItem({
   dragHandleProps,
   isDragging,
 }: ServiceFlowItemProps) {
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(item.title || "");
+
+  useEffect(() => {
+    setTitleDraft(item.title || "");
+  }, [item.title]);
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim();
+    if (!trimmed) {
+      setTitleDraft(item.title || "");
+      setIsEditingTitle(false);
+      return;
+    }
+    if (trimmed !== (item.title || "")) {
+      onUpdate({ title: trimmed });
+    }
+    setIsEditingTitle(false);
+  };
+
+  const cancelTitleEdit = () => {
+    setTitleDraft(item.title || "");
+    setIsEditingTitle(false);
+  };
+
   const printTitleSlug = (item.song?.title || item.title || "")
     .trim()
     .toLowerCase()
@@ -39,9 +66,33 @@ export function ServiceFlowItem({
         <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing">
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
-        <span className="flex-1 font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-          {item.title}
-        </span>
+        {isEditingTitle ? (
+          <Input
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTitle();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelTitleEdit();
+              }
+            }}
+            autoFocus
+            className="h-8 flex-1 text-sm font-semibold uppercase tracking-wide"
+          />
+        ) : (
+          <button
+            type="button"
+            className="flex-1 text-left font-semibold text-sm uppercase tracking-wide text-muted-foreground hover:text-foreground"
+            onClick={() => setIsEditingTitle(true)}
+            title="Click to edit title"
+          >
+            {item.title}
+          </button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -123,7 +174,33 @@ export function ServiceFlowItem({
         value={item.duration_seconds}
         onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
       />
-      <span className="flex-1 text-sm">{item.title}</span>
+      {isEditingTitle ? (
+        <Input
+          value={titleDraft}
+          onChange={(e) => setTitleDraft(e.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitTitle();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancelTitleEdit();
+            }
+          }}
+          autoFocus
+          className="h-8 flex-1 text-sm"
+        />
+      ) : (
+        <button
+          type="button"
+          className="flex-1 text-left text-sm hover:text-foreground"
+          onClick={() => setIsEditingTitle(true)}
+          title="Click to edit title"
+        >
+          {item.title}
+        </button>
+      )}
       <Button
         variant="ghost"
         size="icon"

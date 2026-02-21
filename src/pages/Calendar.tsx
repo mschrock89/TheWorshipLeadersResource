@@ -743,6 +743,7 @@ function StandardCalendar() {
                           planDate={service.occurrence_date}
                           campusId={service.campus_id}
                           ministryType={service.ministry_type}
+                          serviceName={service.service_name}
                         />
                         <CustomServiceRoster
                           customServiceId={service.id}
@@ -1474,15 +1475,23 @@ function CustomServiceSongsPreview({
   planDate,
   campusId,
   ministryType,
+  serviceName,
 }: {
   customServiceId: string;
   planDate: string;
   campusId: string;
   ministryType: string;
+  serviceName: string;
 }) {
-  const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, ministryType, planDate, customServiceId);
+  const effectiveMinistryType = useMemo(() => {
+    if (ministryType === "prayer_night") return "prayer_night";
+    if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
+    return ministryType;
+  }, [ministryType, serviceName]);
+
+  const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
-  const serviceFlowLink = `/service-flow?date=${planDate}&campus=${campusId}&ministry=${ministryType}&customServiceId=${customServiceId}${existingSet?.id ? `&draftSetId=${existingSet.id}` : ""}`;
+  const serviceFlowLink = `/service-flow?date=${planDate}&campus=${campusId}&ministry=${effectiveMinistryType}&customServiceId=${customServiceId}${existingSet?.id ? `&draftSetId=${existingSet.id}` : ""}`;
 
   if (isSetLoading || isSongsLoading) {
     return <div className="mb-4">
@@ -1535,7 +1544,7 @@ function CustomServiceSongsPreview({
       </div>
       <CustomServiceFlowTitleEditor
         campusId={campusId}
-        ministryType={ministryType}
+        ministryType={effectiveMinistryType}
         planDate={planDate}
         customServiceId={customServiceId}
         draftSetId={existingSet?.id || null}

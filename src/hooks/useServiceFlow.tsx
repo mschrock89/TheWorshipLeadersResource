@@ -405,6 +405,17 @@ function normalizeTitle(title: string): string {
     .trim();
 }
 
+function isTemplateSongPlaceholder(templateItem: {
+  item_type?: string | null;
+  title?: string | null;
+}): boolean {
+  if (templateItem.item_type === "song_placeholder") return true;
+  const title = (templateItem.title || "").trim();
+  // Backward compatibility: older templates used literal labels like "Song 1", "Song 2"
+  // as placeholder rows instead of item_type = "song_placeholder".
+  return /^song\s*\d+\b/i.test(title);
+}
+
 // Helper to calculate song durations from reference track markers
 type MarkerDurations = {
   byTitle: Map<string, number>;
@@ -567,12 +578,12 @@ export async function generateServiceFlowFromTemplate(params: {
     PRAYER_NIGHT_PATTERN.test(customService?.service_name || "");
 
   // Resolve template ministry:
-  // - Prayer Night services should use prayer_night templates first
-  // - fallback to weekend template for legacy setups
+  // - Prayer Night services should use prayer_night templates only.
+  //   If missing, we'll still generate a flow from songs without applying weekend templates.
   const templateMinistryCandidates = Array.from(
     new Set(
       isPrayerNightService
-        ? ["prayer_night", "weekend", params.ministryType]
+        ? ["prayer_night"]
         : [params.ministryType]
     )
   );
@@ -606,7 +617,7 @@ export async function generateServiceFlowFromTemplate(params: {
   // Check if service flow already exists
   let { data: existingFlow } = await supabase
     .from("service_flows")
-    .select("id")
+    .select("id, ministry_type, custom_service_id, created_from_template_id")
     .eq("draft_set_id", params.draftSetId)
     .maybeSingle();
 
@@ -615,7 +626,7 @@ export async function generateServiceFlowFromTemplate(params: {
   if (!existingFlow) {
     const scopedBase = supabase
       .from("service_flows")
-      .select("id")
+      .select("id, ministry_type, custom_service_id, created_from_template_id")
       .eq("campus_id", params.campusId)
       .eq("ministry_type", resolvedMinistryType)
       .eq("service_date", params.serviceDate)
@@ -633,7 +644,7 @@ export async function generateServiceFlowFromTemplate(params: {
         }
         const scopedFallback = await supabase
           .from("service_flows")
-          .select("id")
+          .select("id, ministry_type, custom_service_id, created_from_template_id")
           .eq("campus_id", params.campusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
@@ -653,7 +664,7 @@ export async function generateServiceFlowFromTemplate(params: {
         }
         const scopedFallback = await supabase
           .from("service_flows")
-          .select("id")
+          .select("id, ministry_type, custom_service_id, created_from_template_id")
           .eq("campus_id", params.campusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
@@ -670,10 +681,18 @@ export async function generateServiceFlowFromTemplate(params: {
 
   if (existingFlow) {
     // Update existing flow linkage and ensure it has items.
+    const existingFlowMeta = existingFlow as {
+      id: string;
+      ministry_type?: string | null;
+      custom_service_id?: string | null;
+      created_from_template_id?: string | null;
+    };
+
     const updatePayloadWithCustom = {
       draft_set_id: params.draftSetId,
       ministry_type: resolvedMinistryType,
       custom_service_id: resolvedCustomServiceId,
+      created_from_template_id: template?.id || null,
     };
     const { error: updateWithCustomError } = await supabase
       .from("service_flows")
@@ -688,6 +707,7 @@ export async function generateServiceFlowFromTemplate(params: {
         .update({
           draft_set_id: params.draftSetId,
           ministry_type: resolvedMinistryType,
+          created_from_template_id: template?.id || null,
         })
         .eq("id", existingFlow.id);
       if (updateFallbackError) throw updateFallbackError;
@@ -699,7 +719,21 @@ export async function generateServiceFlowFromTemplate(params: {
       .eq("service_flow_id", existingFlow.id)
       .order("sequence_order", { ascending: true });
 
-    if (existingItems && existingItems.length > 0) {
+    const hasLegacyPlaceholderRows = (existingItems || []).some((item: any) =>
+      item.item_type !== "song" &&
+      /^song\s*\d+\b/i.test((item.title || "").trim())
+    );
+
+    const requiresTemplateResync =
+      !!template &&
+      (
+        (existingFlowMeta.created_from_template_id || null) !== (template.id || null) ||
+        (existingFlowMeta.ministry_type || null) !== resolvedMinistryType ||
+        (existingFlowMeta.custom_service_id || null) !== (resolvedCustomServiceId || null) ||
+        hasLegacyPlaceholderRows
+      );
+
+    if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
       const updates: Promise<any>[] = [];
       const songItems = (existingItems as any[]).filter((i) => i.item_type === "song");
 
@@ -722,6 +756,14 @@ export async function generateServiceFlowFromTemplate(params: {
         await Promise.all(updates);
       }
       return existingFlow.id;
+    }
+
+    if (existingItems && existingItems.length > 0 && requiresTemplateResync) {
+      const { error: deleteItemsError } = await supabase
+        .from("service_flow_items")
+        .delete()
+        .eq("service_flow_id", existingFlow.id);
+      if (deleteItemsError) throw deleteItemsError;
     }
 
     // If flow exists but has no items, populate it below using template/song data.
@@ -761,7 +803,7 @@ export async function generateServiceFlowFromTemplate(params: {
           }> = [];
 
           for (const templateItem of templateItems) {
-            if (templateItem.item_type === "song_placeholder") {
+            if (isTemplateSongPlaceholder(templateItem)) {
               if (songIndex < params.songs.length) {
                 const song = params.songs[songIndex];
                 const markerDuration = getDurationForSong(song.title, songIndex);
@@ -916,7 +958,7 @@ export async function generateServiceFlowFromTemplate(params: {
       }> = [];
 
       for (const templateItem of templateItems) {
-        if (templateItem.item_type === "song_placeholder") {
+        if (isTemplateSongPlaceholder(templateItem)) {
           // Expand song placeholders into actual songs
           if (songIndex < params.songs.length) {
             const song = params.songs[songIndex];
