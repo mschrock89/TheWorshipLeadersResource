@@ -215,6 +215,7 @@ export function useMyTeamAssignments() {
       const swappedInDates = new Map<string, typeof acceptedSwaps[0]>(); // Dates user accepted
 
       for (const swap of acceptedSwaps) {
+        const isDirectSwap = Boolean(swap.swap_date) || swap.request_type === "swap";
         if (swap.requester_id === user.id) {
           // User gave away their original_date
           swappedOutDates.add(swap.original_date);
@@ -225,7 +226,7 @@ export function useMyTeamAssignments() {
           }
           
           // For a "swap" request_type, they also receive swap_date in return
-          if (swap.request_type === "swap" && swap.swap_date) {
+          if (isDirectSwap && swap.swap_date) {
             swappedInDates.set(swap.swap_date, swap);
             if (shouldExpandSwapToWeekendPair(swap)) {
               const swapPair = getWeekendPair(swap.swap_date);
@@ -240,7 +241,7 @@ export function useMyTeamAssignments() {
             if (originalPair) swappedInDates.set(originalPair, swap);
           }
           
-          if (swap.request_type === "swap" && swap.swap_date) {
+          if (isDirectSwap && swap.swap_date) {
             // User gave away swap_date in return
             swappedOutDates.add(swap.swap_date);
             if (shouldExpandSwapToWeekendPair(swap)) {

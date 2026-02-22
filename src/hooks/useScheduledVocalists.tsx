@@ -161,7 +161,9 @@ export function useScheduledVocalists(
 
       for (const swap of swapsForDate || []) {
         if (swap.requester_id && swap.accepted_by_id) {
-          const isCover = (swap as any).request_type === 'fill_in';
+          // If swap_date exists, treat as direct swap even if request_type is stale.
+          const isDirectSwap = Boolean(swap.swap_date) || (swap as any).request_type === "swap";
+          const isCover = !isDirectSwap;
           
           if (isCover) {
             // Cover request: requester is OUT for ALL their positions
@@ -323,4 +325,3 @@ export function useScheduledVocalists(
     enabled: !!dateStr && !!campusId,
   });
 }
-

@@ -210,6 +210,10 @@ export function useCreateSwapRequest() {
       message?: string | null;
       request_type?: SwapRequestType;
     }) => {
+      // Defensive normalization: a request with a swap_date is always a direct swap.
+      const normalizedRequestType: SwapRequestType =
+        request.swap_date ? "swap" : (request.request_type || "swap");
+
       const { data, error } = await supabase
         .from("swap_requests")
         .insert({
@@ -220,7 +224,7 @@ export function useCreateSwapRequest() {
           position: request.position,
           team_id: request.team_id,
           message: request.message || null,
-          request_type: request.request_type || "swap",
+          request_type: normalizedRequestType,
         })
         .select()
         .single();
@@ -262,8 +266,20 @@ export function useRespondToSwapRequest() {
       };
 
       if (action === "accept") {
+        // Normalize legacy/misclassified requests: if swap_date exists, this should be a swap.
+        const { data: existingRequest, error: existingRequestError } = await supabase
+          .from("swap_requests")
+          .select("request_type, swap_date")
+          .eq("id", requestId)
+          .single();
+
+        if (existingRequestError) throw existingRequestError;
+
         updateData.status = "accepted";
         updateData.accepted_by_id = user!.id;
+        if (existingRequest?.swap_date) {
+          updateData.request_type = "swap";
+        }
       } else if (action === "decline") {
         updateData.status = "declined";
       } else if (action === "cancel") {

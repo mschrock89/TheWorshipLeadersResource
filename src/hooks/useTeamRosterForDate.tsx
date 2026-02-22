@@ -187,7 +187,9 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
         if (swap.requester_id && swap.accepted_by_id) {
           // Type assertion for request_type since it's included in the select
           const swapWithType = swap as typeof swap & { request_type?: string };
-          const isCover = swapWithType.request_type === 'fill_in';
+          // If swap_date exists, this is a direct swap even if legacy data marked request_type incorrectly.
+          const isDirectSwap = Boolean(swap.swap_date) || swapWithType.request_type === "swap";
+          const isCover = !isDirectSwap;
 
           if (isCover) {
             // Cover request: requester is OUT for ALL their positions, accepter takes over ALL
