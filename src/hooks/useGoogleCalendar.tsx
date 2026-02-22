@@ -43,12 +43,60 @@ export interface GoogleCalendarOption {
   accessRole: string;
 }
 
+async function getAuthHeaders() {
+  let { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    const refreshed = await supabase.auth.refreshSession();
+    session = refreshed.data.session ?? null;
+  }
+
+  if (session?.access_token) {
+    const { data: userData, error: userError } = await supabase.auth.getUser(session.access_token);
+    if (userError || !userData?.user) {
+      const refreshed = await supabase.auth.refreshSession();
+      session = refreshed.data.session ?? null;
+    }
+  }
+
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  return session?.access_token
+    ? {
+        Authorization: `Bearer ${session.access_token}`,
+        ...(anonKey ? { apikey: anonKey } : {}),
+      }
+    : undefined;
+}
+
 export function useGoogleCalendarConnection() {
   return useQuery({
     queryKey: ["google-calendar-connection"],
+    retry: false,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("google-calendar-status");
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      if (!headers) {
+        return {
+          connected: false,
+          connection: null,
+          isAdmin: false,
+          recentFailures: [],
+        } as GoogleCalendarStatusResponse;
+      }
+
+      const { data, error } = await supabase.functions.invoke("google-calendar-status", { headers });
+      if (error) {
+        const status = (error as unknown as { context?: { status?: number } })?.context?.status;
+        // During OAuth redirects/mobile webview handoff, auth can be temporarily missing.
+        // Treat 401 as disconnected instead of hard-failing the settings page.
+        if (status === 401) {
+          return {
+            connected: false,
+            connection: null,
+            isAdmin: false,
+            recentFailures: [],
+          } as GoogleCalendarStatusResponse;
+        }
+        throw error;
+      }
       return (data || {
         connected: false,
         connection: null,
@@ -64,9 +112,12 @@ export function useStartGoogleCalendarAuth() {
 
   return useMutation({
     mutationFn: async () => {
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Not authenticated");
       const redirectUri = `${window.location.origin}/settings/planning-center`;
       const { data, error } = await supabase.functions.invoke("google-calendar-auth-start", {
         body: { redirectUri },
+        headers,
       });
       if (error) throw error;
       return data?.authUrl as string;
@@ -95,8 +146,12 @@ export function useSaveGoogleCalendarConnection() {
 
   return useMutation({
     mutationFn: async (connectionCode: string) => {
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Not authenticated");
+
       const { data, error } = await supabase.functions.invoke("google-calendar-save-connection", {
         body: { connectionCode },
+        headers,
       });
       if (error) throw error;
       return data;
@@ -124,7 +179,9 @@ export function useDisconnectGoogleCalendar() {
 
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("google-calendar-disconnect");
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Not authenticated");
+      const { data, error } = await supabase.functions.invoke("google-calendar-disconnect", { headers });
       if (error) throw error;
       return data;
     },
@@ -148,9 +205,16 @@ export function useDisconnectGoogleCalendar() {
 export function useGoogleCalendars(enabled: boolean) {
   return useQuery({
     queryKey: ["google-calendar-list"],
+    retry: false,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("google-calendar-list-calendars");
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      if (!headers) return [] as GoogleCalendarOption[];
+      const { data, error } = await supabase.functions.invoke("google-calendar-list-calendars", { headers });
+      if (error) {
+        const status = (error as unknown as { context?: { status?: number } })?.context?.status;
+        if (status === 401) return [] as GoogleCalendarOption[];
+        throw error;
+      }
       return (data?.calendars || []) as GoogleCalendarOption[];
     },
     enabled,
@@ -168,8 +232,11 @@ export function useUpdateGoogleCalendarSettings() {
       syncSetlists?: boolean;
       syncEvents?: boolean;
     }) => {
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Not authenticated");
       const { data, error } = await supabase.functions.invoke("google-calendar-update-settings", {
         body: settings,
+        headers,
       });
       if (error) throw error;
       return data;
@@ -194,7 +261,9 @@ export function useResyncGoogleCalendar() {
 
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("google-calendar-resync");
+      const headers = await getAuthHeaders();
+      if (!headers) throw new Error("Not authenticated");
+      const { data, error } = await supabase.functions.invoke("google-calendar-resync", { headers });
       if (error) throw error;
       return data as { success: boolean; setlistSynced: number; eventsSynced: number };
     },
