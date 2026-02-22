@@ -15,6 +15,12 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Loader2, Link2, Unlink, RefreshCw, CheckCircle2, AlertCircle, UserX, Home, Music } from "lucide-react";
 import { usePcoConnection, useStartPcoAuth, useSavePcoConnection, useDisconnectPco, useSyncPcoTeam, useSyncPcoPlans, useUpdatePcoSettings } from "@/hooks/usePlanningCenter";
+import {
+  useDisconnectGoogleCalendar,
+  useGoogleCalendarConnection,
+  useSaveGoogleCalendarConnection,
+  useStartGoogleCalendarAuth,
+} from "@/hooks/useGoogleCalendar";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
@@ -34,11 +40,17 @@ export default function PlanningCenter() {
   const syncTeam = useSyncPcoTeam();
   const syncPlans = useSyncPcoPlans();
   const updateSettings = useUpdatePcoSettings();
+  const { data: googleConnection, isLoading: googleConnectionLoading } = useGoogleCalendarConnection();
+  const startGoogleAuth = useStartGoogleCalendarAuth();
+  const saveGoogleConnection = useSaveGoogleCalendarConnection();
+  const disconnectGoogle = useDisconnectGoogleCalendar();
 
   // Handle OAuth callback
   useEffect(() => {
     const connectionCode = searchParams.get("pco_connection");
+    const googleConnectionCode = searchParams.get("google_connection");
     const error = searchParams.get("error");
+    const googleError = searchParams.get("google_error");
 
     if (connectionCode) {
       saveConnection.mutate(connectionCode);
@@ -46,11 +58,20 @@ export default function PlanningCenter() {
       setSearchParams({});
     }
 
+    if (googleConnectionCode) {
+      saveGoogleConnection.mutate(googleConnectionCode);
+      setSearchParams({});
+    }
+
     if (error) {
       // Error is shown via toast in the hook
       setSearchParams({});
     }
-  }, [searchParams, saveConnection, setSearchParams]);
+
+    if (googleError) {
+      setSearchParams({});
+    }
+  }, [searchParams, saveConnection, saveGoogleConnection, setSearchParams]);
 
   const handleConnect = () => {
     startAuth.mutate(selectedCampus === "all" ? undefined : selectedCampus || undefined);
@@ -81,6 +102,16 @@ export default function PlanningCenter() {
   }
 
   if (connectionLoading) {
+    return (
+      <>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </>
+    );
+  }
+
+  if (googleConnectionLoading) {
     return (
       <>
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -354,6 +385,73 @@ export default function PlanningCenter() {
                   You'll be redirected to Planning Center to authorize access.
                 </p>
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {googleConnection ? (
+                <>
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  Google Calendar Connected
+                </>
+              ) : (
+                <>
+                  <Link2 className="h-5 w-5" />
+                  Google Calendar
+                </>
+              )}
+            </CardTitle>
+            <CardDescription>
+              {googleConnection
+                ? "Automatically sync published setlists and events to your Google Calendar."
+                : "Connect Google Calendar to auto-sync your published setlists and team events."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {googleConnection ? (
+              <>
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-muted-foreground">Google Account</dt>
+                    <dd className="text-foreground text-right">{googleConnection.google_email || "Connected"}</dd>
+                    <dt className="text-muted-foreground">Calendar</dt>
+                    <dd className="text-foreground text-right">{googleConnection.calendar_id}</dd>
+                    <dt className="text-muted-foreground">Connected</dt>
+                    <dd className="text-foreground text-right">
+                      {format(new Date(googleConnection.connected_at), "MMM d, yyyy 'at' h:mm a")}
+                    </dd>
+                  </dl>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => disconnectGoogle.mutate()}
+                  disabled={disconnectGoogle.isPending}
+                  className="w-full"
+                >
+                  {disconnectGoogle.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Unlink className="h-4 w-4 mr-2" />
+                  )}
+                  Disconnect Google Calendar
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => startGoogleAuth.mutate()}
+                disabled={startGoogleAuth.isPending}
+                className="w-full"
+              >
+                {startGoogleAuth.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Link2 className="h-4 w-4 mr-2" />
+                )}
+                Connect Google Calendar
+              </Button>
             )}
           </CardContent>
         </Card>

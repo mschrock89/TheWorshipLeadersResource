@@ -305,6 +305,17 @@ export function useRespondToSwapRequest() {
           console.error("Failed to send swap notification:", notifyError);
           // Don't throw - the swap was successful, notification is secondary
         }
+
+        try {
+          await supabase.functions.invoke("google-calendar-sync", {
+            body: {
+              action: "sync_swap",
+              swapRequestId: requestId,
+            },
+          });
+        } catch (calendarSyncError) {
+          console.error("Failed to sync Google Calendar for swap:", calendarSyncError);
+        }
       }
 
       return data;

@@ -53,6 +53,13 @@ export function ServiceFlowItem({
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+  const vocalistDisplay = (item.vocalists && item.vocalists.length > 0)
+    ? item.vocalists
+        .map((v) => v.full_name || "")
+        .filter(Boolean)
+        .join(", ")
+    : (item.vocalist?.full_name || "");
+
   if (item.item_type === "header") {
     return (
       <div
@@ -123,11 +130,11 @@ export function ServiceFlowItem({
           onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
         />
         <Music className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <span className="flex-1 font-medium text-sm truncate">
+        <span className="service-flow-song-title flex-1 min-w-0 font-medium text-sm truncate">
           {item.song?.title || item.title}
         </span>
         {item.song?.bpm && (
-          <span className="text-xs text-muted-foreground font-medium">
+          <span className="service-flow-song-bpm text-xs text-muted-foreground font-medium whitespace-nowrap">
             {item.song.bpm} BPM
           </span>
         )}
@@ -139,9 +146,9 @@ export function ServiceFlowItem({
             {item.song_key}
           </Badge>
         )}
-        {item.vocalist?.full_name && (
-          <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-            {item.vocalist.full_name}
+        {vocalistDisplay && (
+          <span className="service-flow-song-vocalist text-xs text-muted-foreground whitespace-nowrap">
+            {vocalistDisplay}
           </span>
         )}
         {/* Attachment count placeholder - future feature */}

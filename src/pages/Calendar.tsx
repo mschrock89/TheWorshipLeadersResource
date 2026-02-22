@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, CalendarPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -38,8 +38,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
+import { toast } from "sonner";
+import { openGoogleCalendar } from "@/lib/googleCalendar";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function parseDateTime(dateStr: string, timeStr?: string | null): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!timeStr) return new Date(year, month - 1, day, 12, 0, 0, 0);
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
+}
 const teamIcons: Record<string, React.ElementType> = {
   star: Star,
   heart: Heart,
@@ -72,6 +81,7 @@ function StandardCalendar() {
     ministry_type: "weekend",
     campus_id: "",
     repeats_weekly: false,
+    send_invite: true,
   });
 
   // Scroll to top on mount
@@ -447,14 +457,83 @@ function StandardCalendar() {
         repeats_weekly: newEvent.repeats_weekly,
       });
     } else {
-      await createEvent.mutateAsync({
+      const selectedCampusId = newEvent.campus_id || (campusFilter && campusFilter !== "network-wide" ? campusFilter : "");
+      if (!selectedCampusId) return;
+
+      const createdEvent = await createEvent.mutateAsync({
         title: newEvent.title,
         description: newEvent.description || undefined,
         event_date: dateStr,
         start_time: newEvent.start_time || undefined,
         end_time: newEvent.end_time || undefined,
-        campus_id: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
+        campus_id: selectedCampusId,
       });
+
+      let inviteUserIds: string[] = [];
+      if (newEvent.send_invite) {
+        try {
+          const weekendAliases = ["weekend", "weekend_team", "sunday_am"];
+          let recipientsQuery = supabase
+            .from("user_campus_ministry_positions")
+            .select("user_id")
+            .eq("campus_id", selectedCampusId);
+
+          if (newEvent.ministry_type === "weekend_team") {
+            recipientsQuery = recipientsQuery.in("ministry_type", weekendAliases);
+          } else {
+            recipientsQuery = recipientsQuery.eq("ministry_type", newEvent.ministry_type);
+          }
+
+          const { data: recipients, error: recipientsError } = await recipientsQuery;
+          if (recipientsError) throw recipientsError;
+
+          inviteUserIds = Array.from(
+            new Set(
+              (recipients || [])
+                .map((row) => row.user_id)
+                .filter((id): id is string => Boolean(id && id !== user?.id))
+            )
+          );
+
+          if (inviteUserIds.length > 0) {
+            const campusName = campuses.find((c) => c.id === selectedCampusId)?.name || "Campus";
+            const ministryLabel =
+              MINISTRY_TYPES.find((m) => m.value === newEvent.ministry_type)?.label || "Ministry";
+            const timeLabel = newEvent.start_time
+              ? ` at ${formatTime(newEvent.start_time)}`
+              : "";
+
+            await supabase.functions.invoke("send-push-notification", {
+              body: {
+                title: "Event Invite",
+                message: `${newEvent.title} • ${campusName} • ${ministryLabel} on ${new Date(`${dateStr}T00:00:00`).toLocaleDateString()}${timeLabel}`,
+                url: "/calendar",
+                tag: `event-invite-${dateStr}-${selectedCampusId}-${newEvent.ministry_type}`,
+                userIds: inviteUserIds,
+              },
+            });
+            toast.success(`Invite sent to ${inviteUserIds.length} team member${inviteUserIds.length === 1 ? "" : "s"}.`);
+          } else {
+            toast.info("No matching team members found for this campus + ministry.");
+          }
+        } catch (inviteError) {
+          console.error("Failed to send event invite:", inviteError);
+          toast.error("Event created, but invite notification failed.");
+        }
+      }
+
+      try {
+        const syncUserIds = Array.from(new Set([...(inviteUserIds || []), ...(user?.id ? [user.id] : [])]));
+        await supabase.functions.invoke("google-calendar-sync", {
+          body: {
+            action: "sync_event",
+            eventId: createdEvent.id,
+            userIds: syncUserIds,
+          },
+        });
+      } catch (syncError) {
+        console.error("Failed to sync Google Calendar event:", syncError);
+      }
     }
     setNewEvent({
       event_type: "team_event",
@@ -465,6 +544,7 @@ function StandardCalendar() {
       ministry_type: "weekend",
       campus_id: "",
       repeats_weekly: false,
+      send_invite: true,
     });
     setIsAddOpen(false);
   };
@@ -476,6 +556,37 @@ function StandardCalendar() {
     const h12 = h % 12 || 12;
     return `${h12}:${minutes} ${ampm}`;
   };
+
+  const addCustomServiceToGoogleCalendar = (service: (typeof selectedDayServices)[number]) => {
+    const start = parseDateTime(service.occurrence_date, service.start_time);
+    const end = parseDateTime(service.occurrence_date, service.end_time ?? service.start_time);
+    const campusName = campuses.find((c) => c.id === service.campus_id)?.name;
+
+    openGoogleCalendar({
+      title: service.service_name,
+      description: `Ministry: ${MINISTRY_TYPES.find((m) => m.value === service.ministry_type)?.label || service.ministry_type}\nType: Service`,
+      location: campusName || undefined,
+      start,
+      end,
+      allDay: false,
+    });
+  };
+
+  const addEventToGoogleCalendar = (event: Event) => {
+    const start = parseDateTime(event.event_date, event.start_time);
+    const end = parseDateTime(event.event_date, event.end_time ?? event.start_time);
+    const campusName = campuses.find((c) => c.id === event.campus_id)?.name;
+
+    openGoogleCalendar({
+      title: event.title,
+      description: event.description || undefined,
+      location: campusName || undefined,
+      start,
+      end,
+      allDay: !event.start_time && !event.end_time,
+    });
+  };
+
   return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
       <div className="min-h-screen bg-background p-3 md:p-6 overflow-x-hidden">
         <div className="mx-auto max-w-4xl w-full">
@@ -827,6 +938,47 @@ function StandardCalendar() {
                           description: e.target.value
                         })} placeholder="Event description" />
                               </div>}
+                            {newEvent.event_type === "team_event" && <>
+                                <div>
+                                  <Label htmlFor="event-campus">Campus</Label>
+                                  <Select value={newEvent.campus_id} onValueChange={value => setNewEvent({
+                            ...newEvent,
+                            campus_id: value
+                          })}>
+                                    <SelectTrigger id="event-campus">
+                                      <SelectValue placeholder="Select campus" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(isCampusAdmin ? campuses : userCampuses.map(uc => uc.campuses).filter(Boolean)).map(campus => <SelectItem key={campus?.id} value={campus?.id || ""}>
+                                          {campus?.name}
+                                        </SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label htmlFor="event-ministry">Ministry</Label>
+                                  <Select value={newEvent.ministry_type} onValueChange={value => setNewEvent({
+                            ...newEvent,
+                            ministry_type: value
+                          })}>
+                                    <SelectTrigger id="event-ministry">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition").map(option => <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Checkbox id="send-invite" checked={newEvent.send_invite} onCheckedChange={checked => setNewEvent({
+                            ...newEvent,
+                            send_invite: Boolean(checked)
+                          })} />
+                                  <Label htmlFor="send-invite" className="font-normal">Send invite notification</Label>
+                                </div>
+                              </>}
                             {newEvent.event_type === "service" && <>
                                 <div>
                                   <Label htmlFor="service-campus">Campus</Label>
@@ -884,7 +1036,7 @@ function StandardCalendar() {
                           })} />
                                 <Label htmlFor="repeats_weekly" className="font-normal">Repeat weekly</Label>
                               </div>}
-                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || createEvent.isPending || createCustomService.isPending} className="w-full">
+                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && !newEvent.campus_id) || createEvent.isPending || createCustomService.isPending} className="w-full">
                               {createEvent.isPending || createCustomService.isPending ? "Creating..." : newEvent.event_type === "service" ? "Create Service" : "Create Event"}
                             </Button>
                           </div>
@@ -906,7 +1058,18 @@ function StandardCalendar() {
                                 {formatTime(service.end_time)}
                               </p>}
                           </div>
-                          <Badge variant="secondary">Service</Badge>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => addCustomServiceToGoogleCalendar(service)}
+                            >
+                              <CalendarPlus className="h-3.5 w-3.5 mr-1" />
+                              Add To Google
+                            </Button>
+                            <Badge variant="secondary">Service</Badge>
+                          </div>
                         </div>
                         {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 text-destructive hover:bg-destructive/10">
                             <Trash2 className="h-4 w-4" />
@@ -914,7 +1077,7 @@ function StandardCalendar() {
                       </div>;
                   })}
                   {selectedDayEvents.map(event => <div key={event.id} className="flex items-start justify-between rounded-md border-l-4 border-primary bg-muted/50 p-3">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-medium text-foreground">{event.title}</h3>
                         {event.description && <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>}
                         {(event.start_time || event.end_time) && <p className="mt-1 text-xs text-primary">
@@ -922,6 +1085,15 @@ function StandardCalendar() {
                             {event.start_time && event.end_time && " – "}
                             {formatTime(event.end_time)}
                           </p>}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 h-7 px-2 text-xs"
+                          onClick={() => addEventToGoogleCalendar(event)}
+                        >
+                          <CalendarPlus className="h-3.5 w-3.5 mr-1" />
+                          Add To Google
+                        </Button>
                       </div>
                       {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteEvent.mutate(event.id)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-4 w-4" />
@@ -1455,9 +1627,17 @@ function SongsPreview({
                 </Badge>}
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-2">
-              {song.vocalist?.name && <span className="text-xs text-primary/70">
-                  {song.vocalist.name.split(' ')[0]}
-                </span>}
+              {(() => {
+                const vocalists = Array.isArray((song as any).vocalists) && (song as any).vocalists.length > 0
+                  ? (song as any).vocalists
+                  : ((song as any).vocalist ? [(song as any).vocalist] : []);
+                if (vocalists.length === 0) return null;
+                const label = vocalists
+                  .map((v: any) => (v?.name || "").split(" ")[0])
+                  .filter(Boolean)
+                  .join(", ");
+                return <span className="text-xs text-primary/70">{label}</span>;
+              })()}
               {song.key && <Badge variant="outline" className="text-xs">
                   {song.key}
                 </Badge>}

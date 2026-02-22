@@ -831,7 +831,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       const profilesMap = new Map((allBasicProfiles || []).map(p => [p.id, p]));
 
       // First, fetch draft_set songs to get vocalist assignments (we'll use these to enrich PCO songs too)
-      let vocalistBySongId = new Map<string, { id: string; name: string; avatarUrl: string | null }>();
+      let vocalistBySongId = new Map<string, { id: string; name: string; avatarUrl: string | null }[]>();
       
       if (filteredDraftSets.length > 0) {
         const draftSetIds = filteredDraftSets.map(ds => ds.id);
@@ -848,23 +848,48 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
 
         if (draftSongsError) throw draftSongsError;
 
+        const draftSongIds = (draftSongs || []).map((s: any) => s.id);
+        const { data: junctionVocalists } = await supabase
+          .from("draft_set_song_vocalists")
+          .select("draft_set_song_id, vocalist_id")
+          .in("draft_set_song_id", draftSongIds.length > 0 ? draftSongIds : ["00000000-0000-0000-0000-000000000000"]);
+
+        const junctionMap = new Map<string, string[]>();
+        for (const row of junctionVocalists || []) {
+          const existing = junctionMap.get(row.draft_set_song_id) || [];
+          existing.push(row.vocalist_id);
+          junctionMap.set(row.draft_set_song_id, existing);
+        }
+
         // Enrich draft songs with vocalist data from the profiles map
-        const enrichedDraftSongs = (draftSongs || []).map(dss => ({
-          ...dss,
-          vocalist: dss.vocalist_id ? profilesMap.get(dss.vocalist_id) || null : null
-        }));
+        const enrichedDraftSongs = (draftSongs || []).map(dss => {
+          const vocalistIds = (junctionMap.get(dss.id) || []).length > 0
+            ? (junctionMap.get(dss.id) || [])
+            : (dss.vocalist_id ? [dss.vocalist_id] : []);
+
+          const vocalists = vocalistIds
+            .map((id) => profilesMap.get(id))
+            .filter(Boolean)
+            .map((profile: any) => ({
+              id: profile.id,
+              name: profile.full_name,
+              avatarUrl: profile.avatar_url,
+            }));
+
+          return {
+            ...dss,
+            vocalist: vocalists[0] || null,
+            vocalists,
+          };
+        });
 
         // Build a map of song_id -> vocalist for each campus/ministry combo
         // This allows us to enrich PCO songs with vocalist data from published draft sets
         for (const dss of enrichedDraftSongs) {
-          if (dss.vocalist) {
+          if (dss.vocalists?.length) {
             // Use song_id + campus_id as key to handle same song at different campuses
             const key = `${dss.song_id}-${dss.draft_set?.campus_id}`;
-            vocalistBySongId.set(key, {
-              id: dss.vocalist.id,
-              name: dss.vocalist.full_name,
-              avatarUrl: dss.vocalist.avatar_url
-            });
+            vocalistBySongId.set(key, dss.vocalists);
           }
         }
 
@@ -911,13 +936,14 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
               .filter(ps => ps.plan_id === plan.id)
               .map(ps => {
                 const vocalistKey = `${ps.song_id}-${plan.campus_id}`;
-                const vocalist = vocalistBySongId.get(vocalistKey);
+                const vocalists = vocalistBySongId.get(vocalistKey) || [];
                 return { 
                   ...ps.song, 
                   key: ps.song_key, 
                   sequence: ps.sequence_order,
                   isFirstUse: (priorUsesMap.get(ps.song_id) || 0) === 0,
-                  vocalist: vocalist || null,
+                  vocalist: vocalists[0] || null,
+                  vocalists,
                 };
               }),
           });
@@ -974,11 +1000,8 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
                   key: dss.song_key,
                   sequence: dss.sequence_order,
                   isFirstUse: (priorUsesMap.get(dss.song?.id) || 0) === 0,
-                  vocalist: dss.vocalist ? {
-                    id: dss.vocalist.id,
-                    name: dss.vocalist.full_name,
-                    avatarUrl: dss.vocalist.avatar_url
-                  } : null,
+                  vocalist: dss.vocalist || null,
+                  vocalists: dss.vocalists || [],
                 })),
             });
           }

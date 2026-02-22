@@ -48,6 +48,11 @@ export interface ServiceFlowItem {
     full_name: string | null;
     avatar_url: string | null;
   } | null;
+  vocalists?: Array<{
+    id: string;
+    full_name: string | null;
+    avatar_url: string | null;
+  }>;
 }
 
 export function useServiceFlow(
@@ -189,7 +194,49 @@ export function useServiceFlowItems(serviceFlowId: string | null) {
         .order("sequence_order", { ascending: true });
       
       if (error) throw error;
-      return data as ServiceFlowItem[];
+      const items = (data || []) as ServiceFlowItem[];
+
+      const itemIds = items.map((i) => i.id);
+      if (itemIds.length === 0) return items;
+
+      const { data: flowItemVocalists, error: flowItemVocalistsError } = await supabase
+        .from("service_flow_item_vocalists")
+        .select(`
+          service_flow_item_id,
+          vocalist:profiles(id, full_name, avatar_url)
+        `)
+        .in("service_flow_item_id", itemIds);
+
+      if (flowItemVocalistsError) throw flowItemVocalistsError;
+
+      const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
+      for (const row of (flowItemVocalists || []) as any[]) {
+        const vocalist = row.vocalist;
+        if (!vocalist || !row.service_flow_item_id) continue;
+        const existing = byItemId.get(row.service_flow_item_id) || [];
+        existing.push({
+          id: vocalist.id,
+          full_name: vocalist.full_name,
+          avatar_url: vocalist.avatar_url,
+        });
+        byItemId.set(row.service_flow_item_id, existing);
+      }
+
+      return items.map((item) => {
+        const linked = byItemId.get(item.id) || [];
+        // Always include legacy single vocalist_id as fallback/first vocalist.
+        if (item.vocalist && !linked.some((v) => v.id === item.vocalist!.id)) {
+          linked.unshift({
+            id: item.vocalist.id,
+            full_name: item.vocalist.full_name,
+            avatar_url: item.vocalist.avatar_url,
+          });
+        }
+        return {
+          ...item,
+          vocalists: linked,
+        };
+      });
     },
     enabled: !!serviceFlowId,
   });
@@ -534,6 +581,7 @@ export async function generateServiceFlowFromTemplate(params: {
     title: string;
     key?: string | null;
     vocalistId?: string | null;
+    vocalistIds?: string[];
   }>;
 }) {
   const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
@@ -613,6 +661,122 @@ export async function generateServiceFlowFromTemplate(params: {
     params.serviceDate,
     params.draftSetId
   );
+
+  const syncServiceFlowSongVocalists = async (serviceFlowId: string) => {
+    const { data: draftSongs, error: draftSongsError } = await supabase
+      .from("draft_set_songs")
+      .select("id, sequence_order, vocalist_id")
+      .eq("draft_set_id", params.draftSetId)
+      .order("sequence_order", { ascending: true });
+    if (draftSongsError || !draftSongs || draftSongs.length === 0) return;
+
+    const draftSongIds = draftSongs.map((s: any) => s.id);
+    const { data: draftSongVocalists } = await supabase
+      .from("draft_set_song_vocalists")
+      .select("draft_set_song_id, vocalist_id")
+      .in("draft_set_song_id", draftSongIds.length > 0 ? draftSongIds : ["00000000-0000-0000-0000-000000000000"]);
+
+    const draftSongVocalistMap = new Map<string, string[]>();
+    for (const row of draftSongVocalists || []) {
+      const existing = draftSongVocalistMap.get(row.draft_set_song_id) || [];
+      existing.push(row.vocalist_id);
+      draftSongVocalistMap.set(row.draft_set_song_id, existing);
+    }
+
+    const { data: flowSongItems, error: flowItemsError } = await supabase
+      .from("service_flow_items")
+      .select("id, sequence_order, vocalist_id")
+      .eq("service_flow_id", serviceFlowId)
+      .eq("item_type", "song")
+      .order("sequence_order", { ascending: true });
+    if (flowItemsError || !flowSongItems || flowSongItems.length === 0) return;
+
+    const count = Math.min(draftSongs.length, flowSongItems.length);
+    for (let i = 0; i < count; i++) {
+      const draftSong: any = draftSongs[i];
+      const flowItem: any = flowSongItems[i];
+
+      const vocalistIdsRaw = draftSongVocalistMap.get(draftSong.id) || [];
+      const vocalistIds = vocalistIdsRaw.length > 0
+        ? Array.from(new Set(vocalistIdsRaw))
+        : (draftSong.vocalist_id ? [draftSong.vocalist_id as string] : []);
+      const primaryVocalistId = vocalistIds[0] || null;
+
+      if ((flowItem.vocalist_id ?? null) !== primaryVocalistId) {
+        await supabase
+          .from("service_flow_items")
+          .update({ vocalist_id: primaryVocalistId })
+          .eq("id", flowItem.id);
+      }
+
+      await supabase
+        .from("service_flow_item_vocalists")
+        .delete()
+        .eq("service_flow_item_id", flowItem.id);
+
+      if (vocalistIds.length > 0) {
+        await supabase
+          .from("service_flow_item_vocalists")
+          .insert(vocalistIds.map((vocalist_id) => ({ service_flow_item_id: flowItem.id, vocalist_id })));
+      }
+    }
+  };
+
+  const getSongVocalistIds = (song: { vocalistIds?: string[]; vocalistId?: string | null }) => {
+    const ids = (song.vocalistIds || []).filter(Boolean);
+    if (ids.length > 0) return Array.from(new Set(ids));
+    return song.vocalistId ? [song.vocalistId] : [];
+  };
+
+  const insertFlowItemsWithVocalists = async (
+    serviceFlowId: string,
+    flowItems: Array<{
+      service_flow_id: string;
+      item_type: string;
+      title: string;
+      duration_seconds: number | null;
+      sequence_order: number;
+      song_id: string | null;
+      song_key: string | null;
+      vocalist_id: string | null;
+    }>
+  ) => {
+    if (flowItems.length === 0) return;
+    const { error: insertError } = await supabase.from("service_flow_items").insert(flowItems);
+    if (insertError) throw insertError;
+
+    const songItems = flowItems.filter((item) => item.item_type === "song");
+    if (songItems.length === 0) return;
+
+    const { data: insertedSongItems, error: insertedSongItemsError } = await supabase
+      .from("service_flow_items")
+      .select("id, sequence_order")
+      .eq("service_flow_id", serviceFlowId)
+      .eq("item_type", "song")
+      .order("sequence_order", { ascending: true });
+
+    if (insertedSongItemsError || !insertedSongItems) return;
+
+    const vocalistRows: Array<{ service_flow_item_id: string; vocalist_id: string }> = [];
+    for (let idx = 0; idx < Math.min(insertedSongItems.length, params.songs.length); idx++) {
+      const item = insertedSongItems[idx];
+      const song = params.songs[idx];
+      const vocalistIds = getSongVocalistIds(song);
+      for (const vocalistId of vocalistIds) {
+        vocalistRows.push({ service_flow_item_id: item.id, vocalist_id: vocalistId });
+      }
+    }
+
+    if (vocalistRows.length === 0) return;
+
+    const { error: vocalistInsertError } = await supabase
+      .from("service_flow_item_vocalists")
+      .insert(vocalistRows);
+    if (vocalistInsertError) {
+      // Keep legacy single-vocalist behavior working even if junction insert fails.
+      console.error("Failed to insert service flow co-vocalists:", vocalistInsertError);
+    }
+  };
 
   // Check if service flow already exists
   let { data: existingFlow } = await supabase
@@ -755,6 +919,7 @@ export async function generateServiceFlowFromTemplate(params: {
       if (updates.length > 0) {
         await Promise.all(updates);
       }
+      await syncServiceFlowSongVocalists(existingFlow.id);
       return existingFlow.id;
     }
 
@@ -849,9 +1014,7 @@ export async function generateServiceFlowFromTemplate(params: {
             songIndex++;
           }
 
-          if (flowItems.length > 0) {
-            await supabase.from("service_flow_items").insert(flowItems);
-          }
+          await insertFlowItemsWithVocalists(newFlow.id, flowItems);
         } else {
           const flowItems = params.songs.map((song, index) => ({
             service_flow_id: newFlow.id,
@@ -864,9 +1027,7 @@ export async function generateServiceFlowFromTemplate(params: {
             vocalist_id: song.vocalistId || null,
           }));
 
-          if (flowItems.length > 0) {
-            await supabase.from("service_flow_items").insert(flowItems);
-          }
+          await insertFlowItemsWithVocalists(newFlow.id, flowItems);
         }
       } else {
         const flowItems = params.songs.map((song, index) => ({
@@ -880,10 +1041,10 @@ export async function generateServiceFlowFromTemplate(params: {
           vocalist_id: song.vocalistId || null,
         }));
 
-        if (flowItems.length > 0) {
-          await supabase.from("service_flow_items").insert(flowItems);
-        }
+        await insertFlowItemsWithVocalists(newFlow.id, flowItems);
       }
+
+      await syncServiceFlowSongVocalists(newFlow.id);
     }
 
     return existingFlow.id;
@@ -1007,9 +1168,7 @@ export async function generateServiceFlowFromTemplate(params: {
         songIndex++;
       }
 
-      if (flowItems.length > 0) {
-        await supabase.from("service_flow_items").insert(flowItems);
-      }
+      await insertFlowItemsWithVocalists(newFlow.id, flowItems);
     } else {
       // Template exists but has no items yet: still populate flow with setlist songs.
       const flowItems = params.songs.map((song, index) => ({
@@ -1023,9 +1182,7 @@ export async function generateServiceFlowFromTemplate(params: {
         vocalist_id: song.vocalistId || null,
       }));
 
-      if (flowItems.length > 0) {
-        await supabase.from("service_flow_items").insert(flowItems);
-      }
+      await insertFlowItemsWithVocalists(newFlow.id, flowItems);
     }
   } else {
     // No template - just add songs with marker-based durations
@@ -1040,10 +1197,10 @@ export async function generateServiceFlowFromTemplate(params: {
       vocalist_id: song.vocalistId || null,
     }));
 
-    if (flowItems.length > 0) {
-      await supabase.from("service_flow_items").insert(flowItems);
-    }
+    await insertFlowItemsWithVocalists(newFlow.id, flowItems);
   }
+
+  await syncServiceFlowSongVocalists(newFlow.id);
 
   return newFlow.id;
 }

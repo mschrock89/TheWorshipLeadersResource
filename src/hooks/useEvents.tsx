@@ -97,6 +97,17 @@ export function useDeleteEvent() {
 
   return useMutation({
     mutationFn: async (eventId: string) => {
+      try {
+        await supabase.functions.invoke("google-calendar-sync", {
+          body: {
+            action: "delete_event",
+            eventId,
+          },
+        });
+      } catch (syncError) {
+        console.error("Failed to remove Google Calendar event mapping:", syncError);
+      }
+
       const { error } = await supabase
         .from("events")
         .delete()

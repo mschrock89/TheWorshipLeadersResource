@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, CalendarPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ import { isAuditionCandidateRole } from "@/lib/access";
 import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
+import { openGoogleCalendar } from "@/lib/googleCalendar";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -226,6 +227,36 @@ function StandardMySetlists() {
       .join("")
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const handleAddSetlistToGoogleCalendar = (setlist: any) => {
+    const isWeekend = WEEKEND_MINISTRY_TYPES.has(setlist.ministry_type);
+    const startDate = parseLocalDate(setlist.scheduleDate);
+    const endDate = isWeekend
+      ? new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 2)
+      : new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 1);
+
+    const songLines = (setlist.songs || [])
+      .map((item: any, index: number) => `${index + 1}. ${item.song?.title || "Unknown Song"}`)
+      .join("\n");
+
+    const details = [
+      `Ministry: ${getMinistryLabel(setlist.ministry_type)}`,
+      setlist.campuses?.name ? `Campus: ${setlist.campuses.name}` : "",
+      songLines ? `Songs:\n${songLines}` : "",
+      setlist.notes ? `Notes:\n${setlist.notes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    openGoogleCalendar({
+      title: `${getMinistryLabel(setlist.ministry_type)} Setlist`,
+      description: details,
+      location: setlist.campuses?.name || undefined,
+      start: startDate,
+      end: endDate,
+      allDay: true,
+    });
   };
 
   // Check if this is a weekend group (has both Saturday and Sunday)
@@ -443,24 +474,41 @@ function StandardMySetlists() {
                               {item.song_key}
                             </Badge>
                           )}
-                          {item.vocalist && (
+                          {(() => {
+                            const displayVocalists = (item.vocalists && item.vocalists.length > 0)
+                              ? item.vocalists
+                              : (item.vocalist ? [item.vocalist] : []);
+                            if (displayVocalists.length === 0) return null;
+                            const displayNames = displayVocalists
+                              .map((v) => v.full_name)
+                              .filter(Boolean)
+                              .join(", ");
+                            return (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="flex items-center gap-1.5 shrink-0">
-                                  <Avatar className="h-6 w-6 ring-2 ring-background">
-                                    <AvatarImage src={item.vocalist.avatar_url || undefined} />
-                                    <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/30 to-primary/10 text-primary">
-                                      {getInitials(item.vocalist.full_name || "?")}
-                                    </AvatarFallback>
-                                  </Avatar>
+                                  <div className="flex -space-x-2">
+                                    {displayVocalists.slice(0, 2).map((vocalist) => (
+                                      <Avatar key={vocalist.id} className="h-6 w-6 ring-2 ring-background">
+                                        <AvatarImage src={vocalist.avatar_url || undefined} />
+                                        <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/30 to-primary/10 text-primary">
+                                          {getInitials(vocalist.full_name || "?")}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                    ))}
+                                  </div>
+                                  {displayVocalists.length > 2 && (
+                                    <span className="text-[10px] text-muted-foreground">+{displayVocalists.length - 2}</span>
+                                  )}
                                   <Mic2 className="h-3 w-3 text-muted-foreground" />
                                 </div>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p className="text-xs">{item.vocalist.full_name} is leading</p>
+                                <p className="text-xs">{displayNames} {displayVocalists.length > 1 ? "are" : "is"} leading</p>
                               </TooltipContent>
                             </Tooltip>
-                          )}
+                            );
+                          })()}
                         </div>
                       ))}
                     </TooltipProvider>
@@ -473,6 +521,16 @@ function StandardMySetlists() {
                       <p>{setlist.notes}</p>
                     </div>
                   )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => handleAddSetlistToGoogleCalendar(setlist)}
+                  >
+                    <CalendarPlus className="mr-2 h-4 w-4" />
+                    Add To Google Calendar
+                  </Button>
 
                   <SetlistTeamRoster
                     planDate={setlist.plan_date}
@@ -1227,6 +1285,32 @@ function AuditionCandidateSetlists() {
     },
   });
 
+  const handleAddAuditionToGoogleCalendar = (setlist: any) => {
+    const startDate = parseLocalDate(setlist.plan_date);
+    const endDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 1);
+    const songLines = (setlist.songs || [])
+      .map((item: any, index: number) => `${index + 1}. ${item.song?.title || "Unknown Song"}`)
+      .join("\n");
+
+    const details = [
+      "Ministry: Audition",
+      setlist.campuses?.name ? `Campus: ${setlist.campuses.name}` : "",
+      songLines ? `Songs:\n${songLines}` : "",
+      setlist.notes ? `Notes:\n${setlist.notes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    openGoogleCalendar({
+      title: "Audition Setlist",
+      description: details,
+      location: setlist.campuses?.name || undefined,
+      start: startDate,
+      end: endDate,
+      allDay: true,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">My Audition Setlists</h1>
@@ -1290,6 +1374,16 @@ function AuditionCandidateSetlists() {
                     {setlist.notes}
                   </div>
                 )}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => handleAddAuditionToGoogleCalendar(setlist)}
+                >
+                  <CalendarPlus className="mr-2 h-4 w-4" />
+                  Add To Google Calendar
+                </Button>
 
                 {!isConfirmed ? (
                   <Button

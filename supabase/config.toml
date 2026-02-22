@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.notify-chat-mention]
 verify_jwt = false
+
+[functions.google-calendar-auth-callback]
+verify_jwt = false
+
+[functions.google-calendar-sync]
+verify_jwt = false

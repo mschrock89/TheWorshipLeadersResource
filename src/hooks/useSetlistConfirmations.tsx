@@ -28,6 +28,7 @@ export interface PublishedSetlist {
     sequence_order: number;
     song_key: string | null;
     vocalist: { id: string; full_name: string | null; avatar_url: string | null } | null;
+    vocalists?: { id: string; full_name: string | null; avatar_url: string | null }[];
     song: { title: string; author: string | null } | null;
     isFirstUse?: boolean;
   }[];
@@ -553,13 +554,19 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           ...setlist,
           songs: setlistSongItems.map(s => {
             const junctionVocalistIds = songVocalistMap.get(s.id) || [];
-            const primaryVocalistId = junctionVocalistIds.length > 0 ? junctionVocalistIds[0] : s.vocalist_id;
+            const vocalistIds = junctionVocalistIds.length > 0
+              ? junctionVocalistIds
+              : (s.vocalist_id ? [s.vocalist_id] : []);
+            const resolvedVocalists = vocalistIds
+              .map((id) => vocalistMap.get(id))
+              .filter(Boolean) as { id: string; full_name: string | null; avatar_url: string | null }[];
             return {
               id: s.id,
               song_id: s.song_id,
               sequence_order: s.sequence_order,
               song_key: s.song_key || null,
-              vocalist: primaryVocalistId ? vocalistMap.get(primaryVocalistId) || null : null,
+              vocalist: resolvedVocalists[0] || null,
+              vocalists: resolvedVocalists,
               song: s.songs as { title: string; author: string | null } | null,
               isFirstUse: (priorCounts.get(s.song_id) ?? 0) === 0,
             };

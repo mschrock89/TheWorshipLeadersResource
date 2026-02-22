@@ -224,6 +224,29 @@ serve(async (req) => {
       }
     }
 
+    // Final guard across ALL set types:
+    // only notify users who are actually on this set's roster.
+    if (userIdsToNotify.length > 0) {
+      const dedupedUserIds = Array.from(new Set(userIdsToNotify));
+      const rosterChecks = await Promise.all(
+        dedupedUserIds.map(async (userId) => {
+          const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
+            p_draft_set_id: draftSetId,
+            p_user_id: userId,
+          });
+
+          if (error) {
+            console.error("Final roster check failed for user", userId, error);
+            return null;
+          }
+
+          return data ? userId : null;
+        })
+      );
+
+      userIdsToNotify = rosterChecks.filter(Boolean) as string[];
+    }
+
     console.log(`Found ${userIdsToNotify.length} team members to notify for setlist ${draftSetId}`);
 
     // 7. Always create setlist playlist for published setlists
@@ -285,6 +308,31 @@ serve(async (req) => {
 
     // 9. Create in-app notifications (insert into a notifications concept if exists)
     // For now, the published set itself serves as the notification via the My Setlists page
+
+    // 10. Sync published setlist to Google Calendar for roster members who connected it
+    if (userIdsToNotify.length > 0) {
+      try {
+        const syncResponse = await fetch(`${supabaseUrl}/functions/v1/google-calendar-sync`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            action: "sync_setlist",
+            draftSetId,
+            userIds: userIdsToNotify,
+          }),
+        });
+
+        if (!syncResponse.ok) {
+          const syncErrorText = await syncResponse.text();
+          console.error("google-calendar-sync failed:", syncResponse.status, syncErrorText);
+        }
+      } catch (syncError) {
+        console.error("Error calling google-calendar-sync:", syncError);
+      }
+    }
 
     return new Response(
       JSON.stringify({

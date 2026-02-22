@@ -199,7 +199,7 @@ html.service-flow-export-mode body {
   --input: 0 0% 80% !important;
   background: white !important;
   color: black !important;
-  font-size: 9pt !important;
+  font-size: 13pt !important;
   line-height: 1.15 !important;
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
@@ -247,14 +247,14 @@ html.service-flow-export-mode .service-flow-page {
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-  zoom: 0.84 !important;
+  zoom: 0.9 !important;
 }
 
 @supports not (zoom: 1) {
   html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-    transform: scale(0.84) !important;
+    transform: scale(0.9) !important;
     transform-origin: top left !important;
-    width: 119% !important;
+    width: 112% !important;
   }
 }
 
@@ -275,11 +275,11 @@ html.service-flow-export-mode .print-header img {
 }
 
 html.service-flow-export-mode .print-header h1 {
-  font-size: 12pt !important;
+  font-size: 16pt !important;
 }
 
 html.service-flow-export-mode .print-header p {
-  font-size: 9pt !important;
+  font-size: 13pt !important;
 }
 
 html.service-flow-export-mode .print-title {
@@ -298,7 +298,7 @@ html.service-flow-export-mode .service-flow-page .border-b {
   border-bottom: 1px solid #333 !important;
   margin-bottom: 2px !important;
   padding-bottom: 2px !important;
-  font-size: 7pt !important;
+  font-size: 11pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .space-y-2 {
@@ -355,14 +355,21 @@ html.service-flow-export-mode .service-flow-page input {
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
-  position: absolute !important;
-  top: 0.7in !important;
-  right: 0.2in !important;
+  position: static !important;
   border: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  font-size: 9pt !important;
+  margin-top: 8px !important;
+  padding-top: 0 !important;
+  font-size: 13pt !important;
   font-weight: 600 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-total-footer {
+  break-before: avoid-page !important;
+  page-break-before: avoid !important;
+  margin-top: 2px !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t button {
@@ -378,6 +385,21 @@ html.service-flow-export-mode .service-flow-page .space-y-2 * {
   color: #1a1a1a !important;
 }
 
+html.service-flow-export-mode .service-flow-page .service-flow-song-title {
+  flex: 0 1 58% !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-song-bpm {
+  margin-left: 6px !important;
+  margin-right: 4px !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
 html.service-flow-export-mode .service-flow-page .text-muted-foreground {
   color: #555 !important;
 }
@@ -388,15 +410,15 @@ html.service-flow-export-mode .service-flow-page .bg-black {
   color: white !important;
   padding: 1px 4px !important;
   border-radius: 2px !important;
-  font-size: 7pt !important;
+  font-size: 11pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-sm {
-  font-size: 8pt !important;
+  font-size: 12pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-xs {
-  font-size: 7pt !important;
+  font-size: 11pt !important;
 }
 
 @media print {
@@ -423,7 +445,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   html, body {
     background: white !important;
     color: black !important;
-    font-size: 9pt !important;
+    font-size: 13pt !important;
     line-height: 1.15 !important;
   }
 
@@ -458,14 +480,14 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .service-flow-page.service-flow-print-fit {
-    zoom: 0.84 !important;
+    zoom: 0.9 !important;
   }
 
   @supports not (zoom: 1) {
     .service-flow-page.service-flow-print-fit {
-      transform: scale(0.84) !important;
+      transform: scale(0.9) !important;
       transform-origin: top left !important;
-      width: 119% !important;
+      width: 112% !important;
     }
   }
 
@@ -488,11 +510,11 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .print-header h1 {
-    font-size: 12pt !important;
+    font-size: 16pt !important;
   }
 
   .print-header p {
-    font-size: 9pt !important;
+    font-size: 13pt !important;
   }
 
   .print-title {
@@ -513,7 +535,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     border-bottom: 1px solid #333 !important;
     margin-bottom: 2px !important;
     padding-bottom: 2px !important;
-    font-size: 7pt !important;
+    font-size: 11pt !important;
   }
 
   /* Reduce space between items */
@@ -555,14 +577,21 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 
   /* Footer with total - absolute in header area so it's always on first page */
   .service-flow-page .border-t {
-    position: absolute !important;
-    top: 0.7in !important;
-    right: 0.2in !important;
+    position: static !important;
     border: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    font-size: 9pt !important;
+    margin-top: 8px !important;
+    padding-top: 0 !important;
+    font-size: 13pt !important;
     font-weight: 600 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    width: 100% !important;
+  }
+
+  .service-flow-page .service-flow-total-footer {
+    break-before: avoid-page !important;
+    page-break-before: avoid !important;
+    margin-top: 2px !important;
   }
 
   /* Hide add button, show total */
@@ -581,6 +610,21 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     color: #1a1a1a !important;
   }
 
+  .service-flow-page .service-flow-song-title {
+    flex: 0 1 58% !important;
+  }
+
+  .service-flow-page .service-flow-song-bpm {
+    margin-left: 6px !important;
+    margin-right: 4px !important;
+  }
+
+  .service-flow-page .service-flow-song-vocalist {
+    max-width: none !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
   .service-flow-page .text-muted-foreground {
     color: #555 !important;
   }
@@ -592,16 +636,16 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     color: white !important;
     padding: 1px 4px !important;
     border-radius: 2px !important;
-    font-size: 7pt !important;
+    font-size: 11pt !important;
   }
 
   /* Compact item text */
   .service-flow-page .text-sm {
-    font-size: 8pt !important;
+    font-size: 12pt !important;
   }
 
   .service-flow-page .text-xs {
-    font-size: 7pt !important;
+    font-size: 11pt !important;
   }
 
   .service-flow-page input {
