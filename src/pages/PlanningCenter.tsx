@@ -17,14 +17,18 @@ import { Loader2, Link2, RefreshCw, CheckCircle2, AlertCircle, UserX, Home, Musi
 import { usePcoConnection, useStartPcoAuth, useSavePcoConnection, useDisconnectPco, useSyncPcoTeam, useSyncPcoPlans, useUpdatePcoSettings } from "@/hooks/usePlanningCenter";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { MemberCleanupDialog } from "@/components/team/MemberCleanupDialog";
 
 export default function PlanningCenter() {
   const { canManageTeam } = useAuth();
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCampus, setSelectedCampus] = useState<string>("");
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
+  const [googleConnecting, setGoogleConnecting] = useState(false);
   const processedPcoCodeRef = useRef<string | null>(null);
   
   const { data: connection, isLoading: connectionLoading } = usePcoConnection();
@@ -39,6 +43,7 @@ export default function PlanningCenter() {
   // Handle OAuth callback
   useEffect(() => {
     const connectionCode = searchParams.get("pco_connection");
+    const googleConnected = searchParams.get("google_connected");
     const error = searchParams.get("error");
 
     if (connectionCode && processedPcoCodeRef.current !== connectionCode) {
@@ -48,11 +53,47 @@ export default function PlanningCenter() {
       setSearchParams({});
     }
 
+    if (googleConnected) {
+      toast({
+        title: "Google authorization complete",
+        description: "Google Calendar access was granted.",
+      });
+      setSearchParams({});
+      return;
+    }
+
     if (error) setSearchParams({});
-  }, [searchParams, saveConnection, setSearchParams]);
+  }, [searchParams, saveConnection, setSearchParams, toast]);
 
   const handleConnect = () => {
     startAuth.mutate(selectedCampus === "all" ? undefined : selectedCampus || undefined);
+  };
+
+  const handleConnectGoogleCalendar = async () => {
+    try {
+      setGoogleConnecting(true);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/planning-center?google_connected=1`,
+          scopes: "https://www.googleapis.com/auth/calendar.events",
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start Google sign-in";
+      toast({
+        title: "Google Calendar connection failed",
+        description: message,
+        variant: "destructive",
+      });
+      setGoogleConnecting(false);
+    }
   };
 
   const handleSettingChange = (setting: string, value: boolean) => {
@@ -354,6 +395,35 @@ export default function PlanningCenter() {
                 </p>
               </>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" />
+              Google Calendar
+            </CardTitle>
+            <CardDescription>
+              Connect Google Calendar for calendar event sync access.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={handleConnectGoogleCalendar}
+              disabled={googleConnecting}
+              className="w-full"
+            >
+              {googleConnecting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Link2 className="h-4 w-4 mr-2" />
+              )}
+              Connect Google Calendar
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground text-center">
+              You&apos;ll be redirected to Google to grant calendar access.
+            </p>
           </CardContent>
         </Card>
 

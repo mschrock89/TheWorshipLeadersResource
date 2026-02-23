@@ -26,3 +26,47 @@ verify_jwt = false
 
 [functions.notify-chat-mention]
 verify_jwt = false
+
+[functions.google-auth-callback]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-auth-callback/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/google-auth-callback/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/google-auth-callback/*.html" ]
+
+[functions.google-sync-create]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-sync-create/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/google-sync-create/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/google-sync-create/*.html" ]
+
+[functions.google-sync-update]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-sync-update/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/google-sync-update/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/google-sync-update/*.html" ]
+
+[functions.google-sync-delete]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-sync-delete/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/google-sync-delete/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/google-sync-delete/*.html" ]
