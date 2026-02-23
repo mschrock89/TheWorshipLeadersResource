@@ -309,31 +309,6 @@ serve(async (req) => {
     // 9. Create in-app notifications (insert into a notifications concept if exists)
     // For now, the published set itself serves as the notification via the My Setlists page
 
-    // 10. Sync published setlist to Google Calendar for roster members who connected it
-    if (userIdsToNotify.length > 0) {
-      try {
-        const syncResponse = await fetch(`${supabaseUrl}/functions/v1/google-calendar-sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            action: "sync_setlist",
-            draftSetId,
-            userIds: userIdsToNotify,
-          }),
-        });
-
-        if (!syncResponse.ok) {
-          const syncErrorText = await syncResponse.text();
-          console.error("google-calendar-sync failed:", syncResponse.status, syncErrorText);
-        }
-      } catch (syncError) {
-        console.error("Error calling google-calendar-sync:", syncError);
-      }
-    }
-
     return new Response(
       JSON.stringify({
         success: true,
