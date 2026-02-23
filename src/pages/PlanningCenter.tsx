@@ -75,7 +75,7 @@ export default function PlanningCenter() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/planning-center?google_connected=1`,
+          redirectTo: `${window.location.origin}/settings/planning-center?google_connected=1`,
           scopes: "https://www.googleapis.com/auth/calendar.events",
           queryParams: {
             access_type: "offline",

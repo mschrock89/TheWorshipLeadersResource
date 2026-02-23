@@ -190,6 +190,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route path="/planning-center" element={<Navigate to="/settings/planning-center" replace />} />
       <Route
         path="/swaps"
         element={
