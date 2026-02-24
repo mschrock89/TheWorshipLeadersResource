@@ -5,35 +5,27 @@ export default function PlanningCenter() {
   const [loading, setLoading] = useState(false)
 
   const handleConnectGoogleCalendar = async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
+    setLoading(true)
+    try {
+      const { data, error } = await supabase.functions.invoke("google-calendar-auth-start", {
+        body: {},
+      })
 
-    if (!session) {
-      throw new Error("Not authenticated")
-    }
-
-    const response = await fetch(
-      "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-calendar-auth-start",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
+      if (error) {
+        throw new Error(error.message || "Failed to start Google auth")
       }
-    )
 
-    const data = await response.json()
+      if (!data?.url) {
+        throw new Error("Google auth URL was not returned")
+      }
 
-    if (!response.ok) {
-      throw new Error(data.error || "Failed to start Google auth")
+      window.location.href = data.url
+    } catch (error) {
+      console.error("Failed to start Google auth:", error)
+    } finally {
+      setLoading(false)
     }
-
-    window.location.href = data.url
-  } catch (error) {
-    console.error("Failed to start Google auth:", error)
   }
-}
 
   return (
     <div className="p-8 space-y-6">
