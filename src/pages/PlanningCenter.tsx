@@ -1,8 +1,19 @@
 import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { supabase } from "@/integrations/supabase/client"
 
 export default function PlanningCenter() {
   const [loading, setLoading] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const googleConnected = searchParams.get("google_connected") === "1"
+  const googleError = searchParams.get("error")
+
+  const clearGoogleQueryParams = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete("google_connected")
+    next.delete("error")
+    setSearchParams(next, { replace: true })
+  }
 
   const handleConnectGoogleCalendar = async () => {
     setLoading(true)
@@ -63,6 +74,18 @@ export default function PlanningCenter() {
           Sync scheduled dates to Google Calendar.
         </p>
 
+        {googleConnected && (
+          <div className="rounded border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-300">
+            Google Calendar connected successfully.
+          </div>
+        )}
+
+        {googleError && (
+          <div className="rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+            Google Calendar error: {googleError}
+          </div>
+        )}
+
         <button
           onClick={handleConnectGoogleCalendar}
           disabled={loading}
@@ -70,6 +93,15 @@ export default function PlanningCenter() {
         >
           {loading ? "Connecting..." : "Connect Google Calendar"}
         </button>
+
+        {(googleConnected || googleError) && (
+          <button
+            onClick={clearGoogleQueryParams}
+            className="px-4 py-2 rounded border border-border text-sm hover:bg-muted"
+          >
+            Clear status
+          </button>
+        )}
       </div>
     </div>
   )
