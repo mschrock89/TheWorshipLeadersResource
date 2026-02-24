@@ -7,8 +7,22 @@ export default function PlanningCenter() {
   const handleConnectGoogleCalendar = async () => {
     setLoading(true)
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        throw new Error(sessionError.message || "Failed to load auth session")
+      }
+
+      const accessToken = sessionData.session?.access_token
+      if (!accessToken) {
+        throw new Error("Not authenticated. Please sign in again.")
+      }
+
       const { data, error } = await supabase.functions.invoke("google-calendar-auth-start", {
         body: {},
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       })
 
       if (error) {
