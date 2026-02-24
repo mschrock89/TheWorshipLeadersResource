@@ -63,14 +63,15 @@ serve(async (req) => {
     }
 
     const redirectUri =
-      "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-calendar-auth-callback"
+      "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-auth-callback"
 
     const url =
       `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${GOOGLE_CLIENT_ID}` +
-      `&redirect_uri=${redirectUri}` +
+      `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
-      `&scope=https://www.googleapis.com/auth/calendar` +
+      `&scope=${encodeURIComponent("https://www.googleapis.com/auth/calendar.events")}` +
+      `&state=${encodeURIComponent(user.id)}` +
       `&access_type=offline` +
       `&prompt=consent`
 
