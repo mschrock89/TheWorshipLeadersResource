@@ -14,12 +14,16 @@ export default function PlanningCenter() {
       }
 
       const accessToken = sessionData.session?.access_token
+      const userId = sessionData.session?.user?.id
       if (!accessToken) {
         throw new Error("Not authenticated. Please sign in again.")
       }
+      if (!userId) {
+        throw new Error("No signed-in user ID found. Please sign in again.")
+      }
 
       const { data, error } = await supabase.functions.invoke("google-calendar-auth-start", {
-        body: {},
+        body: { userId },
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },

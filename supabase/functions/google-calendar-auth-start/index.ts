@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "npm:@supabase/supabase-js@2"
 
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "*"
@@ -17,36 +16,13 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization")
+    const body = await req.json().catch(() => ({}))
+    const userId = body?.userId
 
-    if (!authHeader) {
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Missing Authorization header" }),
-        { headers: corsHeaders, status: 401 }
-      )
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      {
-        global: {
-          headers: {
-            Authorization: authHeader,
-          },
-        },
-      }
-    )
-
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
-
-    if (error || !user) {
-      return new Response(
-        JSON.stringify({ error: "Invalid JWT" }),
-        { headers: corsHeaders, status: 401 }
+        JSON.stringify({ error: "Missing userId in request body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       )
     }
 
@@ -71,7 +47,7 @@ serve(async (req) => {
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
       `&scope=${encodeURIComponent("https://www.googleapis.com/auth/calendar.events")}` +
-      `&state=${encodeURIComponent(user.id)}` +
+      `&state=${encodeURIComponent(userId)}` +
       `&access_type=offline` +
       `&prompt=consent`
 
