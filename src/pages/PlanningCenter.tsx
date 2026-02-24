@@ -1,433 +1,66 @@
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Loader2, Link2, RefreshCw, CheckCircle2, AlertCircle, UserX, Home, Music } from "lucide-react";
-import { usePcoConnection, useStartPcoAuth, useSavePcoConnection, useDisconnectPco, useSyncPcoTeam, useSyncPcoPlans, useUpdatePcoSettings } from "@/hooks/usePlanningCenter";
-import { useCampuses } from "@/hooks/useCampuses";
-import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
-import { MemberCleanupDialog } from "@/components/team/MemberCleanupDialog";
+import { useState } from "react"
+import { supabase } from "@/integrations/supabase/client"
 
 export default function PlanningCenter() {
-  const { canManageTeam } = useAuth();
-  const { toast } = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedCampus, setSelectedCampus] = useState<string>("");
-  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
-  const [googleConnecting, setGoogleConnecting] = useState(false);
-  const processedPcoCodeRef = useRef<string | null>(null);
-  
-  const { data: connection, isLoading: connectionLoading } = usePcoConnection();
-  const { data: campuses } = useCampuses();
-  const startAuth = useStartPcoAuth();
-  const saveConnection = useSavePcoConnection();
-  const disconnect = useDisconnectPco();
-  const syncTeam = useSyncPcoTeam();
-  const syncPlans = useSyncPcoPlans();
-  const updateSettings = useUpdatePcoSettings();
-
-  // Handle OAuth callback
-  useEffect(() => {
-    const connectionCode = searchParams.get("pco_connection");
-    const googleConnected = searchParams.get("google_connected");
-    const error = searchParams.get("error");
-
-    if (connectionCode && processedPcoCodeRef.current !== connectionCode) {
-      processedPcoCodeRef.current = connectionCode;
-      saveConnection.mutate(connectionCode);
-      // Clear the URL params
-      setSearchParams({});
-    }
-
-    if (googleConnected) {
-      toast({
-        title: "Google authorization complete",
-        description: "Google Calendar access was granted.",
-      });
-      setSearchParams({});
-      return;
-    }
-
-    if (error) setSearchParams({});
-  }, [searchParams, saveConnection, setSearchParams, toast]);
-
-  const handleConnect = () => {
-    startAuth.mutate(selectedCampus === "all" ? undefined : selectedCampus || undefined);
-  };
+  const [loading, setLoading] = useState(false)
 
   const handleConnectGoogleCalendar = async () => {
-    try {
-      setGoogleConnecting(true);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/settings/planning-center?google_connected=1`,
-          scopes: "https://www.googleapis.com/auth/calendar.events",
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
 
-      if (error) throw error;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to start Google sign-in";
-      toast({
-        title: "Google Calendar connection failed",
-        description: message,
-        variant: "destructive",
-      });
-      setGoogleConnecting(false);
+    if (!session) {
+      throw new Error("Not authenticated")
     }
-  };
 
-  const handleSettingChange = (setting: string, value: boolean) => {
-    updateSettings.mutate({ [setting]: value });
-  };
+    const response = await fetch(
+      "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-calendar-auth-start",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    )
 
-  if (!canManageTeam) {
-    return (
-      <>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Card className="max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-destructive" />
-                Access Denied
-              </CardTitle>
-              <CardDescription>
-                You need to be a Campus Pastor or Leader to access Planning Center integration.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
-      </>
-    );
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to start Google auth")
+    }
+
+    window.location.href = data.url
+  } catch (error) {
+    console.error("Failed to start Google auth:", error)
   }
-
-  if (connectionLoading) {
-    return (
-      <>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </>
-    );
-  }
+}
 
   return (
-    <>
-      <div className="container max-w-2xl py-8">
-        {/* Breadcrumb Navigation */}
-        <Breadcrumb className="mb-4">
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link to="/dashboard" className="flex items-center gap-1.5">
-                  <Home className="h-3.5 w-3.5" />
-                  Dashboard
-                </Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Planning Center</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+    <div className="p-8 space-y-6">
+      <h1 className="text-2xl font-bold">Integrations</h1>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">Planning Center</h1>
-          <p className="text-muted-foreground mt-2">
-            Connect your Planning Center account to sync team member data.
-          </p>
-        </div>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {connection ? (
-                <>
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
-                  Connected
-                </>
-              ) : (
-                <>
-                  <Link2 className="h-5 w-5" />
-                  Connect Account
-                </>
-              )}
-            </CardTitle>
-            <CardDescription>
-              {connection
-                ? `Connected to ${connection.pco_organization_name || "Planning Center"}`
-                : "Link your Planning Center account to import and sync team data."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {connection ? (
-              <>
-                {/* Connection Info */}
-                <div className="p-4 rounded-lg bg-muted/50">
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                    <dt className="text-muted-foreground">Organization</dt>
-                    <dd className="text-foreground text-right">{connection.pco_organization_name || "Unknown"}</dd>
-                    
-                    <dt className="text-muted-foreground">Connected</dt>
-                    <dd className="text-foreground text-right">
-                      {format(new Date(connection.connected_at), "MMM d, yyyy 'at' h:mm a")}
-                    </dd>
-                    
-                    {connection.last_sync_at && (
-                      <>
-                        <dt className="text-muted-foreground">Last Sync</dt>
-                        <dd className="text-foreground text-right">
-                          {format(new Date(connection.last_sync_at), "MMM d, yyyy 'at' h:mm a")}
-                        </dd>
-                      </>
-                    )}
-                  </dl>
-                </div>
-
-                {/* Sync Options */}
-                <div className="space-y-4">
-                  <h3 className="font-medium text-foreground">What to Sync</h3>
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="sync_team_members"
-                        checked={connection.sync_team_members}
-                        onCheckedChange={(checked) => handleSettingChange("sync_team_members", !!checked)}
-                      />
-                      <Label htmlFor="sync_team_members" className="text-sm">
-                        Team members (names, emails)
-                      </Label>
-                    </div>
-
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="sync_phone_numbers"
-                        checked={connection.sync_phone_numbers}
-                        onCheckedChange={(checked) => handleSettingChange("sync_phone_numbers", !!checked)}
-                      />
-                      <Label htmlFor="sync_phone_numbers" className="text-sm">
-                        Phone numbers
-                      </Label>
-                    </div>
-
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="sync_birthdays"
-                        checked={connection.sync_birthdays}
-                        onCheckedChange={(checked) => handleSettingChange("sync_birthdays", !!checked)}
-                      />
-                      <Label htmlFor="sync_birthdays" className="text-sm">
-                        Birthdays & anniversaries
-                      </Label>
-                    </div>
-
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="sync_positions"
-                        checked={connection.sync_positions}
-                        onCheckedChange={(checked) => handleSettingChange("sync_positions", !!checked)}
-                      />
-                      <Label htmlFor="sync_positions" className="text-sm">
-                        Team positions
-                      </Label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Active Members Filter */}
-                <div className="space-y-4 pt-2 border-t border-border">
-                  <h3 className="font-medium text-foreground">Filter Options</h3>
-                  
-                  <div className="flex items-start space-x-3">
-                    <Checkbox
-                      id="sync_active_only"
-                      checked={connection.sync_active_only}
-                      onCheckedChange={(checked) => handleSettingChange("sync_active_only", !!checked)}
-                    />
-                    <div className="space-y-1">
-                      <Label htmlFor="sync_active_only" className="text-sm">
-                        Only sync active members
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Only import members who have been scheduled in the last year. Disable to sync all team members regardless of activity.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Member Cleanup Section */}
-                <div className="space-y-4 pt-2 border-t border-border">
-                  <h3 className="font-medium text-foreground">Data Cleanup</h3>
-                  <div className="flex items-start space-x-3">
-                    <UserX className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div className="space-y-2 flex-1">
-                      <p className="text-sm text-muted-foreground">
-                        Remove members who were imported but have never been scheduled to serve.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCleanupDialogOpen(true)}
-                        disabled={!connection.campus_id}
-                      >
-                        <UserX className="h-4 w-4 mr-2" />
-                        Clean Up Inactive Members
-                      </Button>
-                      {!connection.campus_id && (
-                        <p className="text-xs text-amber-600">
-                          Cleanup is only available when connected to a specific campus.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="space-y-3 pt-4">
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={() => syncTeam.mutate()}
-                      disabled={syncTeam.isPending || syncPlans.isPending}
-                      className="flex-1"
-                    >
-                      {syncTeam.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                      )}
-                      Sync Team
-                    </Button>
-                    <Button
-                      onClick={() => syncPlans.mutate()}
-                      disabled={syncPlans.isPending || syncTeam.isPending}
-                      variant="secondary"
-                      className="flex-1"
-                    >
-                      {syncPlans.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Music className="h-4 w-4 mr-2" />
-                      )}
-                      Sync Plans
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => disconnect.mutate()}
-                    disabled={disconnect.isPending}
-                    className="w-full"
-                  >
-                    {disconnect.isPending && (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    )}
-                    Disconnect
-                  </Button>
-                </div>
-
-                {/* Cleanup Dialog */}
-                <MemberCleanupDialog
-                  open={cleanupDialogOpen}
-                  onOpenChange={setCleanupDialogOpen}
-                  campusId={connection.campus_id || undefined}
-                  campusName={campuses?.find(c => c.id === connection.campus_id)?.name}
-                />
-              </>
-            ) : (
-              <>
-                {/* Campus Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="campus">Select Campus (Optional)</Label>
-                  <Select value={selectedCampus} onValueChange={setSelectedCampus}>
-                    <SelectTrigger id="campus">
-                      <SelectValue placeholder="All campuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All campuses</SelectItem>
-                      {campuses?.map((campus) => (
-                        <SelectItem key={campus.id} value={campus.id}>
-                          {campus.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    New team members will be assigned to this campus.
-                  </p>
-                </div>
-
-                {/* Connect Button */}
-                <Button
-                  onClick={handleConnect}
-                  disabled={startAuth.isPending}
-                  className="w-full"
-                >
-                  {startAuth.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Link2 className="h-4 w-4 mr-2" />
-                  )}
-                  Connect to Planning Center
-                </Button>
-
-                <p className="text-xs text-muted-foreground text-center">
-                  You'll be redirected to Planning Center to authorize access.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border mt-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Link2 className="h-5 w-5" />
-              Google Calendar
-            </CardTitle>
-            <CardDescription>
-              Connect Google Calendar for calendar event sync access.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={handleConnectGoogleCalendar}
-              disabled={googleConnecting}
-              className="w-full"
-            >
-              {googleConnecting ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Link2 className="h-4 w-4 mr-2" />
-              )}
-              Connect Google Calendar
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground text-center">
-              You&apos;ll be redirected to Google to grant calendar access.
-            </p>
-          </CardContent>
-        </Card>
-
+      <div className="border rounded-lg p-6 space-y-4">
+        <h2 className="text-lg font-semibold">Planning Center</h2>
+        <p className="text-sm text-gray-400">
+          Sync your Planning Center team and schedule data.
+        </p>
+        <div className="text-green-500 font-medium">Connected</div>
       </div>
-    </>
-  );
+
+      <div className="border rounded-lg p-6 space-y-4">
+        <h2 className="text-lg font-semibold">Google Calendar</h2>
+        <p className="text-sm text-gray-400">
+          Sync scheduled dates to Google Calendar.
+        </p>
+
+        <button
+          onClick={handleConnectGoogleCalendar}
+          disabled={loading}
+          className="px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded text-white disabled:opacity-50"
+        >
+          {loading ? "Connecting..." : "Connect Google Calendar"}
+        </button>
+      </div>
+    </div>
+  )
 }
