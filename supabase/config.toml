@@ -81,3 +81,9 @@ entrypoint = "./functions/google-calendar-auth-start/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/google-calendar-auth-start/*.html" ]
+
+[functions.google-calendar-resync]
+enabled = true
+verify_jwt = true
+import_map = "./functions/google-calendar-resync/deno.json"
+entrypoint = "./functions/google-calendar-resync/index.ts"
