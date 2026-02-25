@@ -29,7 +29,7 @@ verify_jwt = false
 
 [functions.google-auth-callback]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/google-auth-callback/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -73,7 +73,7 @@ entrypoint = "./functions/google-sync-delete/index.ts"
 
 [functions.google-calendar-auth-start]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/google-calendar-auth-start/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
