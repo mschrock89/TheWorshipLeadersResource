@@ -84,6 +84,6 @@ entrypoint = "./functions/google-calendar-auth-start/index.ts"
 
 [functions.google-calendar-resync]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/google-calendar-resync/deno.json"
 entrypoint = "./functions/google-calendar-resync/index.ts"

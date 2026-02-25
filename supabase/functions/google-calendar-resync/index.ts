@@ -8,7 +8,7 @@ const corsHeaders = (origin: string) => ({
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 });
 
-type SyncSourceType = "event" | "setlist";
+type SyncSourceType = "event" | "setlist" | "schedule";
 
 interface SyncSource {
   sourceType: SyncSourceType;
@@ -26,6 +26,24 @@ interface MappingRow {
   source_id: string;
   google_event_id: string;
   calendar_id: string;
+}
+
+interface UserSyncSummary {
+  user_id: string;
+  synced_at: string;
+  totals: {
+    source_count: number;
+    event_count: number;
+    setlist_count: number;
+    schedule_count: number;
+  };
+  results: {
+    created: number;
+    updated: number;
+    removed: number;
+    failed: number;
+  };
+  failures: Array<{ sourceType: SyncSourceType; sourceId: string; reason: string }>;
 }
 
 const formatDate = (date: Date): string => {
@@ -138,6 +156,452 @@ const googleRequest = async (
   return { response, payload };
 };
 
+const syncSingleUser = async (
+  service: ReturnType<typeof createClient>,
+  userId: string,
+  googleClientId: string,
+  googleClientSecret: string,
+  fallbackFromDate: string,
+  fallbackToDate: string,
+): Promise<UserSyncSummary> => {
+  const { data: integration, error: integrationError } = await service
+    .from("google_integrations")
+    .select("refresh_token")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (integrationError) {
+    throw new Error(`integration_lookup_failed_${integrationError.code ?? "unknown"}:${integrationError.message}`);
+  }
+
+  if (!integration?.refresh_token) {
+    throw new Error("google_not_connected");
+  }
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: googleClientId,
+      client_secret: googleClientSecret,
+      refresh_token: integration.refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const tokenPayload = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenPayload?.access_token) {
+    throw new Error(`google_refresh_token_failed:${tokenPayload?.error_description || tokenPayload?.error || "unknown"}`);
+  }
+
+  const googleAccessToken: string = tokenPayload.access_token;
+  const calendarId = "primary";
+
+  const { data: campusRows, error: campusError } = await service
+    .from("user_campuses")
+    .select("campus_id")
+    .eq("user_id", userId);
+
+  if (campusError) {
+    throw new Error(`campus_lookup_failed_${campusError.code ?? "unknown"}:${campusError.message}`);
+  }
+
+  const campusIds = Array.from(new Set((campusRows ?? []).map((row: { campus_id: string }) => row.campus_id)));
+
+  if (campusIds.length === 0) {
+    const { data: profile } = await service
+      .from("profiles")
+      .select("default_campus_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profile?.default_campus_id) {
+      campusIds.push(profile.default_campus_id);
+    }
+  }
+
+  const todayDate = formatDate(new Date());
+  let fromDate = fallbackFromDate;
+  let toDate = fallbackToDate;
+
+  let periodsQuery = service
+    .from("rotation_periods")
+    .select("start_date,end_date,campus_id")
+    .eq("is_active", true)
+    .lte("start_date", todayDate)
+    .gte("end_date", todayDate);
+
+  if (campusIds.length > 0) {
+    const campusFilter = campusIds.map((id) => `campus_id.eq.${id}`).join(",");
+    periodsQuery = periodsQuery.or(`${campusFilter},campus_id.is.null`);
+  }
+
+  const { data: activePeriods, error: activePeriodsError } = await periodsQuery;
+  if (activePeriodsError) {
+    throw new Error(
+      `rotation_period_lookup_failed_${activePeriodsError.code ?? "unknown"}:${activePeriodsError.message}`
+    );
+  }
+
+  const periodStarts = (activePeriods ?? [])
+    .map((period: any) => period?.start_date as string | null)
+    .filter((value): value is string => Boolean(value));
+  const periodEnds = (activePeriods ?? [])
+    .map((period: any) => period?.end_date as string | null)
+    .filter((value): value is string => Boolean(value));
+
+  if (periodStarts.length > 0 && periodEnds.length > 0) {
+    periodStarts.sort();
+    periodEnds.sort();
+    fromDate = periodStarts[0];
+    toDate = periodEnds[periodEnds.length - 1];
+  }
+
+  const eventSources: SyncSource[] = [];
+  const fetchedEventIds = new Set<string>();
+
+  const appendEvents = (rows: any[] | null) => {
+    for (const row of rows ?? []) {
+      if (!row?.id || fetchedEventIds.has(row.id)) continue;
+      fetchedEventIds.add(row.id);
+
+      const title = row.title || "Team Event";
+      const campusName = row.campuses?.name ?? undefined;
+      const eventDate = row.event_date;
+      if (!eventDate) continue;
+
+      let range: { start: SyncSource["start"]; end: SyncSource["end"] };
+      if (row.start_time) {
+        range = createTimedRange(eventDate, row.start_time, row.end_time);
+      } else {
+        range = createAllDayRange(eventDate);
+      }
+
+      eventSources.push({
+        sourceType: "event",
+        sourceId: row.id,
+        summary: title,
+        description: row.description ?? undefined,
+        location: campusName,
+        start: range.start,
+        end: range.end,
+      });
+    }
+  };
+
+  if (campusIds.length > 0) {
+    const { data: campusEvents, error: campusEventsError } = await service
+      .from("events")
+      .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
+      .in("campus_id", campusIds)
+      .gte("event_date", fromDate)
+      .lte("event_date", toDate)
+      .order("event_date", { ascending: true });
+
+    if (campusEventsError) {
+      throw new Error(`events_lookup_failed_${campusEventsError.code ?? "unknown"}:${campusEventsError.message}`);
+    }
+
+    appendEvents(campusEvents as any[]);
+  }
+
+  const { data: globalEvents, error: globalEventsError } = await service
+    .from("events")
+    .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
+    .is("campus_id", null)
+    .gte("event_date", fromDate)
+    .lte("event_date", toDate)
+    .order("event_date", { ascending: true });
+
+  if (globalEventsError) {
+    throw new Error(`global_events_lookup_failed_${globalEventsError.code ?? "unknown"}:${globalEventsError.message}`);
+  }
+
+  appendEvents(globalEvents as any[]);
+
+  let publishedSetsQuery = service
+    .from("draft_sets")
+    .select(
+      "id,plan_date,ministry_type,campus_id,custom_service_id,campuses(name),custom_services(service_name,start_time,end_time),draft_set_songs(sequence_order,song_key,songs(title))"
+    )
+    .eq("status", "published")
+    .gte("plan_date", fromDate)
+    .lte("plan_date", toDate)
+    .order("plan_date", { ascending: true });
+
+  if (campusIds.length > 0) {
+    publishedSetsQuery = publishedSetsQuery.in("campus_id", campusIds);
+  }
+
+  const { data: publishedSets, error: publishedSetsError } = await publishedSetsQuery;
+
+  if (publishedSetsError) {
+    throw new Error(`published_sets_lookup_failed_${publishedSetsError.code ?? "unknown"}:${publishedSetsError.message}`);
+  }
+
+  const setlistSources: SyncSource[] = [];
+  const publishedSetKeys = new Set<string>();
+
+  for (const set of (publishedSets as any[]) ?? []) {
+    const { data: isOnRoster, error: rosterError } = await service.rpc("is_user_on_setlist_roster", {
+      p_draft_set_id: set.id,
+      p_user_id: userId,
+    });
+
+    if (rosterError) {
+      throw new Error(`roster_check_failed_${rosterError.code ?? "unknown"}:${rosterError.message}`);
+    }
+
+    if (!isOnRoster) continue;
+
+    const ministryType = set.ministry_type ?? "weekend";
+    const campusId = set.campus_id ?? "";
+    publishedSetKeys.add(`${set.plan_date}|${campusId}|${ministryType}`);
+
+    const campusName = set.campuses?.name ?? "Campus";
+    const customServiceName = set.custom_services?.service_name ?? null;
+    const ministryLabel = formatMinistry(ministryType);
+    const summary = customServiceName
+      ? `${campusName} • ${customServiceName}`
+      : `${campusName} • ${ministryLabel} Setlist`;
+
+    const songs = [...(set.draft_set_songs ?? [])]
+      .sort((a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0))
+      .map((row, index) => {
+        const title = row.songs?.title ?? "Song";
+        const songKey = row.song_key ? ` (${row.song_key})` : "";
+        return `${index + 1}. ${title}${songKey}`;
+      });
+
+    const description = songs.length
+      ? `Published setlist\n\nSongs:\n${songs.join("\n")}`
+      : "Published setlist";
+
+    let range: { start: SyncSource["start"]; end: SyncSource["end"] };
+    if (set.custom_services?.start_time) {
+      range = createTimedRange(set.plan_date, set.custom_services.start_time, set.custom_services?.end_time);
+    } else {
+      range = createAllDayRange(set.plan_date);
+    }
+
+    setlistSources.push({
+      sourceType: "setlist",
+      sourceId: set.id,
+      summary,
+      description,
+      location: campusName,
+      start: range.start,
+      end: range.end,
+    });
+  }
+
+  const scheduleSources: SyncSource[] = [];
+  let scheduledQuery = service
+    .from("team_schedule")
+    .select("id,schedule_date,ministry_type,campus_id,team_id,campuses(name),worship_teams(name)")
+    .gte("schedule_date", fromDate)
+    .lte("schedule_date", toDate)
+    .order("schedule_date", { ascending: true });
+
+  if (campusIds.length > 0) {
+    const campusFilter = campusIds.map((id) => `campus_id.eq.${id}`).join(",");
+    scheduledQuery = scheduledQuery.or(`${campusFilter},campus_id.is.null`);
+  }
+
+  const { data: scheduledRows, error: scheduledError } = await scheduledQuery;
+  if (scheduledError) {
+    throw new Error(`scheduled_lookup_failed_${scheduledError.code ?? "unknown"}:${scheduledError.message}`);
+  }
+
+  for (const row of (scheduledRows as any[]) ?? []) {
+    if (!row?.schedule_date) continue;
+
+    const ministryType = row.ministry_type ?? "weekend";
+    const hasPublishedSet = publishedSetKeys.has(`${row.schedule_date}|${row.campus_id ?? ""}|${ministryType}`);
+    if (hasPublishedSet) continue;
+
+    const { data: isScheduled, error: scheduledCheckError } = await service.rpc("is_scheduled_for_service", {
+      _user_id: userId,
+      _service_date: row.schedule_date,
+      _campus_id: row.campus_id ?? null,
+      _ministry_type: ministryType,
+    });
+
+    if (scheduledCheckError) {
+      throw new Error(`scheduled_check_failed_${scheduledCheckError.code ?? "unknown"}:${scheduledCheckError.message}`);
+    }
+
+    if (!isScheduled) continue;
+
+    const campusName = row.campuses?.name ?? "Campus";
+    const ministryLabel = formatMinistry(ministryType);
+    const teamName = row.worship_teams?.name ? ` (${row.worship_teams.name})` : "";
+
+    scheduleSources.push({
+      sourceType: "schedule",
+      sourceId: row.id,
+      summary: `${campusName} • ${ministryLabel} Service`,
+      description: `Scheduled service${teamName}\nNo published setlist yet.`,
+      location: campusName,
+      ...createAllDayRange(row.schedule_date),
+    });
+  }
+
+  const syncSources = [...eventSources, ...setlistSources, ...scheduleSources];
+  const activeSourceKeys = new Set(syncSources.map((source) => `${source.sourceType}:${source.sourceId}`));
+
+  const { data: existingMappings, error: mappingsError } = await service
+    .from("google_calendar_mappings")
+    .select("id,source_type,source_id,google_event_id,calendar_id")
+    .eq("user_id", userId)
+    .in("source_type", ["event", "setlist", "schedule"]);
+
+  if (mappingsError) {
+    throw new Error(`mappings_lookup_failed_${mappingsError.code ?? "unknown"}:${mappingsError.message}`);
+  }
+
+  const mappingByKey = new Map<string, MappingRow>();
+  for (const mapping of (existingMappings as MappingRow[]) ?? []) {
+    mappingByKey.set(`${mapping.source_type}:${mapping.source_id}`, mapping);
+  }
+
+  const failures: Array<{ sourceType: SyncSourceType; sourceId: string; reason: string }> = [];
+  let created = 0;
+  let updated = 0;
+  let removed = 0;
+
+  const upsertMapping = async (source: SyncSource, googleEventId: string) => {
+    const { error } = await service.from("google_calendar_mappings").upsert(
+      {
+        user_id: userId,
+        source_type: source.sourceType,
+        source_id: source.sourceId,
+        google_event_id: googleEventId,
+        calendar_id: calendarId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,source_type,source_id" }
+    );
+    return error;
+  };
+
+  for (const source of syncSources) {
+    const key = `${source.sourceType}:${source.sourceId}`;
+    const mapping = mappingByKey.get(key);
+    const payload = buildGoogleEventPayload(source, userId);
+
+    if (mapping?.google_event_id) {
+      const updateResult = await googleRequest(
+        googleAccessToken,
+        `/calendars/${encodeURIComponent(mapping.calendar_id || calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}`,
+        "PATCH",
+        payload
+      );
+
+      if (updateResult.response.ok) {
+        updated += 1;
+        continue;
+      }
+
+      if (updateResult.response.status !== 404) {
+        failures.push({
+          sourceType: source.sourceType,
+          sourceId: source.sourceId,
+          reason: `update_failed_${updateResult.response.status}`,
+        });
+        continue;
+      }
+    }
+
+    const createResult = await googleRequest(
+      googleAccessToken,
+      `/calendars/${encodeURIComponent(calendarId)}/events`,
+      "POST",
+      payload
+    );
+
+    if (!createResult.response.ok) {
+      failures.push({
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        reason: `create_failed_${createResult.response.status}`,
+      });
+      continue;
+    }
+
+    const googleEventId = (createResult.payload as { id?: string } | null)?.id;
+    if (!googleEventId) {
+      failures.push({
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        reason: "create_missing_google_event_id",
+      });
+      continue;
+    }
+
+    const mappingError = await upsertMapping(source, googleEventId);
+    if (mappingError) {
+      await googleRequest(
+        googleAccessToken,
+        `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+        "DELETE"
+      );
+      failures.push({
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        reason: `mapping_upsert_failed_${mappingError.code ?? "unknown"}`,
+      });
+      continue;
+    }
+
+    created += 1;
+  }
+
+  for (const mapping of (existingMappings as MappingRow[]) ?? []) {
+    const key = `${mapping.source_type}:${mapping.source_id}`;
+    if (activeSourceKeys.has(key)) continue;
+
+    await googleRequest(
+      googleAccessToken,
+      `/calendars/${encodeURIComponent(mapping.calendar_id || calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}`,
+      "DELETE"
+    );
+
+    const { error: deleteError } = await service
+      .from("google_calendar_mappings")
+      .delete()
+      .eq("id", mapping.id);
+
+    if (deleteError) {
+      failures.push({
+        sourceType: mapping.source_type,
+        sourceId: mapping.source_id,
+        reason: `mapping_delete_failed_${deleteError.code ?? "unknown"}`,
+      });
+      continue;
+    }
+
+    removed += 1;
+  }
+
+  return {
+    user_id: userId,
+    synced_at: new Date().toISOString(),
+    totals: {
+      source_count: syncSources.length,
+      event_count: eventSources.length,
+      setlist_count: setlistSources.length,
+      schedule_count: scheduleSources.length,
+    },
+    results: {
+      created,
+      updated,
+      removed,
+      failed: failures.length,
+    },
+    failures,
+  };
+};
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin") ?? "*";
   const headers = corsHeaders(origin);
@@ -175,6 +639,75 @@ Deno.serve(async (req) => {
       });
     }
 
+    const service = createClient(supabaseUrl, supabaseServiceKey);
+
+    const now = new Date();
+    const fromDate = formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    const toDate = formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 180));
+
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    const requestBody = await req.json().catch(() => ({}));
+    const isServiceRequest = token === supabaseServiceKey;
+
+    if (isServiceRequest && requestBody?.run_all === true) {
+      const { data: rows, error } = await service
+        .from("google_integrations")
+        .select("user_id")
+        .not("refresh_token", "is", null);
+
+      if (error) {
+        return new Response(JSON.stringify({ error: `run_all_lookup_failed_${error.code ?? "unknown"}`, details: error.message }), {
+          status: 500,
+          headers: { ...headers, "Content-Type": "application/json" },
+        });
+      }
+
+      const uniqueUserIds = Array.from(new Set((rows ?? []).map((r: any) => r.user_id).filter(Boolean)));
+      const perUser: Array<{ user_id: string; success: boolean; summary?: UserSyncSummary; error?: string }> = [];
+
+      let totalCreated = 0;
+      let totalUpdated = 0;
+      let totalRemoved = 0;
+      let totalFailed = 0;
+
+      for (const userId of uniqueUserIds) {
+        try {
+          const summary = await syncSingleUser(service, userId, googleClientId, googleClientSecret, fromDate, toDate);
+          totalCreated += summary.results.created;
+          totalUpdated += summary.results.updated;
+          totalRemoved += summary.results.removed;
+          totalFailed += summary.results.failed;
+          perUser.push({ user_id: userId, success: true, summary });
+        } catch (syncError) {
+          perUser.push({
+            user_id: userId,
+            success: false,
+            error: syncError instanceof Error ? syncError.message : "unknown_sync_error",
+          });
+          totalFailed += 1;
+        }
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        mode: "run_all",
+        synced_at: new Date().toISOString(),
+        users_processed: uniqueUserIds.length,
+        users_successful: perUser.filter((u) => u.success).length,
+        users_failed: perUser.filter((u) => !u.success).length,
+        totals: {
+          created: totalCreated,
+          updated: totalUpdated,
+          removed: totalRemoved,
+          failed: totalFailed,
+        },
+        per_user: perUser,
+      }), {
+        status: 200,
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
+    }
+
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -191,428 +724,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const service = createClient(supabaseUrl, supabaseServiceKey);
+    const summary = await syncSingleUser(service, user.id, googleClientId, googleClientSecret, fromDate, toDate);
 
-    const { data: integration, error: integrationError } = await service
-      .from("google_integrations")
-      .select("refresh_token")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (integrationError) {
-      return new Response(
-        JSON.stringify({
-          error: `integration_lookup_failed_${integrationError.code ?? "unknown"}`,
-          details: integrationError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (!integration?.refresh_token) {
-      return new Response(JSON.stringify({ error: "google_not_connected" }), {
-        status: 400,
-        headers: { ...headers, "Content-Type": "application/json" },
-      });
-    }
-
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: googleClientId,
-        client_secret: googleClientSecret,
-        refresh_token: integration.refresh_token,
-        grant_type: "refresh_token",
-      }),
+    return new Response(JSON.stringify({
+      success: true,
+      synced_at: summary.synced_at,
+      totals: summary.totals,
+      results: summary.results,
+      failures: summary.failures,
+    }), {
+      status: 200,
+      headers: { ...headers, "Content-Type": "application/json" },
     });
-
-    const tokenPayload = await tokenResponse.json();
-    if (!tokenResponse.ok || !tokenPayload?.access_token) {
-      return new Response(
-        JSON.stringify({
-          error: "google_refresh_token_failed",
-          details: tokenPayload?.error_description || tokenPayload?.error || "unknown",
-        }),
-        {
-          status: 502,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const googleAccessToken: string = tokenPayload.access_token;
-    const calendarId = "primary";
-
-    const now = new Date();
-    const fromDate = formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    const toDate = formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 180));
-
-    const { data: campusRows, error: campusError } = await service
-      .from("user_campuses")
-      .select("campus_id")
-      .eq("user_id", user.id);
-
-    if (campusError) {
-      return new Response(
-        JSON.stringify({
-          error: `campus_lookup_failed_${campusError.code ?? "unknown"}`,
-          details: campusError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const campusIds = Array.from(new Set((campusRows ?? []).map((row: { campus_id: string }) => row.campus_id)));
-
-    if (campusIds.length === 0) {
-      const { data: profile } = await service
-        .from("profiles")
-        .select("default_campus_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (profile?.default_campus_id) {
-        campusIds.push(profile.default_campus_id);
-      }
-    }
-
-    const eventSources: SyncSource[] = [];
-    const fetchedEventIds = new Set<string>();
-
-    const appendEvents = (rows: any[] | null) => {
-      for (const row of rows ?? []) {
-        if (!row?.id || fetchedEventIds.has(row.id)) continue;
-        fetchedEventIds.add(row.id);
-
-        const title = row.title || "Team Event";
-        const campusName = row.campuses?.name ?? undefined;
-        const eventDate = row.event_date;
-        if (!eventDate) continue;
-
-        let range: { start: SyncSource["start"]; end: SyncSource["end"] };
-        if (row.start_time) {
-          range = createTimedRange(eventDate, row.start_time, row.end_time);
-        } else {
-          range = createAllDayRange(eventDate);
-        }
-
-        eventSources.push({
-          sourceType: "event",
-          sourceId: row.id,
-          summary: title,
-          description: row.description ?? undefined,
-          location: campusName,
-          start: range.start,
-          end: range.end,
-        });
-      }
-    };
-
-    if (campusIds.length > 0) {
-      const { data: campusEvents, error: campusEventsError } = await service
-        .from("events")
-        .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
-        .in("campus_id", campusIds)
-        .gte("event_date", fromDate)
-        .lte("event_date", toDate)
-        .order("event_date", { ascending: true });
-
-      if (campusEventsError) {
-        return new Response(
-          JSON.stringify({
-            error: `events_lookup_failed_${campusEventsError.code ?? "unknown"}`,
-            details: campusEventsError.message,
-          }),
-          {
-            status: 500,
-            headers: { ...headers, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      appendEvents(campusEvents as any[]);
-    }
-
-    const { data: globalEvents, error: globalEventsError } = await service
-      .from("events")
-      .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
-      .is("campus_id", null)
-      .gte("event_date", fromDate)
-      .lte("event_date", toDate)
-      .order("event_date", { ascending: true });
-
-    if (globalEventsError) {
-      return new Response(
-        JSON.stringify({
-          error: `global_events_lookup_failed_${globalEventsError.code ?? "unknown"}`,
-          details: globalEventsError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    appendEvents(globalEvents as any[]);
-
-    const { data: publishedSets, error: publishedSetsError } = await service
-      .from("draft_sets")
-      .select(
-        "id,plan_date,ministry_type,campus_id,custom_service_id,campuses(name),custom_services(service_name,start_time,end_time),draft_set_songs(sequence_order,song_key,songs(title))"
-      )
-      .eq("status", "published")
-      .gte("plan_date", fromDate)
-      .lte("plan_date", toDate)
-      .order("plan_date", { ascending: true });
-
-    if (publishedSetsError) {
-      return new Response(
-        JSON.stringify({
-          error: `published_sets_lookup_failed_${publishedSetsError.code ?? "unknown"}`,
-          details: publishedSetsError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const setlistSources: SyncSource[] = [];
-    for (const set of (publishedSets as any[]) ?? []) {
-      const { data: isOnRoster, error: rosterError } = await service.rpc("is_user_on_setlist_roster", {
-        p_draft_set_id: set.id,
-        p_user_id: user.id,
-      });
-
-      if (rosterError) {
-        return new Response(
-          JSON.stringify({
-            error: `roster_check_failed_${rosterError.code ?? "unknown"}`,
-            details: rosterError.message,
-          }),
-          {
-            status: 500,
-            headers: { ...headers, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      if (!isOnRoster) continue;
-
-      const campusName = set.campuses?.name ?? "Campus";
-      const customServiceName = set.custom_services?.service_name ?? null;
-      const ministryLabel = formatMinistry(set.ministry_type);
-      const summary = customServiceName
-        ? `${campusName} • ${customServiceName}`
-        : `${campusName} • ${ministryLabel} Setlist`;
-
-      const songs = [...(set.draft_set_songs ?? [])]
-        .sort((a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0))
-        .map((row, index) => {
-          const title = row.songs?.title ?? "Song";
-          const songKey = row.song_key ? ` (${row.song_key})` : "";
-          return `${index + 1}. ${title}${songKey}`;
-        });
-
-      const description = songs.length
-        ? `Published setlist\n\nSongs:\n${songs.join("\n")}`
-        : "Published setlist";
-
-      let range: { start: SyncSource["start"]; end: SyncSource["end"] };
-      if (set.custom_services?.start_time) {
-        range = createTimedRange(set.plan_date, set.custom_services.start_time, set.custom_services?.end_time);
-      } else {
-        range = createAllDayRange(set.plan_date);
-      }
-
-      setlistSources.push({
-        sourceType: "setlist",
-        sourceId: set.id,
-        summary,
-        description,
-        location: campusName,
-        start: range.start,
-        end: range.end,
-      });
-    }
-
-    const syncSources = [...eventSources, ...setlistSources];
-    const activeSourceKeys = new Set(syncSources.map((source) => `${source.sourceType}:${source.sourceId}`));
-
-    const { data: existingMappings, error: mappingsError } = await service
-      .from("google_calendar_mappings")
-      .select("id,source_type,source_id,google_event_id,calendar_id")
-      .eq("user_id", user.id)
-      .in("source_type", ["event", "setlist"]);
-
-    if (mappingsError) {
-      return new Response(
-        JSON.stringify({
-          error: `mappings_lookup_failed_${mappingsError.code ?? "unknown"}`,
-          details: mappingsError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...headers, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const mappingByKey = new Map<string, MappingRow>();
-    for (const mapping of (existingMappings as MappingRow[]) ?? []) {
-      mappingByKey.set(`${mapping.source_type}:${mapping.source_id}`, mapping);
-    }
-
-    const failures: Array<{ sourceType: SyncSourceType; sourceId: string; reason: string }> = [];
-    let created = 0;
-    let updated = 0;
-    let removed = 0;
-
-    const upsertMapping = async (source: SyncSource, googleEventId: string) => {
-      const { error } = await service.from("google_calendar_mappings").upsert(
-        {
-          user_id: user.id,
-          source_type: source.sourceType,
-          source_id: source.sourceId,
-          google_event_id: googleEventId,
-          calendar_id: calendarId,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,source_type,source_id" }
-      );
-      return error;
-    };
-
-    for (const source of syncSources) {
-      const key = `${source.sourceType}:${source.sourceId}`;
-      const mapping = mappingByKey.get(key);
-      const payload = buildGoogleEventPayload(source, user.id);
-
-      if (mapping?.google_event_id) {
-        const updateResult = await googleRequest(
-          googleAccessToken,
-          `/calendars/${encodeURIComponent(mapping.calendar_id || calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}`,
-          "PATCH",
-          payload
-        );
-
-        if (updateResult.response.ok) {
-          updated += 1;
-          continue;
-        }
-
-        if (updateResult.response.status !== 404) {
-          failures.push({
-            sourceType: source.sourceType,
-            sourceId: source.sourceId,
-            reason: `update_failed_${updateResult.response.status}`,
-          });
-          continue;
-        }
-      }
-
-      const createResult = await googleRequest(
-        googleAccessToken,
-        `/calendars/${encodeURIComponent(calendarId)}/events`,
-        "POST",
-        payload
-      );
-
-      if (!createResult.response.ok) {
-        failures.push({
-          sourceType: source.sourceType,
-          sourceId: source.sourceId,
-          reason: `create_failed_${createResult.response.status}`,
-        });
-        continue;
-      }
-
-      const googleEventId = (createResult.payload as { id?: string } | null)?.id;
-      if (!googleEventId) {
-        failures.push({
-          sourceType: source.sourceType,
-          sourceId: source.sourceId,
-          reason: "create_missing_google_event_id",
-        });
-        continue;
-      }
-
-      const mappingError = await upsertMapping(source, googleEventId);
-      if (mappingError) {
-        // Best effort rollback so we don't orphan Google events without app mapping.
-        await googleRequest(
-          googleAccessToken,
-          `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
-          "DELETE"
-        );
-        failures.push({
-          sourceType: source.sourceType,
-          sourceId: source.sourceId,
-          reason: `mapping_upsert_failed_${mappingError.code ?? "unknown"}`,
-        });
-        continue;
-      }
-
-      created += 1;
-    }
-
-    for (const mapping of (existingMappings as MappingRow[]) ?? []) {
-      const key = `${mapping.source_type}:${mapping.source_id}`;
-      if (activeSourceKeys.has(key)) continue;
-
-      await googleRequest(
-        googleAccessToken,
-        `/calendars/${encodeURIComponent(mapping.calendar_id || calendarId)}/events/${encodeURIComponent(mapping.google_event_id)}`,
-        "DELETE"
-      );
-
-      const { error: deleteError } = await service
-        .from("google_calendar_mappings")
-        .delete()
-        .eq("id", mapping.id);
-
-      if (deleteError) {
-        failures.push({
-          sourceType: mapping.source_type,
-          sourceId: mapping.source_id,
-          reason: `mapping_delete_failed_${deleteError.code ?? "unknown"}`,
-        });
-        continue;
-      }
-
-      removed += 1;
-    }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        synced_at: new Date().toISOString(),
-        totals: {
-          source_count: syncSources.length,
-          event_count: eventSources.length,
-          setlist_count: setlistSources.length,
-        },
-        results: {
-          created,
-          updated,
-          removed,
-          failed: failures.length,
-        },
-        failures,
-      }),
-      {
-        status: 200,
-        headers: { ...headers, "Content-Type": "application/json" },
-      }
-    );
   } catch (error) {
     return new Response(
       JSON.stringify({

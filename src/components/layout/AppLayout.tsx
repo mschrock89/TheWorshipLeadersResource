@@ -124,7 +124,7 @@ export function AppLayout({
               {canManageTeam && <DropdownMenuItem asChild>
                   <Link to="/settings/planning-center" className="flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
-                    Planning Center
+                    Integrations
                   </Link>
                 </DropdownMenuItem>}
               <DropdownMenuSeparator />
