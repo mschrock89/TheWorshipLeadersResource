@@ -28,7 +28,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import {
-  AlertCircle,
   CheckCircle2,
   Home,
   Link2,
@@ -276,24 +275,6 @@ export default function PlanningCenter() {
     updateSettings.mutate({ [setting]: value });
   };
 
-  if (!canManageTeam) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] p-6">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              Access Denied
-            </CardTitle>
-            <CardDescription>
-              You need to be a Campus Pastor or Leader to access Planning Center integration.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
   if (connectionLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -380,6 +361,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_team_members"
                       checked={connection.sync_team_members}
+                      disabled={!canManageTeam}
                       onCheckedChange={(checked) => handleSettingChange("sync_team_members", !!checked)}
                     />
                     <Label htmlFor="sync_team_members" className="text-sm">
@@ -391,6 +373,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_phone_numbers"
                       checked={connection.sync_phone_numbers}
+                      disabled={!canManageTeam}
                       onCheckedChange={(checked) => handleSettingChange("sync_phone_numbers", !!checked)}
                     />
                     <Label htmlFor="sync_phone_numbers" className="text-sm">
@@ -402,6 +385,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_birthdays"
                       checked={connection.sync_birthdays}
+                      disabled={!canManageTeam}
                       onCheckedChange={(checked) => handleSettingChange("sync_birthdays", !!checked)}
                     />
                     <Label htmlFor="sync_birthdays" className="text-sm">
@@ -413,6 +397,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_positions"
                       checked={connection.sync_positions}
+                      disabled={!canManageTeam}
                       onCheckedChange={(checked) => handleSettingChange("sync_positions", !!checked)}
                     />
                     <Label htmlFor="sync_positions" className="text-sm">
@@ -428,6 +413,7 @@ export default function PlanningCenter() {
                   <Checkbox
                     id="sync_active_only"
                     checked={connection.sync_active_only}
+                    disabled={!canManageTeam}
                     onCheckedChange={(checked) => handleSettingChange("sync_active_only", !!checked)}
                   />
                   <div className="space-y-1">
@@ -454,7 +440,7 @@ export default function PlanningCenter() {
                       variant="outline"
                       size="sm"
                       onClick={() => setCleanupDialogOpen(true)}
-                      disabled={!connection.campus_id}
+                      disabled={!connection.campus_id || !canManageTeam}
                     >
                       <UserX className="h-4 w-4 mr-2" />
                       Clean Up Inactive Members
@@ -472,7 +458,7 @@ export default function PlanningCenter() {
                 <div className="flex gap-3">
                   <Button
                     onClick={() => syncTeam.mutate()}
-                    disabled={syncTeam.isPending || syncPlans.isPending}
+                    disabled={syncTeam.isPending || syncPlans.isPending || !canManageTeam}
                     className="flex-1"
                   >
                     {syncTeam.isPending ? (
@@ -484,7 +470,7 @@ export default function PlanningCenter() {
                   </Button>
                   <Button
                     onClick={() => syncPlans.mutate()}
-                    disabled={syncPlans.isPending || syncTeam.isPending}
+                    disabled={syncPlans.isPending || syncTeam.isPending || !canManageTeam}
                     variant="secondary"
                     className="flex-1"
                   >
@@ -499,7 +485,7 @@ export default function PlanningCenter() {
                 <Button
                   variant="outline"
                   onClick={() => disconnect.mutate()}
-                  disabled={disconnect.isPending}
+                  disabled={disconnect.isPending || !canManageTeam}
                   className="w-full"
                 >
                   {disconnect.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Unlink className="h-4 w-4 mr-2" />}
@@ -516,36 +502,45 @@ export default function PlanningCenter() {
             </>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="campus">Select Campus (Optional)</Label>
-                <Select value={selectedCampus} onValueChange={setSelectedCampus}>
-                  <SelectTrigger id="campus">
-                    <SelectValue placeholder="All campuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All campuses</SelectItem>
-                    {campuses?.map((campus) => (
-                      <SelectItem key={campus.id} value={campus.id}>
-                        {campus.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">New team members will be assigned to this campus.</p>
-              </div>
+              {canManageTeam ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="campus">Select Campus (Optional)</Label>
+                    <Select value={selectedCampus} onValueChange={setSelectedCampus}>
+                      <SelectTrigger id="campus">
+                        <SelectValue placeholder="All campuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All campuses</SelectItem>
+                        {campuses?.map((campus) => (
+                          <SelectItem key={campus.id} value={campus.id}>
+                            {campus.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">New team members will be assigned to this campus.</p>
+                  </div>
 
-              <Button onClick={handleConnectPco} disabled={startAuth.isPending} className="w-full">
-                {startAuth.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Link2 className="h-4 w-4 mr-2" />
-                )}
-                Connect to Planning Center
-              </Button>
+                  <Button onClick={handleConnectPco} disabled={startAuth.isPending} className="w-full">
+                    {startAuth.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Link2 className="h-4 w-4 mr-2" />
+                    )}
+                    Connect to Planning Center
+                  </Button>
 
-              <p className="text-xs text-muted-foreground text-center">
-                You'll be redirected to Planning Center to authorize access.
-              </p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    You'll be redirected to Planning Center to authorize access.
+                  </p>
+                </>
+              ) : (
+                <div className="rounded border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Planning Center org sync is managed by leaders. Google Calendar sync below is available for every
+                  signed-in user.
+                </div>
+              )}
             </>
           )}
         </CardContent>
