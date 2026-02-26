@@ -117,6 +117,7 @@ export function useSongAvailability(
       const upcomingUsages = relevantUsages.filter(u => u.plan_date >= todayStr);
       
       const totalUses = relevantUsages.length;
+      const isGloballyNew = (song.usages?.length || 0) === 0;
       const hasRecentSchedule = relevantUsages.some(u => u.plan_date >= oneYearAgoStr);
       // A song is "new" for this campus/ministry if scheduled in the last year and still under 4 total schedules.
       const isNewSong = hasRecentSchedule && totalUses < 4;
