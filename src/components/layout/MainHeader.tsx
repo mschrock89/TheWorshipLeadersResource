@@ -173,7 +173,7 @@ export function MainHeader({
                       </Badge>}
                   </Link>
                 </DropdownMenuItem>}
-              {!isAuditionCandidate && canManageTeam && <DropdownMenuItem asChild>
+              {!isAuditionCandidate && <DropdownMenuItem asChild>
                   <Link to="/settings/planning-center" className="flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
                     Integrations

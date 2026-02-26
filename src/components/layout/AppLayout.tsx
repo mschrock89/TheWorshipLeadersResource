@@ -121,12 +121,12 @@ export function AppLayout({
                   Audio Library
                 </Link>
               </DropdownMenuItem>
-              {canManageTeam && <DropdownMenuItem asChild>
+              <DropdownMenuItem asChild>
                   <Link to="/settings/planning-center" className="flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
                     Integrations
                   </Link>
-                </DropdownMenuItem>}
+                </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link to="/profile" className="flex items-center gap-2">
