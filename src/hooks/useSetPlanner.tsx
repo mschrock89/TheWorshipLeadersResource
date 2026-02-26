@@ -116,14 +116,10 @@ export function useSongAvailability(
       const pastUsages = relevantUsages.filter(u => u.plan_date < todayStr);
       const upcomingUsages = relevantUsages.filter(u => u.plan_date >= todayStr);
       
-      // Check GLOBAL usage across ALL campuses/ministries for NEW badge
-      const allPastUsages = (song.usages || []).filter(u => u.plan_date < todayStr);
-      const globalTotalUses = allPastUsages.length;
-      const isGloballyNew = globalTotalUses === 0; // Never scheduled anywhere
-      
-      const totalUses = pastUsages.length;
-      // Show as "new song" if never used globally OR used less than 3 times at this campus/ministry
-      const isNewSong = isGloballyNew || totalUses < 3;
+      const totalUses = relevantUsages.length;
+      const hasRecentSchedule = relevantUsages.some(u => u.plan_date >= oneYearAgoStr);
+      // A song is "new" for this campus/ministry if scheduled in the last year and still under 4 total schedules.
+      const isNewSong = hasRecentSchedule && totalUses < 4;
 
       // Calculate uses in past year for deep cut detection
       const usesInPastYear = pastUsages.filter(u => u.plan_date >= oneYearAgoStr).length;

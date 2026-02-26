@@ -75,7 +75,7 @@ export default function Songs() {
   const [selectedPlan, setSelectedPlan] = useState<{ id: string; pco_plan_id: string } | null>(null);
   const [selectedCampusId, setSelectedCampusId] = useState<string>("all");
   const [selectedMinistry, setSelectedMinistry] = useState<string>("weekend");
-  const [activeListView, setActiveListView] = useState<"all" | "rotation" | "mostUsed" | "newSongs">("all");
+  const [activeListView, setActiveListView] = useState<"all" | "rotation" | "mostUsed" | "newSongs" | "adventSongs">("all");
   const [historySortOrder, setHistorySortOrder] = useState<"newest" | "oldest">("newest");
   const [historyPage, setHistoryPage] = useState(1);
   const PLANS_PER_PAGE = 20;
@@ -112,6 +112,11 @@ export default function Songs() {
   const deleteSong = useDeleteSong();
   const mergeSongs = useMergeSongs();
   const [mergeSourceSong, setMergeSourceSong] = useState<{ id: string; title: string } | null>(null);
+  const newSongsCutoffDate = useMemo(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return d;
+  }, []);
 
   // Permission checks - leaders/admins can sync, only org admins can delete
   const leaderRoles = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor'];
@@ -122,6 +127,27 @@ export default function Songs() {
   const inProgressSyncs = allSyncProgress?.filter(p => p.status === 'in_progress') || [];
 
   const today = new Date();
+  const isAdventSeason = today.getMonth() === 11 && today.getDate() <= 25;
+  const isAdventWeekendDate = (isoDate: string) => {
+    const parsed = new Date(`${isoDate}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return false;
+
+    const year = parsed.getFullYear();
+    const christmas = new Date(year, 11, 25);
+    const saturdayBeforeChristmas = new Date(christmas);
+    saturdayBeforeChristmas.setDate(saturdayBeforeChristmas.getDate() - 1);
+    while (saturdayBeforeChristmas.getDay() !== 6) {
+      saturdayBeforeChristmas.setDate(saturdayBeforeChristmas.getDate() - 1);
+    }
+    const sundayOfAdventWeekend = new Date(saturdayBeforeChristmas);
+    sundayOfAdventWeekend.setDate(sundayOfAdventWeekend.getDate() + 1);
+
+    const dateKey = format(parsed, "yyyy-MM-dd");
+    return (
+      dateKey === format(saturdayBeforeChristmas, "yyyy-MM-dd") ||
+      dateKey === format(sundayOfAdventWeekend, "yyyy-MM-dd")
+    );
+  };
   
   // Determine if user is restricted to their campus only (volunteers/members)
   const isVolunteer = userRole === "volunteer" || userRole === "member";
@@ -224,14 +250,14 @@ export default function Songs() {
   };
 
   // Calculate campus-filtered stats and per-song filtered counts
-  const { campusFilteredStats, songCampusUsage, regularRotationSongs, newSongsList, mostUsedTop10 } = useMemo(() => {
+  const { campusFilteredStats, songCampusUsage, regularRotationSongs, newSongsList, adventSongsList, mostUsedTop10 } = useMemo(() => {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
 
     // Build a map of song_id -> campus-filtered usage count (ALL TIME for display, last 52 weeks for rotation stats)
-    const usageMap = new Map<string, { count: number; lastUsed: string | null; upcomingCount: number }>();
+    const usageMap = new Map<string, { count: number; lastUsed: string | null; upcomingCount: number; lastScheduled: string | null }>();
 
     // Filter each song's usages by campus and ministry
     const songsWithCampusStats = songs?.map(song => {
@@ -239,6 +265,7 @@ export default function Songs() {
 
       const pastUsages = filteredUsages.filter(u => u.plan_date < todayStr);
       const upcomingUsages = filteredUsages.filter(u => u.plan_date >= todayStr);
+      const scheduledUsages = filteredUsages;
       // Last 52 weeks for rotation stats
       const lastYearUsages = pastUsages.filter(u => u.plan_date >= oneYearAgoStr);
       
@@ -246,18 +273,25 @@ export default function Songs() {
       const allTimeSortedDates = pastUsages.map(u => u.plan_date).sort();
       const lastUsedAllTime = allTimeSortedDates[allTimeSortedDates.length - 1] || null;
       const firstUsedEver = allTimeSortedDates[0] || null;
+      const allScheduledSortedDates = scheduledUsages.map(u => u.plan_date).sort();
+      const lastScheduledAt = allScheduledSortedDates[allScheduledSortedDates.length - 1] || null;
+      const hasAdventWeekendUsage = scheduledUsages.some((u) => isAdventWeekendDate(u.plan_date));
 
       // Store in map for table display - use ALL TIME count and last used
       usageMap.set(song.id, {
         count: pastUsages.length,  // All-time count
         lastUsed: lastUsedAllTime, // All-time last used
         upcomingCount: upcomingUsages.length,
+        lastScheduled: lastScheduledAt,
       });
 
       return {
         ...song,
         usagesInLastYear: lastYearUsages.length,
         usagesAllTime: pastUsages.length,
+        scheduledCount: scheduledUsages.length,
+        lastScheduledAt,
+        hasAdventWeekendUsage,
         lastUsedAllTime: lastUsedAllTime,
         firstUsedEver: firstUsedEver,
       };
@@ -269,52 +303,73 @@ export default function Songs() {
       .sort((a, b) => b.usagesAllTime - a.usagesAllTime);
     const top10 = sortedByUsage.slice(0, 10);
 
-    // New songs: first used within last year AND used fewer than 4 times in last 52 weeks (campus-filtered)
-    const newSongs = songsWithCampusStats.filter(song => {
-      const firstUsed = song.firstUsedEver ? new Date(song.firstUsedEver) : null;
-      return song.usagesInLastYear > 0 && 
-             song.usagesInLastYear < 4 && 
-             firstUsed && 
-             firstUsed >= oneYearAgo;
-    }).sort((a, b) => {
-      // Sort by first used date (newest first)
-      if (!a.firstUsedEver) return 1;
-      if (!b.firstUsedEver) return -1;
-      return new Date(b.firstUsedEver).getTime() - new Date(a.firstUsedEver).getTime();
+    // New songs: scheduled 1-3 times at this campus/ministry
+    const candidateNewSongs = songsWithCampusStats.filter(song => {
+      const scheduledCount = song.scheduledCount ?? 0;
+      const lastScheduledAt = song.lastScheduledAt ? new Date(song.lastScheduledAt) : null;
+      return scheduledCount > 0 &&
+             scheduledCount < 4 &&
+             !!lastScheduledAt &&
+             lastScheduledAt >= oneYearAgo;
     });
 
-    // Regular rotation: 4+ uses in the last 52 weeks (campus-filtered)
+    const adventSongs = candidateNewSongs
+      .filter((song) => song.hasAdventWeekendUsage)
+      .sort((a, b) => (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0));
+
+    // Always keep Advent-weekend songs out of "New Songs".
+    // The dedicated Advent list is shown only during Advent season in the UI.
+    const newSongs = candidateNewSongs.filter((song) => {
+      return !song.hasAdventWeekendUsage;
+    }).sort((a, b) => {
+      const aDate = a.lastScheduledAt || "";
+      const bDate = b.lastScheduledAt || "";
+      if (bDate !== aDate) return bDate.localeCompare(aDate);
+      return (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0);
+    });
+
+    // Regular rotation: 4+ scheduled times at this campus/ministry
     const regularRotation = songsWithCampusStats
-      .filter(song => song.usagesInLastYear >= 4)
-      .sort((a, b) => b.usagesInLastYear - a.usagesInLastYear);
+      .filter(song => (song.scheduledCount ?? 0) >= 4)
+      .sort((a, b) => (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0));
 
     return {
       campusFilteredStats: {
         mostUsedTitle: top10[0]?.title || "—",
         newSongsCount: newSongs.length,
+        adventSongsCount: adventSongs.length,
         regularRotationCount: regularRotation.length,
       },
       songCampusUsage: usageMap,
       regularRotationSongs: regularRotation,
       newSongsList: newSongs,
+      adventSongsList: adventSongs,
       mostUsedTop10: top10,
     };
-  }, [songs, selectedCampusId, selectedMinistry, selectedMinistryConfig]);
+  }, [songs, selectedCampusId, selectedMinistry, selectedMinistryConfig, isAdventSeason]);
 
   // Get songs and info for current list view
   const getListViewInfo = () => {
     switch (activeListView) {
       case "rotation":
-        return { title: "Regular Rotation", subtitle: "Songs played 4+ times in the last 52 weeks", songs: regularRotationSongs };
+        return { title: "Regular Rotation", subtitle: "Songs scheduled 4+ times for this campus/ministry", songs: regularRotationSongs };
       case "mostUsed":
         return { title: "Most Used Songs", subtitle: "Top 10 most played songs", songs: mostUsedTop10 };
       case "newSongs":
-        return { title: "New Songs", subtitle: "First played in the last year with fewer than 4 uses", songs: newSongsList };
+        return { title: "New Songs", subtitle: "Songs scheduled 1-3 times for this campus/ministry", songs: newSongsList };
+      case "adventSongs":
+        return { title: "Advent Songs", subtitle: "Songs scheduled for Advent weekend", songs: adventSongsList };
       default:
         return null;
     }
   };
-  
+
+  useEffect(() => {
+    if (!isAdventSeason && activeListView === "adventSongs") {
+      setActiveListView("all");
+    }
+  }, [isAdventSeason, activeListView]);
+
   const filteredSongs = songs?.filter(song =>
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     song.author?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -635,6 +690,17 @@ export default function Songs() {
                   <Sparkles className="h-3.5 w-3.5" />
                   <Badge variant={activeListView === "newSongs" ? "outline" : "secondary"}>{campusFilteredStats.newSongsCount}</Badge>
                 </Button>
+                {isAdventSeason && (
+                  <Button
+                    variant={activeListView === "adventSongs" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => { setActiveListView(activeListView === "adventSongs" ? "all" : "adventSongs"); setSearchQuery(""); }}
+                    className="gap-1.5"
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    <Badge variant={activeListView === "adventSongs" ? "outline" : "secondary"}>{campusFilteredStats.adventSongsCount}</Badge>
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -693,7 +759,23 @@ export default function Songs() {
                                     </span>
                                   )}
                                   <div className="min-w-0">
-                                    <p className="font-medium truncate">{song.title}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium truncate">{song.title}</p>
+                                      {(() => {
+                                        const scheduledCount = (song as any).scheduledCount ?? 0;
+                                        const lastScheduledAt = (song as any).lastScheduledAt ? new Date((song as any).lastScheduledAt) : null;
+                                        const isNew =
+                                          scheduledCount > 0 &&
+                                          scheduledCount < 4 &&
+                                          !!lastScheduledAt &&
+                                          lastScheduledAt >= newSongsCutoffDate;
+                                        return isNew ? (
+                                          <Badge variant="outline" className="text-xs h-5 px-2 shrink-0 border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
+                                            NEW
+                                          </Badge>
+                                        ) : null;
+                                      })()}
+                                    </div>
                                     <p className="text-sm text-muted-foreground truncate">
                                       {song.author || "Unknown"}
                                     </p>
@@ -784,7 +866,24 @@ export default function Songs() {
                           {filteredSongs?.map((song) => (
                             <TableRow key={song.id}>
                               <TableCell className="font-medium">
-                                <div>{song.title}</div>
+                                <div className="flex items-center gap-2">
+                                  <span>{song.title}</span>
+                                  {(() => {
+                                    const usage = songCampusUsage.get(song.id);
+                                    const scheduledCount = (usage?.count ?? 0) + (usage?.upcomingCount ?? 0);
+                                    const lastScheduledAt = usage?.lastScheduled ? new Date(usage.lastScheduled) : null;
+                                    const isNew =
+                                      scheduledCount > 0 &&
+                                      scheduledCount < 4 &&
+                                      !!lastScheduledAt &&
+                                      lastScheduledAt >= newSongsCutoffDate;
+                                    return isNew ? (
+                                      <Badge variant="outline" className="text-xs h-5 px-2 border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
+                                        NEW
+                                      </Badge>
+                                    ) : null;
+                                  })()}
+                                </div>
                                 <div className="text-sm text-muted-foreground md:hidden">
                                   {song.author || "Unknown"}
                                 </div>
