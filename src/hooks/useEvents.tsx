@@ -10,6 +10,7 @@ export interface Event {
   start_time: string | null;
   end_time: string | null;
   campus_id: string | null;
+  teaching_week_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -62,13 +63,34 @@ export function useCreateEvent() {
       start_time?: string;
       end_time?: string;
       campus_id?: string;
+      ministry_type?: string;
+      teaching_week_id?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
+      let teachingWeekId = event.teaching_week_id || null;
+      if (!teachingWeekId && event.campus_id && event.ministry_type) {
+        const { data: weekMatch } = await (supabase as any)
+          .from("teaching_weeks")
+          .select("id")
+          .eq("campus_id", event.campus_id)
+          .eq("ministry_type", event.ministry_type)
+          .eq("weekend_date", event.event_date)
+          .limit(1)
+          .maybeSingle();
+        teachingWeekId = weekMatch?.id || null;
+      }
+
       const { data, error } = await supabase
         .from("events")
         .insert({
-          ...event,
+          title: event.title,
+          description: event.description,
+          event_date: event.event_date,
+          start_time: event.start_time,
+          end_time: event.end_time,
+          campus_id: event.campus_id,
+          teaching_week_id: teachingWeekId,
           created_by: user?.id,
         })
         .select()

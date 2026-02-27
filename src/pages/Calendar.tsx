@@ -459,6 +459,7 @@ function StandardCalendar() {
         start_time: newEvent.start_time || undefined,
         end_time: newEvent.end_time || undefined,
         campus_id: selectedCampusId,
+        ministry_type: newEvent.ministry_type,
       });
 
       let inviteUserIds: string[] = [];

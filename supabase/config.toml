@@ -87,3 +87,28 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/google-calendar-resync/deno.json"
 entrypoint = "./functions/google-calendar-resync/index.ts"
+
+[functions.bible-chapter]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/bible-chapter/index.ts"
+
+[functions.analyze-chapter]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/analyze-chapter/index.ts"
+
+[functions.embed-song-version]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/embed-song-version/index.ts"
+
+[functions.embed-all-songs]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/embed-all-songs/index.ts"
+
+[functions.suggest-songs]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/suggest-songs/index.ts"

@@ -6,6 +6,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -35,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   value: Database["public"]["Enums"]["team_position"];
@@ -74,6 +77,39 @@ const CUSTOM_SERVICE_VOCAL_ROLES = new Set<Database["public"]["Enums"]["team_pos
   "background_vocals",
 ]);
 
+interface TeachingSeriesRow {
+  id: string;
+  title: string;
+  book_start: string;
+  chapter_start: number;
+  start_date: string;
+  end_date: string | null;
+}
+
+interface TeachingWeekRow {
+  id: string;
+  teaching_series_id: string | null;
+  campus_id: string;
+  ministry_type: string;
+  weekend_date: string;
+  book: string;
+  chapter: number;
+  ai_summary: string | null;
+  themes_manual: string[] | null;
+  themes_suggested: string[] | null;
+}
+
+interface SuggestedSong {
+  song_id: string;
+  title: string;
+  author: string | null;
+  similarity: number;
+  suggestion_type: "regular" | "new" | "deep_cut";
+  reason: string;
+  uses_in_ministry: number;
+  last_used_date: string | null;
+}
+
 
 export default function SetPlanner() {
   const { user, isAdmin } = useAuth();
@@ -90,6 +126,23 @@ export default function SetPlanner() {
   const [selectedMinistry, setSelectedMinistry] = useState<string>('weekend');
   const [lastSavedSetId, setLastSavedSetId] = useState<string | null>(null);
   const isPrayerNightMinistry = selectedMinistry === "prayer_night";
+  const [teachingSeries, setTeachingSeries] = useState<TeachingSeriesRow[]>([]);
+  const [selectedTeachingSeriesId, setSelectedTeachingSeriesId] = useState<string>("none");
+  const [teachingWeek, setTeachingWeek] = useState<TeachingWeekRow | null>(null);
+  const [teachingBook, setTeachingBook] = useState<string>("John");
+  const [teachingChapter, setTeachingChapter] = useState<string>("1");
+  const [manualThemesInput, setManualThemesInput] = useState<string>("");
+  const [isTeachingLoading, setIsTeachingLoading] = useState(false);
+  const [isAnalyzingChapter, setIsAnalyzingChapter] = useState(false);
+  const [isSuggestingSongs, setIsSuggestingSongs] = useState(false);
+  const [teachingSummary, setTeachingSummary] = useState<string>("");
+  const [suggestedSongs, setSuggestedSongs] = useState<SuggestedSong[]>([]);
+  const [suggestedThemes, setSuggestedThemes] = useState<string[]>([]);
+  const [newSeriesTitle, setNewSeriesTitle] = useState<string>("");
+  const [newSeriesBook, setNewSeriesBook] = useState<string>("John");
+  const [newSeriesStartChapter, setNewSeriesStartChapter] = useState<string>("1");
+  const [newSeriesWeekCount, setNewSeriesWeekCount] = useState<string>("8");
+  const [isCreatingSeries, setIsCreatingSeries] = useState(false);
   
   // Determine ministry scheduling behavior
   const isMidweekMinistry = selectedMinistry === 'encounter' || selectedMinistry === 'eon';
@@ -556,6 +609,261 @@ export default function SetPlanner() {
 
   const canOverrideSongRestrictions = isAdmin && !!selectedCustomService;
 
+  const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
+
+  const parseThemes = (input: string) =>
+    input
+      .split(",")
+      .map((theme) => theme.trim())
+      .filter(Boolean);
+
+  const refreshTeachingWeekById = async (weekId: string) => {
+    const { data, error } = await (supabase as any)
+      .from("teaching_weeks")
+      .select("*")
+      .eq("id", weekId)
+      .single();
+
+    if (error) throw error;
+    const week = data as TeachingWeekRow;
+    setTeachingWeek(week);
+    setTeachingBook(week.book);
+    setTeachingChapter(String(week.chapter));
+    setManualThemesInput((week.themes_manual || []).join(", "));
+    setTeachingSummary(week.ai_summary || "");
+    setSuggestedThemes(week.themes_suggested || []);
+    return week;
+  };
+
+  useEffect(() => {
+    if (!effectiveCampusId) return;
+    let cancelled = false;
+
+    const loadSeries = async () => {
+      const { data, error } = await (supabase as any)
+        .from("teaching_series")
+        .select("id,title,book_start,chapter_start,start_date,end_date")
+        .eq("campus_id", effectiveCampusId)
+        .eq("ministry_type", selectedMinistry)
+        .order("start_date", { ascending: false });
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load teaching series:", error);
+        return;
+      }
+
+      const rows = (data || []) as TeachingSeriesRow[];
+      setTeachingSeries(rows);
+      if (!rows.some((series) => series.id === selectedTeachingSeriesId)) {
+        setSelectedTeachingSeriesId("none");
+      }
+    };
+
+    loadSeries();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveCampusId, selectedMinistry]);
+
+  useEffect(() => {
+    if (!effectiveCampusId) return;
+    let cancelled = false;
+
+    const loadOrCreateTeachingWeek = async () => {
+      setIsTeachingLoading(true);
+      try {
+        let query = (supabase as any)
+          .from("teaching_weeks")
+          .select("*")
+          .eq("campus_id", effectiveCampusId)
+          .eq("ministry_type", selectedMinistry)
+          .eq("weekend_date", teachingDateStr);
+
+        if (selectedTeachingSeriesId !== "none") {
+          query = query.eq("teaching_series_id", selectedTeachingSeriesId);
+        }
+
+        const { data: existing, error: findError } = await query.limit(1).maybeSingle();
+        if (findError) throw findError;
+
+        if (cancelled) return;
+
+        if (existing) {
+          const week = existing as TeachingWeekRow;
+          setTeachingWeek(week);
+          setTeachingBook(week.book);
+          setTeachingChapter(String(week.chapter));
+          setManualThemesInput((week.themes_manual || []).join(", "));
+          setTeachingSummary(week.ai_summary || "");
+          setSuggestedThemes(week.themes_suggested || []);
+          return;
+        }
+
+        let seedBook = teachingBook || "John";
+        let seedChapter = Number.parseInt(teachingChapter || "1", 10);
+
+        if (selectedTeachingSeriesId !== "none") {
+          const series = teachingSeries.find((item) => item.id === selectedTeachingSeriesId);
+          if (series) {
+            seedBook = series.book_start;
+            const weekDiff = Math.max(0, Math.floor((new Date(teachingDateStr).getTime() - new Date(series.start_date).getTime()) / (7 * 24 * 60 * 60 * 1000)));
+            seedChapter = Math.max(1, Number(series.chapter_start || 1) + weekDiff);
+          }
+        }
+
+        const payload = {
+          teaching_series_id: selectedTeachingSeriesId === "none" ? null : selectedTeachingSeriesId,
+          campus_id: effectiveCampusId,
+          ministry_type: selectedMinistry,
+          weekend_date: teachingDateStr,
+          book: seedBook,
+          chapter: Number.isFinite(seedChapter) ? seedChapter : 1,
+          themes_manual: [],
+        };
+
+        const { data: created, error: createError } = await (supabase as any)
+          .from("teaching_weeks")
+          .insert(payload)
+          .select("*")
+          .single();
+
+        if (createError) throw createError;
+        if (cancelled) return;
+
+        const week = created as TeachingWeekRow;
+        setTeachingWeek(week);
+        setTeachingBook(week.book);
+        setTeachingChapter(String(week.chapter));
+        setManualThemesInput("");
+        setTeachingSummary("");
+        setSuggestedThemes([]);
+      } catch (error) {
+        console.error("Failed to load/create teaching week:", error);
+      } finally {
+        if (!cancelled) {
+          setIsTeachingLoading(false);
+        }
+      }
+    };
+
+    loadOrCreateTeachingWeek();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveCampusId, selectedMinistry, teachingDateStr, selectedTeachingSeriesId, teachingSeries]);
+
+  const handleCreateSeries = async () => {
+    if (!effectiveCampusId || !newSeriesTitle.trim()) return;
+    const startChapter = Math.max(1, Number.parseInt(newSeriesStartChapter || "1", 10));
+    const totalWeeks = Math.max(1, Number.parseInt(newSeriesWeekCount || "8", 10));
+
+    setIsCreatingSeries(true);
+    try {
+      const { data: createdSeries, error: seriesError } = await (supabase as any)
+        .from("teaching_series")
+        .insert({
+          campus_id: effectiveCampusId,
+          ministry_type: selectedMinistry,
+          title: newSeriesTitle.trim(),
+          book_start: newSeriesBook.trim() || "John",
+          chapter_start: startChapter,
+          start_date: teachingDateStr,
+        })
+        .select("id,title,book_start,chapter_start,start_date,end_date")
+        .single();
+
+      if (seriesError) throw seriesError;
+
+      const weeksToInsert = Array.from({ length: totalWeeks }).map((_, index) => ({
+        teaching_series_id: createdSeries.id,
+        campus_id: effectiveCampusId,
+        ministry_type: selectedMinistry,
+        weekend_date: format(addDays(selectedDate, index * 7), "yyyy-MM-dd"),
+        book: createdSeries.book_start,
+        chapter: createdSeries.chapter_start + index,
+        themes_manual: [],
+      }));
+
+      const { error: weeksError } = await (supabase as any)
+        .from("teaching_weeks")
+        .upsert(weeksToInsert, { onConflict: "campus_id,ministry_type,weekend_date" });
+
+      if (weeksError) throw weeksError;
+
+      setTeachingSeries((prev) => [createdSeries as TeachingSeriesRow, ...prev]);
+      setSelectedTeachingSeriesId(createdSeries.id);
+      setNewSeriesTitle("");
+      toast.success("Teaching series created with generated weeks.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create teaching series";
+      toast.error(message);
+    } finally {
+      setIsCreatingSeries(false);
+    }
+  };
+
+  const handleSaveTeachingWeek = async () => {
+    if (!teachingWeek) return;
+    const parsedChapter = Math.max(1, Number.parseInt(teachingChapter || "1", 10));
+    const parsedThemes = parseThemes(manualThemesInput);
+
+    try {
+      const { error } = await (supabase as any)
+        .from("teaching_weeks")
+        .update({
+          book: teachingBook.trim() || teachingWeek.book,
+          chapter: parsedChapter,
+          themes_manual: parsedThemes,
+        })
+        .eq("id", teachingWeek.id);
+
+      if (error) throw error;
+      await refreshTeachingWeekById(teachingWeek.id);
+      toast.success("Teaching week updated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save teaching week";
+      toast.error(message);
+    }
+  };
+
+  const handleAnalyzeChapter = async () => {
+    if (!teachingWeek) return;
+    setIsAnalyzingChapter(true);
+    try {
+      const { error } = await supabase.functions.invoke("analyze-chapter", {
+        body: { teaching_week_id: teachingWeek.id },
+      });
+      if (error) throw error;
+      await refreshTeachingWeekById(teachingWeek.id);
+      toast.success("Chapter analyzed and themes generated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to analyze chapter";
+      toast.error(message);
+    } finally {
+      setIsAnalyzingChapter(false);
+    }
+  };
+
+  const handleSuggestSongs = async () => {
+    if (!teachingWeek) return;
+    setIsSuggestingSongs(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-songs", {
+        body: { teaching_week_id: teachingWeek.id, max: 12 },
+      });
+      if (error) throw error;
+      setSuggestedSongs((data?.suggestions || []) as SuggestedSong[]);
+      setSuggestedThemes((data?.active_themes || []) as string[]);
+      setTeachingSummary(data?.ai_summary || "");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to suggest songs";
+      toast.error(message);
+    } finally {
+      setIsSuggestingSongs(false);
+    }
+  };
+
   useEffect(() => {
     if (!selectedCustomService) {
       setCustomServiceMemberId("");
@@ -760,6 +1068,194 @@ export default function SetPlanner() {
                   ))}
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Teaching Schedule -> Chapter Themes -> Song Suggestions */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Teaching Schedule
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Attach book/chapter themes to this weekend and generate AI song suggestions.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Series</Label>
+                <Select
+                  value={selectedTeachingSeriesId}
+                  onValueChange={setSelectedTeachingSeriesId}
+                  disabled={isTeachingLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No series" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No series (standalone week)</SelectItem>
+                    {teachingSeries.map((series) => (
+                      <SelectItem key={series.id} value={series.id}>
+                        {series.title} • {series.book_start} {series.chapter_start}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2 md:grid-cols-[1fr_120px_110px_110px_auto] items-end">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">New Series Name</Label>
+                  <Input
+                    value={newSeriesTitle}
+                    onChange={(event) => setNewSeriesTitle(event.target.value)}
+                    placeholder="Spring: Gospel of John"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Book</Label>
+                  <Input
+                    value={newSeriesBook}
+                    onChange={(event) => setNewSeriesBook(event.target.value)}
+                    placeholder="John"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Start Ch.</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={newSeriesStartChapter}
+                    onChange={(event) => setNewSeriesStartChapter(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Weeks</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={newSeriesWeekCount}
+                    onChange={(event) => setNewSeriesWeekCount(event.target.value)}
+                  />
+                </div>
+                <Button
+                  onClick={handleCreateSeries}
+                  disabled={!newSeriesTitle.trim() || isCreatingSeries}
+                >
+                  {isCreatingSeries ? "Creating..." : "Create Series"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Book</Label>
+                <Input
+                  value={teachingBook}
+                  onChange={(event) => setTeachingBook(event.target.value)}
+                  placeholder="John"
+                  disabled={isTeachingLoading || !teachingWeek}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Chapter</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={teachingChapter}
+                  onChange={(event) => setTeachingChapter(event.target.value)}
+                  disabled={isTeachingLoading || !teachingWeek}
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleSaveTeachingWeek}
+                  disabled={isTeachingLoading || !teachingWeek}
+                >
+                  Save Chapter
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleAnalyzeChapter}
+                  disabled={isTeachingLoading || isAnalyzingChapter || !teachingWeek}
+                >
+                  {isAnalyzingChapter ? "Analyzing..." : "Analyze Chapter"}
+                </Button>
+                <Button
+                  onClick={handleSuggestSongs}
+                  disabled={isTeachingLoading || isSuggestingSongs || !teachingWeek}
+                >
+                  {isSuggestingSongs ? "Matching..." : "Suggest Songs"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Manual Themes (comma separated)</Label>
+              <Input
+                value={manualThemesInput}
+                onChange={(event) => setManualThemesInput(event.target.value)}
+                placeholder="Grace, Redemption, Surrender"
+                disabled={isTeachingLoading || !teachingWeek}
+              />
+            </div>
+
+            {teachingSummary ? (
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-1">AI Chapter Summary</p>
+                <p className="text-sm">{teachingSummary}</p>
+              </div>
+            ) : null}
+
+            {suggestedThemes.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {suggestedThemes.map((theme) => (
+                  <Badge key={theme} variant="secondary">{theme}</Badge>
+                ))}
+              </div>
+            ) : null}
+
+            {suggestedSongs.length > 0 ? (
+              <div className="space-y-2">
+                {suggestedSongs.map((song) => {
+                  const matchingAvailability = availability.find((item) => item.song.id === song.song_id);
+                  const alreadyAdded = addedSongIds.has(song.song_id);
+
+                  return (
+                    <div key={song.song_id} className="rounded-md border border-border p-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{song.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {song.author || "Unknown author"} • {(song.similarity * 100).toFixed(1)}% match • {song.suggestion_type}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{song.reason}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={alreadyAdded ? "secondary" : "outline"}
+                        disabled={alreadyAdded || !matchingAvailability}
+                        onClick={() => {
+                          if (!matchingAvailability) {
+                            toast.error("Song unavailable for this campus/ministry filters.");
+                            return;
+                          }
+                          handleAddSong(matchingAvailability);
+                        }}
+                      >
+                        {alreadyAdded ? "Added" : "Add"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Run chapter analysis and suggestions to rank songs by lyric similarity and rotation rules.
+              </p>
             )}
           </CardContent>
         </Card>
