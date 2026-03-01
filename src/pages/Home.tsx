@@ -87,6 +87,15 @@ export default function Home() {
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
             Your central hub for team schedules, resources, and collaboration.
           </p>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+            <Link to="/privacy" className="transition-colors hover:text-primary">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="transition-colors hover:text-primary">
+              Terms of Service
+            </Link>
+          </div>
         </div>
       </section>
     </div>

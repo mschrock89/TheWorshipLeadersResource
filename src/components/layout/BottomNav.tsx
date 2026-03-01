@@ -103,8 +103,9 @@ export function BottomNav() {
   const isPlaying = audioPlayer?.isPlaying ?? false;
   const hasTrack = !!audioPlayer?.currentTrack;
 
-  // Hide bottom nav on chat page for better iOS experience
-  if (location.pathname === '/chat') {
+  const hiddenRoutes = new Set(["/chat", "/privacy", "/terms"]);
+
+  if (hiddenRoutes.has(location.pathname)) {
     return null;
   }
 

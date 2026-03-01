@@ -32,6 +32,8 @@ import Approvals from "./pages/Approvals";
 import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -115,6 +117,8 @@ function AppRoutes() {
       {/* Public routes - no header */}
       <Route path="/" element={<AnimatedPage><Home /></AnimatedPage>} />
       <Route path="/auth" element={<AnimatedPage><Auth /></AnimatedPage>} />
+      <Route path="/privacy" element={<AnimatedPage><Privacy /></AnimatedPage>} />
+      <Route path="/terms" element={<AnimatedPage><Terms /></AnimatedPage>} />
       
       {/* Protected routes with MainHeader */}
       <Route
