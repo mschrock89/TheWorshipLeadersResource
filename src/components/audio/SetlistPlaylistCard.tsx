@@ -226,7 +226,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                           <span className="w-[2px] h-2 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
                         </div>
                       ) : isCurrentTrack ? (
-                        <Pause className="h-4 w-4 text-primary" />
+                        <Play className="h-4 w-4 text-primary fill-current" />
                       ) : (
                         <>
                           <span className="text-xs text-muted-foreground group-hover:hidden tabular-nums">
@@ -318,7 +318,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                                 <span className="w-[2px] h-2 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
                               </div>
                             ) : isCurrentTrack ? (
-                              <Pause className="h-4 w-4 text-primary" />
+                              <Play className="h-4 w-4 text-primary fill-primary" />
                             ) : (
                               <Play className="h-4 w-4 text-primary fill-primary" />
                             )}

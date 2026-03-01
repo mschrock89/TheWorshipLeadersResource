@@ -88,11 +88,11 @@ export default function Home() {
             Your central hub for team schedules, resources, and collaboration.
           </p>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/privacy" className="transition-colors hover:text-primary">
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground/70">
+            <Link to="/privacy" className="transition-colors hover:text-muted-foreground">
               Privacy Policy
             </Link>
-            <Link to="/terms" className="transition-colors hover:text-primary">
+            <Link to="/terms" className="transition-colors hover:text-muted-foreground">
               Terms of Service
             </Link>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfiles, useUpcomingBirthdays, useUpcomingAnniversaries } from "@/hooks/useProfiles";
@@ -13,7 +13,7 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, Settings, ListChecks } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck } from "lucide-react";
 export default function Dashboard() {
   const {
     user,
@@ -64,26 +64,70 @@ export default function Dashboard() {
   const canSelectCampus = availableCampuses.length > 1 || isAdmin;
 
   // Filter helper - checks if a profile belongs to the selected campus
-  const belongsToCampus = (profileId: string): boolean => {
+  const belongsToCampus = useCallback((profileId: string): boolean => {
     if (selectedCampusId === "all") return true;
     const userCampusData = profileCampusMap[profileId];
     return userCampusData?.ids?.includes(selectedCampusId) ?? false;
-  };
+  }, [selectedCampusId, profileCampusMap]);
 
   // Filtered data based on selected campus
   const filteredProfiles = useMemo(() => {
     return profiles.filter(p => belongsToCampus(p.id));
-  }, [profiles, selectedCampusId, profileCampusMap]);
+  }, [profiles, belongsToCampus]);
   const filteredBirthdays = useMemo(() => {
     return upcomingBirthdays.filter(p => belongsToCampus(p.id));
-  }, [upcomingBirthdays, selectedCampusId, profileCampusMap]);
+  }, [upcomingBirthdays, belongsToCampus]);
   const filteredAnniversaries = useMemo(() => {
     return upcomingAnniversaries.filter(p => belongsToCampus(p.id));
-  }, [upcomingAnniversaries, selectedCampusId, profileCampusMap]);
+  }, [upcomingAnniversaries, belongsToCampus]);
   const firstName = user?.user_metadata?.full_name?.split(" ")[0] || user?.email?.split("@")[0] || "there";
 
   // Check if user is a regular volunteer (not a leader/admin)
   const isVolunteer = !canManageTeam;
+  const quickActions = [
+    {
+      title: "Set Builder",
+      description: "Plan upcoming services, shape the flow, and build song sets with confidence.",
+      to: "/set-planner",
+      icon: Music,
+      actionLabel: "Open Set Builder",
+      cardClassName: "border-cyan-400/35 bg-[linear-gradient(145deg,rgba(8,145,178,0.2),rgba(8,47,73,0.28))] text-white",
+      iconClassName: "border-cyan-300/25 bg-cyan-400/15 text-cyan-100",
+      buttonClassName: "bg-cyan-400 text-slate-950 hover:bg-cyan-300",
+    },
+    {
+      title: "Team Builder",
+      description: "Build balanced teams, manage rotations, and fill roles across your campus.",
+      to: "/team-builder",
+      icon: Users,
+      actionLabel: "Open Team Builder",
+      cardClassName: "border-emerald-400/35 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(6,78,59,0.28))] text-white",
+      iconClassName: "border-emerald-300/25 bg-emerald-400/15 text-emerald-100",
+      buttonClassName: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
+    },
+    {
+      title: "Auditions",
+      description: "Track candidates, schedule evaluations, and move people through the process.",
+      to: "/auditions",
+      icon: ListChecks,
+      actionLabel: "Open Auditions",
+      cardClassName: "border-amber-400/35 bg-[linear-gradient(145deg,rgba(245,158,11,0.18),rgba(120,53,15,0.28))] text-white",
+      iconClassName: "border-amber-300/25 bg-amber-400/15 text-amber-100",
+      buttonClassName: "bg-amber-400 text-slate-950 hover:bg-amber-300",
+    },
+    ...(isAdmin
+      ? [{
+          title: "Admin Tools",
+          description: "Handle service settings, system controls, and organization-level configuration.",
+          to: "/admin-tools",
+          icon: ShieldCheck,
+          actionLabel: "Open Admin Tools",
+          cardClassName: "border-violet-300/25 bg-[linear-gradient(145deg,rgba(71,85,105,0.34),rgba(15,23,42,0.5))] text-white",
+          iconClassName: "border-slate-300/15 bg-white/10 text-slate-100",
+          buttonClassName: "bg-white/12 text-white hover:bg-white/20 border border-white/15",
+        }]
+      : []),
+  ];
   return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"]]}>
       {/* Push Notification Banner */}
       <PushNotificationBanner />
@@ -126,78 +170,47 @@ export default function Dashboard() {
 
       {/* Quick actions - Team cards */}
       {canManageTeam && <section className="mb-8 space-y-4">
-          <div className="rounded-xl border border-secondary/50 bg-secondary/10 p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-display text-xl font-semibold text-secondary-foreground">Set Builder</h2>
-                <p className="mt-1 text-muted-foreground">
-                  Plan and build song sets for upcoming services
-                </p>
-              </div>
-              <Link to="/set-planner">
-                <Button variant="secondary" className="gap-2">
-                  <Music className="h-4 w-4" />
-                  View
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h2 className="font-display text-xl font-semibold text-foreground">Builder Tools</h2>
+              <p className="mt-1 text-muted-foreground">
+                Each workspace now uses a distinct color family tied to its job.
+              </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-accent/50 bg-accent/10 p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-display text-xl font-semibold">Team Builder</h2>
-                <p className="mt-1 text-muted-foreground">View your team's and build new ones.</p>
-              </div>
-              <Link to="/team-builder">
-                <Button className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
-                  <Users className="h-4 w-4" />
-                  View
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {quickActions.map(action => {
+            const Icon = action.icon;
+            return <div key={action.title} className={`group relative overflow-hidden rounded-2xl border p-6 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)] transition-transform duration-200 hover:-translate-y-0.5 ${action.cardClassName}`}>
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_45%)] opacity-80" />
+                  <div className="relative flex h-full flex-col gap-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-sm ${action.iconClassName}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    </div>
 
-          <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-display text-xl font-semibold">Auditions</h2>
-                <p className="mt-1 text-muted-foreground">
-                  Manage the audition queue and schedule candidates quickly.
-                </p>
-              </div>
-              <Link to="/auditions">
-                <Button className="gap-2 bg-sky-600 text-white hover:bg-sky-700">
-                  <ListChecks className="h-4 w-4" />
-                  View
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
+                    <div className="space-y-2">
+                      <h3 className="font-display text-2xl font-semibold tracking-tight">{action.title}</h3>
+                      <p className="max-w-md text-sm leading-6 text-white/72">
+                        {action.description}
+                      </p>
+                    </div>
 
-          {/* Admin Tools button - admin only */}
-          {isAdmin && (
-            <div className="rounded-xl border border-muted bg-muted/30 p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="font-display text-xl font-semibold text-foreground">Admin Tools</h2>
-                  <p className="mt-1 text-muted-foreground">
-                    Manage service schedules and organization settings
-                  </p>
-                </div>
-                <Link to="/admin-tools">
-                  <Button variant="outline" className="gap-2">
-                    <Settings className="h-4 w-4" />
-                    View
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          )}
+                    <div className="mt-auto pt-2">
+                      <Link to={action.to}>
+                        <Button className={`gap-2 ${action.buttonClassName}`}>
+                          <Icon className="h-4 w-4" />
+                          {action.actionLabel}
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>;
+          })}
+          </div>
         </section>}
 
       {/* Swap Management - for campus admins and above */}

@@ -8,7 +8,6 @@ import {
   Calendar,
   ListMusic,
   Play,
-  Pause,
   Music,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,9 +31,10 @@ function MusicButton({
   audioLevel: number;
   onClick: () => void;
 }) {
-  // Scale the rings based on audio level (0.8 to 1.4 scale range)
-  const ringScale = 1 + (audioLevel * 0.5);
-  const ringOpacity = 0.2 + (audioLevel * 0.4);
+  const pulseScale = 1 + (audioLevel * 0.35);
+  const glowScale = 1.1 + (audioLevel * 0.55);
+  const outerScale = 1.2 + (audioLevel * 0.7);
+  const pulseOpacity = 0.18 + (audioLevel * 0.28);
 
   return (
     <div className="flex-1 flex justify-center">
@@ -43,36 +43,35 @@ function MusicButton({
         size="icon"
         onClick={onClick}
         className={cn(
-          "relative h-12 w-12 rounded-full transition-all duration-150 select-none",
+          "relative h-12 w-12 rounded-full transition-all duration-150 select-none overflow-visible",
           isPlaying 
-            ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+            ? "bg-transparent text-primary hover:bg-transparent" 
             : hasTrack
               ? "bg-primary/20 text-primary hover:bg-primary/30"
               : "hover:bg-muted"
         )}
       >
-        {/* Audio-reactive rings when playing */}
         {isPlaying && (
           <>
             <span 
-              className="absolute inset-0 rounded-full bg-primary transition-transform duration-75"
+              className="absolute inset-[-4px] rounded-full bg-sky-400/20 blur-sm transition-all duration-150"
               style={{ 
-                transform: `scale(${ringScale})`,
-                opacity: ringOpacity * 0.5,
+                transform: `scale(${outerScale})`,
+                opacity: pulseOpacity * 0.9,
               }}
             />
             <span 
-              className="absolute inset-0 rounded-full bg-primary transition-transform duration-100"
+              className="absolute inset-[-1px] rounded-full bg-sky-400/25 blur-[1px] transition-all duration-100"
               style={{ 
-                transform: `scale(${1 + ringScale * 0.3})`,
-                opacity: ringOpacity * 0.3,
+                transform: `scale(${glowScale})`,
+                opacity: pulseOpacity,
               }}
             />
             <span 
-              className="absolute inset-0 rounded-full bg-primary transition-transform duration-150"
+              className="absolute inset-[4px] rounded-full border border-sky-300/60 bg-[radial-gradient(circle_at_30%_30%,rgba(125,211,252,0.95),rgba(14,116,144,0.82))] shadow-[0_0_24px_rgba(56,189,248,0.45)] transition-all duration-75"
               style={{ 
-                transform: `scale(${1 + ringScale * 0.5})`,
-                opacity: ringOpacity * 0.15,
+                transform: `scale(${pulseScale})`,
+                opacity: 0.72 + (audioLevel * 0.18),
               }}
             />
           </>
@@ -80,7 +79,11 @@ function MusicButton({
         
         <div className="relative z-10">
           {isPlaying ? (
-            <Pause className="h-6 w-6" />
+            <span
+              aria-hidden="true"
+              className="block h-3 w-3 rounded-full bg-sky-100/85 shadow-[0_0_14px_rgba(186,230,253,0.85)] transition-transform duration-75"
+              style={{ transform: `scale(${0.9 + audioLevel * 0.3})` }}
+            />
           ) : (
             <Play className="h-6 w-6 ml-0.5" />
           )}
