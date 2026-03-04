@@ -288,20 +288,52 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         setlistsFromSwaps = data || [];
       }
 
+      // Fetch setlists for custom-service assignments even if they fall outside the
+      // currently selected home campus. We will roster-filter these later.
+      let setlistsFromCustomAssignments: any[] = [];
+      const customAssignmentDateList = Array.from(customAssignmentDates);
+      if (customAssignmentDateList.length > 0) {
+        let query = supabase
+          .from("draft_sets")
+          .select(`
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            custom_service_id,
+            notes,
+            published_at,
+            campuses(name)
+          `)
+          .eq("status", "published")
+          .not("published_at", "is", null)
+          .in("plan_date", customAssignmentDateList);
+
+        if (!includePast) {
+          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+        }
+
+        if (ministryType) {
+          query = query.eq("ministry_type", ministryType);
+        }
+
+        if (isVolunteerOnly) {
+          query = query.neq("ministry_type", "audition");
+        }
+
+        const { data } = await query;
+        setlistsFromCustomAssignments = data || [];
+      }
+
       // Merge and deduplicate
       const seenIds = new Set<string>();
-      let setlists = [...setlistsFromCampuses, ...setlistsFromSwaps]
+      let setlists = [...setlistsFromCampuses, ...setlistsFromSwaps, ...setlistsFromCustomAssignments]
         .filter(s => {
           if (seenIds.has(s.id)) return false;
           seenIds.add(s.id);
           return true;
         })
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
-
-      // If a specific campus is selected, never show setlists from any other campus.
-      if (campusId) {
-        setlists = setlists.filter((s) => s.campus_id === campusId);
-      }
 
       // Guard against invalid weekend dates for a campus (e.g. Saturday at campuses with no Saturday service).
       // This keeps My Setlists consistent with campus service-day rules.
@@ -456,6 +488,21 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // This prevents cross-visibility when multiple custom services share a date/campus/ministry.
       if (!canViewAllSetlists) {
         setlists = setlists.filter((setlist) => rosterEligibilityBySetId.get(setlist.id) === true);
+      }
+
+      // Preserve the selected campus filter, but do not hide setlists the current
+      // user is explicitly rostered for via swaps or custom-service assignments.
+      if (campusId) {
+        setlists = setlists.filter((setlist) => {
+          if (setlist.campus_id === campusId) return true;
+          if (canViewAllSetlists) return false;
+
+          const isUserSpecificOutOfCampusSet =
+            (swapDatesSet.has(setlist.plan_date) || customAssignmentDates.has(setlist.plan_date)) &&
+            rosterEligibilityBySetId.get(setlist.id) === true;
+
+          return isUserSpecificOutOfCampusSet;
+        });
       }
 
       // Even for non-admin leaders, custom-service contexts must stay roster-scoped.
