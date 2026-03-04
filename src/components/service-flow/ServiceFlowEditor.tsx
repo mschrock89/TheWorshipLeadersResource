@@ -22,6 +22,7 @@ import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
+import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import {
   useServiceFlow,
   useServiceFlowItems,
@@ -117,6 +118,11 @@ export function ServiceFlowEditor({
   }, [campusTemplates, ministryType, effectiveInitialMinistry, initialMinistryType]);
 
   const serviceDateStr = format(selectedDate, "yyyy-MM-dd");
+  const { data: teachingWeek } = useTeachingWeekForDate(
+    effectiveCampusId,
+    ministryType,
+    serviceDateStr
+  );
 
   const loadDraftSongsWithVocalists = useCallback(async (draftSetId: string) => {
     const { data: draftSongs, error: draftSongsError } = await supabase
@@ -643,13 +649,23 @@ export function ServiceFlowEditor({
         </Popover>
       </div>
 
-      {/* Column Headers */}
-      <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide border-b">
-        <div className="w-4" /> {/* Drag handle space */}
-        <div className="w-16 text-center">Length</div>
-        <div className="flex-1">Title</div>
-        <div className="w-6" /> {/* Delete button space */}
-      </div>
+      {teachingWeek ? (
+        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+              Teaching
+            </span>
+            <span className="text-sm font-medium">
+              {formatTeachingReference(teachingWeek)}
+            </span>
+            {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
+              <span className="text-xs text-muted-foreground">
+                {teachingWeek.themes_manual.join(", ")}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Items List */}
       <div className="space-y-2 min-h-[200px]">

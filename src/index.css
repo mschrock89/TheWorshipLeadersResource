@@ -184,6 +184,11 @@
   opacity: 1;
 }
 
+.teaching-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(58%) sepia(93%) saturate(1246%) hue-rotate(169deg) brightness(95%) contrast(92%);
+  opacity: 1;
+}
+
 /* Print Styles for Service Flow Export */
 html.service-flow-export-mode,
 html.service-flow-export-mode body {
@@ -247,14 +252,14 @@ html.service-flow-export-mode .service-flow-page {
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-  zoom: 0.9 !important;
+  zoom: 0.85 !important;
 }
 
 @supports not (zoom: 1) {
   html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-    transform: scale(0.9) !important;
+    transform: scale(0.85) !important;
     transform-origin: top left !important;
-    width: 112% !important;
+    width: 118% !important;
   }
 }
 
@@ -264,22 +269,37 @@ html.service-flow-export-mode .service-flow-page.space-y-6 {
 
 html.service-flow-export-mode .print-header {
   display: flex !important;
+  position: relative !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
   border-color: #333 !important;
-  margin-bottom: 2px !important;
-  padding-bottom: 2px !important;
+  margin-bottom: 1px !important;
+  padding-bottom: 1px !important;
+  min-height: 34px !important;
 }
 
-html.service-flow-export-mode .print-header img {
-  height: 32px !important;
+html.service-flow-export-mode .print-header .print-header-logo {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  height: 38px !important;
   width: auto !important;
 }
 
+html.service-flow-export-mode .print-header .print-header-copy {
+  width: 100% !important;
+  text-align: center !important;
+  padding: 0 72px !important;
+}
+
 html.service-flow-export-mode .print-header h1 {
-  font-size: 16pt !important;
+  font-size: 14pt !important;
+  margin: 0 !important;
 }
 
 html.service-flow-export-mode .print-header p {
-  font-size: 13pt !important;
+  font-size: 11pt !important;
+  margin-top: 1px !important;
 }
 
 html.service-flow-export-mode .print-title {
@@ -296,9 +316,9 @@ html.service-flow-export-mode .service-flow-page .flex.flex-wrap.gap-3 {
 
 html.service-flow-export-mode .service-flow-page .border-b {
   border-bottom: 1px solid #333 !important;
-  margin-bottom: 2px !important;
-  padding-bottom: 2px !important;
-  font-size: 11pt !important;
+  margin-bottom: 1px !important;
+  padding-bottom: 1px !important;
+  font-size: 10pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .space-y-2 {
@@ -313,8 +333,8 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   transition: none !important;
   background: white !important;
   border: 1px solid #ddd !important;
-  margin-bottom: 0 !important;
-  padding: 2px 4px !important;
+  margin-bottom: -1px !important;
+  padding: 1px 3px !important;
   border-radius: 1px !important;
 }
 
@@ -327,8 +347,9 @@ html.service-flow-export-mode .service-flow-page .service-flow-header {
   background: white !important;
   color: #1a1a1a !important;
   font-weight: 600 !important;
-  padding: 2px 6px !important;
-  border: 2px solid #35B0E5 !important;
+  min-height: 24px !important;
+  padding: 0 5px !important;
+  border: 1px solid #35B0E5 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-header * {
@@ -348,18 +369,20 @@ html.service-flow-export-mode .service-flow-page select {
 }
 
 html.service-flow-export-mode .service-flow-page input {
-  height: 1.6rem !important;
-  min-height: 1.6rem !important;
+  height: 1.35rem !important;
+  min-height: 1.35rem !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
+  font-size: 10pt !important;
+  line-height: 1 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
   position: static !important;
   border: none !important;
-  margin-top: 8px !important;
+  margin-top: 4px !important;
   padding-top: 0 !important;
-  font-size: 13pt !important;
+  font-size: 11pt !important;
   font-weight: 600 !important;
   display: flex !important;
   justify-content: flex-end !important;
@@ -369,7 +392,7 @@ html.service-flow-export-mode .service-flow-page .border-t {
 html.service-flow-export-mode .service-flow-page .service-flow-total-footer {
   break-before: avoid-page !important;
   page-break-before: avoid !important;
-  margin-top: 2px !important;
+  margin-top: 0 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t button {
@@ -390,8 +413,8 @@ html.service-flow-export-mode .service-flow-page .service-flow-song-title {
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-bpm {
-  margin-left: 6px !important;
-  margin-right: 4px !important;
+  margin-left: 4px !important;
+  margin-right: 2px !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
@@ -408,17 +431,17 @@ html.service-flow-export-mode .service-flow-page [class*="Badge"],
 html.service-flow-export-mode .service-flow-page .bg-black {
   background: #333 !important;
   color: white !important;
-  padding: 1px 4px !important;
+  padding: 0 3px !important;
   border-radius: 2px !important;
-  font-size: 11pt !important;
+  font-size: 10pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-sm {
-  font-size: 12pt !important;
+  font-size: 10.5pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-xs {
-  font-size: 11pt !important;
+  font-size: 9pt !important;
 }
 
 @media print {
@@ -480,14 +503,14 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .service-flow-page.service-flow-print-fit {
-    zoom: 0.9 !important;
+    zoom: 0.85 !important;
   }
 
   @supports not (zoom: 1) {
     .service-flow-page.service-flow-print-fit {
-      transform: scale(0.9) !important;
+      transform: scale(0.85) !important;
       transform-origin: top left !important;
-      width: 112% !important;
+      width: 118% !important;
     }
   }
 
@@ -500,21 +523,21 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .print-header {
     display: flex !important;
     border-color: #333 !important;
-    margin-bottom: 2px !important;
-    padding-bottom: 2px !important;
+    margin-bottom: 1px !important;
+    padding-bottom: 1px !important;
   }
 
   .print-header img {
-    height: 32px !important;
+    height: 28px !important;
     width: auto !important;
   }
 
   .print-header h1 {
-    font-size: 16pt !important;
+    font-size: 14pt !important;
   }
 
   .print-header p {
-    font-size: 13pt !important;
+    font-size: 11pt !important;
   }
 
   .print-title {
@@ -533,9 +556,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   /* Column headers - compact */
   .service-flow-page .border-b {
     border-bottom: 1px solid #333 !important;
-    margin-bottom: 2px !important;
-    padding-bottom: 2px !important;
-    font-size: 11pt !important;
+    margin-bottom: 1px !important;
+    padding-bottom: 1px !important;
+    font-size: 10pt !important;
   }
 
   /* Reduce space between items */
@@ -552,8 +575,8 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     transition: none !important;
     background: white !important;
     border: 1px solid #ddd !important;
-    margin-bottom: 0 !important;
-    padding: 2px 4px !important;
+    margin-bottom: -1px !important;
+    padding: 1px 3px !important;
     border-radius: 1px !important;
   }
 
@@ -562,8 +585,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     background: white !important;
     color: #1a1a1a !important;
     font-weight: 600 !important;
-    padding: 2px 6px !important;
-    border: 2px solid #35B0E5 !important;
+    min-height: 24px !important;
+    padding: 0 5px !important;
+    border: 1px solid #35B0E5 !important;
   }
 
   .service-flow-page .service-flow-header * {
@@ -579,9 +603,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .border-t {
     position: static !important;
     border: none !important;
-    margin-top: 8px !important;
+    margin-top: 4px !important;
     padding-top: 0 !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     font-weight: 600 !important;
     display: flex !important;
     justify-content: flex-end !important;
@@ -591,7 +615,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .service-flow-total-footer {
     break-before: avoid-page !important;
     page-break-before: avoid !important;
-    margin-top: 2px !important;
+    margin-top: 0 !important;
   }
 
   /* Hide add button, show total */
@@ -614,9 +638,20 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     flex: 0 1 58% !important;
   }
 
+  .service-flow-page .service-flow-song-meta {
+    margin-left: auto !important;
+    min-width: 0 !important;
+    justify-content: flex-end !important;
+    text-align: right !important;
+  }
+
   .service-flow-page .service-flow-song-bpm {
-    margin-left: 6px !important;
-    margin-right: 4px !important;
+    margin-left: 4px !important;
+    margin-right: 2px !important;
+  }
+
+  .service-flow-page .service-flow-song-key {
+    flex-shrink: 0 !important;
   }
 
   .service-flow-page .service-flow-song-vocalist {
@@ -634,24 +669,26 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .bg-black {
     background: #333 !important;
     color: white !important;
-    padding: 1px 4px !important;
+    padding: 0 3px !important;
     border-radius: 2px !important;
-    font-size: 11pt !important;
+    font-size: 10pt !important;
   }
 
   /* Compact item text */
   .service-flow-page .text-sm {
-    font-size: 12pt !important;
+    font-size: 10.5pt !important;
   }
 
   .service-flow-page .text-xs {
-    font-size: 11pt !important;
+    font-size: 9pt !important;
   }
 
   .service-flow-page input {
-    height: 1.6rem !important;
-    min-height: 1.6rem !important;
+    height: 1.35rem !important;
+    min-height: 1.35rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
+    font-size: 10pt !important;
+    line-height: 1 !important;
   }
 }

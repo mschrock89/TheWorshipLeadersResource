@@ -45,12 +45,13 @@ import {
   Home,
   Plus,
   GitMerge,
+  FileText,
 } from "lucide-react";
 import { useSongsWithStats, useServicePlans, useServicePlansPaged, usePlanSongs, useAllSyncProgress, useDeleteSong, useCreateSong, useMergeSongs } from "@/hooks/useSongs";
 import { AddSongDialog } from "@/components/songs/AddSongDialog";
-import { BpmImportDialog } from "@/components/songs/BpmImportDialog";
 import { EditableBpmCell } from "@/components/songs/EditableBpmCell";
 import { MergeSongDialog } from "@/components/songs/MergeSongDialog";
+import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -112,6 +113,7 @@ export default function Songs() {
   const deleteSong = useDeleteSong();
   const mergeSongs = useMergeSongs();
   const [mergeSourceSong, setMergeSourceSong] = useState<{ id: string; title: string } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
   const newSongsCutoffDate = useMemo(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);
@@ -489,7 +491,6 @@ export default function Songs() {
                   Set Builder
                 </Button>
               </Link>
-              <BpmImportDialog />
             </div>
           )}
         </div>
@@ -511,6 +512,12 @@ export default function Songs() {
             isMerging={mergeSongs.isPending}
           />
         )}
+
+        <ChordChartDialog
+          open={!!chartSong}
+          onOpenChange={(open) => !open && setChartSong(null)}
+          song={chartSong}
+        />
 
         {/* In-Progress Sync Status */}
         {inProgressSyncs.length > 0 && (
@@ -781,9 +788,20 @@ export default function Songs() {
                                     </p>
                                   </div>
                                 </div>
-                                <Badge variant="secondary" className="ml-2 shrink-0">
-                                  {activeListView === "mostUsed" ? song.usagesAllTime : (usage?.count ?? 0)}
-                                </Badge>
+                                <div className="ml-2 flex shrink-0 items-center gap-2">
+                                  <Badge variant="secondary">
+                                    {activeListView === "mostUsed" ? song.usagesAllTime : (usage?.count ?? 0)}
+                                  </Badge>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1.5"
+                                    onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null })}
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Chart
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })}
@@ -859,7 +877,7 @@ export default function Songs() {
                             <TableHead className="text-center">Times Used</TableHead>
                             <TableHead className="hidden sm:table-cell">Last Used</TableHead>
                             <TableHead className="text-center">Upcoming</TableHead>
-                            {canManageSongs && <TableHead className="w-20"></TableHead>}
+                            <TableHead className="w-24"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -930,9 +948,18 @@ export default function Songs() {
                                   );
                                 })()}
                               </TableCell>
-                              {canManageSongs && (
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
+                              <TableCell>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null })}
+                                    title="View chord chart"
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                  {canManageSongs && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -942,40 +969,40 @@ export default function Songs() {
                                     >
                                       <GitMerge className="h-4 w-4" />
                                     </Button>
-                                    {canDeleteSongs && (
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  )}
+                                  {canDeleteSongs && (
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete song?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            This will permanently delete "{song.title}" from your library,
+                                            including all usage history. This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => deleteSong.mutate(song.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                           >
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete song?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                              This will permanently delete "{song.title}" from your library,
-                                              including all usage history. This action cannot be undone.
-                                            </AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction
-                                              onClick={() => deleteSong.mutate(song.id)}
-                                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                            >
-                                              Delete
-                                            </AlertDialogAction>
-                                          </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              )}
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  )}
+                                </div>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>

@@ -38,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
+import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { toast } from "sonner";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -251,6 +252,34 @@ function StandardCalendar() {
     if (!campusFilter || campusFilter === "network-wide") return null;
     return campuses.find((c) => c.id === campusFilter) || null;
   }, [campusFilter, campuses]);
+  const teachingCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
+  const teachingMinistryFilter =
+    ministryFilter && ministryFilter !== "all" ? ministryFilter : "weekend";
+  const { data: teachingWeeksForMonth = [] } = useTeachingWeeksInRange(
+    teachingCampusId,
+    monthStart,
+    monthEnd,
+    teachingMinistryFilter
+  );
+  const teachingWeekByDate = useMemo(() => {
+    const byDate = new Map<string, (typeof teachingWeeksForMonth)[number]>();
+    for (const week of teachingWeeksForMonth) {
+      for (const displayDate of getTeachingWeekDisplayDates(week, teachingMinistryFilter)) {
+        if (!byDate.has(displayDate)) {
+          byDate.set(displayDate, week);
+        }
+      }
+    }
+    return byDate;
+  }, [teachingWeeksForMonth, teachingMinistryFilter]);
+  const selectedDateStr = selectedDate
+    ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`
+    : null;
+  const { data: selectedTeachingWeek } = useTeachingWeekForDate(
+    teachingCampusId,
+    teachingMinistryFilter,
+    selectedDateStr
+  );
 
   // True when the currently-scoped campus context actually has a weekend service on this date.
   // Prevents false weekend highlights for campuses that only run Sunday services.
@@ -638,6 +667,7 @@ function StandardCalendar() {
               // Check swap status for this day
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const hasCustomAssignment = customAssignedDateSet.has(dateStrForDay);
+              const teachingWeek = teachingWeekByDate.get(dateStrForDay);
               const swapStatus = getSwapStatusForDate(dateStrForDay, allUserSwaps);
               const dateForDay = new Date(year, month, day);
               const hasServiceForDayInScope = hasServiceForDateInScope(dateForDay);
@@ -687,6 +717,7 @@ function StandardCalendar() {
                     color: teamColor
                   }} />}
                       {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                      {teachingWeek && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" title={formatTeachingReference(teachingWeek)} />}
                       {hasCustomAssignment && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-sky-500" />}
                     </div>
                   </button>;
@@ -790,6 +821,24 @@ function StandardCalendar() {
                   </div>}
 
                 {/* Songs + Team Roster Section */}
+                {selectedTeachingWeek && (
+                  <div className="mb-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className="bg-emerald-600/10 text-emerald-700 border-transparent">
+                        Teaching
+                      </Badge>
+                      <span className="text-sm font-medium">
+                        {formatTeachingReference(selectedTeachingWeek)}
+                      </span>
+                      {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {selectedTeachingWeek.themes_manual.join(", ")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-5 mb-4">
                     {selectedDayServices.map((service) => (

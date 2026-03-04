@@ -11,9 +11,35 @@ export interface PcoConnection {
   sync_phone_numbers: boolean;
   sync_birthdays: boolean;
   sync_positions: boolean;
+  sync_chord_charts: boolean;
   sync_active_only: boolean;
   connected_at: string;
   last_sync_at: string | null;
+}
+
+async function extractFunctionErrorMessage(error: unknown): Promise<string> {
+  if (!(error instanceof Error)) {
+    return "Edge Function returned a non-2xx status code";
+  }
+
+  let details = error.message || "Edge Function returned a non-2xx status code";
+  const response = (error as { context?: Response }).context;
+  if (!response) {
+    return details;
+  }
+
+  try {
+    const payload = await response.json();
+    if (payload?.error && payload?.details) {
+      details = `${payload.error}: ${payload.details}`;
+    } else if (payload?.error) {
+      details = payload.error;
+    }
+  } catch {
+    // Keep the original message when the response body is not JSON.
+  }
+
+  return details;
 }
 
 export function usePcoConnection() {
@@ -22,11 +48,11 @@ export function usePcoConnection() {
     queryFn: async () => {
       // Use the secure function that excludes OAuth tokens
       const { data, error } = await supabase
-        .rpc("get_my_pco_connection")
-        .maybeSingle();
+        .rpc("get_my_pco_connection");
 
       if (error) throw error;
-      return data as PcoConnection | null;
+      const rows = (data || []) as PcoConnection[];
+      return rows[0] ?? null;
     },
   });
 }
@@ -73,10 +99,10 @@ export function useStartPcoAuth() {
         window.location.href = authUrl;
       }
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast({
         title: "Connection Failed",
-        description: error.message,
+        description: await extractFunctionErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -103,10 +129,10 @@ export function useSavePcoConnection() {
         description: "Planning Center account connected successfully.",
       });
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast({
         title: "Connection Failed",
-        description: error.message,
+        description: await extractFunctionErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -130,10 +156,10 @@ export function useDisconnectPco() {
         description: "Planning Center account disconnected.",
       });
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: await extractFunctionErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -174,10 +200,10 @@ export function useSyncPcoTeam() {
         description,
       });
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast({
         title: "Sync Failed",
-        description: error.message,
+        description: await extractFunctionErrorMessage(error),
         variant: "destructive",
       });
     },
@@ -202,16 +228,19 @@ export function useSyncPcoPlans() {
       const results = data.results || {};
       const plansSynced = results.plans_synced || 0;
       const songsSynced = results.songs_synced || 0;
+      const songVersionsSynced = results.song_versions_synced || 0;
       
       toast({
         title: "Plan Sync Complete ✓",
-        description: `${plansSynced} plans and ${songsSynced} songs synced.`,
+        description: songVersionsSynced > 0
+          ? `${plansSynced} plans, ${songsSynced} songs, and ${songVersionsSynced} chart version${songVersionsSynced === 1 ? "" : "s"} synced.`
+          : `${plansSynced} plans and ${songsSynced} songs synced.`,
       });
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       toast({
         title: "Plan Sync Failed",
-        description: error.message,
+        description: await extractFunctionErrorMessage(error),
         variant: "destructive",
       });
     },

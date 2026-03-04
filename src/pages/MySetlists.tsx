@@ -40,6 +40,7 @@ import { isAuditionCandidateRole } from "@/lib/access";
 import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
+import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -410,6 +411,12 @@ function StandardMySetlists() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <SetlistTeachingSchedule
+                    planDate={setlist.plan_date}
+                    campusId={setlist.campus_id}
+                    ministryType={setlist.ministry_type}
+                  />
+
                   {/* Songs list */}
                   <div className="space-y-2">
                     <TooltipProvider>
@@ -545,6 +552,38 @@ function StandardMySetlists() {
   );
 }
 
+function SetlistTeachingSchedule({
+  planDate,
+  campusId,
+  ministryType,
+}: {
+  planDate: string;
+  campusId: string;
+  ministryType: string;
+}) {
+  const { data: teachingWeek } = useTeachingWeekForDate(campusId, ministryType, planDate);
+
+  if (!teachingWeek) return null;
+
+  return (
+    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="secondary" className="bg-emerald-600/10 text-emerald-700 border-transparent">
+          Teaching
+        </Badge>
+        <span className="text-sm font-medium">
+          {formatTeachingReference(teachingWeek)}
+        </span>
+      </div>
+      {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {teachingWeek.themes_manual.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SetlistTeamRoster({
   planDate,
   campusId,
@@ -625,6 +664,33 @@ function SetlistTeamRoster({
       return sorted[0];
     },
     enabled: !!planDate && !!campusId && !customServiceId,
+  });
+
+  const { data: auditionCandidates = [], isLoading: loadingAuditions } = useQuery({
+    queryKey: ["my-setlists-audition-roster", planDate, campusId, ministryType],
+    queryFn: async () => {
+      if (ministryType !== "audition") return [];
+
+      const { data, error } = await supabase
+        .from("auditions")
+        .select(`
+          id,
+          candidate_id,
+          stage,
+          candidate_track,
+          profiles!auditions_candidate_id_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq("audition_date", planDate)
+        .eq("status", "scheduled")
+        .eq("campus_id", campusId);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!planDate && !!campusId && ministryType === "audition" && !customServiceId,
   });
 
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
@@ -738,6 +804,31 @@ function SetlistTeamRoster({
         .sort((a, b) => a.memberName.localeCompare(b.memberName));
     }
 
+    if (ministryType === "audition") {
+      return (auditionCandidates as any[])
+        .map((candidate) => {
+          const candidateTrack = candidate.candidate_track as string;
+          const candidateStage = candidate.stage as string;
+          const stageLabel = candidateStage === "pre_audition" ? "Pre-Audition" : "Audition";
+          const trackLabel = candidateTrack === "instrumentalist" ? "Instrumentalist" : "Vocalist";
+          const hasVocalistRole = candidateTrack !== "instrumentalist";
+          const hasBandRole = candidateTrack === "instrumentalist";
+
+          return {
+            id: candidate.id,
+            memberName: candidate.profiles?.full_name || "Audition Candidate",
+            avatarUrl: candidate.profiles?.avatar_url || null,
+            isSwapped: false,
+            positions: new Set([candidateTrack]),
+            positionSlots: new Set<string>(),
+            hasVocalistRole,
+            hasBandRole,
+            roleLabels: [stageLabel, trackLabel],
+          };
+        })
+        .sort((a, b) => a.memberName.localeCompare(b.memberName));
+    }
+
     const byPerson = new Map<
       string,
       {
@@ -789,7 +880,7 @@ function SetlistTeamRoster({
         roleLabels,
       };
     });
-  }, [vocalists, band, slotCategoryBySlot, bandFallbackPositions]);
+  }, [customServiceId, ministryType, customAssignments, auditionCandidates, vocalists, band, slotCategoryBySlot, bandFallbackPositions]);
 
   const vocalistRows = useMemo(
     () => rosterRows.filter((member) => member.hasVocalistRole),
@@ -805,7 +896,11 @@ function SetlistTeamRoster({
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (!customServiceId && (loadingTeam || loadingRoster)) {
+  if (!customServiceId && ministryType === "audition" && loadingAuditions) {
+    return <Skeleton className="h-20 w-full" />;
+  }
+
+  if (!customServiceId && ministryType !== "audition" && (loadingTeam || loadingRoster)) {
     return <Skeleton className="h-20 w-full" />;
   }
 
@@ -813,7 +908,11 @@ function SetlistTeamRoster({
     return null;
   }
 
-  if (!customServiceId && (!teamEntry || (!vocalistRows.length && !bandRows.length))) {
+  if (!customServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length))) {
+    return null;
+  }
+
+  if (!customServiceId && ministryType === "audition" && !vocalistRows.length && !bandRows.length) {
     return null;
   }
 

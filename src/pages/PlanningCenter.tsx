@@ -305,7 +305,7 @@ export default function PlanningCenter() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Planning Center</h1>
         <p className="text-muted-foreground mt-2">
-          Connect your Planning Center account to sync team member data.
+          Connect your Planning Center account to sync team, plan, and song data.
         </p>
       </div>
 
@@ -402,6 +402,18 @@ export default function PlanningCenter() {
                     />
                     <Label htmlFor="sync_positions" className="text-sm">
                       Team positions
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      id="sync_chord_charts"
+                      checked={connection.sync_chord_charts}
+                      disabled={!canManageTeam}
+                      onCheckedChange={(checked) => handleSettingChange("sync_chord_charts", !!checked)}
+                    />
+                    <Label htmlFor="sync_chord_charts" className="text-sm">
+                      Chord charts & lyrics
                     </Label>
                   </div>
                 </div>

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const targetTranslation = translation || week.translation || "web";
+    const targetTranslation = translation || week.translation || "ESV";
     const bibleChapter = await fetchBibleChapter(week.book, week.chapter, targetTranslation);
     const chapterText = bibleChapter.text;
     const normalizedReference = bibleChapter.reference;

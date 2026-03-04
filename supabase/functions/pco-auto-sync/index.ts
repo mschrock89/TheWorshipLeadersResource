@@ -10,6 +10,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const MAX_ARRANGEMENT_SONGS_PER_SYNC = 20;
 
 // Token refresh is now handled by refreshTokenIfNeededEncrypted from shared module
 
@@ -83,6 +84,67 @@ async function fetchAllPages(accessToken: string, baseEndpoint: string, maxPages
   }
 
   return allData;
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getArrangementVersionName(arrangement: any): string {
+  return normalizeOptionalText(arrangement?.attributes?.name)
+    || normalizeOptionalText(arrangement?.attributes?.description)
+    || `Arrangement ${arrangement.id}`;
+}
+
+async function syncSongArrangements({
+  accessToken,
+  supabaseAdmin,
+  songs,
+}: {
+  accessToken: string;
+  supabaseAdmin: ReturnType<typeof createClient>;
+  songs: Array<{ id: string; pco_song_id: string }>;
+}): Promise<number> {
+  let syncedCount = 0;
+
+  for (const song of songs) {
+    try {
+      await sleep(150);
+      const arrangementData = await fetchFromPCO(
+        accessToken,
+        `/services/v2/songs/${song.pco_song_id}/arrangements?per_page=100`
+      );
+
+      const arrangements = arrangementData.data || [];
+      if (arrangements.length === 0) continue;
+
+      const versions = arrangements.map((arrangement: any, index: number) => ({
+        song_id: song.id,
+        pco_arrangement_id: arrangement.id,
+        version_name: getArrangementVersionName(arrangement),
+        lyrics: normalizeOptionalText(arrangement.attributes?.lyrics),
+        chord_chart_text: normalizeOptionalText(arrangement.attributes?.chord_chart),
+        is_primary: index === 0,
+      }));
+
+      const { error } = await supabaseAdmin
+        .from('song_versions')
+        .upsert(versions, { onConflict: 'pco_arrangement_id' });
+
+      if (error) {
+        console.error(`Error upserting song_versions for song ${song.pco_song_id}:`, error.message);
+        continue;
+      }
+
+      syncedCount += versions.length;
+    } catch (error) {
+      console.error(`Failed to sync arrangements for song ${song.pco_song_id}:`, error);
+    }
+  }
+
+  return syncedCount;
 }
 
 serve(async (req) => {
@@ -177,6 +239,7 @@ serve(async (req) => {
         organization: connection.pco_organization_name,
         plans_synced: 0,
         songs_synced: 0,
+        song_versions_synced: 0,
         errors: [] as string[],
       };
 
@@ -375,6 +438,23 @@ serve(async (req) => {
               if (linkError) {
                 console.error('Error inserting plan_songs batch:', linkError.message);
               }
+            }
+          }
+
+          if (connection.sync_chord_charts) {
+            const prioritizedArrangementSongs = Array.from(songIdMap.entries())
+              .slice(0, MAX_ARRANGEMENT_SONGS_PER_SYNC)
+              .map(([pcoSongId, songId]) => ({
+                id: songId,
+                pco_song_id: pcoSongId,
+              }));
+
+            if (prioritizedArrangementSongs.length > 0) {
+              connectionResult.song_versions_synced += await syncSongArrangements({
+                accessToken,
+                supabaseAdmin,
+                songs: prioritizedArrangementSongs,
+              });
             }
           }
         }

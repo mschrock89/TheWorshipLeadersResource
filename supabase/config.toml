@@ -9,7 +9,19 @@ verify_jwt = false
 [functions.create-audition-candidate]
 verify_jwt = false
 
+[functions.pco-auth-start]
+verify_jwt = false
+
 [functions.pco-auth-callback]
+verify_jwt = false
+
+[functions.pco-save-connection]
+verify_jwt = false
+
+[functions.pco-disconnect]
+verify_jwt = false
+
+[functions.pco-sync-team]
 verify_jwt = false
 
 [functions.pco-sync-plans]

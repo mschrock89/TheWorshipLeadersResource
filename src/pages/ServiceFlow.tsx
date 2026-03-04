@@ -111,13 +111,13 @@ export default function ServiceFlow() {
   return (
     <div className="service-flow-page service-flow-print-fit space-y-6 p-4 md:p-6">
       {/* Print-only header - hidden on screen, uses print-specific colors in CSS */}
-      <div className="print-header hidden print:flex flex-row items-center justify-between mb-8 pb-4 border-b-2">
+      <div className="print-header hidden print:flex mb-8 pb-4 border-b-2">
         <img 
           src={emLogo} 
           alt="Experience Music" 
-          className="h-16 w-auto object-contain"
+          className="print-header-logo h-20 w-auto object-contain"
         />
-        <div className="text-right">
+        <div className="print-header-copy">
           <h1 className="text-3xl font-bold print-title">Service Flow</h1>
           <p className="text-2xl font-semibold print-date mt-1">
             {formatPrintDate()}

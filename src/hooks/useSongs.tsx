@@ -51,6 +51,18 @@ export interface SongWithStats extends Song {
   bpm: number | null;
 }
 
+export interface SongVersion {
+  id: string;
+  song_id: string;
+  version_name: string;
+  lyrics: string | null;
+  chord_chart_text: string | null;
+  chord_sheet_file_path: string | null;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SyncProgress {
   id: string;
   user_id: string;
@@ -81,6 +93,25 @@ export function useSongs() {
 
       if (error) throw error;
       return data as Song[];
+    },
+  });
+}
+
+export function useSongVersions(songId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["song-versions", songId],
+    enabled: enabled && !!songId,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("song_versions")
+        .select("id, song_id, version_name, lyrics, chord_chart_text, chord_sheet_file_path, is_primary, created_at, updated_at")
+        .eq("song_id", songId)
+        .order("is_primary", { ascending: false })
+        .order("version_name", { ascending: true });
+
+      if (error) throw error;
+      return (data || []) as SongVersion[];
     },
   });
 }

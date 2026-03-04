@@ -22,6 +22,8 @@ interface SetlistWithConfirmations {
   custom_service_id: string | null;
   published_at: string;
   campuses: { name: string } | null;
+  audition_start_time?: string | null;
+  audition_end_time?: string | null;
   confirmed: Array<{
     userId: string;
     name: string;
@@ -204,6 +206,89 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         if (isWeekend(setlist.plan_date)) {
           const pairDate = getWeekendPairDate(setlist.plan_date);
           if (pairDate) datesToCheck.push(pairDate);
+        }
+
+        if (setlist.ministry_type === "audition") {
+          const { data: assignments } = await supabase
+            .from("audition_setlist_assignments")
+            .select("user_id")
+            .eq("draft_set_id", setlist.id);
+
+          const userIds = [...new Set((assignments || []).map((row) => row.user_id).filter(Boolean))];
+          const { data: basicProfiles } = await supabase.rpc("get_basic_profiles");
+          const profileMap = new Map(
+            (basicProfiles || [])
+              .filter((profile: any) => userIds.includes(profile.id))
+              .map((profile: any) => [profile.id, profile]),
+          );
+
+          const { data: auditionRows } = userIds.length > 0
+            ? await supabase
+                .from("auditions")
+                .select("candidate_id, start_time, end_time")
+                .in("candidate_id", userIds)
+                .eq("audition_date", setlist.plan_date)
+                .eq("status", "scheduled")
+                .eq("campus_id", setlist.campus_id)
+            : { data: [] as any[] };
+
+          const auditionByUserId = new Map((auditionRows || []).map((row: any) => [row.candidate_id, row]));
+
+          const scheduledMembers = userIds.map((userId) => {
+            const profile = profileMap.get(userId);
+            return {
+              user_id: userId,
+              member_name: profile?.full_name || "Unknown",
+              isSwappedIn: false,
+            };
+          });
+
+          const { data: confirmations } = await supabase
+            .from("setlist_confirmations")
+            .select("user_id, confirmed_at")
+            .eq("draft_set_id", setlist.id);
+
+          const scheduledUserIdSet = new Set(scheduledMembers.map((member) => member.user_id));
+          const scopedConfirmations = (confirmations || []).filter((confirmation) =>
+            scheduledUserIdSet.has(confirmation.user_id)
+          );
+          const confirmedUserIds = new Set(scopedConfirmations.map((confirmation) => confirmation.user_id));
+
+          const confirmed = scopedConfirmations.map((confirmation) => {
+            const profile = profileMap.get(confirmation.user_id);
+            const member = scheduledMembers.find((scheduled) => scheduled.user_id === confirmation.user_id);
+            return {
+              userId: confirmation.user_id,
+              name: profile?.full_name || member?.member_name || "Unknown",
+              avatarUrl: profile?.avatar_url || null,
+              confirmedAt: confirmation.confirmed_at,
+              isSwappedIn: false,
+            };
+          });
+
+          const unconfirmed = scheduledMembers
+            .filter((member) => !confirmedUserIds.has(member.user_id))
+            .map((member) => {
+              const profile = profileMap.get(member.user_id);
+              return {
+                userId: member.user_id,
+                name: profile?.full_name || member.member_name,
+                avatarUrl: profile?.avatar_url || null,
+                isSwappedIn: false,
+              };
+            });
+
+          const primaryAudition = userIds.length > 0 ? auditionByUserId.get(userIds[0]) : null;
+
+          results.push({
+            ...setlist,
+            audition_start_time: primaryAudition?.start_time || null,
+            audition_end_time: primaryAudition?.end_time || null,
+            confirmed,
+            unconfirmed,
+            totalScheduled: scheduledMembers.length,
+          });
+          continue;
         }
 
         if (isCustomServiceSet) {
@@ -520,7 +605,50 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         });
       }
 
-      return results;
+      const condensedResults = new Map<string, SetlistWithConfirmations>();
+
+      for (const result of results) {
+        if (result.ministry_type !== "audition") {
+          condensedResults.set(result.id, result);
+          continue;
+        }
+
+        const auditionTimeKey = `${result.audition_start_time || "none"}|${result.audition_end_time || "none"}`;
+        const key = `audition|${selectedCampusId}|${result.campuses?.name || "unknown"}|${result.plan_date}|${auditionTimeKey}`;
+        const existing = condensedResults.get(key);
+
+        if (!existing) {
+          condensedResults.set(key, {
+            ...result,
+            id: key,
+          });
+          continue;
+        }
+
+        const confirmedByUser = new Map(existing.confirmed.map((member) => [member.userId, member]));
+        for (const member of result.confirmed) {
+          confirmedByUser.set(member.userId, member);
+        }
+
+        const confirmedUserIds = new Set(Array.from(confirmedByUser.keys()));
+        const unconfirmedByUser = new Map(
+          existing.unconfirmed
+            .filter((member) => !confirmedUserIds.has(member.userId))
+            .map((member) => [member.userId, member]),
+        );
+
+        for (const member of result.unconfirmed) {
+          if (!confirmedUserIds.has(member.userId)) {
+            unconfirmedByUser.set(member.userId, member);
+          }
+        }
+
+        existing.confirmed = Array.from(confirmedByUser.values());
+        existing.unconfirmed = Array.from(unconfirmedByUser.values());
+        existing.totalScheduled = existing.confirmed.length + existing.unconfirmed.length;
+      }
+
+      return Array.from(condensedResults.values()).sort((a, b) => a.plan_date.localeCompare(b.plan_date));
     },
   });
 

@@ -785,6 +785,7 @@ export type Database = {
           refresh_token_encrypted: string | null
           sync_active_only: boolean
           sync_birthdays: boolean | null
+          sync_chord_charts: boolean
           sync_phone_numbers: boolean | null
           sync_positions: boolean | null
           sync_team_members: boolean | null
@@ -803,6 +804,7 @@ export type Database = {
           refresh_token_encrypted?: string | null
           sync_active_only?: boolean
           sync_birthdays?: boolean | null
+          sync_chord_charts?: boolean
           sync_phone_numbers?: boolean | null
           sync_positions?: boolean | null
           sync_team_members?: boolean | null
@@ -821,6 +823,7 @@ export type Database = {
           refresh_token_encrypted?: string | null
           sync_active_only?: boolean
           sync_birthdays?: boolean | null
+          sync_chord_charts?: boolean
           sync_phone_numbers?: boolean | null
           sync_positions?: boolean | null
           sync_team_members?: boolean | null
@@ -2093,6 +2096,7 @@ export type Database = {
           pco_organization_name: string
           sync_active_only: boolean
           sync_birthdays: boolean
+          sync_chord_charts: boolean
           sync_phone_numbers: boolean
           sync_positions: boolean
           sync_team_members: boolean

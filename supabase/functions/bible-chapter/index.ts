@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     const user = await requireAuthenticatedUser(userClient);
     await requireStaff(user.id, adminClient);
 
-    const { book, chapter, translation = "web" } = (await req.json()) as BibleRequest;
+    const { book, chapter, translation = "ESV" } = (await req.json()) as BibleRequest;
     if (!book || !chapter || Number.isNaN(Number(chapter))) {
       return new Response(JSON.stringify({ error: "book_and_chapter_required" }), {
         status: 400,

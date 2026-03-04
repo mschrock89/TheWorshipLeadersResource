@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
 import { useCreateCustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
@@ -10,15 +11,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import Papa from "papaparse";
+import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
 
 function getInitials(name: string | null): string {
   if (!name) return "?";
@@ -73,8 +77,310 @@ interface CampusServiceConfig {
   sunday_service_times: string[];
 }
 
+interface TeachingWeekRow {
+  id: string;
+  teaching_series_id: string | null;
+  campus_id: string;
+  ministry_type: string;
+  weekend_date: string;
+  book: string;
+  chapter: number;
+  chapter_reference: string | null;
+  schedule_pdf_path: string | null;
+  ai_summary: string | null;
+  themes_manual: string[] | null;
+  themes_suggested: string[] | null;
+}
+
+interface TeachingScheduleImportRow {
+  weekend_date: string;
+  book: string;
+  chapter: number;
+  chapter_reference: string | null;
+  themes_manual: string[];
+}
+
+interface TeachingScheduleUploadRow {
+  id: string;
+  campus_id: string;
+  ministry_type: string;
+  file_name: string;
+  storage_path: string;
+  range_start: string;
+  range_end: string;
+  row_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+function isMissingTeachingScheduleUploadsTable(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  const code = (error as { code?: string } | null)?.code;
+  const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
+
+  return (
+    status === 404 ||
+    code === "PGRST205" ||
+    (message.includes("teaching_schedule_uploads") && message.includes("schema cache")) ||
+    (message.includes("teaching_schedule_uploads") && message.includes("could not find"))
+  );
+}
+
+function normalizeCsvHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function formatDateParts(year: number, month: number, day: number): string | null {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizeCsvYearToken(value: string | undefined, fallbackYear: number): number {
+  if (!value?.trim()) return fallbackYear;
+
+  const numericYear = Number.parseInt(value.trim(), 10);
+  if (Number.isNaN(numericYear)) return fallbackYear;
+  if (value.trim().length === 2) {
+    return numericYear >= 70 ? 1900 + numericYear : 2000 + numericYear;
+  }
+  return numericYear;
+}
+
+function normalizeDateInput(value: string, fallbackYear?: number): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (isoDateMatch) {
+    return `${isoDateMatch[1]}-${isoDateMatch[2]}-${isoDateMatch[3]}`;
+  }
+
+  const numericDateMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (numericDateMatch) {
+    const month = Number.parseInt(numericDateMatch[1] || "", 10);
+    const day = Number.parseInt(numericDateMatch[2] || "", 10);
+    const year = normalizeCsvYearToken(numericDateMatch[3], fallbackYear ?? new Date().getFullYear());
+    return formatDateParts(year, month, day);
+  }
+
+  const monthNameDateMatch = trimmed.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,?\s+(\d{2,4}))?$/);
+  if (monthNameDateMatch) {
+    const month = parseMonthToken(monthNameDateMatch[1] || "");
+    const day = Number.parseInt(monthNameDateMatch[2] || "", 10);
+    const year = normalizeCsvYearToken(monthNameDateMatch[3], fallbackYear ?? new Date().getFullYear());
+    return month ? formatDateParts(year, month, day) : null;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  if (!/\d{4}/.test(trimmed)) {
+    return null;
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseMonthToken(value: string): number | null {
+  const normalized = value.trim().toLowerCase().slice(0, 3);
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const monthIndex = months.indexOf(normalized);
+  return monthIndex === -1 ? null : monthIndex + 1;
+}
+
+function parseWeekendDateRange(value: string, baseYear: number): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withYear = normalizeDateInput(trimmed, baseYear);
+  if (withYear) return withYear;
+
+  const numericRangeMatch = trimmed.match(
+    /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*-\s*(?:(\d{1,2})\/)?(\d{1,2})(?:\/(\d{2,4}))?$/
+  );
+
+  if (numericRangeMatch) {
+    const startMonth = Number.parseInt(numericRangeMatch[1] || "", 10);
+    const startDay = Number.parseInt(numericRangeMatch[2] || "", 10);
+    const explicitStartYear = numericRangeMatch[3];
+    const resolvedYear = normalizeCsvYearToken(explicitStartYear, baseYear);
+
+    return formatDateParts(resolvedYear, startMonth, startDay);
+  }
+
+  const rangeMatch = trimmed.match(
+    /^([A-Za-z]+)\s+(\d{1,2})(?:,?\s*(\d{2,4}))?\s*-\s*([A-Za-z]+)?\s*(\d{1,2})(?:,?\s*(\d{2,4}))?$/
+  );
+
+  if (!rangeMatch) return null;
+
+  const startMonth = parseMonthToken(rangeMatch[1] || "");
+  const startDay = Number.parseInt(rangeMatch[2] || "", 10);
+  const explicitStartYear = rangeMatch[3];
+
+  if (!startMonth || Number.isNaN(startDay)) {
+    return null;
+  }
+
+  const resolvedYear = normalizeCsvYearToken(explicitStartYear, baseYear);
+
+  return formatDateParts(resolvedYear, startMonth, startDay);
+}
+
+function parseScriptureReference(value: string): { book: string | null; chapter: number | null } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { book: null, chapter: null };
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (normalized.includes("resurrection") || normalized.includes("ressurection") || normalized.includes("easter")) {
+    return { book: "Resurrection", chapter: 1 };
+  }
+
+  if (normalized.includes("baptism")) {
+    return { book: "Baptism", chapter: 1 };
+  }
+
+  const match = trimmed.match(/^((?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(\d+)/);
+  if (!match) {
+    return { book: null, chapter: null };
+  }
+
+  const book = match[1]?.trim() || null;
+  const chapter = Number.parseInt(match[2] || "", 10);
+  return {
+    book,
+    chapter: Number.isNaN(chapter) || chapter < 1 ? null : chapter,
+  };
+}
+
+function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Promise<TeachingScheduleImportRow[]> {
+  return new Promise((resolve, reject) => {
+    Papa.parse<string[]>(csvText, {
+      header: false,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const rows: TeachingScheduleImportRow[] = [];
+        const errors: string[] = [];
+        const allRows = (results.data || []).filter((row) => row.some((cell) => cell?.trim()));
+        const headerIndex = allRows.findIndex((row) => {
+          const normalizedCells = row.map((cell) => normalizeCsvHeader(cell || ""));
+          return normalizedCells.includes("weekend_date")
+            || normalizedCells.includes("date")
+            || normalizedCells.includes("service_date");
+        });
+
+        if (headerIndex === -1) {
+          reject(new Error("Could not find a header row with a date column."));
+          return;
+        }
+
+        const headerRow = allRows[headerIndex].map((cell) => normalizeCsvHeader(cell || ""));
+        const dataRows = allRows.slice(headerIndex + 1);
+        const baseYear = new Date().getFullYear();
+        const seenDates = new Set<string>();
+
+        for (const [index, rawValues] of dataRows.entries()) {
+          const row = Object.fromEntries(
+            headerRow.map((key, columnIndex) => [key, (rawValues[columnIndex] || "").trim()])
+          );
+
+          const dateValue =
+            row.weekend_date ||
+            row.date ||
+            row.service_date ||
+            row.weekend ||
+            row.teaching_date ||
+            "";
+          const normalizedDate = parseWeekendDateRange(dateValue, baseYear) || normalizeDateInput(dateValue);
+
+          const referenceValue =
+            row.book_and_chapter ||
+            row.reference ||
+            row.passage ||
+            row.scripture ||
+            row.chapter_reference ||
+            "";
+          const parsedReference = parseScriptureReference(referenceValue);
+
+          const book =
+            row.book ||
+            parsedReference.book ||
+            fallbackBook.trim();
+
+          const chapterValue = row.chapter || row.ch || "";
+          const parsedChapter = chapterValue
+            ? Number.parseInt(chapterValue.replace(/[^\d]/g, ""), 10)
+            : parsedReference.chapter;
+
+          const themes = (row.themes || row.theme || row.manual_themes || "")
+            .split(",")
+            .map((theme) => theme.trim())
+            .filter(Boolean);
+
+          if (!normalizedDate) {
+            errors.push(`Row ${index + headerIndex + 2}: missing or invalid date`);
+            continue;
+          }
+
+          if (!book) {
+            errors.push(`Row ${index + headerIndex + 2}: missing book`);
+            continue;
+          }
+
+          if (!parsedChapter || Number.isNaN(parsedChapter) || parsedChapter < 1) {
+            errors.push(`Row ${index + headerIndex + 2}: missing or invalid chapter`);
+            continue;
+          }
+
+          const strictWeekendDate = normalizeTeachingWeekDateForMinistry(normalizedDate, "weekend") || normalizedDate;
+          if (seenDates.has(strictWeekendDate)) {
+            errors.push(`Row ${index + headerIndex + 2}: duplicate weekend date ${strictWeekendDate}`);
+            continue;
+          }
+          seenDates.add(strictWeekendDate);
+
+          rows.push({
+            weekend_date: strictWeekendDate,
+            book,
+            chapter: parsedChapter,
+            chapter_reference: referenceValue.trim() || `${book} ${parsedChapter}`,
+            themes_manual: themes,
+          });
+        }
+
+        if (errors.length > 0) {
+          reject(new Error(errors.slice(0, 5).join("; ")));
+          return;
+        }
+
+        resolve(rows);
+      },
+      error: (error) => reject(error),
+    });
+  });
+}
+
 export default function AdminTools() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isAdmin, isLoading: authLoading } = useAuth();
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
@@ -146,6 +452,23 @@ export default function AdminTools() {
   const [customServiceStartTime, setCustomServiceStartTime] = useState("");
   const [customServiceEndTime, setCustomServiceEndTime] = useState("");
   const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
+  const [teachingCampusId, setTeachingCampusId] = useState("");
+  const [teachingMinistry, setTeachingMinistry] = useState<string>("weekend");
+  const [teachingDate, setTeachingDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [teachingWeek, setTeachingWeek] = useState<TeachingWeekRow | null>(null);
+  const [teachingBook, setTeachingBook] = useState<string>("John");
+  const [teachingChapter, setTeachingChapter] = useState<string>("1");
+  const [manualThemesInput, setManualThemesInput] = useState<string>("");
+  const [isTeachingLoading, setIsTeachingLoading] = useState(false);
+  const [isAnalyzingChapter, setIsAnalyzingChapter] = useState(false);
+  const [teachingPdfFile, setTeachingPdfFile] = useState<File | null>(null);
+  const [teachingScheduleImportFile, setTeachingScheduleImportFile] = useState<File | null>(null);
+  const [teachingScheduleImportText, setTeachingScheduleImportText] = useState("");
+  const [isImportingTeachingSchedule, setIsImportingTeachingSchedule] = useState(false);
+  const [isUploadingTeachingPdf, setIsUploadingTeachingPdf] = useState(false);
+  const [isOpeningTeachingPdf, setIsOpeningTeachingPdf] = useState(false);
+  const [isRemovingTeachingPdf, setIsRemovingTeachingPdf] = useState(false);
+  const [openingCsvUploadId, setOpeningCsvUploadId] = useState<string | null>(null);
 
   const handleMasterPasswordReset = async () => {
     setIsResettingPasswords(true);
@@ -215,6 +538,451 @@ export default function AdminTools() {
       setCustomServiceCampusId(campuses[0].id);
     }
   }, [customServiceCampusId, campuses]);
+
+  useEffect(() => {
+    if (!teachingCampusId && campuses[0]?.id) {
+      setTeachingCampusId(campuses[0].id);
+    }
+  }, [teachingCampusId, campuses]);
+
+  const parseThemes = (input: string) =>
+    input
+      .split(",")
+      .map((theme) => theme.trim())
+      .filter(Boolean);
+
+  const invalidateTeachingQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["teaching-week"] }),
+      queryClient.invalidateQueries({ queryKey: ["teaching-weeks-range"] }),
+      queryClient.invalidateQueries({ queryKey: ["teaching-schedule-uploads"] }),
+    ]);
+  };
+
+  const { data: teachingScheduleUploads = [] } = useQuery({
+    queryKey: ["teaching-schedule-uploads", teachingCampusId, teachingMinistry],
+    enabled: !!teachingCampusId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("teaching_schedule_uploads")
+        .select("*")
+        .eq("campus_id", teachingCampusId)
+        .eq("ministry_type", teachingMinistry)
+        .order("is_active", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        if (isMissingTeachingScheduleUploadsTable(error)) {
+          return [] as TeachingScheduleUploadRow[];
+        }
+        throw error;
+      }
+      return (data || []) as TeachingScheduleUploadRow[];
+    },
+  });
+
+  const refreshTeachingWeekById = async (weekId: string) => {
+    const { data, error } = await (supabase as any)
+      .from("teaching_weeks")
+      .select("*")
+      .eq("id", weekId)
+      .single();
+
+    if (error) throw error;
+    const week = data as TeachingWeekRow;
+    setTeachingWeek(week);
+    setTeachingBook(week.book);
+    setTeachingChapter(String(week.chapter));
+    setManualThemesInput((week.themes_manual || []).join(", "));
+    return week;
+  };
+
+  useEffect(() => {
+    if (!teachingCampusId) return;
+    let cancelled = false;
+
+    const loadTeachingWeek = async () => {
+      setIsTeachingLoading(true);
+      try {
+        const { data, error } = await (supabase as any)
+          .from("teaching_weeks")
+          .select("*")
+          .eq("campus_id", teachingCampusId)
+          .eq("ministry_type", teachingMinistry)
+          .eq("weekend_date", teachingDate)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (cancelled) return;
+
+        if (data) {
+          const week = data as TeachingWeekRow;
+          setTeachingWeek(week);
+          setTeachingBook(week.book);
+          setTeachingChapter(String(week.chapter));
+          setManualThemesInput((week.themes_manual || []).join(", "));
+        } else {
+          setTeachingWeek(null);
+          setManualThemesInput("");
+        }
+      } catch (error) {
+        console.error("Failed to load teaching week:", error);
+      } finally {
+        if (!cancelled) {
+          setIsTeachingLoading(false);
+        }
+      }
+    };
+
+    loadTeachingWeek();
+    return () => {
+      cancelled = true;
+    };
+  }, [teachingCampusId, teachingMinistry, teachingDate]);
+
+  const handleImportTeachingSchedule = async () => {
+    if (!teachingCampusId) {
+      toast.error("Select a campus first.");
+      return;
+    }
+
+    if (!teachingScheduleImportFile && !teachingScheduleImportText.trim()) {
+      toast.error("Choose a CSV file or paste CSV text to import.");
+      return;
+    }
+
+    if (teachingScheduleImportFile && !teachingScheduleImportFile.name.toLowerCase().endsWith(".csv")) {
+      toast.error("Only CSV files are supported for schedule import.");
+      return;
+    }
+
+    setIsImportingTeachingSchedule(true);
+    try {
+      const csvText = teachingScheduleImportText.trim()
+        ? teachingScheduleImportText
+        : await teachingScheduleImportFile!.text();
+      const parsedRows = await parseTeachingScheduleCsvText(csvText, teachingBook);
+
+      if (parsedRows.length === 0) {
+        throw new Error("No valid schedule rows were found in the CSV.");
+      }
+
+      const sortedDates = parsedRows.map((row) => row.weekend_date).sort((a, b) => a.localeCompare(b));
+      const rangeStart = sortedDates[0];
+      const rangeEnd = sortedDates[sortedDates.length - 1];
+      const sourceName = teachingScheduleImportFile?.name || `teaching-schedule-${rangeStart}-to-${rangeEnd}.csv`;
+      const safeName = sourceName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const csvPath = `${teachingCampusId}/${teachingMinistry}/csv/${Date.now()}-${safeName}`;
+      // Upload a fresh in-memory file so the storage client never depends on
+      // the browser retaining access to the original local file handle.
+      const uploadSource = new File([csvText], safeName, { type: "text/csv" });
+
+      const { error: csvUploadError } = await supabase.storage
+        .from("teaching_schedules")
+        .upload(csvPath, uploadSource, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: "text/csv",
+        });
+      if (csvUploadError) throw csvUploadError;
+
+      const payload = parsedRows.map((row) => ({
+        campus_id: teachingCampusId,
+        ministry_type: teachingMinistry,
+        weekend_date: normalizeTeachingWeekDateForMinistry(row.weekend_date, teachingMinistry) || row.weekend_date,
+        book: row.book,
+        chapter: row.chapter,
+        translation: "ESV",
+        chapter_reference: row.chapter_reference,
+        themes_manual: row.themes_manual,
+      }));
+
+      const importedDates = Array.from(
+        new Set(
+          parsedRows.map(
+            (row) => normalizeTeachingWeekDateForMinistry(row.weekend_date, teachingMinistry) || row.weekend_date
+          )
+        )
+      );
+      const ministryAliases = getTeachingMinistryAliases(teachingMinistry);
+
+      const { error: deleteError } = await (supabase as any)
+        .from("teaching_weeks")
+        .delete()
+        .eq("campus_id", teachingCampusId)
+        .in("ministry_type", ministryAliases)
+        .in("weekend_date", importedDates);
+
+      if (deleteError) throw deleteError;
+
+      const { error } = await (supabase as any)
+        .from("teaching_weeks")
+        .insert(payload);
+
+      if (error) throw error;
+
+      const { data: authUser } = await supabase.auth.getUser();
+
+      const { error: deactivateUploadsError } = await (supabase as any)
+        .from("teaching_schedule_uploads")
+        .update({ is_active: false })
+        .eq("campus_id", teachingCampusId)
+        .eq("ministry_type", teachingMinistry)
+        .eq("is_active", true);
+      if (deactivateUploadsError && !isMissingTeachingScheduleUploadsTable(deactivateUploadsError)) {
+        throw deactivateUploadsError;
+      }
+
+      const { error: uploadRecordError } = await (supabase as any)
+        .from("teaching_schedule_uploads")
+        .insert({
+          campus_id: teachingCampusId,
+          ministry_type: teachingMinistry,
+          file_name: sourceName,
+          storage_path: csvPath,
+          range_start: rangeStart,
+          range_end: rangeEnd,
+          row_count: parsedRows.length,
+          is_active: true,
+          uploaded_by: authUser.user?.id || null,
+        });
+      if (uploadRecordError && !isMissingTeachingScheduleUploadsTable(uploadRecordError)) {
+        throw uploadRecordError;
+      }
+
+      setTeachingScheduleImportFile(null);
+      setTeachingScheduleImportText("");
+      await invalidateTeachingQueries();
+      toast.success("Teaching schedule imported.", {
+        description: `${parsedRows.length} week${parsedRows.length === 1 ? "" : "s"} imported for ${rangeStart} to ${rangeEnd}.`,
+      });
+      setTeachingWeek(null);
+      setManualThemesInput("");
+    } catch (error) {
+      const message =
+        error instanceof Error && /could not be read|notreadableerror|permission/i.test(error.message)
+          ? "The app could not read that file. Try moving the CSV into the project folder or Downloads, then re-select it and import again."
+          : error instanceof Error
+            ? error.message
+            : "Failed to import teaching schedule";
+      toast.error(message);
+    } finally {
+      setIsImportingTeachingSchedule(false);
+    }
+  };
+
+  const handleOpenCsvUpload = async (upload: TeachingScheduleUploadRow) => {
+    setOpeningCsvUploadId(upload.id);
+    try {
+      const { data, error } = await supabase.storage
+        .from("teaching_schedules")
+        .createSignedUrl(upload.storage_path, 60);
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to open CSV");
+    } finally {
+      setOpeningCsvUploadId(null);
+    }
+  };
+
+  const handleCreateOrUpdateTeachingWeek = async () => {
+    if (!teachingCampusId) return;
+    const parsedChapter = Math.max(1, Number.parseInt(teachingChapter || "1", 10));
+    const parsedThemes = parseThemes(manualThemesInput);
+
+    try {
+      if (teachingWeek) {
+        const { error } = await (supabase as any)
+          .from("teaching_weeks")
+          .update({
+            book: teachingBook.trim() || teachingWeek.book,
+            chapter: parsedChapter,
+            chapter_reference: `${teachingBook.trim() || teachingWeek.book} ${parsedChapter}`,
+            themes_manual: parsedThemes,
+          })
+          .eq("id", teachingWeek.id);
+        if (error) throw error;
+        await refreshTeachingWeekById(teachingWeek.id);
+      } else {
+        const { data, error } = await (supabase as any)
+          .from("teaching_weeks")
+          .insert({
+            campus_id: teachingCampusId,
+            ministry_type: teachingMinistry,
+            weekend_date: teachingDate,
+            book: teachingBook.trim() || "John",
+            chapter: parsedChapter,
+            translation: "ESV",
+            chapter_reference: `${teachingBook.trim() || "John"} ${parsedChapter}`,
+            themes_manual: parsedThemes,
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        const week = data as TeachingWeekRow;
+        setTeachingWeek(week);
+      }
+      await invalidateTeachingQueries();
+      toast.success("Teaching week saved.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save teaching week";
+      toast.error(message);
+    }
+  };
+
+  const handleAnalyzeChapter = async () => {
+    if (!teachingWeek) return;
+    setIsAnalyzingChapter(true);
+    try {
+      const { error } = await supabase.functions.invoke("analyze-chapter", {
+        body: { teaching_week_id: teachingWeek.id },
+      });
+      if (error) throw error;
+      await refreshTeachingWeekById(teachingWeek.id);
+      await invalidateTeachingQueries();
+      toast.success("Chapter analyzed and themes updated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to analyze chapter";
+      toast.error(message);
+    } finally {
+      setIsAnalyzingChapter(false);
+    }
+  };
+
+  const handleUploadTeachingPdf = async () => {
+    if (!teachingPdfFile) {
+      toast.error("Choose a PDF first.");
+      return;
+    }
+    if (teachingPdfFile.type !== "application/pdf") {
+      toast.error("Only PDF files are supported.");
+      return;
+    }
+
+    setIsUploadingTeachingPdf(true);
+    try {
+      let resolvedWeek = teachingWeek;
+      if (!resolvedWeek) {
+        const parsedChapter = Math.max(1, Number.parseInt(teachingChapter || "1", 10));
+        const parsedThemes = parseThemes(manualThemesInput);
+
+        const { data: existingWeek, error: existingError } = await (supabase as any)
+          .from("teaching_weeks")
+          .select("*")
+          .eq("campus_id", teachingCampusId)
+          .eq("ministry_type", teachingMinistry)
+          .eq("weekend_date", teachingDate)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existingError) throw existingError;
+
+        if (existingWeek) {
+          resolvedWeek = existingWeek as TeachingWeekRow;
+          setTeachingWeek(resolvedWeek);
+        } else {
+          const { data: createdWeek, error: createError } = await (supabase as any)
+            .from("teaching_weeks")
+            .insert({
+              campus_id: teachingCampusId,
+              ministry_type: teachingMinistry,
+              weekend_date: teachingDate,
+              book: teachingBook.trim() || "John",
+              chapter: parsedChapter,
+              chapter_reference: `${teachingBook.trim() || "John"} ${parsedChapter}`,
+              themes_manual: parsedThemes,
+            })
+            .select("*")
+            .single();
+          if (createError) throw createError;
+          resolvedWeek = createdWeek as TeachingWeekRow;
+          setTeachingWeek(resolvedWeek);
+        }
+      }
+
+      if (!resolvedWeek) {
+        throw new Error("Unable to resolve teaching week for upload.");
+      }
+
+      const safeName = teachingPdfFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${resolvedWeek.campus_id}/${resolvedWeek.ministry_type}/${resolvedWeek.weekend_date}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("teaching_schedules")
+        .upload(path, teachingPdfFile, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: "application/pdf",
+        });
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await (supabase as any)
+        .from("teaching_weeks")
+        .update({ schedule_pdf_path: path })
+        .eq("id", resolvedWeek.id);
+      if (updateError) throw updateError;
+
+      if (resolvedWeek.schedule_pdf_path && resolvedWeek.schedule_pdf_path !== path) {
+        await supabase.storage.from("teaching_schedules").remove([resolvedWeek.schedule_pdf_path]);
+      }
+
+      setTeachingPdfFile(null);
+      await refreshTeachingWeekById(resolvedWeek.id);
+      await invalidateTeachingQueries();
+      toast.success("Teaching schedule PDF uploaded.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to upload PDF";
+      toast.error(message);
+    } finally {
+      setIsUploadingTeachingPdf(false);
+    }
+  };
+
+  const handleOpenTeachingPdf = async () => {
+    if (!teachingWeek?.schedule_pdf_path) return;
+    setIsOpeningTeachingPdf(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from("teaching_schedules")
+        .createSignedUrl(teachingWeek.schedule_pdf_path, 60);
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to open PDF";
+      toast.error(message);
+    } finally {
+      setIsOpeningTeachingPdf(false);
+    }
+  };
+
+  const handleRemoveTeachingPdf = async () => {
+    if (!teachingWeek?.schedule_pdf_path) return;
+    setIsRemovingTeachingPdf(true);
+    try {
+      const existingPath = teachingWeek.schedule_pdf_path;
+      const { error: updateError } = await (supabase as any)
+        .from("teaching_weeks")
+        .update({ schedule_pdf_path: null })
+        .eq("id", teachingWeek.id);
+      if (updateError) throw updateError;
+
+      await supabase.storage.from("teaching_schedules").remove([existingPath]);
+      await refreshTeachingWeekById(teachingWeek.id);
+      await invalidateTeachingQueries();
+      toast.success("Teaching schedule PDF removed.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to remove PDF";
+      toast.error(message);
+    } finally {
+      setIsRemovingTeachingPdf(false);
+    }
+  };
 
   const toggleService = (campusId: string, field: "has_saturday_service" | "has_sunday_service") => {
     setConfigs((prev) =>
@@ -648,6 +1416,270 @@ export default function AdminTools() {
                 })}
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Teaching Schedule Manager */}
+      <Card className="mb-6">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xl font-semibold flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-primary" />
+            Teaching Schedule Manager
+          </CardTitle>
+          <CardDescription>
+            Import dated chapter schedules and manage each teaching week for a campus and ministry.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Campus</Label>
+              <Select value={teachingCampusId} onValueChange={setTeachingCampusId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select campus" />
+                </SelectTrigger>
+                <SelectContent>
+                  {campuses.map((campus) => (
+                    <SelectItem key={campus.id} value={campus.id}>
+                      {campus.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Ministry</Label>
+              <Select value={teachingMinistry} onValueChange={setTeachingMinistry}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Import Schedule</p>
+              <p className="text-xs text-muted-foreground">
+                Upload a CSV with dated rows. The importer reads the full date range from the file itself and assigns each chapter/reference by strict date match. The selected weekend date below is not used for CSV import.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-[1fr_160px_auto]">
+              <div className="space-y-2">
+                <Label htmlFor="teaching-schedule-import">Schedule CSV</Label>
+                <input
+                  id="teaching-schedule-import"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-accent/90"
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] || null;
+                    setTeachingScheduleImportFile(nextFile);
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {teachingScheduleImportFile?.name || "No file selected"}
+                </span>
+                <Textarea
+                  value={teachingScheduleImportText}
+                  onChange={(event) => setTeachingScheduleImportText(event.target.value)}
+                  placeholder="Or paste the raw CSV text here"
+                  className="min-h-32"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Book</Label>
+                <Input
+                  value={teachingBook}
+                  onChange={(event) => setTeachingBook(event.target.value)}
+                  placeholder="John"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={handleImportTeachingSchedule}
+                  disabled={(!teachingScheduleImportFile && !teachingScheduleImportText.trim()) || isImportingTeachingSchedule}
+                  className="w-full md:w-auto"
+                >
+                  {isImportingTeachingSchedule ? "Importing..." : "Import Schedule"}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Supported headers: `date`, `weekend_date`, `service_date`, `book`, `chapter`, `reference`, `passage`, `themes`. Duplicate weekend dates in the CSV are rejected.
+            </p>
+          </div>
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Uploaded CSV Files</p>
+              <p className="text-xs text-muted-foreground">
+                Files are tracked per campus and ministry. The active file below is the one currently being used for this campus/ministry.
+              </p>
+            </div>
+            {teachingScheduleUploads.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No teaching schedule CSV files have been uploaded for this campus/ministry yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {teachingScheduleUploads.map((upload) => (
+                  <div key={upload.id} className="flex flex-col gap-2 rounded-md border border-border p-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-medium">{upload.file_name}</p>
+                        {upload.is_active ? <Badge variant="secondary">Using This File</Badge> : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {upload.range_start} to {upload.range_end} • {upload.row_count} week{upload.row_count === 1 ? "" : "s"} • uploaded {new Date(upload.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleOpenCsvUpload(upload)}
+                      disabled={openingCsvUploadId === upload.id}
+                    >
+                      {openingCsvUploadId === upload.id ? "Opening..." : "Open CSV"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 border-t border-border pt-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Weekend Date</Label>
+              <Input
+                type="date"
+                value={teachingDate}
+                onChange={(event) => setTeachingDate(event.target.value)}
+                className="teaching-date-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Used only for manual single-week review, editing, and PDF attachment.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 border-t border-border pt-4">
+            <div className="space-y-2">
+              <Label>Book</Label>
+              <Input
+                value={teachingBook}
+                onChange={(event) => setTeachingBook(event.target.value)}
+                placeholder="John"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Chapter</Label>
+              <Input
+                type="number"
+                min={1}
+                value={teachingChapter}
+                onChange={(event) => setTeachingChapter(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Manual Themes (comma separated)</Label>
+              <Input
+                value={manualThemesInput}
+                onChange={(event) => setManualThemesInput(event.target.value)}
+                placeholder="Grace, Redemption, Surrender"
+              />
+            </div>
+          </div>
+
+          {teachingWeek?.themes_suggested && teachingWeek.themes_suggested.length > 0 ? (
+            <div className="rounded-md border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-2">AI Suggested Themes</p>
+              <div className="flex flex-wrap gap-2">
+                {teachingWeek.themes_suggested.map((theme) => (
+                  <Badge key={theme} variant="secondary">{theme}</Badge>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {teachingWeek?.ai_summary ? (
+            <div className="rounded-md border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-1">AI Chapter Summary</p>
+              <p className="text-sm">{teachingWeek.ai_summary}</p>
+            </div>
+          ) : null}
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <p className="text-sm font-medium">Schedule PDF</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="teaching-schedule-pdf">Upload PDF</Label>
+                <input
+                  id="teaching-schedule-pdf"
+                  type="file"
+                  accept="application/pdf"
+                  className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-accent/90"
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] || null;
+                    setTeachingPdfFile(nextFile);
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {teachingPdfFile?.name || "No file selected"}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleUploadTeachingPdf}
+                disabled={!teachingWeek || !teachingPdfFile || isUploadingTeachingPdf}
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                {isUploadingTeachingPdf ? "Uploading..." : "Upload PDF"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleOpenTeachingPdf}
+                disabled={!teachingWeek?.schedule_pdf_path || isOpeningTeachingPdf}
+                className="gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                {isOpeningTeachingPdf ? "Opening..." : "Open PDF"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleRemoveTeachingPdf}
+                disabled={!teachingWeek?.schedule_pdf_path || isRemovingTeachingPdf}
+                className="gap-2 text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isRemovingTeachingPdf ? "Removing..." : "Remove PDF"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {teachingWeek?.schedule_pdf_path
+                ? "A PDF is attached to this teaching week."
+                : "No PDF attached for this teaching week."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleCreateOrUpdateTeachingWeek} disabled={isTeachingLoading}>
+              {teachingWeek ? "Save Teaching Week" : "Create Teaching Week"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleAnalyzeChapter}
+              disabled={!teachingWeek || isAnalyzingChapter}
+            >
+              {isAnalyzingChapter ? "Analyzing..." : "Analyze Chapter"}
+            </Button>
           </div>
         </CardContent>
       </Card>

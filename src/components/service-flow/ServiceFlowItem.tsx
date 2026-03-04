@@ -133,24 +133,26 @@ export function ServiceFlowItem({
         <span className="service-flow-song-title flex-1 min-w-0 font-medium text-sm truncate">
           {item.song?.title || item.title}
         </span>
-        {item.song?.bpm && (
-          <span className="service-flow-song-bpm text-xs text-muted-foreground font-medium whitespace-nowrap">
-            {item.song.bpm} BPM
-          </span>
-        )}
-        {item.song_key && (
-          <Badge
-            variant="outline"
-            className="text-xs font-medium"
-          >
-            {item.song_key}
-          </Badge>
-        )}
-        {vocalistDisplay && (
-          <span className="service-flow-song-vocalist text-xs text-muted-foreground whitespace-nowrap">
-            {vocalistDisplay}
-          </span>
-        )}
+        <div className="service-flow-song-meta ml-auto flex items-center justify-end gap-2 text-right">
+          {item.song?.bpm && (
+            <span className="service-flow-song-bpm text-xs text-muted-foreground font-medium whitespace-nowrap">
+              {item.song.bpm} BPM
+            </span>
+          )}
+          {item.song_key && (
+            <Badge
+              variant="outline"
+              className="service-flow-song-key text-xs font-medium"
+            >
+              {item.song_key}
+            </Badge>
+          )}
+          {vocalistDisplay && (
+            <span className="service-flow-song-vocalist text-xs text-muted-foreground whitespace-nowrap">
+              {vocalistDisplay}
+            </span>
+          )}
+        </div>
         {/* Attachment count placeholder - future feature */}
         <Button
           variant="ghost"

@@ -181,7 +181,7 @@ export async function summarizeChapterAndThemes(chapterText: string, reference: 
 export async function fetchBibleChapter(
   book: string,
   chapter: number,
-  translation = "web",
+  translation = "ESV",
 ): Promise<{
   reference: string;
   translation: string;
@@ -189,6 +189,51 @@ export async function fetchBibleChapter(
   verses: Array<{ book_name: string; chapter: number; verse: number; text: string }>;
 }> {
   const reference = `${book} ${chapter}`;
+  const normalizedTranslation = translation.trim().toLowerCase();
+
+  if (normalizedTranslation === "esv") {
+    const esvApiKey = Deno.env.get("ESV_API_KEY");
+    if (!esvApiKey) {
+      throw new Error("ESV_API_KEY is not configured");
+    }
+
+    const apiUrl = new URL("https://api.esv.org/v3/passage/text/");
+    apiUrl.searchParams.set("q", reference);
+    apiUrl.searchParams.set("include-passage-references", "true");
+    apiUrl.searchParams.set("include-verse-numbers", "true");
+    apiUrl.searchParams.set("include-first-verse-numbers", "true");
+    apiUrl.searchParams.set("include-footnotes", "false");
+    apiUrl.searchParams.set("include-footnote-body", "false");
+    apiUrl.searchParams.set("include-headings", "false");
+    apiUrl.searchParams.set("include-short-copyright", "true");
+    apiUrl.searchParams.set("include-copyright", "false");
+    apiUrl.searchParams.set("include-passage-horizontal-lines", "false");
+    apiUrl.searchParams.set("include-heading-horizontal-lines", "false");
+
+    const response = await fetch(apiUrl.toString(), {
+      headers: {
+        Authorization: `Token ${esvApiKey}`,
+      },
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload?.detail || payload?.error || "esv_api_failed");
+    }
+
+    const passages = Array.isArray(payload?.passages)
+      ? payload.passages.map((passage) => String(passage || "").trim()).filter(Boolean)
+      : [];
+    const text = passages.join("\n\n").trim();
+
+    return {
+      reference: String(payload?.canonical || payload?.query || reference),
+      translation: "ESV",
+      text,
+      verses: [],
+    };
+  }
+
   const apiUrl = `https://bible-api.com/${encodeURIComponent(reference)}?translation=${encodeURIComponent(translation)}`;
   const response = await fetch(apiUrl);
   const payload = await response.json();
@@ -199,7 +244,7 @@ export async function fetchBibleChapter(
 
   const text = typeof payload?.text === "string" ? payload.text.trim() : "";
   const verses = Array.isArray(payload?.verses)
-    ? payload.verses.map((v: any) => ({
+    ? payload.verses.map((v: { book_name?: string; chapter?: number; verse?: number; text?: string }) => ({
         book_name: String(v.book_name || ""),
         chapter: Number(v.chapter || chapter),
         verse: Number(v.verse || 0),
@@ -209,7 +254,7 @@ export async function fetchBibleChapter(
 
   return {
     reference: String(payload?.reference || reference),
-    translation,
+    translation: translation.trim() || "web",
     text,
     verses,
   };
