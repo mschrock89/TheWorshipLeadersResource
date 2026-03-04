@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useUserCampuses } from "@/hooks/useCampuses";
-import { useDraftSets, useDraftSetSongs } from "@/hooks/useSetPlanner";
+import { useDraftSetSongs } from "@/hooks/useSetPlanner";
+import { usePublishedSetlists } from "@/hooks/useSetlistConfirmations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, Music, Clock, MapPin, ChevronRight } from "lucide-react";
-import { format, isSameWeek, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
 import { POSITION_LABELS } from "@/lib/constants";
 
 export function VolunteerUpcomingWidget() {
@@ -32,19 +33,21 @@ export function VolunteerUpcomingWidget() {
     return sortedDates[0] || null;
   }, [scheduledDates]);
 
-  // Fetch draft sets for the user's campus
-  const { data: draftSets = [], isLoading: setsLoading } = useDraftSets(primaryCampusId || null);
+  // Use the same roster-gated published-set source as My Setlists so volunteers
+  // only ever see set content they are actually eligible to review.
+  const { data: publishedSetlists = [], isLoading: setsLoading } = usePublishedSetlists(
+    primaryCampusId || undefined,
+    undefined,
+    false,
+  );
 
   // Find the published set for the next weekend
   const upcomingSet = useMemo(() => {
-    if (!nextWeekend || !draftSets.length) return null;
-    
-    // Find a published set for this weekend
-    return draftSets.find(set => {
-      const setDate = new Date(set.plan_date);
-      return set.status === 'published' && isSameWeek(setDate, nextWeekend.date, { weekStartsOn: 0 });
-    }) || null;
-  }, [draftSets, nextWeekend]);
+    if (!nextWeekend || !publishedSetlists.length) return null;
+
+    const targetDate = format(nextWeekend.date, "yyyy-MM-dd");
+    return publishedSetlists.find((set) => set.plan_date === targetDate) || null;
+  }, [publishedSetlists, nextWeekend]);
 
   // Fetch songs for the upcoming set
   const { data: setSongs = [], isLoading: songsLoading } = useDraftSetSongs(upcomingSet?.id || null);
