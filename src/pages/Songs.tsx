@@ -76,7 +76,7 @@ export default function Songs() {
   const [selectedPlan, setSelectedPlan] = useState<{ id: string; pco_plan_id: string } | null>(null);
   const [selectedCampusId, setSelectedCampusId] = useState<string>("all");
   const [selectedMinistry, setSelectedMinistry] = useState<string>("weekend");
-  const [activeListView, setActiveListView] = useState<"all" | "rotation" | "mostUsed" | "newSongs" | "adventSongs">("all");
+  const [activeListView, setActiveListView] = useState<"all" | "rotation" | "deepCuts" | "mostUsed" | "newSongs" | "adventSongs">("all");
   const [historySortOrder, setHistorySortOrder] = useState<"newest" | "oldest">("newest");
   const [historyPage, setHistoryPage] = useState(1);
   const PLANS_PER_PAGE = 20;
@@ -154,6 +154,20 @@ export default function Songs() {
   // Determine if user is restricted to their campus only (volunteers/members)
   const isVolunteer = userRole === "volunteer" || userRole === "member";
   const userCampusIds = userCampuses?.map(uc => uc.campus_id) || [];
+  const normalizeServiceType = (value: string) =>
+    value.trim().toLowerCase().replace(/\s+/g, " ");
+  const weekendServiceTypeNames = useMemo(() => {
+    const names = new Set<string>(["weekend worship", "weekend"]);
+    (campuses || []).forEach((campus) => {
+      const normalizedCampusName = normalizeServiceType(campus.name);
+      names.add(normalizedCampusName);
+      names.add(normalizeServiceType(`${campus.name} worship`));
+    });
+    return names;
+  }, [campuses]);
+  const isWeekendServiceType = (serviceTypeName: string) => {
+    return weekendServiceTypeNames.has(normalizeServiceType(serviceTypeName));
+  };
   
   // Ministry options with their service type patterns
   const ministryOptions = [
@@ -200,13 +214,9 @@ export default function Songs() {
     if (!selectedMinistryConfig) return true;
     
     if (selectedMinistryConfig.matchesCampusName) {
-      // Weekend ministry: exclude student ministry service types
-      const studentServiceTypes = [
-        "EON Boro", "EON", "EON Tullahoma", "EON Shelbyville",
-        "Encounter (Boro)", "Encounter", "Encounter (CC)", "Encounter (Tullahoma)",
-        "Evident", "ER"
-      ];
-      return !studentServiceTypes.includes(plan.service_type_name);
+      // Weekend ministry should only include weekend service types.
+      // This keeps Auditions/Prayer Night/etc out of weekend-based song stats.
+      return isWeekendServiceType(plan.service_type_name);
     }
     
     // Match by service type patterns
@@ -237,12 +247,9 @@ export default function Songs() {
     if (!selectedMinistryConfig) return matchesCampus;
     
     if (selectedMinistryConfig.matchesCampusName) {
-      const studentServiceTypes = [
-        "EON Boro", "EON", "EON Tullahoma", "EON Shelbyville",
-        "Encounter (Boro)", "Encounter", "Encounter (CC)", "Encounter (Tullahoma)",
-        "Evident", "ER"
-      ];
-      return matchesCampus && !studentServiceTypes.includes(usage.service_type_name);
+      // Weekend ministry should only include weekend service types.
+      // This keeps Auditions/Prayer Night/etc out of weekend-based song stats.
+      return matchesCampus && isWeekendServiceType(usage.service_type_name);
     }
     
     const matchesMinistry = selectedMinistryConfig.serviceTypePatterns?.some(
@@ -252,7 +259,7 @@ export default function Songs() {
   };
 
   // Calculate campus-filtered stats and per-song filtered counts
-  const { campusFilteredStats, songCampusUsage, regularRotationSongs, newSongsList, adventSongsList, mostUsedTop10 } = useMemo(() => {
+  const { campusFilteredStats, songCampusUsage, regularRotationSongs, deepCutsSongs, newSongsList, adventSongsList, mostUsedTop10 } = useMemo(() => {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
@@ -305,14 +312,11 @@ export default function Songs() {
       .sort((a, b) => b.usagesAllTime - a.usagesAllTime);
     const top10 = sortedByUsage.slice(0, 10);
 
-    // New songs: scheduled 1-3 times at this campus/ministry
+    // New songs: scheduled 1-3 times ALL TIME at this campus/ministry
     const candidateNewSongs = songsWithCampusStats.filter(song => {
       const scheduledCount = song.scheduledCount ?? 0;
-      const lastScheduledAt = song.lastScheduledAt ? new Date(song.lastScheduledAt) : null;
       return scheduledCount > 0 &&
-             scheduledCount < 4 &&
-             !!lastScheduledAt &&
-             lastScheduledAt >= oneYearAgo;
+             scheduledCount < 4;
     });
 
     const adventSongs = candidateNewSongs
@@ -330,10 +334,27 @@ export default function Songs() {
       return (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0);
     });
 
-    // Regular rotation: 4+ scheduled times at this campus/ministry
+    // Regular rotation: 4+ total scheduled times and used within the last year
     const regularRotation = songsWithCampusStats
-      .filter(song => (song.scheduledCount ?? 0) >= 4)
+      .filter(song => {
+        const scheduledCount = song.scheduledCount ?? 0;
+        const lastScheduledAt = song.lastScheduledAt ? new Date(song.lastScheduledAt) : null;
+        return scheduledCount >= 4 && !!lastScheduledAt && lastScheduledAt >= oneYearAgo;
+      })
       .sort((a, b) => (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0));
+
+    const deepCuts = songsWithCampusStats
+      .filter(song => {
+        const scheduledCount = song.scheduledCount ?? 0;
+        const lastScheduledAt = song.lastScheduledAt ? new Date(song.lastScheduledAt) : null;
+        return scheduledCount >= 4 && (!lastScheduledAt || lastScheduledAt < oneYearAgo);
+      })
+      .sort((a, b) => {
+        const aDate = a.lastScheduledAt || "";
+        const bDate = b.lastScheduledAt || "";
+        if (bDate !== aDate) return bDate.localeCompare(aDate);
+        return (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0);
+      });
 
     return {
       campusFilteredStats: {
@@ -341,9 +362,11 @@ export default function Songs() {
         newSongsCount: newSongs.length,
         adventSongsCount: adventSongs.length,
         regularRotationCount: regularRotation.length,
+        deepCutsCount: deepCuts.length,
       },
       songCampusUsage: usageMap,
       regularRotationSongs: regularRotation,
+      deepCutsSongs: deepCuts,
       newSongsList: newSongs,
       adventSongsList: adventSongs,
       mostUsedTop10: top10,
@@ -354,7 +377,9 @@ export default function Songs() {
   const getListViewInfo = () => {
     switch (activeListView) {
       case "rotation":
-        return { title: "Regular Rotation", subtitle: "Songs scheduled 4+ times for this campus/ministry", songs: regularRotationSongs };
+        return { title: "Regular Rotation", subtitle: "Songs used in the last year and scheduled 4+ times total", songs: regularRotationSongs };
+      case "deepCuts":
+        return { title: "Deep Cuts", subtitle: "Songs scheduled 4+ times total but not used in the last year", songs: deepCutsSongs };
       case "mostUsed":
         return { title: "Most Used Songs", subtitle: "Top 10 most played songs", songs: mostUsedTop10 };
       case "newSongs":
@@ -678,6 +703,15 @@ export default function Songs() {
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <Badge variant={activeListView === "rotation" ? "outline" : "secondary"}>{campusFilteredStats.regularRotationCount}</Badge>
+                </Button>
+                <Button
+                  variant={activeListView === "deepCuts" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => { setActiveListView(activeListView === "deepCuts" ? "all" : "deepCuts"); setSearchQuery(""); }}
+                  className="gap-1.5"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <Badge variant={activeListView === "deepCuts" ? "outline" : "secondary"}>{campusFilteredStats.deepCutsCount}</Badge>
                 </Button>
                 <Button
                   variant={activeListView === "mostUsed" ? "default" : "outline"}
