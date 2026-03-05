@@ -122,15 +122,17 @@ export function useSongAvailability(
       const pastUsages = relevantUsages.filter(u => u.plan_date < targetDateStr);
       const upcomingUsages = relevantUsages.filter(u => u.plan_date >= targetDateStr);
       
-      const totalUses = pastUsages.length;
-      const isGloballyNew = (song.usages?.length || 0) === 0;
-      // "New Song" stays in this category until it has been scheduled 4 times.
-      const isNewSong = totalUses > 0 && totalUses <= NEW_SONG_MAX_USES;
-
       // Calculate uses in past year for deep cut detection
       const usesInPastYear = pastUsages.filter(u => u.plan_date >= oneYearAgoStr).length;
+      const totalUses = pastUsages.length;
+      const isGloballyNew = (song.usages?.length || 0) === 0;
+      // Classification rules:
+      // - Deep Cut: 1 or less uses in past 12 months
+      // - Regular Rotation: 3 or more uses in past 12 months OR 4+ total historical uses
+      // - New Song: fewer than 4 total historical uses, unless it has already moved to regular rotation
+      const isInRegularRotation = usesInPastYear >= 3 || totalUses >= REGULAR_ROTATION_MIN_USES;
       const isDeepCut = usesInPastYear <= 1;
-      const isInRegularRotation = totalUses >= REGULAR_ROTATION_MIN_USES;
+      const isNewSong = totalUses > 0 && totalUses < REGULAR_ROTATION_MIN_USES && !isInRegularRotation;
 
       // Find last used date and most recently used key
       const sortedPastUsages = [...pastUsages].sort((a, b) => 
@@ -148,10 +150,10 @@ export function useSongAvailability(
       let status: SongAvailability['status'] = 'available';
       let weeksUntilAvailable: number | null = null;
 
-      // Deep cuts and never-played songs are always available
-      if (!lastUsedDate || isDeepCut) {
+      // Enforce recency windows first; deep cuts should not bypass timing locks.
+      if (!lastUsedDate) {
         status = 'available';
-      } else if (lastUsedDate) {
+      } else {
         const lastUsedSunday = getSunday(new Date(lastUsedDate));
         const weeksSinceLastUse = weeksBetween(lastUsedSunday, targetSunday);
 
@@ -161,8 +163,10 @@ export function useSongAvailability(
         } else if (!isNewSong && weeksSinceLastUse < REGULAR_ROTATION_MIN_WEEKS) {
           weeksUntilAvailable = REGULAR_ROTATION_MIN_WEEKS - weeksSinceLastUse;
           status = 'too-recent';
-        } else if (isNewSong && weeksSinceLastUse >= NEW_SONG_MIN_WEEKS) {
+        } else if (isNewSong) {
           status = 'new-song-ok';
+        } else {
+          status = 'available';
         }
       }
 

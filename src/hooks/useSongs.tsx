@@ -218,6 +218,21 @@ export function useSongsWithStats() {
         });
       }
 
+      // Deduplicate merged usages to avoid double-counting if a plan exists in both sources.
+      for (const song of songsWithStats) {
+        const unique = new Map<string, SongUsageData>();
+        for (const usage of song.usages || []) {
+          const key = [
+            usage.plan_date || "",
+            usage.campus_id || "",
+            (usage.service_type_name || "").trim().toLowerCase(),
+            usage.song_key || "",
+          ].join("|");
+          if (!unique.has(key)) unique.set(key, usage);
+        }
+        song.usages = Array.from(unique.values());
+      }
+
       // Recompute usage_count / last_used / upcoming_uses from merged usages.
       for (const song of songsWithStats) {
         const pastUsages = song.usages.filter((u) => u.plan_date < todayStr);
