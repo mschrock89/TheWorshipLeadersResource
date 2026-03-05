@@ -81,8 +81,10 @@ export function SongAvailabilityList({
       }
       case 'new-songs': {
         // "New" = songs that have been scheduled 1-3 times (move to regular rotation at 4)
+        // Hard rule: if a song is marked regular rotation, never include it here.
         // Exclude songs on active setlists
         filtered = filtered.filter(a =>
+          !a.isInRegularRotation &&
           a.totalUses > 0 && 
           a.totalUses < 4 && 
           (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))

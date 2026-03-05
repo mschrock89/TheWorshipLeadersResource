@@ -38,7 +38,7 @@ export function SuggestionCards({
   // New songs ready to repeat (played 1-3 times, 3+ weeks ago)
   // Exclude songs already scheduled for this weekend (status === 'upcoming'), songs in current set, AND songs in published setlists
   const newSongsReady = availability
-    .filter(a => a.isNewSong && a.status === 'new-song-ok' && a.totalUses > 0 && !isExcluded(a.song.id))
+    .filter(a => !a.isInRegularRotation && a.isNewSong && a.status === 'new-song-ok' && a.totalUses > 0 && !isExcluded(a.song.id))
     .slice(0, 5);
 
   // Deep cuts - songs that are truly deep cuts (<=1 use in past year) AND haven't been used in 12+ weeks
