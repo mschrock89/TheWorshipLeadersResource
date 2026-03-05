@@ -3,18 +3,37 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { Sparkles, Clock, Archive, Plus } from "lucide-react";
-import { format } from "date-fns";
 
 interface SuggestionCardsProps {
   availability: SongAvailability[];
   onAddSong: (song: SongAvailability) => void;
   addedSongIds: Set<string>;
   publishedSetlistSongIds?: Set<string>;
+  referenceDate?: Date;
 }
 
-export function SuggestionCards({ availability, onAddSong, addedSongIds, publishedSetlistSongIds = new Set() }: SuggestionCardsProps) {
+export function SuggestionCards({
+  availability,
+  onAddSong,
+  addedSongIds,
+  publishedSetlistSongIds = new Set(),
+  referenceDate = new Date(),
+}: SuggestionCardsProps) {
   // Combined filter: songs in current set OR in any published setlist for this campus/ministry
   const isExcluded = (songId: string) => addedSongIds.has(songId) || publishedSetlistSongIds.has(songId);
+  const getSunday = (date: Date): Date => {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const weeksSince = (lastUsedDate: string | null): number => {
+    if (!lastUsedDate) return 0;
+    const targetSunday = getSunday(referenceDate);
+    const lastUsedSunday = getSunday(new Date(lastUsedDate));
+    return Math.floor((targetSunday.getTime() - lastUsedSunday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  };
 
   // New songs ready to repeat (played 1-2 times, 4+ weeks ago)
   // Exclude songs already scheduled for this weekend (status === 'upcoming'), songs in current set, AND songs in published setlists
@@ -32,11 +51,8 @@ export function SuggestionCards({ availability, onAddSong, addedSongIds, publish
       if (a.status === 'upcoming') return false;
       // Exclude songs already added to current set or in published setlists
       if (isExcluded(a.song.id)) return false;
-      const weeksSince = Math.floor(
-        (Date.now() - new Date(a.lastUsedDate).getTime()) / (7 * 24 * 60 * 60 * 1000)
-      );
       // Must be 12+ weeks since last use to be a deep cut suggestion
-      return weeksSince >= 12;
+      return weeksSince(a.lastUsedDate) >= 12;
     })
     .sort((a, b) => b.totalUses - a.totalUses)
     .slice(0, 5);
@@ -84,16 +100,14 @@ export function SuggestionCards({ availability, onAddSong, addedSongIds, publish
         <CardContent className="space-y-1">
           {deepCuts.length > 0 ? (
             deepCuts.map(item => {
-              const weeksSince = Math.floor(
-                (Date.now() - new Date(item.lastUsedDate!).getTime()) / (7 * 24 * 60 * 60 * 1000)
-              );
+              const elapsedWeeks = weeksSince(item.lastUsedDate);
               return (
                 <SuggestionItem
                   key={item.song.id}
                   item={item}
                   onAdd={() => onAddSong(item)}
                   isAdded={addedSongIds.has(item.song.id)}
-                  badge={`${weeksSince}w ago`}
+                  badge={`${elapsedWeeks}w ago`}
                 />
               );
             })

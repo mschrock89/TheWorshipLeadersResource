@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AvailabilityBadge } from "./AvailabilityBadge";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { Search, Plus, Music2, Clock, ArrowUp, ArrowDown } from "lucide-react";
-import { differenceInWeeks, format } from "date-fns";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -19,6 +19,7 @@ interface SongAvailabilityListProps {
   publishedSetlistSongIds?: Set<string>;
   isLoading?: boolean;
   allowSchedulingOverrides?: boolean;
+  referenceDate?: Date;
 }
 
 type FilterType = 'all' | 'available' | 'new-songs' | 'deep-cuts';
@@ -30,14 +31,27 @@ export function SongAvailabilityList({
   publishedSetlistSongIds = new Set(),
   isLoading,
   allowSchedulingOverrides = false,
+  referenceDate = new Date(),
 }: SongAvailabilityListProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortDirection, setSortDirection] = useState<SortDirection>('recent-first');
   const isMobile = useIsMobile();
 
-  // Helper to check if a song is on an active/upcoming setlist
-  const isOnActiveSetlist = (songId: string) => publishedSetlistSongIds.has(songId);
+  const getSunday = (date: Date): Date => {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const getWeeksSinceScheduled = useCallback((lastUsedDate: string | null): number | null => {
+    if (!lastUsedDate) return null;
+    const targetSunday = getSunday(referenceDate);
+    const lastUsedSunday = getSunday(new Date(lastUsedDate));
+    const diffMs = targetSunday.getTime() - lastUsedSunday.getTime();
+    return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+  }, [referenceDate]);
 
   const filteredSongs = useMemo(() => {
     let filtered = availability;
@@ -61,7 +75,7 @@ export function SongAvailabilityList({
           a.isInRegularRotation &&
           !a.isNewSong &&
           a.status === 'available' &&
-          (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id))
+          (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
       }
@@ -71,18 +85,17 @@ export function SongAvailabilityList({
         filtered = filtered.filter(a =>
           a.totalUses > 0 && 
           a.totalUses < 3 && 
-          (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id))
+          (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
       }
       case 'deep-cuts': {
         // Songs not played in last 365 days (52+ weeks), sorted by total plays
         // Exclude songs on active setlists and songs never played
-        const now = new Date();
         filtered = filtered.filter(a => {
           if (!a.lastUsedDate) return false; // Never played = not a deep cut
-          const daysSinceLastUse = Math.floor((now.getTime() - new Date(a.lastUsedDate).getTime()) / (1000 * 60 * 60 * 24));
-          return daysSinceLastUse >= 365 && (allowSchedulingOverrides || !isOnActiveSetlist(a.song.id));
+          const weeksSince = getWeeksSinceScheduled(a.lastUsedDate);
+          return (weeksSince ?? -1) >= 52 && (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id));
         });
         // Sort by total plays (most to least) for deep cuts
         return [...filtered].sort((a, b) => b.totalUses - a.totalUses);
@@ -91,8 +104,8 @@ export function SongAvailabilityList({
 
     // Sort based on selected direction (for non-deep-cuts filters)
     return [...filtered].sort((a, b) => {
-      const aWeeks = a.lastUsedDate ? differenceInWeeks(new Date(), new Date(a.lastUsedDate)) : null;
-      const bWeeks = b.lastUsedDate ? differenceInWeeks(new Date(), new Date(b.lastUsedDate)) : null;
+      const aWeeks = getWeeksSinceScheduled(a.lastUsedDate);
+      const bWeeks = getWeeksSinceScheduled(b.lastUsedDate);
 
       // Never played goes at end for both sort directions
       if (aWeeks === null && bWeeks === null) return a.song.title.localeCompare(b.song.title);
@@ -107,14 +120,15 @@ export function SongAvailabilityList({
         return bWeeks - aWeeks;
       }
     });
-  }, [availability, search, filter, sortDirection, publishedSetlistSongIds, allowSchedulingOverrides]);
+  }, [availability, search, filter, sortDirection, publishedSetlistSongIds, allowSchedulingOverrides, getWeeksSinceScheduled]);
 
   // Helper to calculate weeks since last played and get theme-aligned colors
   const getWeeksInfo = (lastUsedDate: string | null) => {
     if (!lastUsedDate) return { weeks: null, color: 'text-muted-foreground', bg: 'bg-muted/60', formattedDate: null };
 
     const dateObj = new Date(lastUsedDate);
-    const weeks = differenceInWeeks(new Date(), dateObj);
+    const weeks = getWeeksSinceScheduled(lastUsedDate);
+    if (weeks === null) return { weeks: null, color: 'text-muted-foreground', bg: 'bg-muted/60', formattedDate: null };
     const formattedDate = format(dateObj, 'MMM d, yyyy'); // e.g., "Jan 15, 2024"
 
     // 0-3 weeks: red (destructive)
@@ -198,7 +212,7 @@ export function SongAvailabilityList({
           ) : (
             filteredSongs.map(item => {
               const isAdded = addedSongIds.has(item.song.id);
-              const isScheduledOnActiveSet = isOnActiveSetlist(item.song.id);
+              const isScheduledOnActiveSet = publishedSetlistSongIds.has(item.song.id);
               const isDisabled =
                 isAdded ||
                 item.status === 'upcoming' ||

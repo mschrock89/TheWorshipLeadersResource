@@ -1322,6 +1322,7 @@ export default function SetPlanner() {
           onAddSong={handleAddSong}
           addedSongIds={addedSongIds}
           publishedSetlistSongIds={publishedSetlistSongIds}
+          referenceDate={selectedDate}
         />
 
         {/* Main content: two panels */}
@@ -1370,6 +1371,7 @@ export default function SetPlanner() {
                 publishedSetlistSongIds={publishedSetlistSongIds}
                 isLoading={isLoading}
                 allowSchedulingOverrides={canOverrideSongRestrictions}
+                referenceDate={selectedDate}
               />
             </CardContent>
           </Card>

@@ -511,6 +511,7 @@ export default function AuditionSetPlanner() {
               onAddSong={handleAddSong}
               addedSongIds={addedSongIds}
               isLoading={songsLoading || existingSetLoading}
+              referenceDate={selectedDate}
             />
           </CardContent>
         </Card>
