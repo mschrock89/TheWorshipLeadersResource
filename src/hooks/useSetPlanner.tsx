@@ -43,6 +43,11 @@ export interface DraftSetSong {
   song?: SongWithStats;
 }
 
+const NEW_SONG_MIN_WEEKS = 3;
+const REGULAR_ROTATION_MIN_WEEKS = 8;
+const NEW_SONG_MAX_USES = 3;
+const REGULAR_ROTATION_MIN_USES = 4;
+
 // Calculate weeks between two dates
 function weeksBetween(date1: Date, date2: Date): number {
   const diffMs = Math.abs(date2.getTime() - date1.getTime());
@@ -69,12 +74,12 @@ export function useSongAvailability(
     if (!songs || !campusId) return [];
 
     const targetSunday = getSunday(targetDate);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const targetDateStr = format(targetDate, "yyyy-MM-dd");
 
     // Calculate one year ago for deep cuts
-    const oneYearAgo = new Date();
+    const oneYearAgo = new Date(targetDate);
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
+    const oneYearAgoStr = format(oneYearAgo, "yyyy-MM-dd");
 
     return songs
       .map((song): SongAvailability | null => {
@@ -96,6 +101,7 @@ export function useSongAvailability(
                !serviceName.includes('encounter') &&
                !serviceName.includes('eon') &&
                !serviceName.includes('evident') &&
+               !serviceName.includes('audition') &&
                !serviceName.includes('worship night') &&
                !serviceName.includes('prayer') &&
                !serviceName.includes('practice') &&
@@ -112,20 +118,19 @@ export function useSongAvailability(
 
        // Include ALL songs - songs with no usage history are brand new and available
 
-      // Split into past and upcoming (for this campus/ministry)
-      const pastUsages = relevantUsages.filter(u => u.plan_date < todayStr);
-      const upcomingUsages = relevantUsages.filter(u => u.plan_date >= todayStr);
+      // Split usage by the date being planned (not today's date).
+      const pastUsages = relevantUsages.filter(u => u.plan_date < targetDateStr);
+      const upcomingUsages = relevantUsages.filter(u => u.plan_date >= targetDateStr);
       
-      const totalUses = relevantUsages.length;
+      const totalUses = pastUsages.length;
       const isGloballyNew = (song.usages?.length || 0) === 0;
-      const hasRecentSchedule = relevantUsages.some(u => u.plan_date >= oneYearAgoStr);
-      // A song is "new" for this campus/ministry if scheduled in the last year and still under 4 total schedules.
-      const isNewSong = hasRecentSchedule && totalUses < 4;
+      // "New Song" stays in this category until it has been scheduled 4 times.
+      const isNewSong = totalUses > 0 && totalUses <= NEW_SONG_MAX_USES;
 
       // Calculate uses in past year for deep cut detection
       const usesInPastYear = pastUsages.filter(u => u.plan_date >= oneYearAgoStr).length;
       const isDeepCut = usesInPastYear <= 1;
-      const isInRegularRotation = usesInPastYear >= 2;
+      const isInRegularRotation = totalUses >= REGULAR_ROTATION_MIN_USES;
 
       // Find last used date and most recently used key
       const sortedPastUsages = [...pastUsages].sort((a, b) => 
@@ -150,19 +155,18 @@ export function useSongAvailability(
         const lastUsedSunday = getSunday(new Date(lastUsedDate));
         const weeksSinceLastUse = weeksBetween(lastUsedSunday, targetSunday);
 
-        if (isNewSong && weeksSinceLastUse < 4) {
-          weeksUntilAvailable = 4 - weeksSinceLastUse;
+        if (isNewSong && weeksSinceLastUse < NEW_SONG_MIN_WEEKS) {
+          weeksUntilAvailable = NEW_SONG_MIN_WEEKS - weeksSinceLastUse;
           status = 'too-recent';
-        } else if (!isNewSong && weeksSinceLastUse < 8) {
-          weeksUntilAvailable = 8 - weeksSinceLastUse;
+        } else if (!isNewSong && weeksSinceLastUse < REGULAR_ROTATION_MIN_WEEKS) {
+          weeksUntilAvailable = REGULAR_ROTATION_MIN_WEEKS - weeksSinceLastUse;
           status = 'too-recent';
-        } else if (isNewSong && weeksSinceLastUse >= 4) {
+        } else if (isNewSong && weeksSinceLastUse >= NEW_SONG_MIN_WEEKS) {
           status = 'new-song-ok';
         }
       }
 
       // Check if already scheduled for target date
-      const targetDateStr = targetDate.toISOString().split('T')[0];
       if (scheduledDates.includes(targetDateStr)) {
         status = 'upcoming';
         weeksUntilAvailable = null;

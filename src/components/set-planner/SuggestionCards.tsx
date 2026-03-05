@@ -35,7 +35,7 @@ export function SuggestionCards({
     return Math.floor((targetSunday.getTime() - lastUsedSunday.getTime()) / (7 * 24 * 60 * 60 * 1000));
   };
 
-  // New songs ready to repeat (played 1-2 times, 4+ weeks ago)
+  // New songs ready to repeat (played 1-3 times, 3+ weeks ago)
   // Exclude songs already scheduled for this weekend (status === 'upcoming'), songs in current set, AND songs in published setlists
   const newSongsReady = availability
     .filter(a => a.isNewSong && a.status === 'new-song-ok' && a.totalUses > 0 && !isExcluded(a.song.id))
