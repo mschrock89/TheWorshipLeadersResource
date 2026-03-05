@@ -225,18 +225,100 @@ function transposeChordChartText(
 }
 
 function detectKeyIndexFromChart(chordChartText: string): number {
-  const match = chordChartText.match(/(?:\[)?([A-G](?:#|b)?)(?=[^a-zA-Z]|$)/);
-  if (!match) return 0;
-  const idx = NOTE_INDEX[match[1]];
-  return idx ?? 0;
-}
+  // Gather chord tokens from bracketed charts and plain chord-only lines.
+  const tokenRegex = /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g;
+  const rootVotes = new Map<number, number>();
+  const functionVotes = new Map<number, number>();
 
-function detectKeyIndexFromLabel(keyLabel: string | null | undefined): number | null {
-  if (!keyLabel) return null;
-  const match = keyLabel.trim().match(/^([A-G](?:#|b)?)/);
-  if (!match) return null;
-  const idx = NOTE_INDEX[match[1]];
-  return typeof idx === "number" ? idx : null;
+  const addVote = (index: number, amount: number, target: Map<number, number>) => {
+    target.set(index, (target.get(index) || 0) + amount);
+  };
+
+  const registerChordToken = (token: string, positionWeight = 1) => {
+    const main = token.split("/")[0];
+    const rootMatch = main.match(/^([A-G](?:#|b)?)(.*)$/);
+    if (!rootMatch) return;
+    const rootIndex = NOTE_INDEX[rootMatch[1]];
+    if (rootIndex === undefined) return;
+
+    const suffix = (rootMatch[2] || "").toLowerCase();
+    const isMinor =
+      /^m(?!aj)/.test(suffix) ||
+      /\bmin\b/.test(suffix) ||
+      /-/.test(suffix);
+
+    addVote(rootIndex, 2 * positionWeight, rootVotes);
+
+    // Score likely tonal centers by diatonic-function fit.
+    // Major: I, IV, V strongest, then ii/iii/vi.
+    // Minor: i, iv, v strongest, then III/VI/VII.
+    const majorCandidates = [
+      { tonicOffset: 0, weight: 5 },  // I
+      { tonicOffset: 5, weight: 4 },  // IV
+      { tonicOffset: 7, weight: 4 },  // V
+      { tonicOffset: 2, weight: 2 },  // ii
+      { tonicOffset: 4, weight: 2 },  // iii
+      { tonicOffset: 9, weight: 2 },  // vi
+    ];
+    const minorCandidates = [
+      { tonicOffset: 0, weight: 5 },  // i
+      { tonicOffset: 5, weight: 4 },  // iv
+      { tonicOffset: 7, weight: 3 },  // v
+      { tonicOffset: 3, weight: 2 },  // III
+      { tonicOffset: 8, weight: 2 },  // VI
+      { tonicOffset: 10, weight: 2 }, // VII
+    ];
+
+    if (isMinor) {
+      for (const candidate of minorCandidates) {
+        const tonic = (rootIndex - candidate.tonicOffset + 12) % 12;
+        addVote(tonic, candidate.weight * positionWeight, functionVotes);
+      }
+    } else {
+      for (const candidate of majorCandidates) {
+        const tonic = (rootIndex - candidate.tonicOffset + 12) % 12;
+        addVote(tonic, candidate.weight * positionWeight, functionVotes);
+      }
+    }
+  };
+
+  const lines = chordChartText.split("\n");
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const weight = lineIndex < 6 ? 1.5 : 1;
+
+    if (line.includes("[")) {
+      const bracketRegex = /\[([^\]]+)\]/g;
+      let bracketMatch: RegExpExecArray | null;
+      while ((bracketMatch = bracketRegex.exec(line)) !== null) {
+        registerChordToken(bracketMatch[1].trim(), weight);
+      }
+      continue;
+    }
+
+    if (isChordOnlyLine(line)) {
+      let tokenMatch: RegExpExecArray | null;
+      while ((tokenMatch = tokenRegex.exec(line)) !== null) {
+        registerChordToken(tokenMatch[1], weight);
+      }
+      tokenRegex.lastIndex = 0;
+    }
+  }
+
+  if (functionVotes.size === 0 && rootVotes.size === 0) return 0;
+
+  // Combine functional harmony and raw frequency, preferring functional score.
+  let bestIndex = 0;
+  let bestScore = -Infinity;
+  for (let tonic = 0; tonic < 12; tonic += 1) {
+    const score = (functionVotes.get(tonic) || 0) * 3 + (rootVotes.get(tonic) || 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = tonic;
+    }
+  }
+
+  return bestIndex;
 }
 
 function getSignedSemitoneDelta(fromIndex: number, toIndex: number): number {
@@ -355,11 +437,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
   useEffect(() => {
     if (!open) return;
-    const fromSongKey = detectKeyIndexFromLabel(song?.originalKey);
-    const detected = fromSongKey ?? (chordChartText ? detectKeyIndexFromChart(chordChartText) : 0);
+    const detected = chordChartText ? detectKeyIndexFromChart(chordChartText) : 0;
     setOriginalKeyIndex(detected);
     setTargetKeyIndex(detected);
-  }, [open, chordChartText, selectedVersion?.id, song?.originalKey]);
+  }, [open, chordChartText, selectedVersion?.id]);
 
   const saveRawChart = useMutation({
     mutationFn: async () => {
