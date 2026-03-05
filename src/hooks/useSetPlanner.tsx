@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSongsWithStats, SongWithStats } from "./useSongs";
 import { useMemo } from "react";
 import { useToast } from "./use-toast";
-import { format, addMonths } from "date-fns";
+import { format } from "date-fns";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -544,20 +544,26 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
     queryFn: async () => {
       if (!campusId) return new Set<string>();
 
-      // Get from today onwards (we want to filter out songs scheduled for future dates)
+      // Only consider this app's published draft sets from today onward.
       const today = format(new Date(), 'yyyy-MM-dd');
-      const threeMonthsAgo = format(addMonths(new Date(), -3), 'yyyy-MM-dd');
-
       const songIds = new Set<string>();
+      const weekendAliases = ['weekend', 'weekend_team', 'sunday_am'];
 
-      // 1. Get songs from published draft_sets (past 3 months + future)
-      const { data: publishedSets, error: draftError } = await supabase
+      // Weekend planning should only consider weekend worship setlists.
+      let setQuery = supabase
         .from('draft_sets')
         .select('id')
         .eq('campus_id', campusId)
-        .eq('ministry_type', ministryType)
         .eq('status', 'published')
-        .gte('plan_date', threeMonthsAgo);
+        .gte('plan_date', today);
+
+      if (weekendAliases.includes(ministryType)) {
+        setQuery = setQuery.in('ministry_type', weekendAliases);
+      } else {
+        setQuery = setQuery.eq('ministry_type', ministryType);
+      }
+
+      const { data: publishedSets, error: draftError } = await setQuery;
 
       if (draftError) throw draftError;
 
@@ -570,50 +576,6 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
 
         if (draftSongsError) throw draftSongsError;
         draftSongs?.forEach(s => songIds.add(s.song_id));
-      }
-
-      // 2. Get songs from service_plans (PCO synced data) for upcoming dates
-      // This catches songs scheduled in PCO that don't have a corresponding published draft_set
-      const { data: servicePlans, error: plansError } = await supabase
-        .from('service_plans')
-        .select('id, service_type_name')
-        .eq('campus_id', campusId)
-        .gte('plan_date', today);
-
-      if (plansError) throw plansError;
-
-      if (servicePlans && servicePlans.length > 0) {
-        // Filter by ministry type based on service_type_name
-        const filteredPlans = servicePlans.filter(sp => {
-          const serviceName = (sp.service_type_name || '').toLowerCase();
-          if (ministryType === 'all') return true;
-          if (ministryType === 'encounter') return serviceName.includes('encounter');
-          if (ministryType === 'eon') return serviceName.includes('eon');
-          if (ministryType === 'evident') return serviceName.includes('evident');
-          if (ministryType === 'weekend') {
-            return (
-              !serviceName.includes('encounter') &&
-              !serviceName.includes('eon') &&
-              !serviceName.includes('evident') &&
-              !serviceName.includes('worship night') &&
-              !serviceName.includes('prayer') &&
-              !serviceName.includes('practice') &&
-              !serviceName.includes('kids camp')
-            );
-          }
-          return serviceName.includes(ministryType.toLowerCase());
-        });
-
-        if (filteredPlans.length > 0) {
-          const planIds = filteredPlans.map(p => p.id);
-          const { data: planSongs, error: planSongsError } = await supabase
-            .from('plan_songs')
-            .select('song_id')
-            .in('plan_id', planIds);
-
-          if (planSongsError) throw planSongsError;
-          planSongs?.forEach(s => songIds.add(s.song_id));
-        }
       }
 
       return songIds;
