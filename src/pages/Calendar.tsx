@@ -30,6 +30,7 @@ import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { SwapsSheet } from "@/components/calendar/SwapsSheet";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { isAuditionCandidateRole } from "@/lib/access";
@@ -860,6 +861,7 @@ function StandardCalendar() {
                         <CustomServiceRoster
                           customServiceId={service.id}
                           assignmentDate={service.occurrence_date}
+                          serviceLabel={service.service_name}
                         />
                       </div>
                     ))}
@@ -1195,6 +1197,15 @@ function BandRoster({
     data: rosterRaw = [],
     isLoading
   } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId);
+  const serviceLabel = useMemo(() => {
+    if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
+      return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;
+    }
+    if (ministryFilter === "weekend_team") {
+      return "Weekend Team";
+    }
+    return "this service";
+  }, [ministryFilter]);
 
   // If we're in "All" mode or "weekend_team" mode, constrain to appropriate ministries
   const roster = useMemo(() => {
@@ -1517,6 +1528,15 @@ function BandRoster({
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
+        <div className="flex justify-end">
+          <GroupTextButton
+            phoneNumbers={roster.map((member) => member.phone)}
+            defaultMessage={buildRosterGroupTextTemplate({
+              date,
+              serviceLabel,
+            })}
+          />
+        </div>
         <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
           {/* Left Column: Vocalists + Band by Ministry */}
           <div className="space-y-6">
@@ -1542,6 +1562,15 @@ function BandRoster({
   : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !productionVideoMembers.includes(m)); // Exclude production/video from band list
 
   return <div className="mb-4">
+      <div className="mb-3 flex justify-end">
+        <GroupTextButton
+          phoneNumbers={roster.map((member) => member.phone)}
+          defaultMessage={buildRosterGroupTextTemplate({
+            date,
+            serviceLabel,
+          })}
+        />
+      </div>
       <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
         {/* Left Column: Vocalists + Band */}
         <div>
@@ -1825,11 +1854,25 @@ function CustomServiceFlowTitleEditor({
 function CustomServiceRoster({
   customServiceId,
   assignmentDate,
+  serviceLabel,
 }: {
   customServiceId: string;
   assignmentDate: string;
+  serviceLabel?: string;
 }) {
   const { data: assignments = [], isLoading } = useCustomServiceAssignments(customServiceId, assignmentDate);
+  const { data: safeProfiles = [] } = useQuery({
+    queryKey: ["custom-service-safe-phones", customServiceId, assignmentDate],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_profiles_for_campus");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; phone: string | null }>;
+    },
+  });
+  const safePhoneMap = useMemo(
+    () => new Map(safeProfiles.map((profile) => [profile.id, profile.phone])),
+    [safeProfiles]
+  );
 
   if (isLoading) {
     return <div className="mb-4">
@@ -1850,6 +1893,7 @@ function CustomServiceRoster({
       userId: assignment.user_id,
       name: assignment.profiles?.full_name || "Team Member",
       avatarUrl: assignment.profiles?.avatar_url || null,
+      phone: safePhoneMap.get(assignment.user_id) || null,
       roles: new Set<string>(),
     };
     existing.roles.add(assignment.role);
@@ -1859,14 +1903,25 @@ function CustomServiceRoster({
     userId: string;
     name: string;
     avatarUrl: string | null;
+    phone: string | null;
     roles: Set<string>;
   }>()).values()).sort((a, b) => a.name.localeCompare(b.name));
 
   return <div className="mb-4">
-      <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5 mb-2">
-        <MicVocal className="h-3.5 w-3.5" />
-        Team Roster
-      </h3>
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
+          <MicVocal className="h-3.5 w-3.5" />
+          Team Roster
+        </h3>
+        <GroupTextButton
+          phoneNumbers={grouped.map((member) => member.phone)}
+          defaultMessage={buildRosterGroupTextTemplate({
+            date: new Date(`${assignmentDate}T12:00:00`),
+            serviceLabel,
+          })}
+          className="ml-auto"
+        />
+      </div>
       <div className="space-y-1.5">
         {grouped.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2">
             <Avatar className="h-6 w-6">

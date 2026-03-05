@@ -7,6 +7,7 @@ import {
   useDisconnectPco,
   usePcoConnection,
   useSavePcoConnection,
+  useSyncPcoSongLibrary,
   useStartPcoAuth,
   useSyncPcoPlans,
   useSyncPcoTeam,
@@ -116,6 +117,7 @@ export default function PlanningCenter() {
   const disconnect = useDisconnectPco();
   const syncTeam = useSyncPcoTeam();
   const syncPlans = useSyncPcoPlans();
+  const syncSongLibrary = useSyncPcoSongLibrary();
   const updateSettings = useUpdatePcoSettings();
 
   // Handle PCO OAuth callback.
@@ -470,7 +472,7 @@ export default function PlanningCenter() {
                 <div className="flex gap-3">
                   <Button
                     onClick={() => syncTeam.mutate()}
-                    disabled={syncTeam.isPending || syncPlans.isPending || !canManageTeam}
+                    disabled={syncTeam.isPending || syncPlans.isPending || syncSongLibrary.isPending || !canManageTeam}
                     className="flex-1"
                   >
                     {syncTeam.isPending ? (
@@ -482,7 +484,7 @@ export default function PlanningCenter() {
                   </Button>
                   <Button
                     onClick={() => syncPlans.mutate()}
-                    disabled={syncPlans.isPending || syncTeam.isPending || !canManageTeam}
+                    disabled={syncPlans.isPending || syncTeam.isPending || syncSongLibrary.isPending || !canManageTeam}
                     variant="secondary"
                     className="flex-1"
                   >
@@ -494,6 +496,19 @@ export default function PlanningCenter() {
                     Sync Plans
                   </Button>
                 </div>
+                <Button
+                  onClick={() => syncSongLibrary.mutate()}
+                  disabled={syncSongLibrary.isPending || syncPlans.isPending || syncTeam.isPending || !canManageTeam}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {syncSongLibrary.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Music className="h-4 w-4 mr-2" />
+                  )}
+                  Sync Entire Song Library
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => disconnect.mutate()}

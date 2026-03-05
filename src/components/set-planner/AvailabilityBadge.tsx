@@ -24,7 +24,7 @@ export function AvailabilityBadge({
     'new-song-ok': {
       icon: CheckCircle2,
       label: 'New Song OK',
-      className: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+      className: 'bg-green-500/10 text-green-600 border-green-500/20',
     },
     'too-recent': {
       icon: Clock,

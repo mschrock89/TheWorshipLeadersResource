@@ -27,6 +27,9 @@ verify_jwt = false
 [functions.pco-sync-plans]
 verify_jwt = false
 
+[functions.pco-sync-song-library]
+verify_jwt = false
+
 [functions.pco-auto-sync]
 verify_jwt = false
 
@@ -124,3 +127,8 @@ entrypoint = "./functions/embed-all-songs/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/suggest-songs/index.ts"
+
+[functions.auto-reorder-charts-from-reference]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/auto-reorder-charts-from-reference/index.ts"

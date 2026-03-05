@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones } from "lucide-react";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 
@@ -49,6 +50,7 @@ interface RosterMember {
   memberName: string;
   positions: string[];
   avatarUrl: string | null;
+  phone: string | null;
   isSwapped: boolean;
   originalMemberName?: string;
 }
@@ -224,6 +226,14 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
           >
             {(vocalists.length + bandMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
           </Badge>
+          <GroupTextButton
+            phoneNumbers={(roster || []).map((member) => member.phone)}
+            defaultMessage={buildRosterGroupTextTemplate({
+              date: targetDate,
+              serviceLabel: scheduledTeam.teamName,
+            })}
+            className="ml-auto"
+          />
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

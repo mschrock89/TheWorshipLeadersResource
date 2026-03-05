@@ -247,6 +247,46 @@ export function useSyncPcoPlans() {
   });
 }
 
+export function useSyncPcoSongLibrary() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("pco-sync-song-library", {
+        body: {},
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["pco-connection"] });
+      queryClient.invalidateQueries({ queryKey: ["songs"] });
+
+      const results = data.results || {};
+      const total = results.library_songs_total || 0;
+      const processed = results.songs_processed || 0;
+      const synced = results.song_versions_synced || 0;
+      const remaining = results.songs_remaining || 0;
+      const complete = results.complete === true;
+
+      toast({
+        title: complete ? "Library Sync Complete ✓" : "Library Sync Progress",
+        description: complete
+          ? `${synced} chart version${synced === 1 ? "" : "s"} synced across your song library.`
+          : `Processed ${processed} library song${processed === 1 ? "" : "s"} this run, synced ${synced} chart version${synced === 1 ? "" : "s"}, ${remaining} song${remaining === 1 ? "" : "s"} remaining.`,
+      });
+    },
+    onError: async (error: Error) => {
+      toast({
+        title: "Library Sync Failed",
+        description: await extractFunctionErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export interface PcoScheduleSyncOptions {
   date: string; // YYYY-MM-DD
   team_type?: 'audio' | 'video' | 'both';

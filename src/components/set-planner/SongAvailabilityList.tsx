@@ -125,7 +125,7 @@ export function SongAvailabilityList({
   }, [availability, search, filter, sortDirection, publishedSetlistSongIds, allowSchedulingOverrides, getWeeksSinceScheduled]);
 
   // Helper to calculate weeks since last played and get theme-aligned colors
-  const getWeeksInfo = (lastUsedDate: string | null) => {
+  const getWeeksInfo = (lastUsedDate: string | null, isNewSong: boolean) => {
     if (!lastUsedDate) return { weeks: null, color: 'text-muted-foreground', bg: 'bg-muted/60', formattedDate: null };
 
     const dateObj = new Date(lastUsedDate);
@@ -133,11 +133,16 @@ export function SongAvailabilityList({
     if (weeks === null) return { weeks: null, color: 'text-muted-foreground', bg: 'bg-muted/60', formattedDate: null };
     const formattedDate = format(dateObj, 'MMM d, yyyy'); // e.g., "Jan 15, 2024"
 
-    // 0-3 weeks: red (destructive)
-    // 4-7 weeks: ECC yellow
-    // 8+ weeks: ECC teal ("good")
+    // New songs: 0-2 red, 3 yellow, 4+ green.
+    if (isNewSong) {
+      if (weeks >= 4) return { weeks, color: 'text-ecc-teal', bg: 'bg-ecc-teal/15', formattedDate };
+      if (weeks >= 3) return { weeks, color: 'text-ecc-yellow', bg: 'bg-ecc-yellow/15', formattedDate };
+      return { weeks, color: 'text-destructive', bg: 'bg-destructive/15', formattedDate };
+    }
+
+    // Regular rotation: 0-2 red, 3-7 yellow, 8+ green.
     if (weeks >= 8) return { weeks, color: 'text-ecc-teal', bg: 'bg-ecc-teal/15', formattedDate };
-    if (weeks >= 4) return { weeks, color: 'text-ecc-yellow', bg: 'bg-ecc-yellow/15', formattedDate };
+    if (weeks >= 3) return { weeks, color: 'text-ecc-yellow', bg: 'bg-ecc-yellow/15', formattedDate };
     return { weeks, color: 'text-destructive', bg: 'bg-destructive/15', formattedDate };
   };
 
@@ -221,7 +226,7 @@ export function SongAvailabilityList({
                 item.status === 'upcoming' ||
                 isTooRecentLocked ||
                 (isScheduledOnActiveSet && !allowSchedulingOverrides);
-              const weeksInfo = getWeeksInfo(item.lastUsedDate);
+              const weeksInfo = getWeeksInfo(item.lastUsedDate, item.isNewSong);
 
               return (
                 <div
@@ -268,8 +273,8 @@ export function SongAvailabilityList({
 
                   {/* Column 3: Right side controls - auto width, never clips */}
                   <div className="flex items-center gap-1.5">
-                    {/* NEW badge shows if song has never been scheduled at this campus/ministry */}
-                    {item.totalUses === 0 ? (
+                    {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
+                    {item.isNewSong || item.isGloballyNew ? (
                       <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4">
                         NEW
                       </Badge>

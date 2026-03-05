@@ -17,6 +17,39 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function normalizeStoredEncryptedHex(value: string): string {
+  let normalized = value.trim();
+
+  for (let depth = 0; depth < 4; depth++) {
+    if (normalized.startsWith('\\x')) {
+      normalized = normalized.slice(2);
+      continue;
+    }
+
+    // Some rows have been stored as ASCII text inside bytea one or more times.
+    // Example: "\\xabc123" can come back as hex(bytes_of("\\xabc123")).
+    if (normalized.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(normalized)) {
+      try {
+        const asciiCandidate = new TextDecoder().decode(hexToBytes(normalized)).trim();
+        if (asciiCandidate.startsWith('\\x')) {
+          normalized = asciiCandidate.slice(2);
+          continue;
+        }
+        if (/^[0-9a-fA-F]+$/.test(asciiCandidate)) {
+          normalized = asciiCandidate;
+          continue;
+        }
+      } catch {
+        // Use the current normalized value below.
+      }
+    }
+
+    break;
+  }
+
+  return normalized;
+}
+
 // Get or derive the encryption key
 async function getEncryptionKey(): Promise<CryptoKey> {
   const keyHex = Deno.env.get(ENCRYPTION_KEY_ENV);
@@ -79,8 +112,8 @@ export async function encryptToken(plaintext: string): Promise<string> {
 export async function decryptToken(encryptedHex: string): Promise<string> {
   const key = await getEncryptionKey();
   const decoder = new TextDecoder();
-  
-  const combined = hexToBytes(encryptedHex);
+
+  const combined = hexToBytes(normalizeStoredEncryptedHex(encryptedHex));
   
   // Extract IV (first 12 bytes) and ciphertext
   const iv = combined.slice(0, 12);
