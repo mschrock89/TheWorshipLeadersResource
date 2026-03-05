@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download } from "lucide-react";
+import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ReferenceTrackUploadDialog } from "./ReferenceTrackUploadDialog";
 import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDialog";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
-import { useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
+import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +39,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
   const [selectedRefTrack, setSelectedRefTrack] = useState<ReferenceTrack | null>(null);
   const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
   const deleteRefTrack = useDeleteReferenceTrack();
+  const autoReorderCharts = useAutoReorderChartsFromReferenceTrack();
 
   const getMinistryLabel = (type: string) => {
     return MINISTRY_TYPES.find((m) => m.value === type)?.label || type;
@@ -137,6 +138,13 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
     } catch (error) {
       console.error('Download failed:', error);
     }
+  };
+
+  const handleAutoReorderCharts = (track: ReferenceTrack) => {
+    autoReorderCharts.mutate({
+      referenceTrackId: track.referenceTrackId,
+      draftSetId: playlist.draft_set_id,
+    });
   };
 
   return (
@@ -378,6 +386,26 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               }}
                             >
                               <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+
+                          {/* Admin AI Reorder Charts */}
+                          {isAdmin && hasMarkers && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                              title="Auto reorder charts from guide voice"
+                              disabled={
+                                autoReorderCharts.isPending &&
+                                autoReorderCharts.variables?.referenceTrackId === track.referenceTrackId
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAutoReorderCharts(track);
+                              }}
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
                             </Button>
                           )}
 

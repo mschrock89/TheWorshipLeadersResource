@@ -59,3 +59,54 @@ export function useDeleteReferenceTrack() {
     },
   });
 }
+
+/**
+ * Hook to auto-reorder chord charts by analyzing guide calls in a reference track.
+ * Uses marker timestamps to isolate each song segment.
+ */
+export function useAutoReorderChartsFromReferenceTrack() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (params: {
+      referenceTrackId: string;
+      draftSetId?: string;
+      dryRun?: boolean;
+    }) => {
+      const { data, error } = await supabase.functions.invoke(
+        "auto-reorder-charts-from-reference",
+        {
+          body: {
+            reference_track_id: params.referenceTrackId,
+            draft_set_id: params.draftSetId,
+            dry_run: params.dryRun ?? false,
+          },
+        },
+      );
+
+      if (error) throw error;
+      return data as {
+        success: boolean;
+        updated_songs: number;
+        songs_considered: number;
+        skipped: Array<{ song: string; reason: string }>;
+      };
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Chart reordering complete",
+        description: `Updated ${data.updated_songs} of ${data.songs_considered} song chart${data.songs_considered === 1 ? "" : "s"}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["song-versions"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Auto reorder failed",
+        description: error.message || "Could not analyze the reference track.",
+        variant: "destructive",
+      });
+    },
+  });
+}
