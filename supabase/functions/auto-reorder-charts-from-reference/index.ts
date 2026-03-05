@@ -412,18 +412,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    const primaryVersionBySongId = new Map<string, { id: string; chord_chart_text: string | null; version_name: string }>();
-    const versionCountBySongId = new Map<string, number>();
+    const versionsBySongId = new Map<
+      string,
+      Array<{ id: string; chord_chart_text: string | null; version_name: string; is_primary: boolean | null }>
+    >();
     for (const version of versions || []) {
       if (!version.song_id) continue;
-      versionCountBySongId.set(version.song_id, (versionCountBySongId.get(version.song_id) || 0) + 1);
-      if (!primaryVersionBySongId.has(version.song_id)) {
-        primaryVersionBySongId.set(version.song_id, {
-          id: version.id,
-          chord_chart_text: version.chord_chart_text,
-          version_name: version.version_name,
-        });
-      }
+      const existing = versionsBySongId.get(version.song_id) || [];
+      existing.push({
+        id: version.id,
+        chord_chart_text: version.chord_chart_text,
+        version_name: version.version_name,
+        is_primary: version.is_primary,
+      });
+      versionsBySongId.set(version.song_id, existing);
     }
 
     const transcriptSegments = await transcribeReferenceTrack(refTrack.audio_url);
@@ -450,7 +452,12 @@ Deno.serve(async (req) => {
       const songTitle = songMeta?.title || "Unknown Song";
       const songAuthor = songMeta?.author || null;
       const songKey = (song as { song_key?: string | null }).song_key || null;
-      const version = primaryVersionBySongId.get(song.song_id);
+      const versionsForSong = versionsBySongId.get(song.song_id) || [];
+      const version =
+        versionsForSong.find((v) => Boolean(v.chord_chart_text?.trim())) ||
+        versionsForSong[0];
+      const hasAnyVersion = versionsForSong.length > 0;
+      const hasAnyChartText = versionsForSong.some((v) => Boolean(v.chord_chart_text?.trim()));
 
       const transcriptSnippet = getTranscriptTextInRange(
         transcriptSegments,
@@ -502,6 +509,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      if (hasAnyChartText) {
+        skipped.push({ song: songTitle, reason: "existing_chart_present_skip_generation" });
+        continue;
+      }
+
       const draft = await inferDraftSectionsAndChordsFromTranscript(
         transcriptSnippet,
         songTitle,
@@ -528,7 +540,6 @@ Deno.serve(async (req) => {
             continue;
           }
         } else {
-          const hasAnyVersion = (versionCountBySongId.get(song.song_id) || 0) > 0;
           const { error: insertError } = await adminClient
             .from("song_versions")
             .insert({

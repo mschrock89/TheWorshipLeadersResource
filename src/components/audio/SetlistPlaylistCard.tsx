@@ -389,13 +389,13 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             </Button>
                           )}
 
-                          {/* Admin AI Reorder Charts */}
+                          {/* Admin AI Sync Charts */}
                           {isAdmin && hasMarkers && (
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
-                              title="Auto reorder charts from guide voice"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs shrink-0"
+                              title="Reorder existing charts and generate drafts only for songs without chart text"
                               disabled={
                                 autoReorderCharts.isPending &&
                                 autoReorderCharts.variables?.referenceTrackId === track.referenceTrackId
@@ -406,6 +406,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               }}
                             >
                               <Sparkles className="h-3.5 w-3.5" />
+                              AI Sync Charts
                             </Button>
                           )}
 
