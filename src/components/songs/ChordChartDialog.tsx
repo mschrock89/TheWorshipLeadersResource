@@ -594,84 +594,88 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
             <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/20">
               <div className="space-y-6 p-4">
-                {chordChartText ? (
-                  <section className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Chord Chart
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {displayMode === "raw" && !isEditingRaw ? (
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      Chord Chart
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {displayMode === "raw" && !isEditingRaw ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setIsEditingRaw(true);
+                            setRawChartDraft(rawChordChartText);
+                          }}
+                        >
+                          Edit Raw
+                        </Button>
+                      ) : null}
+                      {displayMode === "raw" && isEditingRaw ? (
+                        <>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
+                            disabled={saveRawChart.isPending}
                             onClick={() => {
-                              setIsEditingRaw(true);
+                              setIsEditingRaw(false);
                               setRawChartDraft(rawChordChartText);
                             }}
                           >
-                            Edit Raw
+                            Cancel
                           </Button>
-                        ) : null}
-                        {displayMode === "raw" && isEditingRaw ? (
-                          <>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={saveRawChart.isPending}
-                              onClick={() => {
-                                setIsEditingRaw(false);
-                                setRawChartDraft(rawChordChartText);
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={saveRawChart.isPending}
-                              onClick={() => saveRawChart.mutate()}
-                            >
-                              {saveRawChart.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                              Save
-                            </Button>
-                          </>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            navigator.clipboard.writeText(
-                              displayMode === "raw" ? (isEditingRaw ? rawChartDraft : rawChordChartText) : transposedChordChartText,
-                            )
-                          }
-                        >
-                          Copy
-                        </Button>
-                      </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={saveRawChart.isPending}
+                            onClick={() => saveRawChart.mutate()}
+                          >
+                            {saveRawChart.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Save
+                          </Button>
+                        </>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          navigator.clipboard.writeText(
+                            displayMode === "raw" ? (isEditingRaw ? rawChartDraft : rawChordChartText) : transposedChordChartText,
+                          )
+                        }
+                      >
+                        Copy
+                      </Button>
                     </div>
-                    {displayMode === "rendered" ? (
+                  </div>
+                  {displayMode === "rendered" ? (
+                    chordChartText ? (
                       <RenderedChordChart
                         title={song?.title || "Chord Chart"}
                         author={song?.author || null}
                         chordChartText={transposedChordChartText}
                       />
-                    ) : isEditingRaw ? (
-                      <Textarea
-                        value={rawChartDraft}
-                        onChange={(event) => setRawChartDraft(event.target.value)}
-                        className="min-h-[420px] resize-y bg-background font-mono text-sm leading-6"
-                      />
                     ) : (
-                      <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-4 font-mono text-sm leading-6">
-                        {rawChordChartText}
-                      </pre>
-                    )}
-                  </section>
-                ) : null}
+                      <div className="flex min-h-[220px] items-center justify-center rounded-md border bg-background p-4 text-center text-muted-foreground">
+                        <p>No chart text yet. Switch to Raw and add one.</p>
+                      </div>
+                    )
+                  ) : isEditingRaw ? (
+                    <Textarea
+                      value={rawChartDraft}
+                      onChange={(event) => setRawChartDraft(event.target.value)}
+                      className="min-h-[420px] resize-y bg-background font-mono text-sm leading-6"
+                    />
+                  ) : (
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-4 font-mono text-sm leading-6">
+                      {rawChordChartText || "No raw chart text yet. Click Edit Raw to add one."}
+                    </pre>
+                  )}
+                </section>
 
                 {lyricsText ? (
                   <section className="space-y-2">
@@ -684,11 +688,6 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                   </section>
                 ) : null}
 
-                {!chordChartText && !lyricsText ? (
-                  <div className="flex min-h-[240px] items-center justify-center text-center text-muted-foreground">
-                    <p>This version exists, but it does not include chart or lyric text.</p>
-                  </div>
-                ) : null}
               </div>
             </ScrollArea>
           </div>
