@@ -31,6 +31,7 @@ interface ChordChartDialogProps {
     title: string;
     author: string | null;
     originalKey?: string | null;
+    openInRawEdit?: boolean;
   } | null;
 }
 
@@ -420,10 +421,15 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
     if (!versions?.length) return;
 
+    if (song?.openInRawEdit) {
+      setDisplayMode("raw");
+      setIsEditingRaw(true);
+    }
+
     if (!versions.some((version) => version.id === selectedVersionId)) {
       setSelectedVersionId(versions[0].id);
     }
-  }, [open, selectedVersionId, versions]);
+  }, [open, selectedVersionId, versions, song?.openInRawEdit]);
 
   const selectedVersion = versions?.find((version) => version.id === selectedVersionId) ?? versions?.[0] ?? null;
   const rawChordChartText = selectedVersion?.chord_chart_text || "";

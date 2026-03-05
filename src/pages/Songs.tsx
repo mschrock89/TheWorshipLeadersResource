@@ -46,6 +46,7 @@ import {
   Plus,
   GitMerge,
   FileText,
+  Pencil,
 } from "lucide-react";
 import { useSongsWithStats, useServicePlans, useServicePlansPaged, usePlanSongs, useAllSyncProgress, useDeleteSong, useCreateSong, useMergeSongs } from "@/hooks/useSongs";
 import { AddSongDialog } from "@/components/songs/AddSongDialog";
@@ -113,7 +114,7 @@ export default function Songs() {
   const deleteSong = useDeleteSong();
   const mergeSongs = useMergeSongs();
   const [mergeSourceSong, setMergeSourceSong] = useState<{ id: string; title: string } | null>(null);
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null; openInRawEdit?: boolean } | null>(null);
   const newSongsCutoffDate = useMemo(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);
@@ -988,10 +989,19 @@ export default function Songs() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                    onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null })}
+                                    onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null, openInRawEdit: false })}
                                     title="View chord chart"
                                   >
                                     <FileText className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null, openInRawEdit: true })}
+                                    title="Review/edit chart"
+                                  >
+                                    <Pencil className="h-4 w-4" />
                                   </Button>
                                   {canManageSongs && (
                                     <Button
