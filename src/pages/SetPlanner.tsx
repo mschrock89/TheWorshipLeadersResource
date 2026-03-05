@@ -375,6 +375,10 @@ export default function SetPlanner() {
 
   const handleAddSong = useCallback((songAvail: SongAvailability) => {
     if (addedSongIds.has(songAvail.song.id)) return;
+    if (songAvail.isInRegularRotation && songAvail.status === 'too-recent') {
+      toast.error("Regular rotation songs require an 8-week gap before scheduling.");
+      return;
+    }
     // Auto-populate with suggested key from PCO history
     setBuildingSongs(prev => [...prev, { ...songAvail, selectedKey: songAvail.suggestedKey }]);
   }, [addedSongIds]);
