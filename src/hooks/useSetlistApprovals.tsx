@@ -34,6 +34,7 @@ export interface PendingApproval extends SetlistApproval {
   submitter: { full_name: string | null; avatar_url: string | null } | null;
   songs: {
     id: string;
+    song_id: string;
     sequence_order: number;
     song_key: string | null;
     vocalist_id: string | null;
@@ -118,6 +119,7 @@ export function usePendingApprovals() {
         .select(`
           id,
           draft_set_id,
+          song_id,
           sequence_order,
           song_key,
           vocalist_id,
@@ -149,6 +151,7 @@ export function usePendingApprovals() {
           .filter(s => s.draft_set_id === approval.draft_set_id)
           .map(s => ({
             id: s.id,
+            song_id: s.song_id,
             sequence_order: s.sequence_order,
             song_key: s.song_key,
             vocalist_id: s.vocalist_id,

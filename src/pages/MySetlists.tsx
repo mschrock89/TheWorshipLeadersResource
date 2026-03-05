@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,10 +35,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
+import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { supabase } from "@/integrations/supabase/client";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 
@@ -124,6 +126,7 @@ function StandardMySetlists() {
   const confirmSetlist = useConfirmSetlist();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -430,9 +433,21 @@ function StandardMySetlists() {
                           </span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-sm truncate">
+                              <button
+                                type="button"
+                                className="truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                                disabled={!item.song_id}
+                                onClick={() => {
+                                  if (!item.song_id) return;
+                                  setChartSong({
+                                    id: item.song_id,
+                                    title: item.song?.title || "Unknown Song",
+                                    author: item.song?.author || null,
+                                  });
+                                }}
+                              >
                                 {item.song?.title || "Unknown Song"}
-                              </p>
+                              </button>
                               {item.isFirstUse && (
                                 <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
                                   NEW
@@ -449,6 +464,24 @@ function StandardMySetlists() {
                             <Badge variant="outline" className="text-xs font-medium shrink-0">
                               {item.song_key}
                             </Badge>
+                          )}
+                          {item.song_id && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs shrink-0"
+                              onClick={() =>
+                                setChartSong({
+                                  id: item.song_id,
+                                  title: item.song?.title || "Unknown Song",
+                                  author: item.song?.author || null,
+                                })
+                              }
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Chart
+                            </Button>
                           )}
                           {(() => {
                             const displayVocalists = (item.vocalists && item.vocalists.length > 0)
@@ -548,6 +581,12 @@ function StandardMySetlists() {
           })}
         </div>
       )}
+
+      <ChordChartDialog
+        open={!!chartSong}
+        onOpenChange={(open) => !open && setChartSong(null)}
+        song={chartSong}
+      />
     </div>
   );
 }
@@ -693,6 +732,21 @@ function SetlistTeamRoster({
     enabled: !!planDate && !!campusId && ministryType === "audition" && !customServiceId,
   });
 
+  const { data: safeProfiles = [] } = useQuery({
+    queryKey: ["my-setlists-safe-phones", campusId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_profiles_for_campus");
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; phone: string | null }>;
+    },
+    enabled: !!campusId,
+  });
+
+  const safePhoneMap = useMemo(
+    () => new Map(safeProfiles.map((profile) => [profile.id, profile.phone])),
+    [safeProfiles]
+  );
+
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
     date,
     teamEntry?.team_id,
@@ -754,6 +808,7 @@ function SetlistTeamRoster({
           id: string;
           memberName: string;
           avatarUrl: string | null;
+          phone: string | null;
           isSwapped: boolean;
           positions: Set<string>;
           positionSlots: Set<string>;
@@ -776,6 +831,7 @@ function SetlistTeamRoster({
             id: assignment.id,
             memberName: name,
             avatarUrl: assignment.profiles?.avatar_url || null,
+            phone: safePhoneMap.get(assignment.user_id) || null,
             isSwapped: false,
             positions: new Set([role]),
             positionSlots: new Set([role]),
@@ -818,6 +874,7 @@ function SetlistTeamRoster({
             id: candidate.id,
             memberName: candidate.profiles?.full_name || "Audition Candidate",
             avatarUrl: candidate.profiles?.avatar_url || null,
+            phone: safePhoneMap.get(candidate.candidate_id) || null,
             isSwapped: false,
             positions: new Set([candidateTrack]),
             positionSlots: new Set<string>(),
@@ -835,6 +892,7 @@ function SetlistTeamRoster({
         id: string;
         memberName: string;
         avatarUrl: string | null;
+        phone: string | null;
         isSwapped: boolean;
         positions: Set<string>;
         positionSlots: Set<string>;
@@ -855,6 +913,7 @@ function SetlistTeamRoster({
           id: member.id,
           memberName: member.memberName,
           avatarUrl: member.avatarUrl,
+          phone: member.phone,
           isSwapped: member.isSwapped,
           positions: new Set(member.positions),
           positionSlots: new Set(member.positionSlots),
@@ -865,6 +924,7 @@ function SetlistTeamRoster({
         member.positions.forEach((position) => existing.positions.add(position));
         member.positionSlots.forEach((slot) => existing.positionSlots.add(slot));
         existing.isSwapped = existing.isSwapped || member.isSwapped;
+        existing.phone = existing.phone || member.phone;
         existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
         existing.hasBandRole = existing.hasBandRole || hasBandRole;
       }
@@ -892,6 +952,12 @@ function SetlistTeamRoster({
     [rosterRows]
   );
 
+  const serviceLabel = useMemo(() => {
+    if (customServiceId) return "this custom service";
+    if (ministryType === "audition") return "this audition";
+    return MINISTRY_TYPES.find((ministry) => ministry.value === ministryType)?.label || ministryType;
+  }, [customServiceId, ministryType]);
+
   if (customServiceId && loadingCustomAssignments) {
     return <Skeleton className="h-20 w-full" />;
   }
@@ -918,7 +984,17 @@ function SetlistTeamRoster({
 
   return (
     <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
-      <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
+        <GroupTextButton
+          phoneNumbers={rosterRows.map((member) => member.phone)}
+          defaultMessage={buildRosterGroupTextTemplate({
+            date,
+            serviceLabel,
+          })}
+          className="ml-auto"
+        />
+      </div>
 
       {vocalistRows.length > 0 && (
         <div className="space-y-2">
@@ -1003,6 +1079,7 @@ function ApproverMySetlists({
   const rejectSetlist = useRejectSetlist();
   const { data: pendingApprovals = [], isLoading: loadingPending, error: pendingError } = usePendingApprovals();
   const [rejectNotesBySetId, setRejectNotesBySetId] = useState<Record<string, string>>({});
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
 
   const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
@@ -1020,6 +1097,7 @@ function ApproverMySetlists({
           campuses(name),
           draft_set_songs(
             id,
+            song_id,
             sequence_order,
             song_key,
             songs(title, author),
@@ -1162,13 +1240,45 @@ function ApproverMySetlists({
                       {(approval.songs || []).map((song, index) => (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="truncate">{index + 1}. {song.song?.title || "Unknown Song"}</p>
+                            <button
+                              type="button"
+                              className="truncate text-left hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                              disabled={!song.song_id}
+                              onClick={() => {
+                                if (!song.song_id) return;
+                                setChartSong({
+                                  id: song.song_id,
+                                  title: song.song?.title || "Unknown Song",
+                                  author: song.song?.author || null,
+                                });
+                              }}
+                            >
+                              {index + 1}. {song.song?.title || "Unknown Song"}
+                            </button>
                             {song.vocalist?.full_name && (
                               <p className="text-xs text-muted-foreground truncate">
                                 Vocalist: {song.vocalist.full_name}
                               </p>
                             )}
                           </div>
+                          {song.song_id && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs shrink-0"
+                              onClick={() =>
+                                setChartSong({
+                                  id: song.song_id,
+                                  title: song.song?.title || "Unknown Song",
+                                  author: song.song?.author || null,
+                                })
+                              }
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Chart
+                            </Button>
+                          )}
                           {song.song_key && <Badge variant="outline" className="text-xs shrink-0">{song.song_key}</Badge>}
                         </div>
                       ))}
@@ -1247,13 +1357,45 @@ function ApproverMySetlists({
                       .map((song: any, index: number) => (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="truncate">{index + 1}. {song.songs?.title || "Unknown Song"}</p>
+                            <button
+                              type="button"
+                              className="truncate text-left hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                              disabled={!song.song_id}
+                              onClick={() => {
+                                if (!song.song_id) return;
+                                setChartSong({
+                                  id: song.song_id,
+                                  title: song.songs?.title || "Unknown Song",
+                                  author: song.songs?.author || null,
+                                });
+                              }}
+                            >
+                              {index + 1}. {song.songs?.title || "Unknown Song"}
+                            </button>
                             {song.vocalist?.full_name && (
                               <p className="text-xs text-muted-foreground truncate">
                                 Vocalist: {song.vocalist.full_name}
                               </p>
                             )}
                           </div>
+                          {song.song_id && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 px-2 text-xs shrink-0"
+                              onClick={() =>
+                                setChartSong({
+                                  id: song.song_id,
+                                  title: song.songs?.title || "Unknown Song",
+                                  author: song.songs?.author || null,
+                                })
+                              }
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Chart
+                            </Button>
+                          )}
                           {song.song_key && <Badge variant="outline" className="text-xs shrink-0">{song.song_key}</Badge>}
                         </div>
                       ))}
@@ -1262,6 +1404,12 @@ function ApproverMySetlists({
               ))
             )}
           </section>
+
+          <ChordChartDialog
+            open={!!chartSong}
+            onOpenChange={(open) => !open && setChartSong(null)}
+            song={chartSong}
+          />
         </>
       )}
     </div>
@@ -1272,6 +1420,7 @@ function AuditionCandidateSetlists() {
   const { user } = useAuth();
   const confirmSetlist = useConfirmSetlist();
   const { data: playlists = [], isLoading: playlistsLoading } = useMySetlistPlaylists();
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
   const { data: assignedSetlists = [], isLoading } = useQuery({
     queryKey: ["audition-assigned-setlists", user?.id],
     enabled: !!user?.id,
@@ -1388,7 +1537,41 @@ function AuditionCandidateSetlists() {
                 ) : (
                   setlist.songs.map((item: any, index: number) => (
                     <div key={item.id} className="rounded-lg bg-muted/50 p-3 text-sm">
-                      <p className="font-medium">{index + 1}. {item.song?.title || "Unknown Song"}</p>
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          className="font-medium text-left hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                          disabled={!item.song_id}
+                          onClick={() => {
+                            if (!item.song_id) return;
+                            setChartSong({
+                              id: item.song_id,
+                              title: item.song?.title || "Unknown Song",
+                              author: item.song?.author || null,
+                            });
+                          }}
+                        >
+                          {index + 1}. {item.song?.title || "Unknown Song"}
+                        </button>
+                        {item.song_id && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs shrink-0"
+                            onClick={() =>
+                              setChartSong({
+                                id: item.song_id,
+                                title: item.song?.title || "Unknown Song",
+                                author: item.song?.author || null,
+                              })
+                            }
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Chart
+                          </Button>
+                        )}
+                      </div>
                       {item.song?.author && (
                         <p className="text-xs text-muted-foreground mt-1">{item.song.author}</p>
                       )}
@@ -1437,6 +1620,12 @@ function AuditionCandidateSetlists() {
             </Card>
           );
         })}
+
+      <ChordChartDialog
+        open={!!chartSong}
+        onOpenChange={(open) => !open && setChartSong(null)}
+        song={chartSong}
+      />
     </div>
   );
 }
