@@ -392,7 +392,9 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl">
+      <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden p-0">
+        <div className="flex max-h-[92vh] flex-col">
+          <div className="px-6 pt-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Music className="h-5 w-5" />
@@ -400,14 +402,15 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
           </DialogTitle>
           <DialogDescription>{song?.author || "Unknown author"}</DialogDescription>
         </DialogHeader>
+          </div>
 
         {isLoading ? (
-          <div className="flex min-h-[320px] items-center justify-center gap-3 text-muted-foreground">
+          <div className="flex min-h-[320px] items-center justify-center gap-3 px-6 pb-6 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Loading chord charts...</span>
           </div>
         ) : !versions?.length ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+          <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6 text-center text-muted-foreground">
             <FileText className="h-10 w-10 opacity-50" />
             <div className="space-y-1">
               <p className="font-medium text-foreground">No chord chart synced yet</p>
@@ -415,7 +418,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col space-y-4 px-6 pb-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">
@@ -498,7 +501,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
               </div>
             </div>
 
-            <ScrollArea className="h-[70vh] rounded-md border bg-muted/20">
+            <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/20">
               <div className="space-y-6 p-4">
                 {chordChartText ? (
                   <section className="space-y-2">
@@ -599,6 +602,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
             </ScrollArea>
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );
