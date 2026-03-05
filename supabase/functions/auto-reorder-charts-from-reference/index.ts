@@ -23,6 +23,11 @@ type ChartSection = {
   lines: string[];
 };
 
+type DraftSection = {
+  name: string;
+  chords?: string | null;
+};
+
 const SECTION_HEADER_REGEX =
   /^(intro|verse(?:\s+\d+)?|chorus|bridge|tag|turnaround|pre[-\s]?chorus|post[-\s]?chorus|outro|interlude|instrumental|refrain|ending|vamp)$/i;
 
@@ -217,6 +222,92 @@ async function inferSectionOrderFromTranscript(
     .filter((header) => allowed.has(normalizeSectionName(header)));
 }
 
+async function inferDraftSectionsAndChordsFromTranscript(
+  transcriptSnippet: string,
+  songTitle: string,
+  songAuthor: string | null,
+  songKey: string | null,
+): Promise<{ sections: DraftSection[]; confidence: number }> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Build a practical draft chord chart scaffold from guide calls and lyric cues. Return JSON only: {\"confidence\": number, \"sections\": [{\"name\": string, \"chords\": string}]}. Use section names like Intro, Verse 1, Chorus, Bridge, Tag, Outro. Keep chord lines compact like \"D A Bm G\". If uncertain, still return best guess and lower confidence.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            song_title: songTitle,
+            song_author: songAuthor,
+            expected_key: songKey,
+            transcript_excerpt: transcriptSnippet,
+          }),
+        },
+      ],
+    }),
+  });
+
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(json?.error?.message || "draft_chart_inference_failed");
+  }
+
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content) return { sections: [], confidence: 0 };
+
+  const parsed = JSON.parse(content) as {
+    confidence?: number;
+    sections?: Array<{ name?: string; chords?: string }>;
+  };
+
+  const sections = (parsed.sections || [])
+    .map((section) => ({
+      name: String(section.name || "").trim(),
+      chords: String(section.chords || "").trim(),
+    }))
+    .filter((section) => section.name.length > 0);
+
+  const confidence = Math.max(0, Math.min(1, Number(parsed.confidence || 0)));
+
+  return { sections, confidence };
+}
+
+function buildDraftChartFromSections(
+  sections: DraftSection[],
+  songKey: string | null,
+  confidence: number,
+): string {
+  const chunks: string[] = [];
+  const keyLabel = songKey?.trim() || "Unknown";
+  chunks.push(`AI Draft (Review Needed)`);
+  chunks.push(`Key: ${keyLabel}`);
+  chunks.push(`Confidence: ${Math.round(confidence * 100)}%`);
+
+  for (const section of sections) {
+    chunks.push("");
+    chunks.push(section.name.trim());
+    const normalizedChords = (section.chords || "").trim();
+    chunks.push(normalizedChords ? `[${normalizedChords}]` : "[TBD]");
+  }
+
+  return chunks.join("\n").trim();
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req.headers.get("origin"));
 
@@ -288,7 +379,7 @@ Deno.serve(async (req) => {
 
     const { data: setSongs, error: setSongsError } = await adminClient
       .from("draft_set_songs")
-      .select("id, song_id, sequence_order, songs(id, title)")
+      .select("id, song_id, song_key, sequence_order, songs(id, title, author)")
       .eq("draft_set_id", draftSetId)
       .order("sequence_order", { ascending: true });
 
@@ -322,8 +413,10 @@ Deno.serve(async (req) => {
     }
 
     const primaryVersionBySongId = new Map<string, { id: string; chord_chart_text: string | null; version_name: string }>();
+    const versionCountBySongId = new Map<string, number>();
     for (const version of versions || []) {
       if (!version.song_id) continue;
+      versionCountBySongId.set(version.song_id, (versionCountBySongId.get(version.song_id) || 0) + 1);
       if (!primaryVersionBySongId.has(version.song_id)) {
         primaryVersionBySongId.set(version.song_id, {
           id: version.id,
@@ -348,23 +441,16 @@ Deno.serve(async (req) => {
       .filter((entry) => entry.song !== null);
 
     let updatedSongs = 0;
+    let builtSongs = 0;
     const skipped: Array<{ song: string; reason: string }> = [];
 
     for (const pair of markerSongPairs) {
       const song = pair.song!;
-      const songTitle = (song.songs as { title?: string } | null)?.title || "Unknown Song";
+      const songMeta = song.songs as { title?: string; author?: string | null } | null;
+      const songTitle = songMeta?.title || "Unknown Song";
+      const songAuthor = songMeta?.author || null;
+      const songKey = (song as { song_key?: string | null }).song_key || null;
       const version = primaryVersionBySongId.get(song.song_id);
-
-      if (!version?.chord_chart_text?.trim()) {
-        skipped.push({ song: songTitle, reason: "no_chart_text" });
-        continue;
-      }
-
-      const { preludeLines, sections } = parseChartSections(version.chord_chart_text);
-      if (sections.length < 2) {
-        skipped.push({ song: songTitle, reason: "insufficient_chart_sections" });
-        continue;
-      }
 
       const transcriptSnippet = getTranscriptTextInRange(
         transcriptSegments,
@@ -377,37 +463,89 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const orderedHeaders = await inferSectionOrderFromTranscript(
+      const hasUsableChart = Boolean(version?.chord_chart_text?.trim());
+      const parsed = hasUsableChart ? parseChartSections(version!.chord_chart_text || "") : { preludeLines: [], sections: [] };
+      const canReorderExisting = parsed.sections.length >= 2;
+
+      if (canReorderExisting) {
+        const orderedHeaders = await inferSectionOrderFromTranscript(
+          transcriptSnippet,
+          parsed.sections.map((section) => section.header),
+        );
+
+        if (orderedHeaders.length === 0) {
+          skipped.push({ song: songTitle, reason: "no_called_sections_detected" });
+          continue;
+        }
+
+        const reorderedChart = buildReorderedChart(parsed.preludeLines, parsed.sections, orderedHeaders);
+        const changed = reorderedChart.trim() !== (version?.chord_chart_text || "").trim();
+
+        if (!changed) {
+          skipped.push({ song: songTitle, reason: "already_matching_called_order" });
+          continue;
+        }
+
+        if (!body.dry_run) {
+          const { error: updateError } = await adminClient
+            .from("song_versions")
+            .update({ chord_chart_text: reorderedChart })
+            .eq("id", version!.id);
+
+          if (updateError) {
+            skipped.push({ song: songTitle, reason: `update_failed:${updateError.message}` });
+            continue;
+          }
+        }
+
+        updatedSongs += 1;
+        continue;
+      }
+
+      const draft = await inferDraftSectionsAndChordsFromTranscript(
         transcriptSnippet,
-        sections.map((section) => section.header),
+        songTitle,
+        songAuthor,
+        songKey,
       );
 
-      if (orderedHeaders.length === 0) {
-        skipped.push({ song: songTitle, reason: "no_called_sections_detected" });
+      if (draft.sections.length === 0) {
+        skipped.push({ song: songTitle, reason: "unable_to_generate_draft_chart" });
         continue;
       }
 
-      const reorderedChart = buildReorderedChart(preludeLines, sections, orderedHeaders);
-      const changed = reorderedChart.trim() !== (version.chord_chart_text || "").trim();
-
-      if (!changed) {
-        skipped.push({ song: songTitle, reason: "already_matching_called_order" });
-        continue;
-      }
+      const draftChartText = buildDraftChartFromSections(draft.sections, songKey, draft.confidence);
 
       if (!body.dry_run) {
-        const { error: updateError } = await adminClient
-          .from("song_versions")
-          .update({ chord_chart_text: reorderedChart })
-          .eq("id", version.id);
+        if (version?.id) {
+          const { error: updateError } = await adminClient
+            .from("song_versions")
+            .update({ chord_chart_text: draftChartText })
+            .eq("id", version.id);
 
-        if (updateError) {
-          skipped.push({ song: songTitle, reason: `update_failed:${updateError.message}` });
-          continue;
+          if (updateError) {
+            skipped.push({ song: songTitle, reason: `update_failed:${updateError.message}` });
+            continue;
+          }
+        } else {
+          const hasAnyVersion = (versionCountBySongId.get(song.song_id) || 0) > 0;
+          const { error: insertError } = await adminClient
+            .from("song_versions")
+            .insert({
+              song_id: song.song_id,
+              version_name: "AI Draft (Reference Guide)",
+              chord_chart_text: draftChartText,
+              is_primary: !hasAnyVersion,
+            });
+
+          if (insertError) {
+            skipped.push({ song: songTitle, reason: `insert_failed:${insertError.message}` });
+            continue;
+          }
         }
       }
 
-      updatedSongs += 1;
+      builtSongs += 1;
     }
 
     return new Response(
@@ -418,6 +556,7 @@ Deno.serve(async (req) => {
         marker_count: markers.length,
         songs_considered: markerSongPairs.length,
         updated_songs: updatedSongs,
+        built_songs: builtSongs,
         skipped,
         dry_run: Boolean(body.dry_run),
       }),

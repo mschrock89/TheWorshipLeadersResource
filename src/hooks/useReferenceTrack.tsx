@@ -89,6 +89,7 @@ export function useAutoReorderChartsFromReferenceTrack() {
       return data as {
         success: boolean;
         updated_songs: number;
+        built_songs: number;
         songs_considered: number;
         skipped: Array<{ song: string; reason: string }>;
       };
@@ -96,7 +97,7 @@ export function useAutoReorderChartsFromReferenceTrack() {
     onSuccess: (data) => {
       toast({
         title: "Chart reordering complete",
-        description: `Updated ${data.updated_songs} of ${data.songs_considered} song chart${data.songs_considered === 1 ? "" : "s"}.`,
+        description: `Reordered ${data.updated_songs}, built ${data.built_songs} draft chart${data.songs_considered === 1 ? "" : "s"} (${data.songs_considered} song${data.songs_considered === 1 ? "" : "s"} analyzed).`,
       });
       queryClient.invalidateQueries({ queryKey: ["song-versions"] });
       queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
