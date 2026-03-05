@@ -30,6 +30,7 @@ interface ChordChartDialogProps {
     id: string;
     title: string;
     author: string | null;
+    originalKey?: string | null;
   } | null;
 }
 
@@ -230,6 +231,14 @@ function detectKeyIndexFromChart(chordChartText: string): number {
   return idx ?? 0;
 }
 
+function detectKeyIndexFromLabel(keyLabel: string | null | undefined): number | null {
+  if (!keyLabel) return null;
+  const match = keyLabel.trim().match(/^([A-G](?:#|b)?)/);
+  if (!match) return null;
+  const idx = NOTE_INDEX[match[1]];
+  return typeof idx === "number" ? idx : null;
+}
+
 function getSignedSemitoneDelta(fromIndex: number, toIndex: number): number {
   let delta = (toIndex - fromIndex + 12) % 12;
   if (delta > 6) delta -= 12;
@@ -345,11 +354,12 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
   }, [open, selectedVersion?.id, rawChordChartText]);
 
   useEffect(() => {
-    if (!open || !chordChartText) return;
-    const detected = detectKeyIndexFromChart(chordChartText);
+    if (!open) return;
+    const fromSongKey = detectKeyIndexFromLabel(song?.originalKey);
+    const detected = fromSongKey ?? (chordChartText ? detectKeyIndexFromChart(chordChartText) : 0);
     setOriginalKeyIndex(detected);
     setTargetKeyIndex(detected);
-  }, [open, chordChartText, selectedVersion?.id]);
+  }, [open, chordChartText, selectedVersion?.id, song?.originalKey]);
 
   const saveRawChart = useMutation({
     mutationFn: async () => {

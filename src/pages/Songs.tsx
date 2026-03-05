@@ -113,7 +113,7 @@ export default function Songs() {
   const deleteSong = useDeleteSong();
   const mergeSongs = useMergeSongs();
   const [mergeSourceSong, setMergeSourceSong] = useState<{ id: string; title: string } | null>(null);
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
   const newSongsCutoffDate = useMemo(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 1);

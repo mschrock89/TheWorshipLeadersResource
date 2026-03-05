@@ -126,7 +126,7 @@ function StandardMySetlists() {
   const confirmSetlist = useConfirmSetlist();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -443,6 +443,7 @@ function StandardMySetlists() {
                                     id: item.song_id,
                                     title: item.song?.title || "Unknown Song",
                                     author: item.song?.author || null,
+                                    originalKey: item.song_key || null,
                                   });
                                 }}
                               >
@@ -476,6 +477,7 @@ function StandardMySetlists() {
                                   id: item.song_id,
                                   title: item.song?.title || "Unknown Song",
                                   author: item.song?.author || null,
+                                  originalKey: item.song_key || null,
                                 })
                               }
                             >
@@ -1079,7 +1081,7 @@ function ApproverMySetlists({
   const rejectSetlist = useRejectSetlist();
   const { data: pendingApprovals = [], isLoading: loadingPending, error: pendingError } = usePendingApprovals();
   const [rejectNotesBySetId, setRejectNotesBySetId] = useState<Record<string, string>>({});
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
 
   const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
@@ -1250,6 +1252,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.song?.title || "Unknown Song",
                                   author: song.song?.author || null,
+                                  originalKey: song.song_key || null,
                                 });
                               }}
                             >
@@ -1272,6 +1275,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.song?.title || "Unknown Song",
                                   author: song.song?.author || null,
+                                  originalKey: song.song_key || null,
                                 })
                               }
                             >
@@ -1367,6 +1371,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.songs?.title || "Unknown Song",
                                   author: song.songs?.author || null,
+                                  originalKey: song.song_key || null,
                                 });
                               }}
                             >
@@ -1389,6 +1394,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.songs?.title || "Unknown Song",
                                   author: song.songs?.author || null,
+                                  originalKey: song.song_key || null,
                                 })
                               }
                             >
@@ -1420,7 +1426,7 @@ function AuditionCandidateSetlists() {
   const { user } = useAuth();
   const confirmSetlist = useConfirmSetlist();
   const { data: playlists = [], isLoading: playlistsLoading } = useMySetlistPlaylists();
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
   const { data: assignedSetlists = [], isLoading } = useQuery({
     queryKey: ["audition-assigned-setlists", user?.id],
     enabled: !!user?.id,
@@ -1548,6 +1554,7 @@ function AuditionCandidateSetlists() {
                               id: item.song_id,
                               title: item.song?.title || "Unknown Song",
                               author: item.song?.author || null,
+                              originalKey: item.song_key || null,
                             });
                           }}
                         >
@@ -1564,6 +1571,7 @@ function AuditionCandidateSetlists() {
                                 id: item.song_id,
                                 title: item.song?.title || "Unknown Song",
                                 author: item.song?.author || null,
+                                originalKey: item.song_key || null,
                               })
                             }
                           >
