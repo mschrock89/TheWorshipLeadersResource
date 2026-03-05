@@ -375,8 +375,12 @@ export default function SetPlanner() {
 
   const handleAddSong = useCallback((songAvail: SongAvailability) => {
     if (addedSongIds.has(songAvail.song.id)) return;
-    if (songAvail.isInRegularRotation && songAvail.status === 'too-recent') {
-      toast.error("Regular rotation songs require an 8-week gap before scheduling.");
+    if (songAvail.status === 'too-recent') {
+      if (songAvail.isNewSong) {
+        toast.error("New songs require at least a 3-week gap before scheduling again.");
+      } else {
+        toast.error("Regular rotation songs require an 8-week gap before scheduling.");
+      }
       return;
     }
     // Auto-populate with suggested key from PCO history

@@ -213,11 +213,11 @@ export function SongAvailabilityList({
             filteredSongs.map(item => {
               const isAdded = addedSongIds.has(item.song.id);
               const isScheduledOnActiveSet = publishedSetlistSongIds.has(item.song.id);
-              const isRegularRotationLocked = item.isInRegularRotation && item.status === 'too-recent';
+              const isTooRecentLocked = item.status === 'too-recent';
               const isDisabled =
                 isAdded ||
                 item.status === 'upcoming' ||
-                isRegularRotationLocked ||
+                isTooRecentLocked ||
                 (isScheduledOnActiveSet && !allowSchedulingOverrides);
               const weeksInfo = getWeeksInfo(item.lastUsedDate);
 
