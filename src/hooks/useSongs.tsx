@@ -688,6 +688,8 @@ async function getPriorUsesClientFallback(
 }
 
 // Helper to get prior usage counts - try RPC first, fall back to client queries
+let priorUsesRpcFailed = false;
+
 async function getPriorUses(
   songIds: string[],
   beforeDate: string,
@@ -695,6 +697,9 @@ async function getPriorUses(
   ministryTypes: string[] | null
 ): Promise<Map<string, number>> {
   if (songIds.length === 0) return new Map();
+  if (priorUsesRpcFailed) {
+    return getPriorUsesClientFallback(songIds, beforeDate);
+  }
 
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const sanitizedCampusIds = campusIds?.filter((id): id is string => Boolean(id) && uuidRegex.test(id)) ?? null;
@@ -708,15 +713,18 @@ async function getPriorUses(
       _ministry_types: ministryTypes,
     });
 
-    if (!error && data && data.length > 0) {
-      const map = new Map<string, number>();
-      for (const row of data) {
-        map.set(row.song_id, Number(row.usage_count ?? 0));
-      }
-      return map;
+    if (error) {
+      priorUsesRpcFailed = true;
+      return getPriorUsesClientFallback(songIds, beforeDate);
     }
+
+    const map = new Map<string, number>();
+    for (const row of data || []) {
+      map.set(row.song_id, Number(row.usage_count ?? 0));
+    }
+    return map;
   } catch {
-    // RPC not available
+    priorUsesRpcFailed = true;
   }
 
   // Fallback: client-side query (global only - no campus/ministry filter)
