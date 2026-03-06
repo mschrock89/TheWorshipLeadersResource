@@ -168,6 +168,20 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
           if (entryFirst === last && entryLast === first) return entry.phone;
         }
 
+        // Fallback: match on at least two overlapping name tokens
+        // (e.g., "William Travis Thompson" <-> "Travis Thompson")
+        const memberTokenSet = new Set(memberTokens);
+        const tokenOverlapMatches = safePhoneEntries.filter((entry) => {
+          const overlapCount = entry.tokens.reduce(
+            (count, token) => (memberTokenSet.has(token) ? count + 1 : count),
+            0
+          );
+          return overlapCount >= 2;
+        });
+        if (tokenOverlapMatches.length === 1) {
+          return tokenOverlapMatches[0].phone;
+        }
+
         return null;
       };
 
