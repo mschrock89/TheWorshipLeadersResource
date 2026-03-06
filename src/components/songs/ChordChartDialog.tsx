@@ -335,6 +335,24 @@ function detectKeyIndexFromChart(chordChartText: string): number {
   return bestIndex;
 }
 
+function upsertExplicitKeyLine(chordChartText: string, keyLabel: string): string {
+  const keyLine = `Key: ${keyLabel}`;
+  const lines = chordChartText.split("\n");
+  const keyLineRegex = /^\s*key\s*[:=-]\s*[A-G](?:#|b)?\s*$/i;
+  const existingIndex = lines.findIndex((line) => keyLineRegex.test(line));
+
+  if (existingIndex >= 0) {
+    lines[existingIndex] = keyLine;
+    return lines.join("\n");
+  }
+
+  if (!chordChartText.trim()) {
+    return `${keyLine}\n`;
+  }
+
+  return `${keyLine}\n${chordChartText}`;
+}
+
 function getSignedSemitoneDelta(fromIndex: number, toIndex: number): number {
   let delta = (toIndex - fromIndex + 12) % 12;
   if (delta > 6) delta -= 12;
@@ -489,6 +507,37 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
     },
   });
 
+  const saveOriginalKey = useMutation({
+    mutationFn: async (nextOriginalKeyIndex: number) => {
+      if (!selectedVersion?.id) throw new Error("No song version selected.");
+      const keySet = accidentalPreference === "flats" ? KEY_LABELS_FLAT : KEY_LABELS_SHARP;
+      const nextKeyLabel = keySet[nextOriginalKeyIndex] || "C";
+      const nextChartText = upsertExplicitKeyLine(rawChordChartText, nextKeyLabel);
+
+      const { error } = await supabase
+        .from("song_versions")
+        .update({ chord_chart_text: nextChartText })
+        .eq("id", selectedVersion.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      if (song?.id) {
+        await queryClient.invalidateQueries({ queryKey: ["song-versions", song.id] });
+      }
+      toast({
+        title: "Original key updated",
+        description: "Saved to chart metadata.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Unable to save original key",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const transposeSemitones = useMemo(
     () => getSignedSemitoneDelta(originalKeyIndex, targetKeyIndex),
     [originalKeyIndex, targetKeyIndex],
@@ -553,10 +602,27 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="flex h-12 items-center rounded-md border bg-muted/40 px-4 text-base">
-                    <span className="text-muted-foreground">Original: </span>
-                    <span className="font-semibold">{keyLabels[originalKeyIndex] || "C"}</span>
-                  </div>
+                  <Select
+                    value={String(originalKeyIndex)}
+                    onValueChange={(value) => {
+                      const nextIndex = Number(value);
+                      setOriginalKeyIndex(nextIndex);
+                      setTargetKeyIndex(nextIndex);
+                      saveOriginalKey.mutate(nextIndex);
+                    }}
+                    disabled={isEditingRaw || saveOriginalKey.isPending}
+                  >
+                    <SelectTrigger className="h-12 text-base">
+                      <SelectValue placeholder="Original Key" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {keyLabels.map((label, index) => (
+                        <SelectItem key={`original-${label}-${index}`} value={String(index)}>
+                          Original: {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select
                     value={String(targetKeyIndex)}
                     onValueChange={(value) => setTargetKeyIndex(Number(value))}
