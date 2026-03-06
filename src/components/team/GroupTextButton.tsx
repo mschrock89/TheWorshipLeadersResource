@@ -54,13 +54,9 @@ export function GroupTextButton({
     return hasPlusPrefix ? `+${digitsOnly}` : digitsOnly;
   };
 
-  const recipients = Array.from(
-    new Set(
-      phoneNumbers
-        .map((phone) => (phone ? normalizePhone(phone) : ""))
-        .filter((phone): phone is string => Boolean(phone))
-    )
-  );
+  const recipients = phoneNumbers
+    .map((phone) => (phone ? normalizePhone(phone) : ""))
+    .filter((phone): phone is string => Boolean(phone));
 
   const openComposer = () => {
     if (recipients.length === 0) {
