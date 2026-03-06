@@ -578,6 +578,10 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
           if (entry.hasPendingSwap) {
             existing.hasPendingSwap = true;
           }
+          // Backfill identity/contact fields from later rows when first row was incomplete.
+          existing.userId = existing.userId || entry.userId;
+          existing.avatarUrl = existing.avatarUrl || entry.avatarUrl;
+          existing.phone = existing.phone || entry.phone;
         } else {
           memberMap.set(key, {
             id: entry.id,
