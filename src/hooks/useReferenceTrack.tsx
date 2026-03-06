@@ -85,7 +85,21 @@ export function useAutoReorderChartsFromReferenceTrack() {
         },
       );
 
-      if (error) throw error;
+      if (error) {
+        let detailedMessage = error.message || "Function call failed";
+        const errWithContext = error as unknown as { context?: Response };
+        if (errWithContext.context) {
+          try {
+            const payload = await errWithContext.context.json();
+            if (payload?.error && typeof payload.error === "string") {
+              detailedMessage = payload.error;
+            }
+          } catch {
+            // Ignore parsing issues and keep original message.
+          }
+        }
+        throw new Error(detailedMessage);
+      }
       return data as {
         success: boolean;
         updated_songs: number;
