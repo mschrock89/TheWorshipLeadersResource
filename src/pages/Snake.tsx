@@ -16,10 +16,12 @@ type LeaderboardRow = {
   user_id: string;
   score: number;
   updated_at: string;
-  profiles?: {
-    full_name: string | null;
-    avatar_url: string | null;
-  } | null;
+};
+
+type BasicProfile = {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
 };
 
 const BOARD_SIZE = 20;
@@ -70,26 +72,26 @@ function DirectionPad({
   onCenter: () => void;
 }) {
   const armClass =
-    "absolute z-10 flex items-center justify-center rounded-2xl border border-violet-200/50 bg-[linear-gradient(180deg,rgba(124,58,237,0.95),rgba(76,29,149,0.98))] text-white shadow-[0_20px_40px_-24px_rgba(76,29,149,1)] active:scale-[0.98]";
+    "absolute z-10 flex items-center justify-center rounded-xl border border-violet-200/40 bg-[linear-gradient(180deg,rgba(124,58,237,0.92),rgba(76,29,149,0.98))] text-white shadow-[0_16px_30px_-22px_rgba(76,29,149,1)] active:scale-[0.98]";
 
   return (
-    <div className="relative mx-auto h-64 w-64 select-none">
-      <button className={`${armClass} left-1/2 top-0 h-24 w-28 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: -1 })}>
-        <ChevronUp className="h-9 w-9" />
+    <div className="relative mx-auto h-52 w-52 select-none">
+      <button className={`${armClass} left-1/2 top-0 h-20 w-24 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: -1 })}>
+        <ChevronUp className="h-8 w-8" />
       </button>
-      <button className={`${armClass} left-0 top-1/2 h-28 w-24 -translate-y-1/2`} onClick={() => onDirection({ x: -1, y: 0 })}>
-        <ChevronLeft className="h-9 w-9" />
+      <button className={`${armClass} left-0 top-1/2 h-24 w-20 -translate-y-1/2`} onClick={() => onDirection({ x: -1, y: 0 })}>
+        <ChevronLeft className="h-8 w-8" />
       </button>
-      <button className={`${armClass} right-0 top-1/2 h-28 w-24 -translate-y-1/2`} onClick={() => onDirection({ x: 1, y: 0 })}>
-        <ChevronRight className="h-9 w-9" />
+      <button className={`${armClass} right-0 top-1/2 h-24 w-20 -translate-y-1/2`} onClick={() => onDirection({ x: 1, y: 0 })}>
+        <ChevronRight className="h-8 w-8" />
       </button>
-      <button className={`${armClass} bottom-0 left-1/2 h-24 w-28 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: 1 })}>
-        <ChevronDown className="h-9 w-9" />
+      <button className={`${armClass} bottom-0 left-1/2 h-20 w-24 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: 1 })}>
+        <ChevronDown className="h-8 w-8" />
       </button>
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-20 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-100/70 bg-[linear-gradient(180deg,rgba(99,102,241,0.92),rgba(67,56,202,0.98))] text-xl font-semibold tracking-wide text-white shadow-[0_20px_40px_-24px_rgba(67,56,202,1)] active:scale-[0.98]"
+        className="absolute left-1/2 top-1/2 z-20 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-100/70 bg-[linear-gradient(180deg,rgba(99,102,241,0.92),rgba(67,56,202,0.98))] text-lg font-semibold tracking-wide text-white shadow-[0_20px_40px_-24px_rgba(67,56,202,1)] active:scale-[0.98]"
       >
         OK
       </button>
@@ -140,7 +142,7 @@ export default function Snake() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("snake_high_scores")
-        .select("user_id, score, updated_at, profiles!snake_high_scores_user_id_fkey(full_name, avatar_url)")
+        .select("user_id, score, updated_at")
         .order("score", { ascending: false })
         .order("updated_at", { ascending: true })
         .limit(10);
@@ -149,6 +151,17 @@ export default function Snake() {
       return (data ?? []) as LeaderboardRow[];
     },
     enabled: !!user,
+  });
+
+  const profilesQuery = useQuery({
+    queryKey: ["snake-basic-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_basic_profiles");
+      if (error) throw error;
+      return (data ?? []) as BasicProfile[];
+    },
+    enabled: !!user,
+    staleTime: 1000 * 60 * 10,
   });
 
   const myBestQuery = useQuery({
@@ -204,10 +217,10 @@ export default function Snake() {
         });
       }
     },
-    onError: () => {
+    onError: (error: Error) => {
       toast({
         title: "Could not save score",
-        description: "Your game still counts locally, but we could not update the leaderboard.",
+        description: error.message || "Your game still counts locally, but we could not update the leaderboard.",
         variant: "destructive",
       });
     },
@@ -334,6 +347,10 @@ export default function Snake() {
   const foodCell = toCellKey(food);
 
   const leaderboard = leaderboardQuery.data ?? [];
+  const profileById = useMemo(
+    () => new Map((profilesQuery.data ?? []).map((profile) => [profile.id, profile])),
+    [profilesQuery.data],
+  );
   const myBest = myBestQuery.data ?? 0;
 
   return (
@@ -385,8 +402,9 @@ export default function Snake() {
               })}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid w-full max-w-[420px] grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Button
+                className="col-span-1"
                 onClick={() => {
                   if (isGameOver) {
                     resetGame(true);
@@ -412,11 +430,11 @@ export default function Snake() {
                 )}
               </Button>
 
-              <Button variant="outline" onClick={() => resetGame(false)}>
+              <Button className="col-span-1" variant="outline" onClick={() => resetGame(false)}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
 
-              {isGameOver && <Badge variant="destructive">Game Over</Badge>}
+              {isGameOver && <Badge className="col-span-2 w-fit" variant="destructive">Game Over</Badge>}
             </div>
 
             <div className="sm:hidden">
@@ -442,19 +460,25 @@ export default function Snake() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {leaderboard.length === 0 && (
+              {leaderboardQuery.isError && (
+                <p className="text-sm text-destructive">
+                  Could not load leaderboard: {(leaderboardQuery.error as Error).message}
+                </p>
+              )}
+              {leaderboard.length === 0 && !leaderboardQuery.isError && (
                 <p className="text-sm text-muted-foreground">No scores yet. Be the first to post one.</p>
               )}
 
               {leaderboard.map((row, index) => {
-                const name = row.profiles?.full_name || "Unknown player";
+                const profile = profileById.get(row.user_id);
+                const name = profile?.full_name || "Unknown player";
 
                 return (
                   <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
                     <div className="flex items-center gap-3">
                       <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={row.profiles?.avatar_url || undefined} alt={name} />
+                        <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
                         <AvatarFallback>{getInitials(name)}</AvatarFallback>
                       </Avatar>
                       <span className="text-sm font-medium">{name}</span>
