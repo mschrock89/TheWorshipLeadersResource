@@ -6,6 +6,7 @@ import { isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/ut
 
 const normalizeRosterName = (name?: string | null) =>
   (name || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .replace(/\([^)]*\)/g, " ")
     .replace(/,/g, " ")
@@ -13,6 +14,30 @@ const normalizeRosterName = (name?: string | null) =>
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+const levenshteinDistance = (a: string, b: string) => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const matrix: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= b.length; j += 1) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+};
 
 export interface RosterMember {
   id: string;
@@ -180,6 +205,20 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
         });
         if (tokenOverlapMatches.length === 1) {
           return tokenOverlapMatches[0].phone;
+        }
+
+        // Fallback: allow one-character typo in last name when first name matches.
+        const fuzzyLastNameMatches = safePhoneEntries.filter((entry) => {
+          if (entry.tokens.length < 2) return false;
+          const entryFirst = entry.tokens[0];
+          const entryLast = entry.tokens[entry.tokens.length - 1];
+          const firstMatches = entryFirst === first || entryLast === first;
+          if (!firstMatches) return false;
+          const compareLast = entryFirst === first ? entryLast : entryFirst;
+          return last.length >= 5 && compareLast.length >= 5 && levenshteinDistance(last, compareLast) <= 1;
+        });
+        if (fuzzyLastNameMatches.length === 1) {
+          return fuzzyLastNameMatches[0].phone;
         }
 
         return null;
