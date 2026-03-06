@@ -696,11 +696,15 @@ async function getPriorUses(
 ): Promise<Map<string, number>> {
   if (songIds.length === 0) return new Map();
 
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const sanitizedCampusIds = campusIds?.filter((id): id is string => Boolean(id) && uuidRegex.test(id)) ?? null;
+  const campusArg = sanitizedCampusIds && sanitizedCampusIds.length > 0 ? sanitizedCampusIds : null;
+
   try {
     const { data, error } = await supabase.rpc("get_prior_song_uses", {
       _song_ids: songIds,
       _before_date: beforeDate,
-      _campus_ids: campusIds,
+      _campus_ids: campusArg,
       _ministry_types: ministryTypes,
     });
 

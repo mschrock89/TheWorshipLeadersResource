@@ -638,6 +638,7 @@ function SetlistTeamRoster({
   customServiceId?: string | null;
   getInitials: (name: string) => string;
 }) {
+  const { user } = useAuth();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
 
   const { data: customAssignments = [], isLoading: loadingCustomAssignments } = useQuery({
