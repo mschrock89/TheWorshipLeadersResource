@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Play, Pause, RotateCcw, Gamepad2 } from "lucide-react";
+import { Play, Pause, RotateCcw, Gamepad2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Point = { x: number; y: number };
 type Direction = { x: number; y: number };
@@ -60,6 +60,41 @@ function getInitials(name: string | null | undefined) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function DirectionPad({
+  onDirection,
+  onCenter,
+}: {
+  onDirection: (next: Direction) => void;
+  onCenter: () => void;
+}) {
+  const armClass =
+    "absolute z-10 flex items-center justify-center rounded-2xl border border-violet-200/50 bg-[linear-gradient(180deg,rgba(124,58,237,0.95),rgba(76,29,149,0.98))] text-white shadow-[0_20px_40px_-24px_rgba(76,29,149,1)] active:scale-[0.98]";
+
+  return (
+    <div className="relative mx-auto h-64 w-64 select-none">
+      <button className={`${armClass} left-1/2 top-0 h-24 w-28 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: -1 })}>
+        <ChevronUp className="h-9 w-9" />
+      </button>
+      <button className={`${armClass} left-0 top-1/2 h-28 w-24 -translate-y-1/2`} onClick={() => onDirection({ x: -1, y: 0 })}>
+        <ChevronLeft className="h-9 w-9" />
+      </button>
+      <button className={`${armClass} right-0 top-1/2 h-28 w-24 -translate-y-1/2`} onClick={() => onDirection({ x: 1, y: 0 })}>
+        <ChevronRight className="h-9 w-9" />
+      </button>
+      <button className={`${armClass} bottom-0 left-1/2 h-24 w-28 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: 1 })}>
+        <ChevronDown className="h-9 w-9" />
+      </button>
+
+      <button
+        onClick={onCenter}
+        className="absolute left-1/2 top-1/2 z-20 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-100/70 bg-[linear-gradient(180deg,rgba(99,102,241,0.92),rgba(67,56,202,0.98))] text-xl font-semibold tracking-wide text-white shadow-[0_20px_40px_-24px_rgba(67,56,202,1)] active:scale-[0.98]"
+      >
+        OK
+      </button>
+    </div>
+  );
 }
 
 export default function Snake() {
@@ -384,21 +419,17 @@ export default function Snake() {
               {isGameOver && <Badge variant="destructive">Game Over</Badge>}
             </div>
 
-            <div className="grid max-w-[420px] grid-cols-3 gap-2 sm:hidden">
-              <div />
-              <Button variant="outline" onClick={() => updateDirection({ x: 0, y: -1 })}>
-                Up
-              </Button>
-              <div />
-              <Button variant="outline" onClick={() => updateDirection({ x: -1, y: 0 })}>
-                Left
-              </Button>
-              <Button variant="outline" onClick={() => updateDirection({ x: 0, y: 1 })}>
-                Down
-              </Button>
-              <Button variant="outline" onClick={() => updateDirection({ x: 1, y: 0 })}>
-                Right
-              </Button>
+            <div className="sm:hidden">
+              <DirectionPad
+                onDirection={updateDirection}
+                onCenter={() => {
+                  if (isGameOver) {
+                    resetGame(true);
+                    return;
+                  }
+                  setIsRunning((prev) => !prev);
+                }}
+              />
             </div>
 
             <p className="text-sm text-muted-foreground">Use arrow keys or WASD. On mobile, use the direction buttons.</p>
