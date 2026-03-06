@@ -121,8 +121,8 @@ export function GroupTextButton({
     });
 
     if (isIOS || isMacDesktop) {
-      const addresses = recipients.join(",");
-      const bodyParam = body ? `;body=${encodeURIComponent(body)}` : "";
+      const addresses = recipients.map((phone) => encodeURIComponent(phone)).join(",");
+      const bodyParam = body ? `&body=${encodeURIComponent(body)}` : "";
       window.open(`sms:/open?addresses=${addresses}${bodyParam}`, "_self");
       setIsOpen(false);
       return;
