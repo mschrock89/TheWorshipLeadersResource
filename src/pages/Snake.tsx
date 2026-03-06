@@ -126,9 +126,9 @@ function DirectionPad({
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-30 h-[132px] w-[132px] -translate-x-1/2 -translate-y-1/2 rounded-full text-5xl font-semibold leading-none text-white active:scale-[0.985]"
+        className="absolute left-1/2 top-1/2 z-30 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full text-3xl font-semibold leading-none text-white active:scale-[0.985]"
       >
-        <span className="relative -top-0.5">OK</span>
+        <span className="relative -top-px">OK</span>
       </button>
     </div>
   );
