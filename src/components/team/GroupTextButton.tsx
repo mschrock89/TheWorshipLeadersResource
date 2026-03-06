@@ -68,9 +68,12 @@ export function GroupTextButton({
   };
 
   const handleOpenMessages = () => {
-    const separator = /Android/i.test(navigator.userAgent) ? ";" : ",";
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const separator = isAndroid ? ";" : ",";
     const body = messageBody.trim();
-    const bodyParam = body ? `?body=${encodeURIComponent(body)}` : "";
+    const delimiter = isIOS ? "&" : "?";
+    const bodyParam = body ? `${delimiter}body=${encodeURIComponent(body)}` : "";
     window.open(`sms:${recipients.join(separator)}${bodyParam}`, "_self");
     setIsOpen(false);
   };

@@ -3,6 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
+
+const normalizeRosterName = (name?: string | null) =>
+  (name || "")
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/,/g, " ")
+    .replace(/\b(jr|sr|ii|iii|iv)\b/g, " ")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export interface RosterMember {
   id: string;
   memberName: string;
@@ -33,7 +44,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v7"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v8"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -108,11 +119,66 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
       if (safeProfilesError) throw safeProfilesError;
       if (avatarProfilesError) throw avatarProfilesError;
 
+      const allSafeProfiles = (safeProfiles || []) as Array<{ id: string; full_name: string | null; phone: string | null }>;
+
       const safeProfileMap = new Map(
-        ((safeProfiles || []) as Array<{ id: string; phone: string | null }>)
+        allSafeProfiles
           .filter(profile => userIds.includes(profile.id))
           .map(profile => [profile.id, profile.phone])
       );
+      const safePhoneByNameMap = new Map<string, string>();
+      const safePhoneEntries: Array<{ normalized: string; tokens: string[]; phone: string }> = [];
+
+      for (const profile of allSafeProfiles) {
+        if (!profile.phone) continue;
+        const normalized = normalizeRosterName(profile.full_name);
+        if (!normalized) continue;
+        if (!safePhoneByNameMap.has(normalized)) {
+          safePhoneByNameMap.set(normalized, profile.phone);
+        }
+        safePhoneEntries.push({
+          normalized,
+          tokens: normalized.split(" ").filter(Boolean),
+          phone: profile.phone,
+        });
+      }
+
+      const findPhoneByName = (memberName?: string | null) => {
+        const normalizedName = normalizeRosterName(memberName);
+        if (!normalizedName) return null;
+
+        const exact = safePhoneByNameMap.get(normalizedName);
+        if (exact) return exact;
+
+        const memberTokens = normalizedName.split(" ").filter(Boolean);
+        if (memberTokens.length < 2) return null;
+
+        const first = memberTokens[0];
+        const last = memberTokens[memberTokens.length - 1];
+        const reversed = `${last} ${first}`;
+
+        const reversedMatch = safePhoneByNameMap.get(reversed);
+        if (reversedMatch) return reversedMatch;
+
+        for (const entry of safePhoneEntries) {
+          if (entry.tokens.length < 2) continue;
+          const entryFirst = entry.tokens[0];
+          const entryLast = entry.tokens[entry.tokens.length - 1];
+          if (entryFirst === first && entryLast === last) return entry.phone;
+          if (entryFirst === last && entryLast === first) return entry.phone;
+        }
+
+        return null;
+      };
+
+      const resolveRosterPhone = (userId?: string | null, memberName?: string | null) => {
+        if (userId) {
+          const phone = safeProfileMap.get(userId);
+          if (phone) return phone;
+        }
+        return findPhoneByName(memberName);
+      };
+
       const profileMap = new Map((avatarProfiles || []).map(p => [p.id, p.avatar_url]));
 
       // Build the list of dates to check for swaps
@@ -322,7 +388,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
                 positionSlot: member.position_slot || null,
                 userId: coverInfo.acceptedById,
                 avatarUrl: coverInfo.acceptedByAvatar,
-                phone: safeProfileMap.get(coverInfo.acceptedById) || null,
+                phone: resolveRosterPhone(coverInfo.acceptedById, coverInfo.acceptedByName),
                 isSwapped: true,
                 hasPendingSwap: false,
                 originalMemberName: member.member_name,
@@ -344,7 +410,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
                   positionSlot: member.position_slot || null,
                   userId: coverInfo.acceptedById,
                   avatarUrl: coverInfo.acceptedByAvatar,
-                  phone: safeProfileMap.get(coverInfo.acceptedById) || null,
+                  phone: resolveRosterPhone(coverInfo.acceptedById, coverInfo.acceptedByName),
                   isSwapped: true,
                   hasPendingSwap: false,
                   originalMemberName: member.member_name,
@@ -366,7 +432,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
               positionSlot: member.position_slot || null,
               userId: swap.acceptedById,
               avatarUrl: swap.acceptedByAvatar,
-              phone: safeProfileMap.get(swap.acceptedById) || null,
+              phone: resolveRosterPhone(swap.acceptedById, swap.acceptedByName),
               isSwapped: true,
               hasPendingSwap: false,
               originalMemberName: member.member_name,
@@ -386,7 +452,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
               positionSlot: member.position_slot || null,
               userId: reverseSwap.requesterId,
               avatarUrl: reverseSwap.requesterAvatar,
-              phone: safeProfileMap.get(reverseSwap.requesterId) || null,
+              phone: resolveRosterPhone(reverseSwap.requesterId, reverseSwap.requesterName),
               isSwapped: true,
               hasPendingSwap: false,
               originalMemberName: member.member_name,
@@ -415,7 +481,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
             positionSlot: member.position_slot || null,
             userId: member.user_id,
             avatarUrl: member.user_id ? profileMap.get(member.user_id) || null : null,
-            phone: member.user_id ? safeProfileMap.get(member.user_id) || null : null,
+            phone: resolveRosterPhone(member.user_id, member.member_name),
             isSwapped: false,
             hasPendingSwap: member.user_id ? pendingSwapUsers.has(member.user_id) : false,
             originalMemberName: undefined,
