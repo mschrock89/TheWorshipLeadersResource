@@ -97,6 +97,16 @@ export function GroupTextButton({
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isMacDesktop = /Macintosh/i.test(navigator.userAgent) && !isIOS;
     const body = messageBody.trim();
+    const unresolvedSet = new Set(unresolvedNames);
+    const resolvedByName = fallbackRecipientEntries
+      .filter((entry) => entry.phone)
+      .map((entry) => ({ name: entry.name, phone: entry.phone }));
+    console.info("[GroupTextButton] recipient resolution", {
+      totalRosterMembers: fallbackRecipientEntries.length,
+      resolvedCount: recipients.length,
+      resolvedByName,
+      unresolvedNames: Array.from(unresolvedSet),
+    });
 
     if (isIOS || isMacDesktop) {
       const addresses = recipients.join(",");
