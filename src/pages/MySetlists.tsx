@@ -990,6 +990,7 @@ function SetlistTeamRoster({
         <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
         <GroupTextButton
           phoneNumbers={rosterRows.map((member) => member.phone)}
+          rosterMembers={rosterRows.map((member) => ({ name: member.memberName, phone: member.phone }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date,
             serviceLabel,

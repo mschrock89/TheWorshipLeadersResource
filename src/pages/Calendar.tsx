@@ -1531,6 +1531,7 @@ function BandRoster({
         <div className="flex justify-end">
           <GroupTextButton
             phoneNumbers={roster.map((member) => member.phone)}
+            rosterMembers={roster.map((member) => ({ name: member.memberName, phone: member.phone }))}
             defaultMessage={buildRosterGroupTextTemplate({
               date,
               serviceLabel,
@@ -1565,6 +1566,7 @@ function BandRoster({
       <div className="mb-3 flex justify-end">
         <GroupTextButton
           phoneNumbers={roster.map((member) => member.phone)}
+          rosterMembers={roster.map((member) => ({ name: member.memberName, phone: member.phone }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date,
             serviceLabel,
@@ -1915,6 +1917,7 @@ function CustomServiceRoster({
         </h3>
         <GroupTextButton
           phoneNumbers={grouped.map((member) => member.phone)}
+          rosterMembers={grouped.map((member) => ({ name: member.name, phone: member.phone }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date: new Date(`${assignmentDate}T12:00:00`),
             serviceLabel,

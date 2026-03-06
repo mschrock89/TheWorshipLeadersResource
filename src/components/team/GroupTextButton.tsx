@@ -26,6 +26,7 @@ export function buildRosterGroupTextTemplate({
 
 interface GroupTextButtonProps {
   phoneNumbers: Array<string | null | undefined>;
+  rosterMembers?: Array<{ name: string; phone: string | null | undefined }>;
   defaultMessage?: string;
   className?: string;
   size?: "default" | "sm" | "lg" | "icon";
@@ -35,6 +36,7 @@ interface GroupTextButtonProps {
 
 export function GroupTextButton({
   phoneNumbers,
+  rosterMembers,
   defaultMessage = "",
   className,
   size = "sm",
@@ -54,9 +56,27 @@ export function GroupTextButton({
     return hasPlusPrefix ? `+${digitsOnly}` : digitsOnly;
   };
 
-  const recipients = phoneNumbers
-    .map((phone) => (phone ? normalizePhone(phone) : ""))
+  const recipientEntries = (rosterMembers || [])
+    .map((member) => ({
+      name: member.name,
+      phone: member.phone ? normalizePhone(member.phone) : "",
+    }))
+    .filter((entry) => !!entry.name);
+
+  const fallbackRecipientEntries = recipientEntries.length > 0
+    ? recipientEntries
+    : phoneNumbers.map((phone, index) => ({
+        name: `Roster Member ${index + 1}`,
+        phone: phone ? normalizePhone(phone) : "",
+      }));
+
+  const recipients = fallbackRecipientEntries
+    .map((entry) => entry.phone)
     .filter((phone): phone is string => Boolean(phone));
+
+  const unresolvedNames = fallbackRecipientEntries
+    .filter((entry) => !entry.phone)
+    .map((entry) => entry.name);
 
   const openComposer = () => {
     if (recipients.length === 0) {
@@ -119,6 +139,16 @@ export function GroupTextButton({
             placeholder="Add an optional message"
             rows={5}
           />
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
+            <p className="text-muted-foreground">
+              Resolved recipients: {recipients.length}
+            </p>
+            {unresolvedNames.length > 0 && (
+              <p className="text-amber-600">
+                Missing phone for: {unresolvedNames.join(", ")}
+              </p>
+            )}
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
               Cancel
