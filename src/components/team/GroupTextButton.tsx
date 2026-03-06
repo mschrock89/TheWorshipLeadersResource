@@ -45,10 +45,19 @@ export function GroupTextButton({
   const [isOpen, setIsOpen] = useState(false);
   const [messageBody, setMessageBody] = useState(defaultMessage);
 
+  const normalizePhone = (phone: string) => {
+    const trimmed = phone.trim();
+    if (!trimmed) return "";
+    const hasPlusPrefix = trimmed.startsWith("+");
+    const digitsOnly = trimmed.replace(/\D/g, "");
+    if (!digitsOnly) return "";
+    return hasPlusPrefix ? `+${digitsOnly}` : digitsOnly;
+  };
+
   const recipients = Array.from(
     new Set(
       phoneNumbers
-        .map((phone) => phone?.trim())
+        .map((phone) => (phone ? normalizePhone(phone) : ""))
         .filter((phone): phone is string => Boolean(phone))
     )
   );
@@ -70,8 +79,16 @@ export function GroupTextButton({
   const handleOpenMessages = () => {
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isMacDesktop = /Macintosh/i.test(navigator.userAgent) && !isIOS;
     const separator = isAndroid ? ";" : ",";
     const body = messageBody.trim();
+
+    if (isMacDesktop) {
+      window.open(`imessage:${recipients.join(",")}`, "_self");
+      setIsOpen(false);
+      return;
+    }
+
     const delimiter = isIOS ? "&" : "?";
     const bodyParam = body ? `${delimiter}body=${encodeURIComponent(body)}` : "";
     window.open(`sms:${recipients.join(separator)}${bodyParam}`, "_self");
