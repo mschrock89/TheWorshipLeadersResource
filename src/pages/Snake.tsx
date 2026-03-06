@@ -72,42 +72,63 @@ function DirectionPad({
   onCenter: () => void;
 }) {
   return (
-    <div className="relative mx-auto h-72 w-72 select-none">
-      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.38),rgba(46,16,101,0)_72%)] blur-2xl" />
+    <div className="relative mx-auto h-[320px] w-[320px] select-none">
+      <div className="absolute inset-8 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.42),rgba(30,8,66,0)_72%)] blur-2xl" />
 
-      <div className="absolute left-1/2 top-1/2 h-64 w-36 -translate-x-1/2 -translate-y-1/2 rounded-[26px] border border-violet-200/60 bg-[linear-gradient(180deg,rgba(107,33,168,0.95),rgba(76,29,149,0.98)_45%,rgba(67,20,126,1))] shadow-[0_22px_46px_-30px_rgba(46,16,101,1)]" />
-      <div className="absolute left-1/2 top-1/2 h-36 w-64 -translate-x-1/2 -translate-y-1/2 rounded-[26px] border border-violet-200/60 bg-[linear-gradient(180deg,rgba(107,33,168,0.95),rgba(76,29,149,0.98)_45%,rgba(67,20,126,1))] shadow-[0_22px_46px_-30px_rgba(46,16,101,1)]" />
+      <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
+        <defs>
+          <linearGradient id="padBodyGradient" x1="160" y1="30" x2="160" y2="290" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#7c3aed" />
+            <stop offset="55%" stopColor="#5b21b6" />
+            <stop offset="100%" stopColor="#4c1d95" />
+          </linearGradient>
+          <linearGradient id="padCenterGradient" x1="160" y1="94" x2="160" y2="226" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#6d5ef5" />
+            <stop offset="100%" stopColor="#4338ca" />
+          </linearGradient>
+        </defs>
+
+        <path
+          d="M123 22h74c13 0 24 11 24 24v56h56c13 0 24 11 24 24v68c0 13-11 24-24 24h-56v56c0 13-11 24-24 24h-74c-13 0-24-11-24-24v-56H43c-13 0-24-11-24-24v-68c0-13 11-24 24-24h56V46c0-13 11-24 24-24Z"
+          fill="url(#padBodyGradient)"
+          stroke="#bda5ff"
+          strokeOpacity="0.85"
+          strokeWidth="2"
+        />
+
+        <circle cx="160" cy="160" r="74" fill="url(#padCenterGradient)" stroke="#c7b8ff" strokeWidth="3" strokeOpacity="0.92" />
+      </svg>
 
       <button
         onClick={() => onDirection({ x: 0, y: -1 })}
-        className="absolute left-1/2 top-4 z-20 h-20 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute left-1/2 top-4 z-20 h-24 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
       >
-        <ChevronUp className="mx-auto h-11 w-11 stroke-[2.6]" />
+        <ChevronUp className="mx-auto h-12 w-12 stroke-[2.6]" />
       </button>
       <button
         onClick={() => onDirection({ x: -1, y: 0 })}
-        className="absolute left-4 top-1/2 z-20 h-28 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute left-4 top-1/2 z-20 h-28 w-24 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
       >
-        <ChevronLeft className="mx-auto h-11 w-11 stroke-[2.6]" />
+        <ChevronLeft className="mx-auto h-12 w-12 stroke-[2.6]" />
       </button>
       <button
         onClick={() => onDirection({ x: 1, y: 0 })}
-        className="absolute right-4 top-1/2 z-20 h-28 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute right-4 top-1/2 z-20 h-28 w-24 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
       >
-        <ChevronRight className="mx-auto h-11 w-11 stroke-[2.6]" />
+        <ChevronRight className="mx-auto h-12 w-12 stroke-[2.6]" />
       </button>
       <button
         onClick={() => onDirection({ x: 0, y: 1 })}
-        className="absolute bottom-4 left-1/2 z-20 h-20 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute bottom-4 left-1/2 z-20 h-24 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
       >
-        <ChevronDown className="mx-auto h-11 w-11 stroke-[2.6]" />
+        <ChevronDown className="mx-auto h-12 w-12 stroke-[2.6]" />
       </button>
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-30 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border-[5px] border-violet-200/70 bg-[linear-gradient(180deg,rgba(124,58,237,0.96),rgba(91,33,182,0.98))] text-3xl font-semibold leading-none text-white shadow-[0_18px_38px_-24px_rgba(67,20,126,1)] active:scale-[0.985]"
+        className="absolute left-1/2 top-1/2 z-30 h-[132px] w-[132px] -translate-x-1/2 -translate-y-1/2 rounded-full text-5xl font-semibold leading-none text-white active:scale-[0.985]"
       >
-        <span className="relative -top-0.5 leading-none">OK</span>
+        <span className="relative -top-0.5">OK</span>
       </button>
     </div>
   );
@@ -464,7 +485,7 @@ export default function Snake() {
               />
             </div>
 
-            <p className="text-sm text-muted-foreground">Use arrow keys or WASD. On mobile, use the direction buttons.</p>
+            <p className="text-sm text-muted-foreground">Use arrow keys or WASD. On mobile, use the Roku-style pad.</p>
           </CardContent>
         </Card>
 
@@ -476,7 +497,9 @@ export default function Snake() {
             <div className="space-y-3">
               {leaderboardQuery.isError && (
                 <p className="text-sm text-destructive">
-                  Could not load leaderboard: {(leaderboardQuery.error as Error).message}
+                  {(leaderboardQuery.error as Error).message.includes("snake_high_scores")
+                    ? "Leaderboard unavailable: database migration is missing. Apply Supabase migration 20260306110000_add_snake_high_scores.sql."
+                    : `Could not load leaderboard: ${(leaderboardQuery.error as Error).message}`}
                 </p>
               )}
               {leaderboard.length === 0 && !leaderboardQuery.isError && (
