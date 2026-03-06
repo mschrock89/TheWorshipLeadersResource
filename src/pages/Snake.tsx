@@ -96,7 +96,7 @@ function DirectionPad({
           strokeWidth="2"
         />
 
-        <circle cx="160" cy="160" r="74" fill="url(#padCenterGradient)" stroke="#c7b8ff" strokeWidth="3" strokeOpacity="0.92" />
+        <circle cx="160" cy="160" r="52" fill="url(#padCenterGradient)" stroke="#c7b8ff" strokeWidth="3" strokeOpacity="0.92" />
       </svg>
 
       <button
@@ -126,7 +126,7 @@ function DirectionPad({
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-30 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full text-3xl font-semibold leading-none text-white active:scale-[0.985]"
+        className="absolute left-1/2 top-1/2 z-30 h-[72px] w-[72px] -translate-x-1/2 -translate-y-1/2 rounded-full text-2xl font-semibold leading-none text-white active:scale-[0.985]"
       >
         <span className="relative -top-px">OK</span>
       </button>
