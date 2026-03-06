@@ -741,7 +741,7 @@ function SetlistTeamRoster({
       if (error) throw error;
       return (data || []) as Array<{ id: string; phone: string | null }>;
     },
-    enabled: !!campusId,
+    enabled: !!campusId && !!user,
   });
 
   const safePhoneMap = useMemo(

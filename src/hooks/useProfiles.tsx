@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 export type TeamPosition = 
   | "vocalist"
@@ -41,6 +42,8 @@ export interface BasicProfile {
 
 // Use the secure RPC function that masks sensitive data based on consent
 export function useProfiles() {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["profiles"],
     staleTime: 2 * 60 * 1000, // 2 minutes - profiles change occasionally
@@ -50,11 +53,14 @@ export function useProfiles() {
       if (error) throw error;
       return data as Profile[];
     },
+    enabled: !!user && !isLoading,
   });
 }
 
 // Use this for chat/team display - only returns basic info (id, name, avatar)
 export function useBasicProfiles() {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["basic-profiles"],
     staleTime: 2 * 60 * 1000, // 2 minutes - basic profiles change occasionally
@@ -64,11 +70,14 @@ export function useBasicProfiles() {
       if (error) throw error;
       return data as BasicProfile[];
     },
+    enabled: !!user && !isLoading,
   });
 }
 
 // Use the secure RPC function for viewing individual profiles
 export function useProfile(id: string | undefined) {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["profile", id],
     queryFn: async () => {
@@ -85,7 +94,7 @@ export function useProfile(id: string | undefined) {
       const profile = Array.isArray(data) ? data[0] : data;
       return profile as Profile | null;
     },
-    enabled: !!id,
+    enabled: !!id && !!user && !isLoading,
   });
 }
 
@@ -120,6 +129,8 @@ export function useUpdateProfile() {
 
 // Use dedicated function for birthdays - accessible to all authenticated users
 export function useUpcomingBirthdays() {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["upcoming-birthdays"],
     queryFn: async () => {
@@ -143,11 +154,14 @@ export function useUpcomingBirthdays() {
       
       return upcoming;
     },
+    enabled: !!user && !isLoading,
   });
 }
 
 // Use secure function for anniversaries - only returns data user has permission to see
 export function useUpcomingAnniversaries() {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["upcoming-anniversaries"],
     queryFn: async () => {
@@ -173,5 +187,6 @@ export function useUpcomingAnniversaries() {
       
       return upcoming;
     },
+    enabled: !!user && !isLoading,
   });
 }

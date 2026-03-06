@@ -1862,6 +1862,7 @@ function CustomServiceRoster({
   assignmentDate: string;
   serviceLabel?: string;
 }) {
+  const { user, isLoading: authLoading } = useAuth();
   const { data: assignments = [], isLoading } = useCustomServiceAssignments(customServiceId, assignmentDate);
   const { data: safeProfiles = [] } = useQuery({
     queryKey: ["custom-service-safe-phones", customServiceId, assignmentDate],
@@ -1870,6 +1871,7 @@ function CustomServiceRoster({
       if (error) throw error;
       return (data || []) as Array<{ id: string; phone: string | null }>;
     },
+    enabled: !!user && !authLoading,
   });
   const safePhoneMap = useMemo(
     () => new Map(safeProfiles.map((profile) => [profile.id, profile.phone])),

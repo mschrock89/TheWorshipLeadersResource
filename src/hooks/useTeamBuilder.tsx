@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { POSITION_SLOTS } from "@/lib/constants";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface TeamPeriodLock {
   id: string;
@@ -217,6 +218,8 @@ export function useTeamMembersForPeriod(rotationPeriodId: string | null) {
 }
 
 export function useAvailableMembers(campusId?: string | null, ministryType?: string | null) {
+  const { user, isLoading } = useAuth();
+
   return useQuery({
     queryKey: ["available-members", campusId, ministryType],
     queryFn: async () => {
@@ -279,6 +282,7 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
             : (p.ministry_types || []),
         })) as AvailableMember[];
     },
+    enabled: !!user && !isLoading,
   });
 }
 
