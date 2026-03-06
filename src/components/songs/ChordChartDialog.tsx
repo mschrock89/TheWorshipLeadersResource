@@ -226,6 +226,19 @@ function transposeChordChartText(
 }
 
 function detectKeyIndexFromChart(chordChartText: string): number {
+  // Prefer explicit chart metadata if present.
+  const explicitKeyPatterns = [
+    /\bkey\s*[:=-]\s*([A-G](?:#|b)?)/i,
+    /\bcapo\s+\d+.*\bkey\s*[:=-]?\s*([A-G](?:#|b)?)/i,
+  ];
+  for (const pattern of explicitKeyPatterns) {
+    const match = chordChartText.match(pattern);
+    if (match?.[1]) {
+      const idx = NOTE_INDEX[match[1]];
+      if (typeof idx === "number") return idx;
+    }
+  }
+
   // Gather chord tokens from bracketed charts and plain chord-only lines.
   const tokenRegex = /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g;
   const rootVotes = new Map<number, number>();
