@@ -80,17 +80,18 @@ export function GroupTextButton({
     const isAndroid = /Android/i.test(navigator.userAgent);
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isMacDesktop = /Macintosh/i.test(navigator.userAgent) && !isIOS;
-    const separator = isAndroid ? ";" : ",";
     const body = messageBody.trim();
 
-    if (isMacDesktop) {
-      window.open(`imessage:${recipients.join(",")}`, "_self");
+    if (isIOS || isMacDesktop) {
+      const addresses = recipients.join(",");
+      const bodyParam = body ? `;body=${encodeURIComponent(body)}` : "";
+      window.open(`sms:/open?addresses=${addresses}${bodyParam}`, "_self");
       setIsOpen(false);
       return;
     }
 
-    const delimiter = isIOS ? "&" : "?";
-    const bodyParam = body ? `${delimiter}body=${encodeURIComponent(body)}` : "";
+    const separator = isAndroid ? ";" : ",";
+    const bodyParam = body ? `?body=${encodeURIComponent(body)}` : "";
     window.open(`sms:${recipients.join(separator)}${bodyParam}`, "_self");
     setIsOpen(false);
   };
