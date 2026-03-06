@@ -32,6 +32,7 @@ import Approvals from "./pages/Approvals";
 import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
+import Snake from "./pages/Snake";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
@@ -318,6 +319,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><ServiceFlow /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/snake"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><Snake /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }

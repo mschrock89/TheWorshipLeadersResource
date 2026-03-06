@@ -13,7 +13,7 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Gamepad2 } from "lucide-react";
 export default function Dashboard() {
   const {
     user,
@@ -85,6 +85,17 @@ export default function Dashboard() {
   // Check if user is a regular volunteer (not a leader/admin)
   const isVolunteer = !canManageTeam;
   const quickActions = [
+    {
+      title: "Snake",
+      description: "Play a quick round, chase a new personal best, and climb the leaderboard.",
+      to: "/snake",
+      icon: Gamepad2,
+      actionLabel: "Play Snake",
+      cardClassName: "border-rose-300/35 bg-[linear-gradient(145deg,rgba(244,63,94,0.24),rgba(76,5,25,0.34))] text-white",
+      iconClassName: "border-rose-200/25 bg-rose-300/20 text-rose-100",
+      buttonClassName: "bg-rose-300 text-rose-950 hover:bg-rose-200",
+    },
+
     {
       title: "Set Builder",
       description: "Plan upcoming services, shape the flow, and build song sets with confidence.",
