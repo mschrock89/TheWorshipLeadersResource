@@ -74,6 +74,19 @@ export function GroupTextButton({
     .map((entry) => entry.phone)
     .filter((phone): phone is string => Boolean(phone));
 
+  const resolvedEntries = fallbackRecipientEntries.filter(
+    (entry): entry is { name: string; phone: string } => Boolean(entry.phone)
+  );
+
+  const duplicatePhoneMap = resolvedEntries.reduce((acc, entry) => {
+    const names = acc.get(entry.phone) || [];
+    names.push(entry.name);
+    acc.set(entry.phone, names);
+    return acc;
+  }, new Map<string, string[]>());
+
+  const duplicatePhones = Array.from(duplicatePhoneMap.entries()).filter(([, names]) => names.length > 1);
+
   const unresolvedNames = fallbackRecipientEntries
     .filter((entry) => !entry.phone)
     .map((entry) => entry.name);
@@ -98,14 +111,13 @@ export function GroupTextButton({
     const isMacDesktop = /Macintosh/i.test(navigator.userAgent) && !isIOS;
     const body = messageBody.trim();
     const unresolvedSet = new Set(unresolvedNames);
-    const resolvedByName = fallbackRecipientEntries
-      .filter((entry) => entry.phone)
-      .map((entry) => ({ name: entry.name, phone: entry.phone }));
+    const resolvedByName = resolvedEntries.map((entry) => ({ name: entry.name, phone: entry.phone }));
     console.info("[GroupTextButton] recipient resolution", {
       totalRosterMembers: fallbackRecipientEntries.length,
       resolvedCount: recipients.length,
       resolvedByName,
       unresolvedNames: Array.from(unresolvedSet),
+      duplicatePhones: duplicatePhones.map(([phone, names]) => ({ phone, names })),
     });
 
     if (isIOS || isMacDesktop) {
@@ -153,11 +165,23 @@ export function GroupTextButton({
             <p className="text-muted-foreground">
               Resolved recipients: {recipients.length}
             </p>
+            {duplicatePhones.length > 0 && (
+              <p className="text-amber-600">
+                Duplicate phones: {duplicatePhones.map(([phone, names]) => `${names.join(" / ")} -> ${phone}`).join(" | ")}
+              </p>
+            )}
             {unresolvedNames.length > 0 && (
               <p className="text-amber-600">
                 Missing phone for: {unresolvedNames.join(", ")}
               </p>
             )}
+            <div className="max-h-24 overflow-auto rounded border border-border/50 bg-background/70 p-1.5 space-y-0.5">
+              {resolvedEntries.map((entry) => (
+                <p key={`${entry.name}-${entry.phone}`} className="font-mono text-[11px]">
+                  {entry.name} - {entry.phone}
+                </p>
+              ))}
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
