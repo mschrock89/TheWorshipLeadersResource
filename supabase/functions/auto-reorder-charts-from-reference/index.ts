@@ -128,6 +128,9 @@ async function transcribeReferenceTrack(audioUrl: string): Promise<TranscriptSeg
     throw new Error("OPENAI_API_KEY is not configured");
   }
 
+  const MAX_TRANSCRIPTION_BYTES = 26_214_400; // 25 MiB hard limit on OpenAI audio transcription uploads.
+  const SAFE_HEADROOM_BYTES = 16_384;
+
   const audioResponse = await fetch(audioUrl);
   if (!audioResponse.ok) {
     throw new Error(`Unable to fetch reference track audio (${audioResponse.status})`);
@@ -135,10 +138,21 @@ async function transcribeReferenceTrack(audioUrl: string): Promise<TranscriptSeg
 
   const contentType = audioResponse.headers.get("content-type") || "audio/mpeg";
   const audioBlob = await audioResponse.blob();
+  const uploadBlob =
+    audioBlob.size > MAX_TRANSCRIPTION_BYTES
+      ? audioBlob.slice(0, Math.max(1, MAX_TRANSCRIPTION_BYTES - SAFE_HEADROOM_BYTES), contentType)
+      : audioBlob;
+
+  if (audioBlob.size > MAX_TRANSCRIPTION_BYTES * 2) {
+    throw new Error(
+      `reference_track_too_large_for_transcription (${audioBlob.size} bytes). Please upload a smaller/lower-bitrate reference track.`,
+    );
+  }
+
   const fileName = `reference-track.${contentType.includes("wav") ? "wav" : "mp3"}`;
 
   const formData = new FormData();
-  formData.append("file", new File([audioBlob], fileName, { type: contentType }));
+  formData.append("file", new File([uploadBlob], fileName, { type: contentType }));
   formData.append("model", "whisper-1");
   formData.append("response_format", "verbose_json");
 
