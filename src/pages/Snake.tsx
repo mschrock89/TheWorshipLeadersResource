@@ -71,29 +71,43 @@ function DirectionPad({
   onDirection: (next: Direction) => void;
   onCenter: () => void;
 }) {
-  const armClass =
-    "absolute z-10 flex items-center justify-center rounded-xl border border-violet-200/40 bg-[linear-gradient(180deg,rgba(124,58,237,0.92),rgba(76,29,149,0.98))] text-white shadow-[0_16px_30px_-22px_rgba(76,29,149,1)] active:scale-[0.98]";
-
   return (
-    <div className="relative mx-auto h-52 w-52 select-none">
-      <button className={`${armClass} left-1/2 top-0 h-20 w-24 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: -1 })}>
-        <ChevronUp className="h-8 w-8" />
+    <div className="relative mx-auto h-72 w-72 select-none">
+      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.38),rgba(46,16,101,0)_72%)] blur-2xl" />
+
+      <div className="absolute left-1/2 top-1/2 h-64 w-36 -translate-x-1/2 -translate-y-1/2 rounded-[26px] border border-violet-200/60 bg-[linear-gradient(180deg,rgba(107,33,168,0.95),rgba(76,29,149,0.98)_45%,rgba(67,20,126,1))] shadow-[0_22px_46px_-30px_rgba(46,16,101,1)]" />
+      <div className="absolute left-1/2 top-1/2 h-36 w-64 -translate-x-1/2 -translate-y-1/2 rounded-[26px] border border-violet-200/60 bg-[linear-gradient(180deg,rgba(107,33,168,0.95),rgba(76,29,149,0.98)_45%,rgba(67,20,126,1))] shadow-[0_22px_46px_-30px_rgba(46,16,101,1)]" />
+
+      <button
+        onClick={() => onDirection({ x: 0, y: -1 })}
+        className="absolute left-1/2 top-4 z-20 h-20 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+      >
+        <ChevronUp className="mx-auto h-11 w-11 stroke-[2.6]" />
       </button>
-      <button className={`${armClass} left-0 top-1/2 h-24 w-20 -translate-y-1/2`} onClick={() => onDirection({ x: -1, y: 0 })}>
-        <ChevronLeft className="h-8 w-8" />
+      <button
+        onClick={() => onDirection({ x: -1, y: 0 })}
+        className="absolute left-4 top-1/2 z-20 h-28 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+      >
+        <ChevronLeft className="mx-auto h-11 w-11 stroke-[2.6]" />
       </button>
-      <button className={`${armClass} right-0 top-1/2 h-24 w-20 -translate-y-1/2`} onClick={() => onDirection({ x: 1, y: 0 })}>
-        <ChevronRight className="h-8 w-8" />
+      <button
+        onClick={() => onDirection({ x: 1, y: 0 })}
+        className="absolute right-4 top-1/2 z-20 h-28 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+      >
+        <ChevronRight className="mx-auto h-11 w-11 stroke-[2.6]" />
       </button>
-      <button className={`${armClass} bottom-0 left-1/2 h-20 w-24 -translate-x-1/2`} onClick={() => onDirection({ x: 0, y: 1 })}>
-        <ChevronDown className="h-8 w-8" />
+      <button
+        onClick={() => onDirection({ x: 0, y: 1 })}
+        className="absolute bottom-4 left-1/2 z-20 h-20 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+      >
+        <ChevronDown className="mx-auto h-11 w-11 stroke-[2.6]" />
       </button>
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-20 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-100/70 bg-[linear-gradient(180deg,rgba(99,102,241,0.92),rgba(67,56,202,0.98))] text-lg font-semibold tracking-wide text-white shadow-[0_20px_40px_-24px_rgba(67,56,202,1)] active:scale-[0.98]"
+        className="absolute left-1/2 top-1/2 z-30 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full border-[5px] border-violet-200/70 bg-[linear-gradient(180deg,rgba(124,58,237,0.96),rgba(91,33,182,0.98))] text-3xl font-semibold leading-none text-white shadow-[0_18px_38px_-24px_rgba(67,20,126,1)] active:scale-[0.985]"
       >
-        OK
+        <span className="relative -top-0.5 leading-none">OK</span>
       </button>
     </div>
   );
