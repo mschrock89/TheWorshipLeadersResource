@@ -399,7 +399,7 @@ export default function Pong() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative w-full max-w-[680px] overflow-hidden rounded-md border bg-[linear-gradient(180deg,#05080f,#05070d)]" style={{ aspectRatio: "16 / 10" }}>
+            <div className="relative w-full max-w-[760px] overflow-hidden rounded-md border bg-[linear-gradient(180deg,#05080f,#05070d)] aspect-[4/3] sm:aspect-[16/10]">
               <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_49.5%,rgba(148,163,184,0.28)_49.5%,rgba(148,163,184,0.28)_50.5%,transparent_50.5%)]" />
 
               <div
@@ -512,7 +512,13 @@ export default function Pong() {
               </Button>
             </div>
 
-            <p className="text-sm text-muted-foreground">Control your paddle with Arrow Up/Down (or W/S).</p>
+            <p
+              className="select-none text-sm text-muted-foreground"
+              style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              Control your paddle with Arrow Up/Down (or W/S).
+            </p>
           </CardContent>
         </Card>
 
