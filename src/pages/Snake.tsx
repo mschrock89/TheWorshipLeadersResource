@@ -68,8 +68,8 @@ function DirectionPad({
   onCenter: () => void;
 }) {
   return (
-    <div className="relative mx-auto h-[320px] w-[320px] select-none">
-      <div className="absolute inset-8 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.42),rgba(30,8,66,0)_72%)] blur-2xl" />
+    <div className="relative mx-auto h-[250px] w-[250px] select-none sm:h-[320px] sm:w-[320px]">
+      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.42),rgba(30,8,66,0)_72%)] blur-2xl sm:inset-8" />
 
       <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
         <defs>
@@ -97,32 +97,32 @@ function DirectionPad({
 
       <button
         onClick={() => onDirection({ x: 0, y: -1 })}
-        className="absolute left-1/2 top-4 z-20 h-24 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute left-1/2 top-2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:top-4 sm:h-24 sm:w-28"
       >
-        <ChevronUp className="mx-auto h-12 w-12 stroke-[2.6]" />
+        <ChevronUp className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
         onClick={() => onDirection({ x: -1, y: 0 })}
-        className="absolute left-4 top-1/2 z-20 h-28 w-24 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute left-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:left-4 sm:h-28 sm:w-24"
       >
-        <ChevronLeft className="mx-auto h-12 w-12 stroke-[2.6]" />
+        <ChevronLeft className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
         onClick={() => onDirection({ x: 1, y: 0 })}
-        className="absolute right-4 top-1/2 z-20 h-28 w-24 -translate-y-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute right-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:right-4 sm:h-28 sm:w-24"
       >
-        <ChevronRight className="mx-auto h-12 w-12 stroke-[2.6]" />
+        <ChevronRight className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
         onClick={() => onDirection({ x: 0, y: 1 })}
-        className="absolute bottom-4 left-1/2 z-20 h-24 w-28 -translate-x-1/2 rounded-xl text-white active:scale-[0.985]"
+        className="absolute bottom-2 left-1/2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:bottom-4 sm:h-24 sm:w-28"
       >
-        <ChevronDown className="mx-auto h-12 w-12 stroke-[2.6]" />
+        <ChevronDown className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
 
       <button
         onClick={onCenter}
-        className="absolute left-1/2 top-1/2 z-30 h-[72px] w-[72px] -translate-x-1/2 -translate-y-1/2 rounded-full text-2xl font-semibold leading-none text-white active:scale-[0.985]"
+        className="absolute left-1/2 top-1/2 z-30 h-[62px] w-[62px] -translate-x-1/2 -translate-y-1/2 rounded-full text-xl font-semibold leading-none text-white active:scale-[0.985] sm:h-[72px] sm:w-[72px] sm:text-2xl"
       >
         <span className="relative -top-px">OK</span>
       </button>
@@ -405,7 +405,7 @@ export default function Snake() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="relative grid w-full max-w-[320px] overflow-hidden rounded-md border bg-muted/30 sm:max-w-[420px]"
+              className="relative grid w-full max-w-[280px] overflow-hidden rounded-md border bg-muted/30 sm:max-w-[420px]"
               style={{
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
                 aspectRatio: "1 / 1",
@@ -452,9 +452,9 @@ export default function Snake() {
               ))}
             </div>
 
-            <div className="grid w-full max-w-[320px] grid-cols-2 gap-2 sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
+            <div className="grid w-full max-w-[280px] grid-cols-2 gap-2 sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
               <Button
-                className="col-span-1"
+                className="col-span-1 h-10 text-sm sm:h-11 sm:text-base"
                 onClick={() => {
                   if (isGameOver) {
                     resetGame(true);
@@ -480,7 +480,7 @@ export default function Snake() {
                 )}
               </Button>
 
-              <Button className="col-span-1" variant="outline" onClick={() => resetGame(false)}>
+              <Button className="col-span-1 h-10 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => resetGame(false)}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
 

@@ -385,7 +385,16 @@ export default function Pong() {
   const myBest = myBestQuery.data ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6 select-none"
+      style={{
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">Pong</h1>
