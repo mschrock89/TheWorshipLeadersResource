@@ -6,7 +6,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, CircleDot } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -166,17 +166,9 @@ export function MainHeader({
               </DropdownMenuItem>
               {!isAuditionCandidate && (
                 <DropdownMenuItem asChild>
-                  <Link to="/snake" className="flex items-center gap-2">
+                  <Link to="/games" className="flex items-center gap-2">
                     <Gamepad2 className="h-4 w-4" />
-                    Snake
-                  </Link>
-                </DropdownMenuItem>
-              )}
-              {!isAuditionCandidate && (
-                <DropdownMenuItem asChild>
-                  <Link to="/pong" className="flex items-center gap-2">
-                    <CircleDot className="h-4 w-4" />
-                    Pong
+                    Games
                   </Link>
                 </DropdownMenuItem>
               )}
