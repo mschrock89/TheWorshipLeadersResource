@@ -467,15 +467,22 @@ export default function Pong() {
               {isGameOver && <Badge className="col-span-2 w-fit" variant="destructive">Game Over</Badge>}
             </div>
 
-            <div className="grid max-w-[680px] grid-cols-2 gap-3 sm:hidden">
+            <div
+              className="grid max-w-[680px] grid-cols-2 gap-3 select-none sm:hidden"
+              style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
               <Button
                 variant="outline"
                 aria-label="Move paddle up"
-                className="h-20 text-3xl"
+                className="h-20 touch-none select-none text-3xl"
                 onPointerDown={() => {
                   keysRef.current.up = true;
                 }}
                 onPointerUp={() => {
+                  keysRef.current.up = false;
+                }}
+                onPointerCancel={() => {
                   keysRef.current.up = false;
                 }}
                 onPointerLeave={() => {
@@ -487,11 +494,14 @@ export default function Pong() {
               <Button
                 variant="outline"
                 aria-label="Move paddle down"
-                className="h-20 text-3xl"
+                className="h-20 touch-none select-none text-3xl"
                 onPointerDown={() => {
                   keysRef.current.down = true;
                 }}
                 onPointerUp={() => {
+                  keysRef.current.down = false;
+                }}
+                onPointerCancel={() => {
                   keysRef.current.down = false;
                 }}
                 onPointerLeave={() => {
