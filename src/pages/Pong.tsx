@@ -407,7 +407,7 @@ export default function Pong() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative w-full max-w-[760px] overflow-hidden rounded-md border bg-[linear-gradient(180deg,#05080f,#05070d)] aspect-[4/3] sm:aspect-[16/10]">
+            <div className="relative w-full max-w-[560px] overflow-hidden rounded-md border bg-[linear-gradient(180deg,#05080f,#05070d)] aspect-[16/10] sm:max-w-[760px]">
               <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_49.5%,rgba(148,163,184,0.28)_49.5%,rgba(148,163,184,0.28)_50.5%,transparent_50.5%)]" />
 
               <div
@@ -445,7 +445,7 @@ export default function Pong() {
               </div>
             </div>
 
-            <div className="grid w-full max-w-[680px] grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="grid w-full max-w-[560px] grid-cols-2 gap-2 sm:flex sm:max-w-[680px] sm:flex-wrap sm:items-center">
               <Button
                 className="col-span-1"
                 onClick={() => {
@@ -476,7 +476,7 @@ export default function Pong() {
             </div>
 
             <div
-              className="grid max-w-[680px] grid-cols-2 gap-3 select-none sm:hidden"
+              className="grid max-w-[560px] grid-cols-2 gap-3 select-none sm:hidden"
               style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
               onContextMenu={(event) => event.preventDefault()}
             >
