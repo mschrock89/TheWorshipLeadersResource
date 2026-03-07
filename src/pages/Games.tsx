@@ -35,7 +35,10 @@ export default function Games() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         {gameActions.map((action) => (
-          <div key={action.title} className={`group relative h-[220px] overflow-hidden rounded-2xl border p-5 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)] transition-transform duration-200 hover:-translate-y-0.5 ${action.cardClassName}`}>
+          <div
+            key={action.title}
+            className={`group relative min-h-[300px] overflow-hidden rounded-2xl border p-5 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)] transition-transform duration-200 hover:-translate-y-0.5 sm:min-h-[260px] ${action.cardClassName}`}
+          >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_45%)] opacity-80" />
             <div className="relative flex h-full flex-col gap-3">
               <div className="flex items-start justify-between gap-4">
@@ -51,7 +54,7 @@ export default function Games() {
               </div>
               <div className="mt-auto pt-1">
                 <Link to={action.to}>
-                  <Button className={`gap-2 h-12 px-6 text-lg ${action.buttonClassName}`}>
+                  <Button className={`gap-2 h-11 px-5 text-base sm:h-12 sm:px-6 sm:text-lg ${action.buttonClassName}`}>
                     <action.icon className="h-4 w-4" />
                     {action.actionLabel}
                     <ArrowRight className="h-4 w-4" />
