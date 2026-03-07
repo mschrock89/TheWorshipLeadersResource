@@ -33,6 +33,7 @@ import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
 import Snake from "./pages/Snake";
+import Pong from "./pages/Pong";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
@@ -329,6 +330,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><Snake /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pong"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><Pong /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }

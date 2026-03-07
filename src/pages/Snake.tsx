@@ -49,10 +49,6 @@ function getRandomFood(excluded: Point[]): Point {
   return { x: 0, y: 0 };
 }
 
-function toCellKey(point: Point) {
-  return `${point.x},${point.y}`;
-}
-
 function isOpposite(a: Direction, b: Direction) {
   return a.x === -b.x && a.y === -b.y;
 }
@@ -328,8 +324,8 @@ export default function Snake() {
   }, [finishGame]);
 
   const tickSpeed = useMemo(() => {
-    const paceReduction = Math.floor(score / 50) * 8;
-    return Math.max(80, 140 - paceReduction);
+    const paceReduction = Math.floor(score / 50) * 6;
+    return Math.max(90, 165 - paceReduction);
   }, [score]);
 
   useEffect(() => {
@@ -378,15 +374,13 @@ export default function Snake() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [updateDirection]);
 
-  const snakeCells = useMemo(() => new Set(snake.map(toCellKey)), [snake]);
-  const foodCell = toCellKey(food);
-
   const leaderboard = leaderboardQuery.data ?? [];
   const profileById = useMemo(
     () => new Map((profilesQuery.data ?? []).map((profile) => [profile.id, profile])),
     [profilesQuery.data],
   );
   const myBest = myBestQuery.data ?? 0;
+  const cellSizePercent = 100 / BOARD_SIZE;
 
   return (
     <div className="space-y-6">
@@ -411,30 +405,51 @@ export default function Snake() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="grid w-full max-w-[420px] overflow-hidden rounded-md border bg-muted/30"
+              className="relative grid w-full max-w-[420px] overflow-hidden rounded-md border bg-muted/30"
               style={{
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
                 aspectRatio: "1 / 1",
               }}
             >
               {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, index) => {
-                const x = index % BOARD_SIZE;
-                const y = Math.floor(index / BOARD_SIZE);
-                const key = `${x},${y}`;
-                const isSnake = snakeCells.has(key);
-                const isFood = key === foodCell;
+                const key = `${index % BOARD_SIZE},${Math.floor(index / BOARD_SIZE)}`;
 
                 return (
                   <div
                     key={key}
-                    className={[
-                      "border-[0.5px] border-border/30",
-                      isSnake ? "bg-primary" : "bg-background",
-                      isFood ? "bg-red-500" : "",
-                    ].join(" ")}
+                    className="border-[0.5px] border-border/30 bg-background"
                   />
                 );
               })}
+
+              <div
+                className="pointer-events-none absolute z-20 rounded-[2px] bg-red-500"
+                style={{
+                  width: `${cellSizePercent}%`,
+                  height: `${cellSizePercent}%`,
+                  left: `${food.x * cellSizePercent}%`,
+                  top: `${food.y * cellSizePercent}%`,
+                  transitionProperty: "left, top",
+                  transitionDuration: "120ms",
+                  transitionTimingFunction: "linear",
+                }}
+              />
+
+              {snake.map((segment, index) => (
+                <div
+                  key={`${index}-${segment.x}-${segment.y}`}
+                  className={index === 0 ? "pointer-events-none absolute z-30 rounded-[2px] bg-cyan-300" : "pointer-events-none absolute z-20 rounded-[2px] bg-primary"}
+                  style={{
+                    width: `${cellSizePercent}%`,
+                    height: `${cellSizePercent}%`,
+                    left: `${segment.x * cellSizePercent}%`,
+                    top: `${segment.y * cellSizePercent}%`,
+                    transitionProperty: "left, top",
+                    transitionDuration: `${Math.max(70, tickSpeed - 10)}ms`,
+                    transitionTimingFunction: "linear",
+                  }}
+                />
+              ))}
             </div>
 
             <div className="grid w-full max-w-[420px] grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
