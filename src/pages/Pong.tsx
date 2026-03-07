@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Play, Pause, RotateCcw, CircleDot } from "lucide-react";
+import { Play, Pause, RotateCcw, CircleDot, ChevronUp, ChevronDown } from "lucide-react";
 
 type PongFrame = {
   playerY: number;
@@ -467,9 +467,11 @@ export default function Pong() {
               {isGameOver && <Badge className="col-span-2 w-fit" variant="destructive">Game Over</Badge>}
             </div>
 
-            <div className="grid max-w-[680px] grid-cols-2 gap-2 sm:hidden">
+            <div className="grid max-w-[680px] grid-cols-2 gap-3 sm:hidden">
               <Button
                 variant="outline"
+                aria-label="Move paddle up"
+                className="h-20 text-3xl"
                 onPointerDown={() => {
                   keysRef.current.up = true;
                 }}
@@ -480,10 +482,12 @@ export default function Pong() {
                   keysRef.current.up = false;
                 }}
               >
-                Move Up
+                <ChevronUp className="h-10 w-10" />
               </Button>
               <Button
                 variant="outline"
+                aria-label="Move paddle down"
+                className="h-20 text-3xl"
                 onPointerDown={() => {
                   keysRef.current.down = true;
                 }}
@@ -494,7 +498,7 @@ export default function Pong() {
                   keysRef.current.down = false;
                 }}
               >
-                Move Down
+                <ChevronDown className="h-10 w-10" />
               </Button>
             </div>
 
