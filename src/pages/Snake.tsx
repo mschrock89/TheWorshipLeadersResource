@@ -405,7 +405,7 @@ export default function Snake() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div
-              className="relative grid w-full max-w-[280px] overflow-hidden rounded-md border bg-muted/30 sm:max-w-[420px]"
+              className="relative mx-auto grid w-full max-w-[280px] overflow-hidden rounded-md border bg-muted/30 sm:max-w-[420px]"
               style={{
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
                 aspectRatio: "1 / 1",
@@ -452,7 +452,7 @@ export default function Snake() {
               ))}
             </div>
 
-            <div className="grid w-full max-w-[280px] grid-cols-2 gap-2 sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
+            <div className="mx-auto grid w-full max-w-[280px] grid-cols-2 gap-2 sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
               <Button
                 className="col-span-1 h-10 text-sm sm:h-11 sm:text-base"
                 onClick={() => {
