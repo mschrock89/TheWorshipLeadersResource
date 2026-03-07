@@ -40,6 +40,8 @@ const BALL_SIZE = 12;
 const PLAYER_X = 18;
 const AI_X = BOARD_WIDTH - PLAYER_X - PADDLE_WIDTH;
 const WIN_SCORE = 7;
+const AI_REACTION_FRAMES = 7;
+const AI_AIM_ERROR = 18;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -79,6 +81,8 @@ export default function Pong() {
   const lastTimestampRef = useRef<number | null>(null);
   const animationRef = useRef<number | null>(null);
   const keysRef = useRef({ up: false, down: false });
+  const aiFrameCounterRef = useRef(0);
+  const aiAimOffsetRef = useRef(0);
 
   useEffect(() => {
     frameRef.current = frame;
@@ -232,8 +236,12 @@ export default function Pong() {
     if (keysRef.current.down) playerY += playerSpeed;
     playerY = clamp(playerY, 0, BOARD_HEIGHT - PADDLE_HEIGHT);
 
-    const aiTargetY = ballY - PADDLE_HEIGHT / 2 + BALL_SIZE / 2;
-    const aiSpeed = 5.1 * dt;
+    aiFrameCounterRef.current += 1;
+    if (aiFrameCounterRef.current % AI_REACTION_FRAMES === 0) {
+      aiAimOffsetRef.current = (Math.random() * AI_AIM_ERROR * 2) - AI_AIM_ERROR;
+    }
+    const aiTargetY = ballY - PADDLE_HEIGHT / 2 + BALL_SIZE / 2 + aiAimOffsetRef.current;
+    const aiSpeed = 3.9 * dt;
     if (aiY < aiTargetY) aiY += aiSpeed;
     if (aiY > aiTargetY) aiY -= aiSpeed;
     aiY = clamp(aiY, 0, BOARD_HEIGHT - PADDLE_HEIGHT);
