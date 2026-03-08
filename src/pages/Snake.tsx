@@ -69,30 +69,30 @@ function DirectionPad({
 }) {
   return (
     <div className="relative mx-auto h-[250px] w-[250px] select-none sm:h-[320px] sm:w-[320px]">
-      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.42),rgba(30,8,66,0)_72%)] blur-2xl sm:inset-8" />
+      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(53,176,229,0.38),rgba(39,116,157,0)_72%)] blur-2xl sm:inset-8" />
 
       <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
         <defs>
           <linearGradient id="padBodyGradient" x1="160" y1="30" x2="160" y2="290" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#7c3aed" />
-            <stop offset="55%" stopColor="#5b21b6" />
-            <stop offset="100%" stopColor="#4c1d95" />
+            <stop offset="0%" stopColor="#55C0ED" />
+            <stop offset="55%" stopColor="#35B0E5" />
+            <stop offset="100%" stopColor="#27749D" />
           </linearGradient>
           <linearGradient id="padCenterGradient" x1="160" y1="94" x2="160" y2="226" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#6d5ef5" />
-            <stop offset="100%" stopColor="#4338ca" />
+            <stop offset="0%" stopColor="#5CCAEF" />
+            <stop offset="100%" stopColor="#008DB3" />
           </linearGradient>
         </defs>
 
         <path
           d="M123 22h74c13 0 24 11 24 24v56h56c13 0 24 11 24 24v68c0 13-11 24-24 24h-56v56c0 13-11 24-24 24h-74c-13 0-24-11-24-24v-56H43c-13 0-24-11-24-24v-68c0-13 11-24 24-24h56V46c0-13 11-24 24-24Z"
           fill="url(#padBodyGradient)"
-          stroke="#bda5ff"
+          stroke="#93D6F1"
           strokeOpacity="0.85"
           strokeWidth="2"
         />
 
-        <circle cx="160" cy="160" r="52" fill="url(#padCenterGradient)" stroke="#c7b8ff" strokeWidth="3" strokeOpacity="0.92" />
+        <circle cx="160" cy="160" r="52" fill="url(#padCenterGradient)" stroke="#C1E7F7" strokeWidth="3" strokeOpacity="0.92" />
       </svg>
 
       <button
