@@ -33,6 +33,7 @@ import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
 import Snake from "./pages/Snake";
+import Galaga from "./pages/Galaga";
 import Pong from "./pages/Pong";
 import Games from "./pages/Games";
 import Privacy from "./pages/Privacy";
@@ -341,6 +342,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><Pong /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/galaga"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><Galaga /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }

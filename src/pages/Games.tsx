@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, CircleDot, Gamepad2 } from "lucide-react";
+import { ArrowRight, CircleDot, Gamepad2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const gameActions = [
@@ -22,6 +22,16 @@ const gameActions = [
     cardClassName: "border-cyan-300/35 bg-[linear-gradient(145deg,rgba(34,211,238,0.2),rgba(8,47,73,0.34))] text-white",
     iconClassName: "border-cyan-200/30 bg-cyan-300/15 text-cyan-100",
     buttonClassName: "bg-cyan-300 text-cyan-950 hover:bg-cyan-200",
+  },
+  {
+    title: "Galager",
+    description: "Blast through dive-bombing alien waves, survive longer, and chase the high score.",
+    to: "/galaga",
+    icon: Rocket,
+    actionLabel: "Play Galager",
+    cardClassName: "border-amber-300/35 bg-[linear-gradient(145deg,rgba(251,191,36,0.22),rgba(55,26,4,0.38))] text-white",
+    iconClassName: "border-amber-200/30 bg-amber-300/15 text-amber-100",
+    buttonClassName: "bg-amber-300 text-amber-950 hover:bg-amber-200",
   },
 ];
 
