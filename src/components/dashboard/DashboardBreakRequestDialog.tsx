@@ -180,7 +180,7 @@ export function DashboardBreakRequestDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Request a Break</DialogTitle>
           <DialogDescription>
@@ -375,7 +375,7 @@ export function DashboardBreakRequestDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Exit
           </Button>
           <Button
             onClick={handleSubmit}
@@ -384,7 +384,7 @@ export function DashboardBreakRequestDialog({
             {createBreakRequest.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
-            Submit Request
+            Confirm
           </Button>
         </DialogFooter>
       </DialogContent>

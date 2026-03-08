@@ -120,7 +120,7 @@ export function BreakRequestDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Coffee className="h-5 w-5 text-primary" />
@@ -235,7 +235,7 @@ export function BreakRequestDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Exit
           </Button>
           <Button
             onClick={handleSubmit}
@@ -248,7 +248,7 @@ export function BreakRequestDialog({
             {createRequest.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
-            Submit Request
+            Confirm
           </Button>
         </DialogFooter>
       </DialogContent>
