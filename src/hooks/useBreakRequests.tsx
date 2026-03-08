@@ -9,6 +9,8 @@ export interface BreakRequest {
   rotation_period_id: string;
   reason: string | null;
   request_type: "need_break" | "willing_break";
+  request_scope: "full_trimester" | "blackout_dates";
+  blackout_dates: string[] | null;
   status: "pending" | "approved" | "denied";
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -31,6 +33,12 @@ export interface RotationPeriod {
   is_active: boolean;
 }
 
+type MyBreakRequestRow = BreakRequest & {
+  rotation_periods?: {
+    name: string;
+  } | null;
+};
+
 export function useMyBreakRequests() {
   const { user } = useAuth();
 
@@ -50,7 +58,7 @@ export function useMyBreakRequests() {
 
       if (error) throw error;
 
-      return (data || []).map((r: any) => ({
+      return ((data || []) as MyBreakRequestRow[]).map((r) => ({
         ...r,
         period_name: r.rotation_periods?.name,
       })) as BreakRequest[];
@@ -137,11 +145,15 @@ export function useCreateBreakRequest() {
       rotationPeriodId,
       reason,
       requestType = "need_break",
+      requestScope = "full_trimester",
+      blackoutDates,
       ministryType,
     }: {
       rotationPeriodId: string;
       reason?: string;
       requestType?: "need_break" | "willing_break";
+      requestScope?: "full_trimester" | "blackout_dates";
+      blackoutDates?: string[];
       ministryType?: string;
     }) => {
       if (!user?.id) throw new Error("Not authenticated");
@@ -151,6 +163,8 @@ export function useCreateBreakRequest() {
         rotation_period_id: rotationPeriodId,
         reason: reason || null,
         request_type: requestType,
+        request_scope: requestScope,
+        blackout_dates: blackoutDates?.length ? blackoutDates : null,
         ministry_type: ministryType || null,
       });
 
@@ -160,7 +174,7 @@ export function useCreateBreakRequest() {
       queryClient.invalidateQueries({ queryKey: ["break-requests"] });
       toast.success("Break request submitted");
     },
-    onError: (error: any) => {
+    onError: (error: { code?: string }) => {
       if (error.code === "23505") {
         toast.error("You already have a break request for this trimester");
       } else {

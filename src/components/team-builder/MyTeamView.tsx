@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen } from "lucide-react";
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import { cn } from "@/lib/utils";
 import { MINISTRY_SLOT_CATEGORIES } from "@/lib/constants";
@@ -26,7 +26,13 @@ interface MyTeamViewProps {
   isLoading: boolean;
   periodName?: string;
   isAdmin?: boolean;
-  periods?: Array<{ id: string; name: string; is_active: boolean }>;
+  periods?: Array<{
+    id: string;
+    name: string;
+    is_active: boolean;
+    start_date: string;
+    end_date: string;
+  }>;
   ministryFilter?: string;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
@@ -52,6 +58,7 @@ function CondensedTeamCard({
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
 
   const showVocalists = allowedCategories.includes("Vocalists");
+  const showSpeaker = allowedCategories.includes("Speaker");
   const showBand = allowedCategories.includes("Band");
   // Only show Production when explicitly in the allowed categories
   const showProduction = allowedCategories.includes("Production");
@@ -66,12 +73,14 @@ function CondensedTeamCard({
         : members.filter(m => m.ministry_types?.includes(ministryFilter));
 
   const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
 
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
+    ...(showSpeaker ? speakerSlots : []),
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
@@ -140,6 +149,7 @@ function CondensedTeamCard({
 
       <CardContent className="p-3 space-y-2">
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && (() => {
@@ -233,6 +243,7 @@ function FullTeamCard({
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
 
   const showVocalists = allowedCategories.includes("Vocalists");
+  const showSpeaker = allowedCategories.includes("Speaker");
   const showBand = allowedCategories.includes("Band");
   // Only show Production when explicitly in the allowed categories
   const showProduction = allowedCategories.includes("Production");
@@ -247,6 +258,7 @@ function FullTeamCard({
         : members.filter(m => m.ministry_types?.includes(ministryFilter));
 
   const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
@@ -327,6 +339,7 @@ function FullTeamCard({
 
       <CardContent className="p-4 space-y-4">
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && (() => {

@@ -41,6 +41,15 @@ export function BreakRequestsList({
   const cancelRequest = useCancelBreakRequest();
   const reviewRequest = useReviewBreakRequest();
 
+  const formatBlackoutDates = (dates: string[] | null | undefined) => {
+    if (!dates?.length) return null;
+    return dates
+      .slice()
+      .sort()
+      .map((date) => format(new Date(`${date}T00:00:00`), "MMM d"))
+      .join(", ");
+  };
+
   if (requests.length === 0) {
     return (
       <Card className="border-dashed">
@@ -82,6 +91,11 @@ export function BreakRequestsList({
                       {request.reason}
                     </p>
                   )}
+                  {request.request_scope === "blackout_dates" && request.blackout_dates?.length ? (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Blackout weekends: {formatBlackoutDates(request.blackout_dates)}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground mt-2">
                     Submitted {format(new Date(request.created_at), "MMM d, yyyy")}
                   </p>

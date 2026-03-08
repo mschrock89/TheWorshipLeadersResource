@@ -222,10 +222,12 @@ export type Database = {
       }
       break_requests: {
         Row: {
+          blackout_dates: string[] | null
           created_at: string
           id: string
           ministry_type: string | null
           reason: string | null
+          request_scope: string
           request_type: string
           reviewed_at: string | null
           reviewed_by: string | null
@@ -235,10 +237,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          blackout_dates?: string[] | null
           created_at?: string
           id?: string
           ministry_type?: string | null
           reason?: string | null
+          request_scope?: string
           request_type?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -248,10 +252,12 @@ export type Database = {
           user_id: string
         }
         Update: {
+          blackout_dates?: string[] | null
           created_at?: string
           id?: string
           ministry_type?: string | null
           reason?: string | null
+          request_scope?: string
           request_type?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -544,6 +550,61 @@ export type Database = {
             columns: ["vocalist_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      draft_set_song_charts: {
+        Row: {
+          chord_chart_text: string | null
+          created_at: string
+          created_by: string | null
+          draft_set_song_id: string
+          id: string
+          source_song_version_id: string | null
+          updated_at: string
+          version_name: string
+        }
+        Insert: {
+          chord_chart_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_set_song_id: string
+          id?: string
+          source_song_version_id?: string | null
+          updated_at?: string
+          version_name?: string
+        }
+        Update: {
+          chord_chart_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_set_song_id?: string
+          id?: string
+          source_song_version_id?: string | null
+          updated_at?: string
+          version_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_set_song_charts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_set_song_charts_draft_set_song_id_fkey"
+            columns: ["draft_set_song_id"]
+            isOneToOne: true
+            referencedRelation: "draft_set_songs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_set_song_charts_source_song_version_id_fkey"
+            columns: ["source_song_version_id"]
+            isOneToOne: false
+            referencedRelation: "song_versions"
             referencedColumns: ["id"]
           },
         ]
@@ -2226,6 +2287,7 @@ export type Database = {
         | "admin"
         | "campus_worship_pastor"
         | "student_worship_pastor"
+        | "speaker"
         | "volunteer"
         | "campus_admin"
         | "network_worship_leader"
@@ -2238,6 +2300,9 @@ export type Database = {
         | "lead_vocals"
         | "harmony_vocals"
         | "background_vocals"
+        | "teacher"
+        | "announcement"
+        | "closing_prayer"
         | "acoustic_guitar"
         | "electric_guitar"
         | "bass"
@@ -2406,6 +2471,7 @@ export const Constants = {
         "admin",
         "campus_worship_pastor",
         "student_worship_pastor",
+        "speaker",
         "volunteer",
         "campus_admin",
         "network_worship_leader",
@@ -2419,6 +2485,9 @@ export const Constants = {
         "lead_vocals",
         "harmony_vocals",
         "background_vocals",
+        "teacher",
+        "announcement",
+        "closing_prayer",
         "acoustic_guitar",
         "electric_guitar",
         "bass",

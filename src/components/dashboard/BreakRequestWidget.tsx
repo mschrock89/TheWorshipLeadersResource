@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { format } from "date-fns";
 import { Coffee, X, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,15 @@ export function BreakRequestWidget() {
   const cancelBreakRequest = useCancelBreakRequest();
 
   const pendingRequests = myRequests.filter((r) => r.status === "pending");
+
+  const formatBlackoutSummary = (dates: string[] | null | undefined) => {
+    if (!dates?.length) return null;
+    const sortedDates = dates.slice().sort();
+    const preview = sortedDates.slice(0, 2).map((date) => format(new Date(`${date}T00:00:00`), "MMM d"));
+    return sortedDates.length > 2
+      ? `${preview.join(", ")} +${sortedDates.length - 2} more`
+      : preview.join(", ");
+  };
 
   const handleCancel = async (requestId: string) => {
     setCancellingId(requestId);
@@ -37,43 +47,60 @@ export function BreakRequestWidget() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Show pending requests */}
-          {pendingRequests.length > 0 && (
+          {pendingRequests.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-muted-foreground">
                 Pending Requests
               </p>
               <div className="flex flex-col gap-2">
-                {pendingRequests.map((req) => (
-                  <div
-                    key={req.id}
-                    className="flex items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {req.period_name || "Unknown Period"}
-                      </Badge>
-                      {req.request_type === "willing_break" && (
-                        <span className="text-xs text-muted-foreground">(Willing)</span>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleCancel(req.id)}
-                      disabled={cancellingId === req.id}
+                {pendingRequests.map((req) => {
+                  const isBlackoutRequest = req.request_scope === "blackout_dates";
+                  const isWillingBreak = req.request_type === "willing_break";
+
+                  return (
+                    <div
+                      key={req.id}
+                      className="flex items-center justify-between gap-2 rounded-md border bg-muted/50 px-3 py-2"
                     >
-                      {cancellingId === req.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <X className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                ))}
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {req.period_name || "Unknown Period"}
+                          </Badge>
+                          {isBlackoutRequest ? (
+                            <Badge variant="outline" className="text-xs">
+                              {req.blackout_dates?.length || 0} blackout dates
+                            </Badge>
+                          ) : null}
+                          {isWillingBreak ? (
+                            <span className="text-xs text-muted-foreground">(Willing)</span>
+                          ) : null}
+                        </div>
+                        {isBlackoutRequest ? (
+                          <p className="text-xs text-muted-foreground">
+                            {formatBlackoutSummary(req.blackout_dates)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleCancel(req.id)}
+                        disabled={cancellingId === req.id}
+                      >
+                        {cancellingId === req.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
+          ) : null}
 
           <Button
             onClick={() => setDialogOpen(true)}

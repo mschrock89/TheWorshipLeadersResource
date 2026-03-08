@@ -145,6 +145,13 @@ interface RequestCardProps {
 
 function RequestCard({ request, onApprove, onDeny, isLoading }: RequestCardProps) {
   const requestTypeLabel = REQUEST_TYPE_LABELS[request.request_type] || request.request_type;
+  const blackoutDatesLabel = request.blackout_dates?.length
+    ? request.blackout_dates
+        .slice()
+        .sort()
+        .map((date) => format(new Date(`${date}T00:00:00`), "MMM d"))
+        .join(", ")
+    : null;
 
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border p-2.5 text-sm">
@@ -159,9 +166,19 @@ function RequestCard({ request, onApprove, onDeny, isLoading }: RequestCardProps
               {request.ministry_type}
             </Badge>
           )}
+          {request.request_scope === "blackout_dates" && (
+            <Badge variant="outline" className="text-xs">
+              {request.blackout_dates?.length || 0} blackout dates
+            </Badge>
+          )}
         </div>
         {request.reason && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{request.reason}</p>
+        )}
+        {request.request_scope === "blackout_dates" && blackoutDatesLabel && (
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+            {blackoutDatesLabel}
+          </p>
         )}
         <p className="text-xs text-muted-foreground mt-1">
           {format(new Date(request.created_at), "MMM d, yyyy")}
