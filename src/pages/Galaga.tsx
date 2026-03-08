@@ -71,8 +71,8 @@ const PLAYER_WIDTH = 44;
 const PLAYER_HEIGHT = 28;
 const PLAYER_Y = BOARD_HEIGHT - 64;
 const PLAYER_SPEED = 5.8;
-const PLAYER_BULLET_SPEED = -7.2;
-const ENEMY_BULLET_SPEED = 3.2;
+const PLAYER_BULLET_SPEED = -8.1;
+const ENEMY_BULLET_SPEED = 3.8;
 const MAX_PLAYER_BULLETS = 2;
 const INITIAL_LIVES = 3;
 
@@ -344,7 +344,7 @@ export default function Galaga() {
     }
 
     if (enemies.length > 0) {
-      const formationSpeed = (0.58 + level * 0.045) * dt;
+      const formationSpeed = (0.72 + level * 0.055) * dt;
       const nextLeft = Math.min(...enemies.map((enemy) => enemy.x + formationDirection * formationSpeed));
       const nextRight = Math.max(...enemies.map((enemy) => enemy.x + formationDirection * formationSpeed + enemy.width));
 
@@ -366,7 +366,7 @@ export default function Galaga() {
     });
 
     shootingColumns.forEach((enemy) => {
-      const chance = 0.0015 + level * 0.00022;
+      const chance = 0.0022 + level * 0.00028;
       if (Math.random() < chance * dt) {
         enemyBullets.push({
           id: `enemy-bullet-${bulletIdRef.current += 1}`,
@@ -385,14 +385,14 @@ export default function Galaga() {
     enemies
       .filter((enemy) => enemy.kind === "boss")
       .forEach((enemy) => {
-        const bombChance = 0.0009 + level * 0.00008;
+        const bombChance = 0.0014 + level * 0.00012;
         if (Math.random() < bombChance * dt) {
           enemyBullets.push({
             id: `enemy-bomb-${bulletIdRef.current += 1}`,
-            x: enemy.x + enemy.width / 2 - 1.5,
+            x: enemy.x + enemy.width / 2 - 4,
             y: enemy.y + enemy.height - 2,
-            width: 3,
-            height: 8,
+            width: 8,
+            height: 14,
             vx: 0,
             vy: ENEMY_BULLET_SPEED * 0.82 + level * 0.04,
             owner: "enemy",
@@ -411,10 +411,10 @@ export default function Galaga() {
         if (bullet.variant === "bomb" && bullet.y + bullet.height >= BOARD_HEIGHT - 8) {
           explosions.push({
             id: `explosion-${bullet.id}`,
-            x: bullet.x - 10,
-            y: BOARD_HEIGHT - 22,
-            size: 28,
-            ttlMs: 240,
+            x: bullet.x - 30,
+            y: BOARD_HEIGHT - 56,
+            size: 72,
+            ttlMs: 340,
           });
           return false;
         }
@@ -437,10 +437,10 @@ export default function Galaga() {
         destroyedEnemyBulletIds.add(bomb.id);
         explosions.push({
           id: `explosion-${bomb.id}`,
-          x: bomb.x - 12,
-          y: bomb.y - 12,
-          size: 32,
-          ttlMs: 280,
+          x: bomb.x - 28,
+          y: bomb.y - 28,
+          size: 64,
+          ttlMs: 340,
         });
         score += 25;
         return;
@@ -721,8 +721,8 @@ export default function Galaga() {
                     top: `${(explosion.y / BOARD_HEIGHT) * 100}%`,
                     width: `${(explosion.size / BOARD_WIDTH) * 100}%`,
                     height: `${(explosion.size / BOARD_HEIGHT) * 100}%`,
-                    opacity: Math.max(0.2, explosion.ttlMs / 280),
-                    transform: `scale(${1 + (1 - explosion.ttlMs / 280) * 0.55})`,
+                    opacity: Math.max(0.2, explosion.ttlMs / 340),
+                    transform: `scale(${1 + (1 - explosion.ttlMs / 340) * 0.8})`,
                   }}
                 />
               ))}
@@ -826,7 +826,13 @@ export default function Galaga() {
               </Button>
             </div>
 
-            <p className="mx-auto w-full max-w-[760px] text-sm text-muted-foreground">Move with Left/Right or A/D. Hold Space to fire. Press Enter to start or pause.</p>
+            <p
+              className="mx-auto w-full max-w-[760px] text-sm text-muted-foreground"
+              style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              Move with Left/Right or A/D. Hold Space to fire. Press Enter to start or pause.
+            </p>
           </CardContent>
         </Card>
 
@@ -837,14 +843,24 @@ export default function Galaga() {
           <CardContent>
             <div className="space-y-3">
               {leaderboardQuery.isError && (
-                <p className="text-sm text-destructive">
+                <p
+                  className="text-sm text-destructive"
+                  style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+                  onContextMenu={(event) => event.preventDefault()}
+                >
                   {(leaderboardQuery.error as Error).message.includes("galaga_high_scores")
                     ? "Leaderboard unavailable: database migration is missing. Apply Supabase migration 20260308103000_add_galaga_high_scores.sql."
                     : `Could not load leaderboard: ${(leaderboardQuery.error as Error).message}`}
                 </p>
               )}
               {leaderboard.length === 0 && !leaderboardQuery.isError && (
-                <p className="text-sm text-muted-foreground">No scores yet. Be the first to post one.</p>
+                <p
+                  className="text-sm text-muted-foreground"
+                  style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+                  onContextMenu={(event) => event.preventDefault()}
+                >
+                  No scores yet. Be the first to post one.
+                </p>
               )}
 
               {leaderboard.map((row, index) => {
