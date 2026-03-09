@@ -40,9 +40,9 @@ const PADDLE_HEIGHT = 86;
 const BALL_SIZE = 12;
 const PLAYER_X = 18;
 const AI_X = BOARD_WIDTH - PLAYER_X - PADDLE_WIDTH;
-const WIN_SCORE = 7;
-const AI_REACTION_FRAMES = 7;
-const AI_AIM_ERROR = 18;
+const WIN_SCORE = 5;
+const AI_REACTION_FRAMES = 12;
+const AI_AIM_ERROR = 34;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -61,8 +61,8 @@ function createInitialFrame(): PongFrame {
     aiY: BOARD_HEIGHT / 2 - PADDLE_HEIGHT / 2,
     ballX: BOARD_WIDTH / 2 - BALL_SIZE / 2,
     ballY: BOARD_HEIGHT / 2 - BALL_SIZE / 2,
-    ballVX: -5,
-    ballVY: 2.2,
+    ballVX: -4.2,
+    ballVY: 1.7,
     playerScore: 0,
     aiScore: 0,
   };
@@ -183,8 +183,8 @@ export default function Pong() {
   });
 
   const resetBall = useCallback((towardPlayer: boolean) => {
-    const horizontal = towardPlayer ? -5 : 5;
-    const vertical = (Math.random() * 2.8 - 1.4) || 1;
+    const horizontal = towardPlayer ? -4.2 : 4.2;
+    const vertical = (Math.random() * 2.2 - 1.1) || 0.8;
 
     frameRef.current = {
       ...frameRef.current,
@@ -232,7 +232,7 @@ export default function Pong() {
     let playerScore = current.playerScore;
     let aiScore = current.aiScore;
 
-    const playerSpeed = 6.2 * dt;
+    const playerSpeed = 6.8 * dt;
     if (keysRef.current.up) playerY -= playerSpeed;
     if (keysRef.current.down) playerY += playerSpeed;
     playerY = clamp(playerY, 0, BOARD_HEIGHT - PADDLE_HEIGHT);
@@ -242,7 +242,7 @@ export default function Pong() {
       aiAimOffsetRef.current = (Math.random() * AI_AIM_ERROR * 2) - AI_AIM_ERROR;
     }
     const aiTargetY = ballY - PADDLE_HEIGHT / 2 + BALL_SIZE / 2 + aiAimOffsetRef.current;
-    const aiSpeed = 3.9 * dt;
+    const aiSpeed = 2.7 * dt;
     if (aiY < aiTargetY) aiY += aiSpeed;
     if (aiY > aiTargetY) aiY -= aiSpeed;
     aiY = clamp(aiY, 0, BOARD_HEIGHT - PADDLE_HEIGHT);
@@ -268,8 +268,8 @@ export default function Pong() {
     if (playerHit && ballVX < 0) {
       ballX = PLAYER_X + PADDLE_WIDTH;
       const offset = (ballY + BALL_SIZE / 2 - (playerY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-      ballVX = Math.abs(ballVX) * 1.02;
-      ballVY += offset * 1.8;
+      ballVX = Math.abs(ballVX) * 1.008;
+      ballVY += offset * 1.35;
     }
 
     const aiHit =
@@ -281,8 +281,8 @@ export default function Pong() {
     if (aiHit && ballVX > 0) {
       ballX = AI_X - BALL_SIZE;
       const offset = (ballY + BALL_SIZE / 2 - (aiY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-      ballVX = -Math.abs(ballVX) * 1.02;
-      ballVY += offset * 1.8;
+      ballVX = -Math.abs(ballVX) * 1.008;
+      ballVY += offset * 1.35;
     }
 
     if (ballX < -BALL_SIZE) {
