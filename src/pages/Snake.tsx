@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { haptic } from "@/lib/haptics";
 import { Play, Pause, RotateCcw, Gamepad2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Point = { x: number; y: number };
@@ -96,32 +97,47 @@ function DirectionPad({
       </svg>
 
       <button
-        onClick={() => onDirection({ x: 0, y: -1 })}
+        onClick={() => {
+          haptic("selection");
+          onDirection({ x: 0, y: -1 });
+        }}
         className="absolute left-1/2 top-2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:top-4 sm:h-24 sm:w-28"
       >
         <ChevronUp className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
-        onClick={() => onDirection({ x: -1, y: 0 })}
+        onClick={() => {
+          haptic("selection");
+          onDirection({ x: -1, y: 0 });
+        }}
         className="absolute left-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:left-4 sm:h-28 sm:w-24"
       >
         <ChevronLeft className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
-        onClick={() => onDirection({ x: 1, y: 0 })}
+        onClick={() => {
+          haptic("selection");
+          onDirection({ x: 1, y: 0 });
+        }}
         className="absolute right-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:right-4 sm:h-28 sm:w-24"
       >
         <ChevronRight className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
       <button
-        onClick={() => onDirection({ x: 0, y: 1 })}
+        onClick={() => {
+          haptic("selection");
+          onDirection({ x: 0, y: 1 });
+        }}
         className="absolute bottom-2 left-1/2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:bottom-4 sm:h-24 sm:w-28"
       >
         <ChevronDown className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
       </button>
 
       <button
-        onClick={onCenter}
+        onClick={() => {
+          haptic("light");
+          onCenter();
+        }}
         className="absolute left-1/2 top-1/2 z-30 h-[62px] w-[62px] -translate-x-1/2 -translate-y-1/2 rounded-full text-xl font-semibold leading-none text-white active:scale-[0.985] sm:h-[72px] sm:w-[72px] sm:text-2xl"
       >
         <span className="relative -top-px">OK</span>
@@ -456,6 +472,7 @@ export default function Snake() {
               <Button
                 className="col-span-1 h-10 text-sm sm:h-11 sm:text-base"
                 onClick={() => {
+                  haptic("light");
                   if (isGameOver) {
                     resetGame(true);
                     return;
@@ -480,7 +497,10 @@ export default function Snake() {
                 )}
               </Button>
 
-              <Button className="col-span-1 h-10 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => resetGame(false)}>
+              <Button className="col-span-1 h-10 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => {
+                haptic("light");
+                resetGame(false);
+              }}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
 

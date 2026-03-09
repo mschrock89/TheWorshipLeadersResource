@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
+import { haptic } from "@/lib/haptics";
 
 type LeaderboardRow = {
   user_id: string;
@@ -758,6 +759,7 @@ export default function Galaga() {
               <Button
                 className="col-span-1"
                 onClick={() => {
+                  haptic("light");
                   if (isGameOver) {
                     resetGame(true);
                     return;
@@ -777,7 +779,10 @@ export default function Galaga() {
                 )}
               </Button>
 
-              <Button className="col-span-1" variant="outline" onClick={() => resetGame(false)}>
+              <Button className="col-span-1" variant="outline" onClick={() => {
+                haptic("light");
+                resetGame(false);
+              }}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
 
@@ -790,6 +795,7 @@ export default function Galaga() {
                 className="h-20 touch-none"
                 aria-label="Move left"
                 onPointerDown={() => {
+                  haptic("selection");
                   setControl("left", true);
                   startFromMovement();
                 }}
@@ -803,7 +809,10 @@ export default function Galaga() {
                 variant="outline"
                 className="h-20 touch-none"
                 aria-label="Fire"
-                onPointerDown={() => setControl("shoot", true)}
+                onPointerDown={() => {
+                  haptic("selection");
+                  setControl("shoot", true);
+                }}
                 onPointerUp={() => setControl("shoot", false)}
                 onPointerCancel={() => setControl("shoot", false)}
                 onPointerLeave={() => setControl("shoot", false)}
@@ -815,6 +824,7 @@ export default function Galaga() {
                 className="h-20 touch-none"
                 aria-label="Move right"
                 onPointerDown={() => {
+                  haptic("selection");
                   setControl("right", true);
                   startFromMovement();
                 }}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { haptic } from "@/lib/haptics";
 import { Play, Pause, RotateCcw, CircleDot, ChevronUp, ChevronDown } from "lucide-react";
 
 type PongFrame = {
@@ -458,6 +459,7 @@ export default function Pong() {
               <Button
                 className="col-span-1"
                 onClick={() => {
+                  haptic("light");
                   if (isGameOver) {
                     resetMatch(true);
                     return;
@@ -477,7 +479,10 @@ export default function Pong() {
                 )}
               </Button>
 
-              <Button className="col-span-1" variant="outline" onClick={() => resetMatch(false)}>
+              <Button className="col-span-1" variant="outline" onClick={() => {
+                haptic("light");
+                resetMatch(false);
+              }}>
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
 
@@ -494,6 +499,7 @@ export default function Pong() {
                 aria-label="Move paddle up"
                 className="h-20 touch-none select-none text-3xl"
                 onPointerDown={() => {
+                  haptic("selection");
                   keysRef.current.up = true;
                 }}
                 onPointerUp={() => {
@@ -513,6 +519,7 @@ export default function Pong() {
                 aria-label="Move paddle down"
                 className="h-20 touch-none select-none text-3xl"
                 onPointerDown={() => {
+                  haptic("selection");
                   keysRef.current.down = true;
                 }}
                 onPointerUp={() => {
