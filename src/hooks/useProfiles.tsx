@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 export type TeamPosition = 
   | "vocalist"
+  | "teacher" | "announcement" | "closing_prayer"
   | "lead_vocals" | "harmony_vocals" | "background_vocals"
   | "acoustic_guitar" | "acoustic_1" | "acoustic_2"
   | "electric_guitar" | "electric_1" | "electric_2"
@@ -38,6 +39,53 @@ export interface BasicProfile {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
+}
+
+export function useOnboardingStatus(userId: string | undefined) {
+  const { user, isLoading } = useAuth();
+
+  return useQuery({
+    queryKey: ["onboarding-status", userId],
+    queryFn: async () => {
+      if (!userId) return true;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("has_completed_onboarding")
+        .eq("id", userId)
+        .single();
+
+      if (error) throw error;
+      return data?.has_completed_onboarding ?? false;
+    },
+    enabled: !!userId && !!user && !isLoading,
+  });
+}
+
+export function useCompleteOnboarding() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ has_completed_onboarding: true })
+        .eq("id", userId);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: ["onboarding-status", userId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Couldn't save onboarding",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 }
 
 // Use the secure RPC function that masks sensitive data based on consent

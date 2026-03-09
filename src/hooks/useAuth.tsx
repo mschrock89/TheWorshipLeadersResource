@@ -31,30 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [canSwitchCampusChat, setCanSwitchCampusChat] = useState(false);
 
   useEffect(() => {
-    // Check if this was a temporary session (user didn't check "Remember me")
-    // If the flag exists in localStorage but NOT in sessionStorage, browser was closed
-    const wasTemporarySession = localStorage.getItem("em-session-temporary-marker") === "true";
-    const isCurrentSession = sessionStorage.getItem("em-session-temporary") === "true";
-    
-    if (wasTemporarySession && !isCurrentSession) {
-      // Browser was closed and reopened - sign out
-      localStorage.removeItem("em-session-temporary-marker");
-      supabase.auth.signOut();
-    }
-
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
-        // Sync the temporary marker to localStorage so we can detect browser close
-        if (session && sessionStorage.getItem("em-session-temporary") === "true") {
-          localStorage.setItem("em-session-temporary-marker", "true");
-        } else if (session) {
-          localStorage.removeItem("em-session-temporary-marker");
-        }
-        
+
         // Defer role check to avoid deadlock
         if (session?.user) {
           setTimeout(() => {
@@ -120,10 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clean up session markers
-    localStorage.removeItem("em-session-temporary-marker");
-    sessionStorage.removeItem("em-session-temporary");
-    
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

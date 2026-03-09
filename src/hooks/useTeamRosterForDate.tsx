@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
-import { isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
+import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
+
+const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 
 const normalizeRosterName = (name?: string | null) =>
   (name || "")
@@ -54,6 +56,27 @@ export interface RosterMember {
   serviceDay: string | null;
 }
 
+interface MatchedProfile {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+}
+
+interface IntermediateRosterEntry {
+  id: string;
+  memberName: string;
+  position: string;
+  positionSlot: string | null;
+  userId: string | null;
+  avatarUrl: string | null;
+  phone: string | null;
+  isSwapped: boolean;
+  hasPendingSwap: boolean;
+  originalMemberName?: string;
+  ministryTypes: string[];
+  serviceDay: string | null;
+}
+
 export function useTeamRosterForDate(date: Date | null, teamId?: string, ministryType?: string, campusId?: string) {
   const { user } = useAuth();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
@@ -69,7 +92,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v8"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v9"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -127,24 +150,15 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
       // Get user IDs to fetch their profiles
       const userIds = filteredMembers.filter(m => m.user_id).map(m => m.user_id!);
       
-      // Fetch profiles for avatars
-      const safeProfilesPromise = userIds.length > 0
-        ? supabase.rpc("get_profiles_for_campus")
-        : Promise.resolve({ data: [], error: null });
-      const avatarProfilesPromise = supabase
-        .from("profiles")
-        .select("id, avatar_url")
-        .in("id", userIds.length > 0 ? userIds : ['00000000-0000-0000-0000-000000000000']);
+      // Fetch safe campus profiles for name/phone matching
+      const safeProfilesPromise = supabase.rpc("get_profiles_for_campus");
 
-      const [
-        { data: safeProfiles, error: safeProfilesError },
-        { data: avatarProfiles, error: avatarProfilesError },
-      ] = await Promise.all([safeProfilesPromise, avatarProfilesPromise]);
+      const [{ data: safeProfiles, error: safeProfilesError }] = await Promise.all([safeProfilesPromise]);
 
       if (safeProfilesError) throw safeProfilesError;
-      if (avatarProfilesError) throw avatarProfilesError;
 
       const allSafeProfiles = (safeProfiles || []) as Array<{ id: string; full_name: string | null; phone: string | null }>;
+      const safeProfileIds = allSafeProfiles.map((profile) => profile.id);
 
       const safeProfileMap = new Map(
         allSafeProfiles
@@ -167,6 +181,71 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
           phone: profile.phone,
         });
       }
+
+      const findSafeProfileByName = (memberName?: string | null): MatchedProfile | null => {
+        const normalizedName = normalizeRosterName(memberName);
+        if (!normalizedName) return null;
+
+        const exact = allSafeProfiles.find(
+          (profile) => normalizeRosterName(profile.full_name) === normalizedName
+        );
+        if (exact) return exact;
+
+        const memberTokens = normalizedName.split(" ").filter(Boolean);
+        if (memberTokens.length < 2) return null;
+
+        const first = memberTokens[0];
+        const last = memberTokens[memberTokens.length - 1];
+        const reversed = `${last} ${first}`;
+
+        const reversedMatch = allSafeProfiles.find(
+          (profile) => normalizeRosterName(profile.full_name) === reversed
+        );
+        if (reversedMatch) return reversedMatch;
+
+        const tokenMatches = allSafeProfiles.filter((profile) => {
+          const profileTokens = normalizeRosterName(profile.full_name).split(" ").filter(Boolean);
+          if (profileTokens.length < 2) return false;
+          const profileFirst = profileTokens[0];
+          const profileLast = profileTokens[profileTokens.length - 1];
+          return (
+            (profileFirst === first && profileLast === last) ||
+            (profileFirst === last && profileLast === first)
+          );
+        });
+        if (tokenMatches.length === 1) {
+          return tokenMatches[0];
+        }
+
+        const memberTokenSet = new Set(memberTokens);
+        const overlapMatches = allSafeProfiles.filter((profile) => {
+          const profileTokens = normalizeRosterName(profile.full_name).split(" ").filter(Boolean);
+          const overlapCount = profileTokens.reduce(
+            (count, token) => (memberTokenSet.has(token) ? count + 1 : count),
+            0
+          );
+          return overlapCount >= 2;
+        });
+        if (overlapMatches.length === 1) {
+          return overlapMatches[0];
+        }
+
+        const fuzzyLastNameMatches = allSafeProfiles.filter((profile) => {
+          const profileTokens = normalizeRosterName(profile.full_name).split(" ").filter(Boolean);
+          if (profileTokens.length < 2) return false;
+          const profileFirst = profileTokens[0];
+          const profileLast = profileTokens[profileTokens.length - 1];
+          const firstMatches = profileFirst === first || profileLast === first;
+          if (!firstMatches) return false;
+          const compareLast = profileFirst === first ? profileLast : profileFirst;
+          return last.length >= 5 && compareLast.length >= 5 && levenshteinDistance(last, compareLast) <= 1;
+        });
+        if (fuzzyLastNameMatches.length === 1) {
+          return fuzzyLastNameMatches[0];
+        }
+
+        return null;
+      };
 
       const findPhoneByName = (memberName?: string | null) => {
         const normalizedName = normalizeRosterName(memberName);
@@ -232,7 +311,14 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
         return findPhoneByName(memberName);
       };
 
-      const profileMap = new Map((avatarProfiles || []).map(p => [p.id, p.avatar_url]));
+      const { data: allAvatarProfiles, error: avatarProfilesError } = await supabase
+        .from("profiles")
+        .select("id, avatar_url")
+        .in("id", safeProfileIds.length > 0 ? safeProfileIds : ['00000000-0000-0000-0000-000000000000']);
+
+      if (avatarProfilesError) throw avatarProfilesError;
+
+      const profileMap = new Map((allAvatarProfiles || []).map(p => [p.id, p.avatar_url]));
 
       // Build the list of dates to check for swaps
       // For weekends, check both Saturday and Sunday since a swap covers the full weekend
@@ -376,20 +462,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
 
       // Build intermediate roster with swap replacements
       // Exclude the accepter's own slot since they're covering someone else's slot
-      const intermediateRoster: Array<{
-        id: string;
-        memberName: string;
-        position: string;
-        positionSlot: string | null;
-        userId: string | null;
-        avatarUrl: string | null;
-        phone: string | null;
-        isSwapped: boolean;
-        hasPendingSwap: boolean;
-        originalMemberName?: string;
-        ministryTypes: string[];
-        serviceDay: string | null;
-      }> = [];
+      const intermediateRoster: IntermediateRosterEntry[] = [];
 
       // Track users+positions who have been added via swap replacement to avoid duplicates
       const addedViaSwap = new Set<string>(); // "userId|position|ministryType" - now includes ministry for proper grouping
@@ -540,6 +613,47 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
             originalMemberName: undefined,
             ministryTypes: member.ministry_types || [],
             serviceDay: member.service_day || null,
+          });
+        }
+      }
+
+      if (campusId) {
+        const announcementLookupDate = isWeekend(dateStr) ? getWeekendKey(dateStr) : dateStr;
+        let announcementQuery = (supabase as any)
+          .from("teaching_week_announcements")
+          .select("id, ministry_type, announcer_name")
+          .eq("campus_id", campusId)
+          .eq("weekend_date", announcementLookupDate)
+          .not("announcer_name", "is", null);
+
+        if (ministryType) {
+          const announcementMinistryAliases =
+            WEEKEND_TEACHING_MINISTRY_ALIASES.includes(ministryType)
+              ? WEEKEND_TEACHING_MINISTRY_ALIASES
+              : [ministryType];
+          announcementQuery = announcementQuery.in("ministry_type", announcementMinistryAliases);
+        }
+
+        const { data: announcementRows, error: announcementsError } = await announcementQuery;
+        if (announcementsError) throw announcementsError;
+
+        for (const announcement of announcementRows || []) {
+          const announcerName = announcement.announcer_name?.trim();
+          if (!announcerName) continue;
+
+          const matchedProfile = findSafeProfileByName(announcerName);
+          intermediateRoster.push({
+            id: announcement.id,
+            memberName: matchedProfile?.full_name || announcerName,
+            position: "announcement",
+            positionSlot: "announcement",
+            userId: matchedProfile?.id || null,
+            avatarUrl: matchedProfile?.id ? profileMap.get(matchedProfile.id) || null : null,
+            phone: matchedProfile?.phone || resolveRosterPhone(null, announcerName),
+            isSwapped: false,
+            hasPendingSwap: false,
+            ministryTypes: [announcement.ministry_type],
+            serviceDay: null,
           });
         }
       }

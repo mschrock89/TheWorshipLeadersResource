@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useSongVersions } from "@/hooks/useSongs";
+import { useSongChartVersions } from "@/hooks/useSongs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,6 +30,7 @@ interface ChordChartDialogProps {
     id: string;
     title: string;
     author: string | null;
+    draftSetSongId?: string | null;
     originalKey?: string | null;
     openInRawEdit?: boolean;
   } | null;
@@ -429,7 +430,11 @@ function RenderedChordChart({
 export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { data: versions, isLoading } = useSongVersions(song?.id ?? null, open);
+  const { data: versions, isLoading } = useSongChartVersions(
+    song?.id ?? null,
+    song?.draftSetSongId ?? null,
+    open,
+  );
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [displayMode, setDisplayMode] = useState<DisplayMode>("rendered");
   const [accidentalPreference, setAccidentalPreference] = useState<"sharps" | "flats">("flats");
@@ -479,23 +484,66 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
     setTargetKeyIndex(detected);
   }, [open, chordChartText, selectedVersion?.id]);
 
+  const saveVersionChart = async (nextChartText: string) => {
+    if (!selectedVersion?.id) throw new Error("No song version selected.");
+
+    if (selectedVersion.chart_scope === "setlist") {
+      const { error } = await supabase
+        .from("draft_set_song_charts")
+        .update({ chord_chart_text: nextChartText })
+        .eq("id", selectedVersion.id);
+
+      if (error) throw error;
+      return;
+    }
+
+    if (song?.draftSetSongId) {
+      const overrideVersionName =
+        selectedVersion.version_name === "Setlist Override"
+          ? selectedVersion.version_name
+          : `${selectedVersion.version_name} (Setlist Override)`;
+
+      const { error } = await supabase
+        .from("draft_set_song_charts")
+        .upsert({
+          draft_set_song_id: song.draftSetSongId,
+          source_song_version_id: selectedVersion.id,
+          version_name: overrideVersionName,
+          chord_chart_text: nextChartText,
+        }, {
+          onConflict: "draft_set_song_id",
+        });
+
+      if (error) throw error;
+      return;
+    }
+
+    const { error } = await supabase
+      .from("song_versions")
+      .update({ chord_chart_text: nextChartText })
+      .eq("id", selectedVersion.id);
+
+    if (error) throw error;
+  };
+
+  const invalidateChartQueries = async () => {
+    if (song?.id) {
+      await queryClient.invalidateQueries({ queryKey: ["song-versions", song.id] });
+    }
+  };
+
   const saveRawChart = useMutation({
     mutationFn: async () => {
-      if (!selectedVersion?.id) throw new Error("No song version selected.");
-      const { error } = await supabase
-        .from("song_versions")
-        .update({ chord_chart_text: rawChartDraft })
-        .eq("id", selectedVersion.id);
-      if (error) throw error;
+      await saveVersionChart(rawChartDraft);
     },
     onSuccess: async () => {
-      if (song?.id) {
-        await queryClient.invalidateQueries({ queryKey: ["song-versions", song.id] });
-      }
+      await invalidateChartQueries();
       setIsEditingRaw(false);
       toast({
         title: "Chart updated",
-        description: "Raw chord chart changes were saved.",
+        description: song?.draftSetSongId
+          ? "Raw chord chart changes were saved for this setlist only."
+          : "Raw chord chart changes were saved.",
       });
     },
     onError: (error: Error) => {
@@ -509,24 +557,18 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
   const saveOriginalKey = useMutation({
     mutationFn: async (nextOriginalKeyIndex: number) => {
-      if (!selectedVersion?.id) throw new Error("No song version selected.");
       const keySet = accidentalPreference === "flats" ? KEY_LABELS_FLAT : KEY_LABELS_SHARP;
       const nextKeyLabel = keySet[nextOriginalKeyIndex] || "C";
       const nextChartText = upsertExplicitKeyLine(rawChordChartText, nextKeyLabel);
-
-      const { error } = await supabase
-        .from("song_versions")
-        .update({ chord_chart_text: nextChartText })
-        .eq("id", selectedVersion.id);
-      if (error) throw error;
+      await saveVersionChart(nextChartText);
     },
     onSuccess: async () => {
-      if (song?.id) {
-        await queryClient.invalidateQueries({ queryKey: ["song-versions", song.id] });
-      }
+      await invalidateChartQueries();
       toast({
         title: "Original key updated",
-        description: "Saved to chart metadata.",
+        description: song?.draftSetSongId
+          ? "Saved to this setlist chart only."
+          : "Saved to chart metadata.",
       });
     },
     onError: (error: Error) => {
@@ -584,6 +626,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                   {versions.length} version{versions.length === 1 ? "" : "s"}
                 </Badge>
                 {selectedVersion?.is_primary ? <Badge variant="outline">Primary</Badge> : null}
+                {selectedVersion?.chart_scope === "setlist" ? <Badge variant="outline">Setlist Override</Badge> : null}
                 {chordChartText ? <Badge variant="outline">Chart</Badge> : null}
                 {lyricsText ? <Badge variant="outline">Lyrics</Badge> : null}
               </div>

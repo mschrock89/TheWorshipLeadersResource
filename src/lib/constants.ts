@@ -4,6 +4,7 @@ export const ROLE_LABELS: Record<string, string> = {
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
   student_worship_pastor: "Student Worship Leader",
+  speaker: "Speaker",
   video_director: "Video Director",
   production_manager: "Production Manager",
   audition_candidate: "Audition Candidate",
@@ -14,10 +15,13 @@ export const ROLE_LABELS: Record<string, string> = {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
+  teacher: "Teacher",
+  announcement: "Announcement",
+  closing_prayer: "Closing Prayer",
   acoustic_guitar: "AG 1",
   acoustic_1: "AG 1",
   acoustic_2: "AG 2",
@@ -55,6 +59,9 @@ export const POSITION_LABELS: Record<string, string> = {
 
 export const POSITION_LABELS_SHORT: Record<string, string> = {
   vocalist: "Vox",
+  teacher: "Teach",
+  announcement: "Ann",
+  closing_prayer: "Prayer",
   acoustic_guitar: "AG 1",
   acoustic_1: "AG 1",
   acoustic_2: "AG 2",
@@ -92,6 +99,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
 
 export const POSITION_CATEGORIES = {
   vocals: ["vocalist"],
+  speaker: ["teacher", "announcement", "closing_prayer"],
   instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "bass", "drums", "keys"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6", "chat_host", "director", "graphics", "switcher", "other"],
@@ -108,6 +116,9 @@ export const POSITION_SLOTS: {
   { slot: "vocalist_2", label: "Vocalist 2", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_3", label: "Vocalist 3", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_4", label: "Vocalist 4", category: "Vocalists", position: "vocalist" },
+  { slot: "teacher", label: "Teacher", category: "Speaker", position: "teacher" },
+  { slot: "announcement", label: "Announcement", category: "Speaker", position: "announcement" },
+  { slot: "closing_prayer", label: "Closing Prayer", category: "Speaker", position: "closing_prayer" },
   { slot: "drums", label: "Drums", category: "Band", position: "drums" },
   { slot: "bass", label: "Bass", category: "Band", position: "bass" },
   { slot: "keys", label: "Keys", category: "Band", position: "keys" },
@@ -146,6 +157,7 @@ export const MINISTRY_TYPES = [
   { value: "evident", label: "Evident", shortLabel: "EV", color: "bg-zinc-900 ring-1 ring-zinc-500" },
   { value: "er", label: "ER", shortLabel: "ER", color: "bg-red-500" },
   { value: "audition", label: "Audition", shortLabel: "AUD", color: "bg-sky-600" },
+  { value: "speaker", label: "Speaker", shortLabel: "SPK", color: "bg-amber-600" },
   { value: "production", label: "Production", shortLabel: "PROD", color: "bg-emerald-500" },
   { value: "video", label: "Video", shortLabel: "VID", color: "bg-rose-500" },
 ] as const;
@@ -178,9 +190,10 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   eon_weekend: ["Vocalists", "Band"],
   evident: ["Vocalists", "Band"],
   er: ["Vocalists", "Band"],
+  speaker: ["Speaker"],
   production: ["Production"],
   video: ["Video"],
-  all: ["Vocalists", "Band", "Production", "Video"],
+  all: ["Vocalists", "Speaker", "Band", "Production", "Video"],
 };
 
 // Which teams are visible for each ministry type
@@ -194,6 +207,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   eon_weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for EON Weekend
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
+  speaker: ["Team 1", "Team 2", "Team 3", "Team 4"], // Speaker rotations follow campus team structure
   production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   all: null, // null means show all teams

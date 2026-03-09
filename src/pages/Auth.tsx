@@ -4,7 +4,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -52,11 +51,6 @@ export default function Auth() {
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(() => {
-    // Default to true, but check localStorage for previous preference
-    const stored = localStorage.getItem("em-remember-me");
-    return stored !== "false";
-  });
 
   // Password reset state
   const [resetEmail, setResetEmail] = useState("");
@@ -185,18 +179,6 @@ export default function Auth() {
         variant: "destructive",
       });
       return;
-    }
-
-    // Store the remember me preference
-    localStorage.setItem("em-remember-me", rememberMe.toString());
-
-    // If not remembering, we'll clear storage on browser close
-    // The Supabase client uses localStorage by default which persists
-    // We handle session expiry by setting a flag that the auth provider can check
-    if (!rememberMe) {
-      sessionStorage.setItem("em-session-temporary", "true");
-    } else {
-      sessionStorage.removeItem("em-session-temporary");
     }
 
     setIsLoading(true);
@@ -462,19 +444,6 @@ export default function Auth() {
                         onChange={(e) => setLoginPassword(e.target.value)}
                         required
                       />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="remember-me"
-                        checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(checked === true)}
-                      />
-                      <Label 
-                        htmlFor="remember-me" 
-                        className="text-sm font-normal text-muted-foreground cursor-pointer"
-                      >
-                        Remember me on this device
-                      </Label>
                     </div>
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

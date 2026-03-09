@@ -61,6 +61,9 @@ export interface SongVersion {
   is_primary: boolean;
   created_at: string;
   updated_at: string;
+  chart_scope?: "library" | "setlist";
+  draft_set_song_id?: string | null;
+  source_song_version_id?: string | null;
 }
 
 export interface SyncProgress {
@@ -112,6 +115,65 @@ export function useSongVersions(songId: string | null, enabled = true) {
 
       if (error) throw error;
       return (data || []) as SongVersion[];
+    },
+  });
+}
+
+export function useSongChartVersions(
+  songId: string | null,
+  draftSetSongId: string | null | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["song-versions", songId, draftSetSongId ?? null],
+    enabled: enabled && !!songId,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data: baseVersions, error: baseError } = await supabase
+        .from("song_versions")
+        .select("id, song_id, version_name, lyrics, chord_chart_text, chord_sheet_file_path, is_primary, created_at, updated_at")
+        .eq("song_id", songId)
+        .order("is_primary", { ascending: false })
+        .order("version_name", { ascending: true });
+
+      if (baseError) throw baseError;
+
+      const normalizedBase = ((baseVersions || []) as SongVersion[]).map((version) => ({
+        ...version,
+        chart_scope: "library" as const,
+        draft_set_song_id: null,
+        source_song_version_id: null,
+      }));
+
+      if (!draftSetSongId) {
+        return normalizedBase;
+      }
+
+      const { data: overrideRows, error: overrideError } = await supabase
+        .from("draft_set_song_charts")
+        .select("id, draft_set_song_id, source_song_version_id, version_name, chord_chart_text, created_at, updated_at")
+        .eq("draft_set_song_id", draftSetSongId)
+        .maybeSingle();
+
+      if (overrideError) throw overrideError;
+      if (!overrideRows) return normalizedBase;
+
+      const overrideVersion: SongVersion = {
+        id: overrideRows.id,
+        song_id: songId,
+        version_name: overrideRows.version_name,
+        lyrics: null,
+        chord_chart_text: overrideRows.chord_chart_text,
+        chord_sheet_file_path: null,
+        is_primary: true,
+        created_at: overrideRows.created_at,
+        updated_at: overrideRows.updated_at,
+        chart_scope: "setlist",
+        draft_set_song_id: overrideRows.draft_set_song_id,
+        source_song_version_id: overrideRows.source_song_version_id,
+      };
+
+      return [overrideVersion, ...normalizedBase];
     },
   });
 }

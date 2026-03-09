@@ -50,7 +50,10 @@ export function PushNotificationBanner() {
   // If permission was denied, show a different message
   if (permission === "denied") {
     return (
-      <div className="relative mb-6 overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+      <div
+        data-tour="push-notifications-banner"
+        className="relative mb-6 overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-4"
+      >
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/20">
             <Bell className="h-5 w-5 text-destructive" />
@@ -75,7 +78,10 @@ export function PushNotificationBanner() {
   }
 
   return (
-    <div className="relative mb-6 overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
+    <div
+      data-tour="push-notifications-banner"
+      className="relative mb-6 overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4"
+    >
       {/* Decorative background element */}
       <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
       

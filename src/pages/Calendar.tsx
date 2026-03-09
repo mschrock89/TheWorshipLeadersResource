@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -41,6 +41,7 @@ import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { toast } from "sonner";
+import { buildBibleHref } from "@/lib/bible";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const teamIcons: Record<string, React.ElementType> = {
@@ -570,7 +571,7 @@ function StandardCalendar() {
 
 
   return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
-      <div className="min-h-screen bg-background p-3 md:p-6 overflow-x-hidden">
+      <div data-tour="calendar-page" className="min-h-screen bg-background p-3 md:p-6 overflow-x-hidden">
         <div className="mx-auto max-w-4xl w-full">
           {/* Breadcrumb Navigation - hidden on mobile for space */}
           <Breadcrumb className="mb-3 hidden md:block">
@@ -636,7 +637,10 @@ function StandardCalendar() {
           </div>
 
           {/* Calendar Grid */}
-          <div className="mb-4 rounded-lg border border-border bg-card p-2 sm:p-4 overflow-hidden">
+          <div
+            data-tour="calendar-grid"
+            className="mb-4 rounded-lg border border-border bg-card p-2 sm:p-4 overflow-hidden"
+          >
             {/* Weekday headers */}
             <div className={`mb-1 sm:mb-2 grid gap-0.5 sm:gap-1 ${hideWeekends ? 'grid-cols-5' : 'grid-cols-7'}`}>
               {WEEKDAYS.filter((_, idx) => !hideWeekends || idx !== 0 && idx !== 6).map(day => <div key={day} className="py-1 sm:py-2 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
@@ -836,7 +840,27 @@ function StandardCalendar() {
                           {selectedTeachingWeek.themes_manual.join(", ")}
                         </span>
                       )}
+                      <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                        <Link
+                          to={buildBibleHref(
+                            formatTeachingReference(selectedTeachingWeek),
+                            selectedTeachingWeek.translation || "ESV"
+                          )}
+                        >
+                          Read Passage
+                        </Link>
+                      </Button>
                     </div>
+                    {selectedTeachingWeek.ai_summary ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {selectedTeachingWeek.ai_summary}
+                      </p>
+                    ) : null}
+                    {(selectedTeachingWeek.psa_highlight || selectedTeachingWeek.announcer_name) ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {[selectedTeachingWeek.psa_highlight, selectedTeachingWeek.announcer_name].filter(Boolean).join(" • ")}
+                      </p>
+                    ) : null}
                   </div>
                 )}
 
@@ -1236,7 +1260,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'encounter', 'eon', 'sunday_am', 'eon_weekend'];
+  const bandMinistryTypes = ['weekend', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -1269,6 +1293,10 @@ function BandRoster({
     sunday_am: {
       label: "Weekend Worship",
       order: 4
+    },
+    speaker: {
+      label: "Speaker",
+      order: 5
     }
   };
 
@@ -1289,6 +1317,7 @@ function BandRoster({
 
   // Vocal positions to filter by
   const vocalPositions = ['vocalist', 'Vocals', 'Vocalist'];
+  const speakerPositions = ['teacher', 'announcement', 'annoucement', 'closing_prayer'];
 
   // Audio positions (FOH, MON, Audio Shadow, Lighting, ProPresenter, Broadcast)
   const audioPositions = ['sound_tech', 'audio_shadow', 'lighting', 'media', 'foh', 'mon', 'propresenter', 'broadcast', 'Lyrics'];
@@ -1319,6 +1348,9 @@ function BandRoster({
   };
   const isBroadcast = (positions: string[]) => {
     return positions.some(p => broadcastPositions.includes(p) || p.toLowerCase().includes('camera') || p.toLowerCase().includes('director') || p.toLowerCase().includes('producer') || p.toLowerCase().includes('switcher') || p.toLowerCase().includes('graphics') || p.toLowerCase().includes('chat'));
+  };
+  const isSpeaker = (positions: string[]) => {
+    return positions.some((p) => speakerPositions.includes(p.toLowerCase()));
   };
 
   // Position priority functions
@@ -1360,6 +1392,15 @@ function BandRoster({
     }
     return 99;
   };
+  const getSpeakerPositionPriority = (positions: string[]) => {
+    for (const pos of positions) {
+      const normalized = pos.toLowerCase();
+      if (normalized === 'teacher') return 0;
+      if (normalized === 'announcement' || normalized === 'annoucement') return 1;
+      if (normalized === 'closing_prayer') return 2;
+    }
+    return 99;
+  };
 
   // Filter members by ministry type
   const getMembersForMinistry = (ministry: string) => {
@@ -1369,11 +1410,13 @@ function BandRoster({
   // Categorize members within a ministry
   const categorizeMembers = (members: typeof roster) => {
     const vocalists = members.filter(m => isVocalist(m.positions));
-    const audioMembers = members.filter(m => !isVocalist(m.positions) && isAudio(m.positions)).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
-    const broadcastMembers = members.filter(m => !isVocalist(m.positions) && !isAudio(m.positions) && isBroadcast(m.positions)).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
-    const bandMembers = members.filter(m => !isVocalist(m.positions) && !isAudio(m.positions) && !isBroadcast(m.positions)).sort((a, b) => getBandPositionPriority(a.positions) - getBandPositionPriority(b.positions));
+    const speakerMembers = members.filter(m => !isVocalist(m.positions) && isSpeaker(m.positions)).sort((a, b) => getSpeakerPositionPriority(a.positions) - getSpeakerPositionPriority(b.positions));
+    const audioMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && isAudio(m.positions)).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
+    const broadcastMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && !isAudio(m.positions) && isBroadcast(m.positions)).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
+    const bandMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && !isAudio(m.positions) && !isBroadcast(m.positions)).sort((a, b) => getBandPositionPriority(a.positions) - getBandPositionPriority(b.positions));
     return {
       vocalists,
+      speakerMembers,
       audioMembers,
       broadcastMembers,
       bandMembers
@@ -1435,9 +1478,10 @@ function BandRoster({
   const renderBandSection = (members: typeof roster, title?: string) => {
     const {
       vocalists,
+      speakerMembers,
       bandMembers
     } = categorizeMembers(members);
-    if (vocalists.length === 0 && bandMembers.length === 0) {
+    if (vocalists.length === 0 && speakerMembers.length === 0 && bandMembers.length === 0) {
       return null;
     }
     return <div className="space-y-4">
@@ -1451,6 +1495,16 @@ function BandRoster({
             </h4>
             <div className="space-y-1.5">
               {vocalists.map(renderMember)}
+            </div>
+          </div>}
+
+        {speakerMembers.length > 0 && <div>
+            <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
+              <BookOpen className="h-3.5 w-3.5" />
+              Speaker
+            </h4>
+            <div className="space-y-1.5">
+              {speakerMembers.map(renderMember)}
             </div>
           </div>}
 

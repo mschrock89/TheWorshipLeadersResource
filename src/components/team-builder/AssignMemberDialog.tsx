@@ -48,6 +48,10 @@ export function AssignMemberDialog({
       const pLower = p.toLowerCase();
       // Vocalist slots
       if (slotType === "vocalist") return pLower.includes("vocal");
+      // Speaker slots
+      if (slotType === "teacher") return pLower === "teacher";
+      if (slotType === "announcement") return pLower === "announcement" || pLower === "annoucement";
+      if (slotType === "closing_prayer") return pLower === "closing_prayer" || pLower.includes("closing prayer");
       // Band slots
       if (slotType === "drums") return pLower === "drums";
       if (slotType === "bass") return pLower === "bass";

@@ -3,12 +3,12 @@ import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Home as HomeIcon,
   MessageCircle,
   Calendar,
   ListMusic,
   Play,
   Music,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -127,26 +127,35 @@ export function BottomNav() {
   const leftNavItems = user
     ? isAuditionCandidate
       ? [
+          { to: "/bible", icon: BookOpen, label: "Bible" },
           { to: "/songs", icon: Music, label: "Songs" },
         ]
       : [
-        { to: "/", icon: HomeIcon, label: "Home" },
+        { to: "/bible", icon: BookOpen, label: "Bible" },
         { to: "/chat", icon: MessageCircle, label: "Chat", badge: totalUnread },
       ]
-    : [
-        { to: "/", icon: HomeIcon, label: "Home" },
-      ];
+    : [];
 
   const rightNavItems = user
     ? isAuditionCandidate
       ? [
-          { to: "/calendar", icon: Calendar, label: "Calendar" },
+          { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
         ]
       : [
-          { to: "/calendar", icon: Calendar, label: "Calendar" },
-          { to: "/my-setlists", icon: ListMusic, label: "Setlists", badge: isApprover ? pendingApprovalCount : undefined },
+          { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
+          {
+            to: "/my-setlists",
+            icon: ListMusic,
+            label: "Setlists",
+            badge: isApprover ? pendingApprovalCount : undefined,
+            tourId: "nav-setlists",
+          },
         ]
     : [];
+
+  if (!user && leftNavItems.length === 0 && rightNavItems.length === 0) {
+    return null;
+  }
 
   return (
     <nav 
@@ -154,11 +163,11 @@ export function BottomNav() {
     >
       <div className="container flex items-center justify-around gap-1 px-2 h-14">
         {/* Left nav items */}
-        {leftNavItems.map(({ to, icon: Icon, label, badge }) => {
+        {leftNavItems.map(({ to, icon: Icon, label, badge, tourId }) => {
           const isActive = location.pathname === to;
           
           return (
-            <Link key={to} to={to} className="flex-1">
+            <Link key={to} to={to} className="flex-1" data-tour={tourId}>
               <Button
                 variant={isActive ? "secondary" : "ghost"}
                 className="w-full gap-2 relative"
@@ -191,11 +200,11 @@ export function BottomNav() {
         )}
 
         {/* Right nav items */}
-        {rightNavItems.map(({ to, icon: Icon, label, badge }) => {
+        {rightNavItems.map(({ to, icon: Icon, label, badge, tourId }) => {
           const isActive = location.pathname === to;
           
           return (
-            <Link key={to} to={to} className="flex-1">
+            <Link key={to} to={to} className="flex-1" data-tour={tourId}>
               <Button
                 variant={isActive ? "secondary" : "ghost"}
                 className="w-full gap-2 relative"

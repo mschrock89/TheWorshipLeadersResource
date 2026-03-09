@@ -8,6 +8,7 @@ import { TeamMemberCard } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { TeamImportDialog } from "@/components/team/TeamImportDialog";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
+import { CreateTeamMemberDialog } from "@/components/team/CreateTeamMemberDialog";
 import { WelcomeEmailDialog } from "@/components/team/WelcomeEmailDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export default function Team() {
   const [genderFilter, setGenderFilter] = useState("all");
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
+  const [createMemberDialogOpen, setCreateMemberDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailDialogMode, setEmailDialogMode] = useState<"bulk" | "individual" | "resend">("bulk");
   const [selectedMemberForEmail, setSelectedMemberForEmail] = useState<Profile | undefined>();
@@ -236,6 +238,10 @@ export default function Team() {
         </div>
         {isLeader && (
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setCreateMemberDialogOpen(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              New Member
+            </Button>
             <Button variant="outline" onClick={() => setCandidateDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
               New Candidate
@@ -342,6 +348,17 @@ export default function Team() {
         onCreated={() => {
           queryClient.invalidateQueries({ queryKey: ["profiles"] });
           queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+        }}
+      />
+
+      <CreateTeamMemberDialog
+        open={createMemberDialogOpen}
+        onOpenChange={setCreateMemberDialogOpen}
+        campuses={campuses}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-campuses"] });
         }}
       />
 

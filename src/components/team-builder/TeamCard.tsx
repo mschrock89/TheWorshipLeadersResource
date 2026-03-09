@@ -1,4 +1,4 @@
-import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2 } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PositionSlot } from "./PositionSlot";
@@ -55,12 +55,14 @@ export function TeamCard({
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
   
   const showVocalists = allowedCategories.includes("Vocalists");
+  const showSpeaker = allowedCategories.includes("Speaker");
   const showBand = allowedCategories.includes("Band");
   // Only show Production/Video when they are in the allowed categories for the selected ministry filter
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
 
   const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
@@ -84,6 +86,7 @@ export function TeamCard({
   // Calculate total slots based on what's visible
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
+    ...(showSpeaker ? speakerSlots : []),
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
@@ -147,6 +150,36 @@ export function TeamCard({
             </div>
             <div className="grid gap-2">
               {vocalSlots.map(slotConfig => {
+                const member = getMemberForSlot(slotConfig.slot);
+                return (
+                  <PositionSlot
+                    key={slotConfig.slot}
+                    label={slotConfig.label}
+                    memberName={member?.member_name}
+                    avatarUrl={null}
+                    isEmpty={!member}
+                    onRemove={() => onRemove(slotConfig.slot)}
+                    onAdd={() => onAssign(slotConfig.slot)}
+                    readOnly={effectiveReadOnly}
+                    ministryTypes={member?.ministry_types}
+                    onEditMinistry={member && onEditMinistry ? () => onEditMinistry(member) : undefined}
+                    showMinistryBadges={false}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Band Section */}
+        {showSpeaker && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <h4 className="text-sm font-medium text-muted-foreground">Speaker</h4>
+            </div>
+            <div className="grid gap-2">
+              {speakerSlots.map(slotConfig => {
                 const member = getMemberForSlot(slotConfig.slot);
                 return (
                   <PositionSlot

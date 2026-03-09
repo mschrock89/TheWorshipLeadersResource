@@ -1,13 +1,57 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { LogIn, LayoutDashboard } from "lucide-react";
+import {
+  ClipboardList,
+  FileCheck,
+  FolderOpen,
+  Gamepad2,
+  LayoutDashboard,
+  Link2,
+  LogIn,
+  LogOut,
+  Music,
+  Settings,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useProfile } from "@/hooks/useProfiles";
+import { useUserRoles } from "@/hooks/useUserRoles";
+import { Badge } from "@/components/ui/badge";
+import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
+import { isAuditionCandidateRole } from "@/lib/access";
 import worshipImage from "@/assets/worship-night.jpg";
 import emLogo from "@/assets/em-logo-transparent-new.png";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const { data: profile } = useProfile(user?.id);
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const { data: isApprover } = useIsApprover();
+  const { data: pendingApprovalCount } = usePendingApprovalCount();
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
+
+  const getInitials = () => {
+    if (profile?.full_name) {
+      const nameParts = profile.full_name.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        return (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase();
+      }
+
+      return nameParts[0].substring(0, 2).toUpperCase();
+    }
+
+    return user?.email?.substring(0, 2).toUpperCase() || "?";
+  };
+
+  const initials = getInitials();
 
   return (
     <div className="flex flex-col bg-background overflow-hidden" style={{ height: '100dvh' }}>
@@ -25,18 +69,108 @@ export default function Home() {
         <div className="relative z-10 flex h-full flex-col px-6 pt-8 sm:px-10 sm:pt-12">
           <div className="flex items-start justify-end gap-3">
             {user && <NotificationBell />}
-            <Link to={user ? "/dashboard" : "/auth"}>
-              {user ? (
-                <Button size="icon" className="bg-white/15 backdrop-blur-md text-white shadow-lg border border-white/30 hover:bg-white/25 transition-all">
-                  <LayoutDashboard className="h-5 w-5" />
-                </Button>
-              ) : (
+            {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                  <button
+                    data-tour="home-profile-badge"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-sm font-bold text-white shadow-lg backdrop-blur-md transition-all hover:bg-white/25"
+                  >
+                    {initials}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-popover">
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/dashboard" className="flex items-center gap-2">
+                        <LayoutDashboard className="h-4 w-4" />
+                        Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/team" className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Team Directory
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/schedule" className="flex items-center gap-2">
+                        <ClipboardList className="h-4 w-4" />
+                        My Schedule
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem asChild>
+                    <Link to="/songs" className="flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4" />
+                      Song Library
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/resources" className="flex items-center gap-2">
+                      <Music className="h-4 w-4" />
+                      Audio Library
+                    </Link>
+                  </DropdownMenuItem>
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/games" className="flex items-center gap-2">
+                        <Gamepad2 className="h-4 w-4" />
+                        Games
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && isApprover && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/approvals" className="flex items-center gap-2">
+                        <FileCheck className="h-4 w-4" />
+                        Approvals
+                        {(pendingApprovalCount ?? 0) > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                            {pendingApprovalCount}
+                          </Badge>
+                        )}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/settings/planning-center" className="flex items-center gap-2">
+                        <Link2 className="h-4 w-4" />
+                        Integrations
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link to="/profile" className="flex items-center gap-2">
+                          <Settings className="h-4 w-4" />
+                          My Profile
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={signOut} className="text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link to="/auth">
               <Button className="gap-2 bg-white/15 backdrop-blur-md text-white font-semibold shadow-lg border border-white/30 hover:bg-white/25 transition-all px-6">
-                  <LogIn className="h-4 w-4" />
-                  Sign In
-                </Button>
-              )}
-            </Link>
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Button>
+              </Link>
+            )}
           </div>
           
           {/* Centered Logo */}

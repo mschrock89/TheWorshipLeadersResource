@@ -11,11 +11,22 @@ export interface TeachingWeekSummary {
   updated_at?: string;
   book: string;
   chapter: number;
+  translation?: string | null;
   chapter_reference?: string | null;
   schedule_pdf_path: string | null;
   ai_summary: string | null;
   themes_manual: string[] | null;
   themes_suggested: string[] | null;
+  psa_highlight?: string | null;
+  announcer_name?: string | null;
+}
+
+interface TeachingAnnouncementRow {
+  campus_id: string;
+  ministry_type: string;
+  weekend_date: string;
+  psa_highlight: string | null;
+  announcer_name: string | null;
 }
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
@@ -52,7 +63,10 @@ function expandTeachingWeekDatesForDisplay(
   return pairDate ? [week.weekend_date, pairDate] : [week.weekend_date];
 }
 
-function rankTeachingWeekMatch(targetMinistryType: string | null | undefined, week: TeachingWeekSummary): number {
+function rankTeachingWeekMatch(
+  targetMinistryType: string | null | undefined,
+  week: Pick<TeachingWeekSummary, "ministry_type">
+): number {
   if (!targetMinistryType) return 0;
   if (week.ministry_type === targetMinistryType) return 0;
   if (WEEKEND_MINISTRY_ALIASES.includes(targetMinistryType) && WEEKEND_MINISTRY_ALIASES.includes(week.ministry_type)) {
@@ -61,10 +75,10 @@ function rankTeachingWeekMatch(targetMinistryType: string | null | undefined, we
   return 2;
 }
 
-function selectBestTeachingWeek(
-  weeks: TeachingWeekSummary[],
+function selectBestTeachingWeek<T extends { ministry_type: string; updated_at?: string | null; weekend_date: string }>(
+  weeks: T[],
   targetMinistryType?: string | null
-): TeachingWeekSummary | null {
+): T | null {
   if (weeks.length === 0) return null;
   return [...weeks].sort((a, b) => {
     const rankDiff = rankTeachingWeekMatch(targetMinistryType, a) - rankTeachingWeekMatch(targetMinistryType, b);
@@ -73,6 +87,18 @@ function selectBestTeachingWeek(
     if (updatedAtDiff !== 0) return updatedAtDiff;
     return a.weekend_date.localeCompare(b.weekend_date);
   })[0] ?? null;
+}
+
+function mergeTeachingAnnouncement(
+  week: TeachingWeekSummary | null,
+  announcement?: TeachingAnnouncementRow | null
+): TeachingWeekSummary | null {
+  if (!week) return null;
+  return {
+    ...week,
+    psa_highlight: announcement?.psa_highlight ?? null,
+    announcer_name: announcement?.announcer_name ?? null,
+  };
 }
 
 export function useTeachingWeekForDate(
@@ -99,7 +125,24 @@ export function useTeachingWeekForDate(
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return selectBestTeachingWeek((data || []) as TeachingWeekSummary[], ministryType);
+      const bestWeek = selectBestTeachingWeek((data || []) as TeachingWeekSummary[], ministryType);
+
+      const { data: announcementData, error: announcementError } = await (supabase as any)
+        .from("teaching_week_announcements")
+        .select("campus_id, ministry_type, weekend_date, psa_highlight, announcer_name")
+        .eq("campus_id", campusId)
+        .eq("weekend_date", lookupDate)
+        .in("ministry_type", ministryAliases)
+        .order("updated_at", { ascending: false });
+
+      if (announcementError) throw announcementError;
+
+      const bestAnnouncement = selectBestTeachingWeek(
+        (announcementData || []) as TeachingAnnouncementRow[],
+        ministryType
+      );
+
+      return mergeTeachingAnnouncement(bestWeek, bestAnnouncement);
     },
   });
 }
@@ -149,7 +192,19 @@ export function useTeachingWeeksInRange(
       if (error) throw error;
 
       const weeks = (data || []) as TeachingWeekSummary[];
+      const { data: announcementData, error: announcementError } = await (supabase as any)
+        .from("teaching_week_announcements")
+        .select("campus_id, ministry_type, weekend_date, psa_highlight, announcer_name")
+        .eq("campus_id", campusId)
+        .gte("weekend_date", normalizedStartDate)
+        .lte("weekend_date", normalizedEndDate)
+        .in("ministry_type", ministryAliases);
+
+      if (announcementError) throw announcementError;
+
+      const announcements = (announcementData || []) as TeachingAnnouncementRow[];
       const weeksByDate = new Map<string, TeachingWeekSummary[]>();
+      const announcementsByDate = new Map<string, TeachingAnnouncementRow[]>();
 
       for (const week of weeks) {
         const existing = weeksByDate.get(week.weekend_date) || [];
@@ -157,9 +212,39 @@ export function useTeachingWeeksInRange(
         weeksByDate.set(week.weekend_date, existing);
       }
 
-      return Array.from(weeksByDate.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([, dateWeeks]) => selectBestTeachingWeek(dateWeeks, ministryType))
+      for (const announcement of announcements) {
+        const existing = announcementsByDate.get(announcement.weekend_date) || [];
+        existing.push(announcement);
+        announcementsByDate.set(announcement.weekend_date, existing);
+      }
+
+      const allDates = Array.from(new Set([...weeksByDate.keys(), ...announcementsByDate.keys()]));
+
+      return allDates
+        .sort((a, b) => a.localeCompare(b))
+        .map((date) => {
+          const bestWeek = selectBestTeachingWeek(weeksByDate.get(date) || [], ministryType);
+          const bestAnnouncement = selectBestTeachingWeek(
+            announcementsByDate.get(date) || [],
+            ministryType
+          );
+          return mergeTeachingAnnouncement(bestWeek, bestAnnouncement) || (bestAnnouncement ? {
+            id: `${bestAnnouncement.campus_id}-${bestAnnouncement.ministry_type}-${bestAnnouncement.weekend_date}-announcement`,
+            campus_id: bestAnnouncement.campus_id,
+            ministry_type: bestAnnouncement.ministry_type,
+            weekend_date: bestAnnouncement.weekend_date,
+            book: "TBD",
+            chapter: 1,
+            translation: null,
+            chapter_reference: null,
+            schedule_pdf_path: null,
+            ai_summary: null,
+            themes_manual: [],
+            themes_suggested: [],
+            psa_highlight: bestAnnouncement.psa_highlight,
+            announcer_name: bestAnnouncement.announcer_name,
+          } : null);
+        })
         .filter((week): week is TeachingWeekSummary => Boolean(week));
     },
   });

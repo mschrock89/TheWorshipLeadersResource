@@ -6,7 +6,7 @@ import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Home, Users, Settings, LogOut, LayoutDashboard, FolderOpen, Calendar, Link2, ClipboardList, Music } from "lucide-react";
+import { Home, Users, Settings, LogOut, LayoutDashboard, FolderOpen, Calendar, Link2, ClipboardList, Music, BookOpen } from "lucide-react";
 import { TeamBadge } from "./TeamBadge";
 import { NotificationBell } from "./NotificationBell";
 import { cn } from "@/lib/utils";
@@ -113,6 +113,12 @@ export function AppLayout({
                 <Link to="/songs" className="flex items-center gap-2">
                   <FolderOpen className="h-4 w-4" />
                   Song Library
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/bible" className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Bible
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>

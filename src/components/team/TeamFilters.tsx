@@ -88,6 +88,13 @@ export function TeamFilters({
               {POSITION_LABELS[pos]}
             </SelectItem>
           ))}
+
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Speaker</div>
+          {POSITION_CATEGORIES.speaker.map((pos) => (
+            <SelectItem key={pos} value={pos}>
+              {POSITION_LABELS[pos]}
+            </SelectItem>
+          ))}
           
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Instruments</div>
           {POSITION_CATEGORIES.instruments.map((pos) => (

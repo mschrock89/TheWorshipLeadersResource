@@ -36,6 +36,10 @@ interface AutoBuilderDialogProps {
 // Position mapping from profile positions to slot names
 const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"],
+  teacher: ["teacher"],
+  announcement: ["announcement"],
+  annoucement: ["announcement"],
+  closing_prayer: ["closing_prayer"],
   drums: ["drums"],
   bass: ["bass"],
   keys: ["keys"],
@@ -192,6 +196,7 @@ export function AutoBuilderDialog({
       "drums", "bass", "keys",
       "eg_1", "eg_2", "ag_1", "ag_2",
       "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
+      "teacher", "announcement", "closing_prayer",
       "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
       "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6",
       "chat_host", "director", "graphics", "switcher",

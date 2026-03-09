@@ -509,9 +509,16 @@ Deno.serve(async (req) => {
 
         if (!body.dry_run) {
           const { error: updateError } = await adminClient
-            .from("song_versions")
-            .update({ chord_chart_text: reorderedChart })
-            .eq("id", version!.id);
+            .from("draft_set_song_charts")
+            .upsert({
+              draft_set_song_id: song.id,
+              source_song_version_id: version!.id,
+              version_name: `${version!.version_name} (Setlist Override)`,
+              chord_chart_text: reorderedChart,
+              created_by: user.id,
+            }, {
+              onConflict: "draft_set_song_id",
+            });
 
           if (updateError) {
             skipped.push({ song: songTitle, reason: `update_failed:${updateError.message}` });
@@ -543,30 +550,21 @@ Deno.serve(async (req) => {
       const draftChartText = buildDraftChartFromSections(draft.sections, songKey, draft.confidence);
 
       if (!body.dry_run) {
-        if (version?.id) {
-          const { error: updateError } = await adminClient
-            .from("song_versions")
-            .update({ chord_chart_text: draftChartText })
-            .eq("id", version.id);
+        const { error: insertError } = await adminClient
+          .from("draft_set_song_charts")
+          .upsert({
+            draft_set_song_id: song.id,
+            source_song_version_id: version?.id || null,
+            version_name: "AI Draft (Reference Guide)",
+            chord_chart_text: draftChartText,
+            created_by: user.id,
+          }, {
+            onConflict: "draft_set_song_id",
+          });
 
-          if (updateError) {
-            skipped.push({ song: songTitle, reason: `update_failed:${updateError.message}` });
-            continue;
-          }
-        } else {
-          const { error: insertError } = await adminClient
-            .from("song_versions")
-            .insert({
-              song_id: song.song_id,
-              version_name: "AI Draft (Reference Guide)",
-              chord_chart_text: draftChartText,
-              is_primary: !hasAnyVersion,
-            });
-
-          if (insertError) {
-            skipped.push({ song: songTitle, reason: `insert_failed:${insertError.message}` });
-            continue;
-          }
+        if (insertError) {
+          skipped.push({ song: songTitle, reason: `insert_failed:${insertError.message}` });
+          continue;
         }
       }
 

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { format } from "date-fns";
+import { Link } from "react-router-dom";
 import { Plus, Calendar as CalendarIcon, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -23,6 +24,7 @@ import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
+import { buildBibleHref } from "@/lib/bible";
 import {
   useServiceFlow,
   useServiceFlowItems,
@@ -267,6 +269,7 @@ export function ServiceFlowEditor({
           serviceDate: serviceDateStr,
           draftSetId,
           createdBy: user.id,
+          forceTemplateResync: true,
           songs,
         });
         setBoundServiceFlowId(generatedFlowId);
@@ -326,6 +329,7 @@ export function ServiceFlowEditor({
           serviceDate: serviceDateStr,
           draftSetId,
           createdBy: user.id,
+          forceTemplateResync: true,
           songs,
         });
 
@@ -379,6 +383,7 @@ export function ServiceFlowEditor({
           serviceDate: serviceDateStr,
           draftSetId,
           createdBy: user.id,
+          forceTemplateResync: true,
           songs,
         });
 
@@ -663,7 +668,22 @@ export function ServiceFlowEditor({
                 {teachingWeek.themes_manual.join(", ")}
               </span>
             ) : null}
+            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+              <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
+                Read Passage
+              </Link>
+            </Button>
           </div>
+          {teachingWeek.ai_summary ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {teachingWeek.ai_summary}
+            </p>
+          ) : null}
+          {(teachingWeek.psa_highlight || teachingWeek.announcer_name) ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {[teachingWeek.psa_highlight, teachingWeek.announcer_name].filter(Boolean).join(" • ")}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

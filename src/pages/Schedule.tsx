@@ -28,6 +28,9 @@ const teamIcons: Record<string, React.ElementType> = {
 const positionIcons: Record<string, React.ElementType> = {
   "Worship Leader": Mic2,
   "Vocals": Mic2,
+  "Teacher": Mic2,
+  "Announcement": Mic2,
+  "Closing Prayer": Mic2,
   "Drums": Drum,
   "Bass": Guitar,
   "Keys": Piano,
@@ -126,6 +129,7 @@ function formatMinistryTypes(ministryTypes: string[]): string {
     eon_weekend: "EON Weekend",
     evident: "Evident",
     er: "ER",
+    speaker: "Speaker",
     production: "Production",
     video: "Video",
   };
@@ -158,6 +162,7 @@ function getMinistryTypeForDate(date: Date, storedMinistryTypes: string[]): stri
     // Filter to weekend-appropriate ministries
     const weekendTypes = storedMinistryTypes?.filter(t => 
       ['weekend', 'eon_weekend', 'production', 'video'].includes(t.toLowerCase())
+      || t.toLowerCase() === 'speaker'
     );
     return weekendTypes?.length > 0 ? weekendTypes : ['weekend'];
   }

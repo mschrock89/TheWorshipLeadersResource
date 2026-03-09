@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
+import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 import { canAuditionCandidateAccessPath, isAuditionCandidateRole } from "@/lib/access";
 import { MiniPlayer } from "@/components/audio/MiniPlayer";
@@ -32,9 +33,10 @@ import Approvals from "./pages/Approvals";
 import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
+import Bible from "./pages/Bible";
 import Snake from "./pages/Snake";
-import Galaga from "./pages/Galaga";
 import Pong from "./pages/Pong";
+import Galaga from "./pages/Galaga";
 import Games from "./pages/Games";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
@@ -317,6 +319,16 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/bible"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><Bible /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/service-flow"
         element={
           <ProtectedRoute>
@@ -396,6 +408,7 @@ const App = () => (
             </MainContent>
             <AudioPlayerWrapper />
             <BottomNav />
+            <AppOnboardingTour />
           </AudioPlayerProvider>
         </AuthProvider>
       </BrowserRouter>

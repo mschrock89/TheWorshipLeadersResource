@@ -38,6 +38,7 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { buildBibleHref } from "@/lib/bible";
 
 const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   value: Database["public"]["Enums"]["team_position"];
@@ -84,10 +85,14 @@ interface TeachingWeekRow {
   weekend_date: string;
   book: string;
   chapter: number;
+  translation?: string | null;
+  chapter_reference?: string | null;
   schedule_pdf_path: string | null;
   ai_summary: string | null;
   themes_manual: string[] | null;
   themes_suggested: string[] | null;
+  psa_highlight?: string | null;
+  announcer_name?: string | null;
 }
 
 interface SuggestedSong {
@@ -622,6 +627,15 @@ export default function SetPlanner() {
 
         if (existing) {
           const week = existing as TeachingWeekRow;
+          const { data: announcement } = await (supabase as any)
+            .from("teaching_week_announcements")
+            .select("psa_highlight, announcer_name")
+            .eq("campus_id", effectiveCampusId)
+            .eq("ministry_type", selectedMinistry)
+            .eq("weekend_date", teachingDateStr)
+            .maybeSingle();
+          week.psa_highlight = announcement?.psa_highlight ?? null;
+          week.announcer_name = announcement?.announcer_name ?? null;
           setTeachingWeek(week);
           setTeachingSummary(week.ai_summary || "");
           setSuggestedThemes(week.themes_suggested || []);
@@ -948,7 +962,34 @@ export default function SetPlanner() {
                   )}
                 </div>
 
+                {(teachingWeek.psa_highlight || teachingWeek.announcer_name) ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {teachingWeek.psa_highlight ? (
+                      <div className="rounded-md border border-border p-3">
+                        <p className="text-xs text-muted-foreground">PSA / Nonprofit Highlight</p>
+                        <p className="text-sm font-medium">{teachingWeek.psa_highlight}</p>
+                      </div>
+                    ) : null}
+                    {teachingWeek.announcer_name ? (
+                      <div className="rounded-md border border-border p-3">
+                        <p className="text-xs text-muted-foreground">Announcer</p>
+                        <p className="text-sm font-medium">{teachingWeek.announcer_name}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="flex items-center gap-2">
+                  <Button asChild variant="outline" size="sm" className="gap-2">
+                    <Link
+                      to={buildBibleHref(
+                        teachingWeek.chapter_reference || `${teachingWeek.book} ${teachingWeek.chapter}`,
+                        teachingWeek.translation || "ESV"
+                      )}
+                    >
+                      Read Passage
+                    </Link>
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

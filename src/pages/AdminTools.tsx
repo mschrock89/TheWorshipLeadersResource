@@ -14,9 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -90,14 +91,18 @@ interface TeachingWeekRow {
   ai_summary: string | null;
   themes_manual: string[] | null;
   themes_suggested: string[] | null;
+  psa_highlight?: string | null;
+  announcer_name?: string | null;
 }
 
 interface TeachingScheduleImportRow {
   weekend_date: string;
-  book: string;
-  chapter: number;
+  book: string | null;
+  chapter: number | null;
   chapter_reference: string | null;
   themes_manual: string[];
+  psa_highlight: string | null;
+  announcer_name: string | null;
 }
 
 interface TeachingScheduleUploadRow {
@@ -319,13 +324,13 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             row.chapter_reference ||
             "";
           const parsedReference = parseScriptureReference(referenceValue);
+          const chapterValue = row.chapter || row.ch || "";
 
           const book =
             row.book ||
             parsedReference.book ||
-            fallbackBook.trim();
+            ((chapterValue || referenceValue.trim()) ? fallbackBook.trim() : null);
 
-          const chapterValue = row.chapter || row.ch || "";
           const parsedChapter = chapterValue
             ? Number.parseInt(chapterValue.replace(/[^\d]/g, ""), 10)
             : parsedReference.chapter;
@@ -334,19 +339,35 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             .split(",")
             .map((theme) => theme.trim())
             .filter(Boolean);
+          const psaHighlight =
+            row.psa_nonprofit_highlight ||
+            row.psa_non_profit_highlight ||
+            row.psa_highlight ||
+            row.nonprofit_highlight ||
+            row.non_profit_highlight ||
+            row.psa ||
+            null;
+          const announcerName =
+            row.announcer ||
+            row.annoucer ||
+            row.announcement_host ||
+            row.host ||
+            null;
+          const hasTeachingData = Boolean(book && parsedChapter && !Number.isNaN(parsedChapter) && parsedChapter > 0);
+          const hasAnnouncementData = Boolean(psaHighlight?.trim() || announcerName?.trim());
 
           if (!normalizedDate) {
             errors.push(`Row ${index + headerIndex + 2}: missing or invalid date`);
             continue;
           }
 
-          if (!book) {
-            errors.push(`Row ${index + headerIndex + 2}: missing book`);
+          if (!hasTeachingData && !hasAnnouncementData) {
+            errors.push(`Row ${index + headerIndex + 2}: missing teaching and announcer data`);
             continue;
           }
 
-          if (!parsedChapter || Number.isNaN(parsedChapter) || parsedChapter < 1) {
-            errors.push(`Row ${index + headerIndex + 2}: missing or invalid chapter`);
+          if ((book || chapterValue || referenceValue.trim()) && !hasTeachingData) {
+            errors.push(`Row ${index + headerIndex + 2}: missing or invalid chapter/reference`);
             continue;
           }
 
@@ -359,10 +380,12 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
 
           rows.push({
             weekend_date: strictWeekendDate,
-            book,
-            chapter: parsedChapter,
-            chapter_reference: referenceValue.trim() || `${book} ${parsedChapter}`,
+            book: hasTeachingData ? book : null,
+            chapter: hasTeachingData ? parsedChapter : null,
+            chapter_reference: hasTeachingData ? (referenceValue.trim() || `${book} ${parsedChapter}`) : null,
             themes_manual: themes,
+            psa_highlight: psaHighlight?.trim() || null,
+            announcer_name: announcerName?.trim() || null,
           });
         }
 
@@ -459,6 +482,8 @@ export default function AdminTools() {
   const [teachingBook, setTeachingBook] = useState<string>("John");
   const [teachingChapter, setTeachingChapter] = useState<string>("1");
   const [manualThemesInput, setManualThemesInput] = useState<string>("");
+  const [teachingPsaHighlight, setTeachingPsaHighlight] = useState<string>("");
+  const [teachingAnnouncerName, setTeachingAnnouncerName] = useState<string>("");
   const [isTeachingLoading, setIsTeachingLoading] = useState(false);
   const [isAnalyzingChapter, setIsAnalyzingChapter] = useState(false);
   const [teachingPdfFile, setTeachingPdfFile] = useState<File | null>(null);
@@ -469,6 +494,7 @@ export default function AdminTools() {
   const [isOpeningTeachingPdf, setIsOpeningTeachingPdf] = useState(false);
   const [isRemovingTeachingPdf, setIsRemovingTeachingPdf] = useState(false);
   const [openingCsvUploadId, setOpeningCsvUploadId] = useState<string | null>(null);
+  const [isTeachingEditOpen, setIsTeachingEditOpen] = useState(false);
 
   const handleMasterPasswordReset = async () => {
     setIsResettingPasswords(true);
@@ -559,6 +585,19 @@ export default function AdminTools() {
     ]);
   };
 
+  const loadTeachingAnnouncement = async (campusId: string, ministryType: string, weekendDate: string) => {
+    const { data, error } = await (supabase as any)
+      .from("teaching_week_announcements")
+      .select("psa_highlight, announcer_name")
+      .eq("campus_id", campusId)
+      .eq("ministry_type", ministryType)
+      .eq("weekend_date", weekendDate)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data as { psa_highlight: string | null; announcer_name: string | null } | null;
+  };
+
   const { data: teachingScheduleUploads = [] } = useQuery({
     queryKey: ["teaching-schedule-uploads", teachingCampusId, teachingMinistry],
     enabled: !!teachingCampusId,
@@ -590,10 +629,15 @@ export default function AdminTools() {
 
     if (error) throw error;
     const week = data as TeachingWeekRow;
+    const announcement = await loadTeachingAnnouncement(week.campus_id, week.ministry_type, week.weekend_date);
+    week.psa_highlight = announcement?.psa_highlight ?? null;
+    week.announcer_name = announcement?.announcer_name ?? null;
     setTeachingWeek(week);
     setTeachingBook(week.book);
     setTeachingChapter(String(week.chapter));
     setManualThemesInput((week.themes_manual || []).join(", "));
+    setTeachingPsaHighlight(week.psa_highlight || "");
+    setTeachingAnnouncerName(week.announcer_name || "");
     return week;
   };
 
@@ -616,15 +660,23 @@ export default function AdminTools() {
         if (error) throw error;
         if (cancelled) return;
 
+        const announcement = await loadTeachingAnnouncement(teachingCampusId, teachingMinistry, teachingDate);
+
         if (data) {
           const week = data as TeachingWeekRow;
+          week.psa_highlight = announcement?.psa_highlight ?? null;
+          week.announcer_name = announcement?.announcer_name ?? null;
           setTeachingWeek(week);
           setTeachingBook(week.book);
           setTeachingChapter(String(week.chapter));
           setManualThemesInput((week.themes_manual || []).join(", "));
+          setTeachingPsaHighlight(week.psa_highlight || "");
+          setTeachingAnnouncerName(week.announcer_name || "");
         } else {
           setTeachingWeek(null);
           setManualThemesInput("");
+          setTeachingPsaHighlight(announcement?.psa_highlight || "");
+          setTeachingAnnouncerName(announcement?.announcer_name || "");
         }
       } catch (error) {
         console.error("Failed to load teaching week:", error);
@@ -687,16 +739,32 @@ export default function AdminTools() {
         });
       if (csvUploadError) throw csvUploadError;
 
-      const payload = parsedRows.map((row) => ({
-        campus_id: teachingCampusId,
-        ministry_type: teachingMinistry,
-        weekend_date: normalizeTeachingWeekDateForMinistry(row.weekend_date, teachingMinistry) || row.weekend_date,
-        book: row.book,
-        chapter: row.chapter,
-        translation: "ESV",
-        chapter_reference: row.chapter_reference,
-        themes_manual: row.themes_manual,
-      }));
+      const teachingPayload = parsedRows
+        .filter((row) => row.book && row.chapter)
+        .map((row) => ({
+          campus_id: teachingCampusId,
+          ministry_type: teachingMinistry,
+          weekend_date: normalizeTeachingWeekDateForMinistry(row.weekend_date, teachingMinistry) || row.weekend_date,
+          book: row.book as string,
+          chapter: row.chapter as number,
+          translation: "ESV",
+          chapter_reference: row.chapter_reference,
+          themes_manual: row.themes_manual,
+        }));
+
+      const { data: authUser } = await supabase.auth.getUser();
+
+      const announcementPayload = parsedRows
+        .filter((row) => row.announcer_name || row.psa_highlight)
+        .map((row) => ({
+          campus_id: teachingCampusId,
+          ministry_type: teachingMinistry,
+          weekend_date: normalizeTeachingWeekDateForMinistry(row.weekend_date, teachingMinistry) || row.weekend_date,
+          announcer_name: row.announcer_name,
+          psa_highlight: row.psa_highlight,
+          created_by: authUser.user?.id || null,
+          updated_by: authUser.user?.id || null,
+        }));
 
       const importedDates = Array.from(
         new Set(
@@ -707,22 +775,41 @@ export default function AdminTools() {
       );
       const ministryAliases = getTeachingMinistryAliases(teachingMinistry);
 
-      const { error: deleteError } = await (supabase as any)
-        .from("teaching_weeks")
-        .delete()
-        .eq("campus_id", teachingCampusId)
-        .in("ministry_type", ministryAliases)
-        .in("weekend_date", importedDates);
+      const importedTeachingDates = Array.from(new Set(teachingPayload.map((row) => row.weekend_date)));
+      if (importedTeachingDates.length > 0) {
+        const { error: deleteError } = await (supabase as any)
+          .from("teaching_weeks")
+          .delete()
+          .eq("campus_id", teachingCampusId)
+          .in("ministry_type", ministryAliases)
+          .in("weekend_date", importedTeachingDates);
 
-      if (deleteError) throw deleteError;
+        if (deleteError) throw deleteError;
 
-      const { error } = await (supabase as any)
-        .from("teaching_weeks")
-        .insert(payload);
+        const { error } = await (supabase as any)
+          .from("teaching_weeks")
+          .insert(teachingPayload);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
-      const { data: authUser } = await supabase.auth.getUser();
+      const importedAnnouncementDates = Array.from(new Set(announcementPayload.map((row) => row.weekend_date)));
+      if (importedAnnouncementDates.length > 0) {
+        const { error: deleteAnnouncementsError } = await (supabase as any)
+          .from("teaching_week_announcements")
+          .delete()
+          .eq("campus_id", teachingCampusId)
+          .in("ministry_type", ministryAliases)
+          .in("weekend_date", importedAnnouncementDates);
+
+        if (deleteAnnouncementsError) throw deleteAnnouncementsError;
+
+        const { error: announcementError } = await (supabase as any)
+          .from("teaching_week_announcements")
+          .insert(announcementPayload);
+
+        if (announcementError) throw announcementError;
+      }
 
       const { error: deactivateUploadsError } = await (supabase as any)
         .from("teaching_schedule_uploads")
@@ -759,6 +846,8 @@ export default function AdminTools() {
       });
       setTeachingWeek(null);
       setManualThemesInput("");
+      setTeachingPsaHighlight("");
+      setTeachingAnnouncerName("");
     } catch (error) {
       const message =
         error instanceof Error && /could not be read|notreadableerror|permission/i.test(error.message)
@@ -793,6 +882,8 @@ export default function AdminTools() {
     if (!teachingCampusId) return;
     const parsedChapter = Math.max(1, Number.parseInt(teachingChapter || "1", 10));
     const parsedThemes = parseThemes(manualThemesInput);
+    const trimmedPsa = teachingPsaHighlight.trim();
+    const trimmedAnnouncer = teachingAnnouncerName.trim();
 
     try {
       if (teachingWeek) {
@@ -806,6 +897,18 @@ export default function AdminTools() {
           })
           .eq("id", teachingWeek.id);
         if (error) throw error;
+
+        const { error: announcementError } = await (supabase as any)
+          .from("teaching_week_announcements")
+          .upsert({
+            campus_id: teachingWeek.campus_id,
+            ministry_type: teachingWeek.ministry_type,
+            weekend_date: teachingWeek.weekend_date,
+            psa_highlight: trimmedPsa || null,
+            announcer_name: trimmedAnnouncer || null,
+          }, { onConflict: "campus_id,ministry_type,weekend_date" });
+        if (announcementError) throw announcementError;
+
         await refreshTeachingWeekById(teachingWeek.id);
       } else {
         const { data, error } = await (supabase as any)
@@ -824,6 +927,18 @@ export default function AdminTools() {
           .single();
         if (error) throw error;
         const week = data as TeachingWeekRow;
+
+        const { error: announcementError } = await (supabase as any)
+          .from("teaching_week_announcements")
+          .upsert({
+            campus_id: teachingCampusId,
+            ministry_type: teachingMinistry,
+            weekend_date: teachingDate,
+            psa_highlight: trimmedPsa || null,
+            announcer_name: trimmedAnnouncer || null,
+          }, { onConflict: "campus_id,ministry_type,weekend_date" });
+        if (announcementError) throw announcementError;
+
         setTeachingWeek(week);
       }
       await invalidateTeachingQueries();
@@ -1469,7 +1584,7 @@ export default function AdminTools() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Import Schedule</p>
               <p className="text-xs text-muted-foreground">
-                Upload a CSV with dated rows. The importer reads the full date range from the file itself and assigns each chapter/reference by strict date match. The selected weekend date below is not used for CSV import.
+                Upload a CSV with dated rows. The importer can read teaching columns, announcer columns, or both from the same file. The selected weekend date below is not used for CSV import.
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-[1fr_160px_auto]">
@@ -1514,7 +1629,7 @@ export default function AdminTools() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Supported headers: `date`, `weekend_date`, `service_date`, `book`, `chapter`, `reference`, `passage`, `themes`. Duplicate weekend dates in the CSV are rejected.
+              Supported headers: `date`, `weekend_date`, `service_date`, `book`, `chapter`, `reference`, `passage`, `themes`, `psa_nonprofit_highlight`, `psa`, `announcer`. Duplicate weekend dates in the CSV are rejected.
             </p>
           </div>
 
@@ -1554,133 +1669,180 @@ export default function AdminTools() {
             )}
           </div>
 
-          <div className="grid gap-4 border-t border-border pt-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Weekend Date</Label>
-              <Input
-                type="date"
-                value={teachingDate}
-                onChange={(event) => setTeachingDate(event.target.value)}
-                className="teaching-date-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                Used only for manual single-week review, editing, and PDF attachment.
-              </p>
-            </div>
-          </div>
+          <Collapsible open={isTeachingEditOpen} onOpenChange={setIsTeachingEditOpen}>
+            <div className="rounded-md border border-border">
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex w-full items-center justify-between rounded-md px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="text-sm font-medium">Edit</p>
+                    <p className="text-xs text-muted-foreground">
+                      Manual single-week review, editing, announcer updates, and PDF attachment.
+                    </p>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isTeachingEditOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-5 border-t border-border p-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Weekend Date</Label>
+                    <Input
+                      type="date"
+                      value={teachingDate}
+                      onChange={(event) => setTeachingDate(event.target.value)}
+                      className="teaching-date-input"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Used only for manual single-week review, editing, and PDF attachment.
+                    </p>
+                  </div>
+                </div>
 
-          <div className="grid gap-4 md:grid-cols-2 border-t border-border pt-4">
-            <div className="space-y-2">
-              <Label>Book</Label>
-              <Input
-                value={teachingBook}
-                onChange={(event) => setTeachingBook(event.target.value)}
-                placeholder="John"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Chapter</Label>
-              <Input
-                type="number"
-                min={1}
-                value={teachingChapter}
-                onChange={(event) => setTeachingChapter(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Manual Themes (comma separated)</Label>
-              <Input
-                value={manualThemesInput}
-                onChange={(event) => setManualThemesInput(event.target.value)}
-                placeholder="Grace, Redemption, Surrender"
-              />
-            </div>
-          </div>
+                <div className="grid gap-4 md:grid-cols-2 border-t border-border pt-4">
+                  <div className="space-y-2">
+                    <Label>Book</Label>
+                    <Input
+                      value={teachingBook}
+                      onChange={(event) => setTeachingBook(event.target.value)}
+                      placeholder="John"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Chapter</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={teachingChapter}
+                      onChange={(event) => setTeachingChapter(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Manual Themes (comma separated)</Label>
+                    <Input
+                      value={manualThemesInput}
+                      onChange={(event) => setManualThemesInput(event.target.value)}
+                      placeholder="Grace, Redemption, Surrender"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>PSA / Nonprofit Highlight</Label>
+                    <Input
+                      value={teachingPsaHighlight}
+                      onChange={(event) => setTeachingPsaHighlight(event.target.value)}
+                      placeholder="Community Cleaning Day"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Announcer</Label>
+                    <Input
+                      value={teachingAnnouncerName}
+                      onChange={(event) => setTeachingAnnouncerName(event.target.value)}
+                      placeholder="Rachel Bjork"
+                    />
+                  </div>
+                </div>
 
-          {teachingWeek?.themes_suggested && teachingWeek.themes_suggested.length > 0 ? (
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground mb-2">AI Suggested Themes</p>
-              <div className="flex flex-wrap gap-2">
-                {teachingWeek.themes_suggested.map((theme) => (
-                  <Badge key={theme} variant="secondary">{theme}</Badge>
-                ))}
-              </div>
-            </div>
-          ) : null}
+                {teachingWeek?.themes_suggested && teachingWeek.themes_suggested.length > 0 ? (
+                  <div className="rounded-md border border-border p-3">
+                    <p className="text-xs text-muted-foreground mb-2">AI Suggested Themes</p>
+                    <div className="flex flex-wrap gap-2">
+                      {teachingWeek.themes_suggested.map((theme) => (
+                        <Badge key={theme} variant="secondary">{theme}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
-          {teachingWeek?.ai_summary ? (
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground mb-1">AI Chapter Summary</p>
-              <p className="text-sm">{teachingWeek.ai_summary}</p>
-            </div>
-          ) : null}
+                {(teachingWeek?.psa_highlight || teachingWeek?.announcer_name) ? (
+                  <div className="rounded-md border border-border p-3">
+                    <p className="text-xs text-muted-foreground mb-2">Announcer Schedule</p>
+                    <div className="space-y-1 text-sm">
+                      {teachingWeek?.psa_highlight ? <p><span className="text-muted-foreground">Highlight:</span> {teachingWeek.psa_highlight}</p> : null}
+                      {teachingWeek?.announcer_name ? <p><span className="text-muted-foreground">Announcer:</span> {teachingWeek.announcer_name}</p> : null}
+                    </div>
+                  </div>
+                ) : null}
 
-          <div className="rounded-md border border-border p-4 space-y-3">
-            <p className="text-sm font-medium">Schedule PDF</p>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
-                <Label htmlFor="teaching-schedule-pdf">Upload PDF</Label>
-                <input
-                  id="teaching-schedule-pdf"
-                  type="file"
-                  accept="application/pdf"
-                  className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-accent/90"
-                  onChange={(event) => {
-                    const nextFile = event.target.files?.[0] || null;
-                    setTeachingPdfFile(nextFile);
-                  }}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {teachingPdfFile?.name || "No file selected"}
-                </span>
-              </div>
-              <Button
-                variant="outline"
-                onClick={handleUploadTeachingPdf}
-                disabled={!teachingWeek || !teachingPdfFile || isUploadingTeachingPdf}
-                className="gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                {isUploadingTeachingPdf ? "Uploading..." : "Upload PDF"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleOpenTeachingPdf}
-                disabled={!teachingWeek?.schedule_pdf_path || isOpeningTeachingPdf}
-                className="gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                {isOpeningTeachingPdf ? "Opening..." : "Open PDF"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleRemoveTeachingPdf}
-                disabled={!teachingWeek?.schedule_pdf_path || isRemovingTeachingPdf}
-                className="gap-2 text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-                {isRemovingTeachingPdf ? "Removing..." : "Remove PDF"}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {teachingWeek?.schedule_pdf_path
-                ? "A PDF is attached to this teaching week."
-                : "No PDF attached for this teaching week."}
-            </p>
-          </div>
+                {teachingWeek?.ai_summary ? (
+                  <div className="rounded-md border border-border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">AI Chapter Summary</p>
+                    <p className="text-sm">{teachingWeek.ai_summary}</p>
+                  </div>
+                ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={handleCreateOrUpdateTeachingWeek} disabled={isTeachingLoading}>
-              {teachingWeek ? "Save Teaching Week" : "Create Teaching Week"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleAnalyzeChapter}
-              disabled={!teachingWeek || isAnalyzingChapter}
-            >
-              {isAnalyzingChapter ? "Analyzing..." : "Analyze Chapter"}
-            </Button>
-          </div>
+                <div className="rounded-md border border-border p-4 space-y-3">
+                  <p className="text-sm font-medium">Schedule PDF</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="teaching-schedule-pdf">Upload PDF</Label>
+                      <input
+                        id="teaching-schedule-pdf"
+                        type="file"
+                        accept="application/pdf"
+                        className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-accent/90"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] || null;
+                          setTeachingPdfFile(nextFile);
+                        }}
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {teachingPdfFile?.name || "No file selected"}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={handleUploadTeachingPdf}
+                      disabled={!teachingWeek || !teachingPdfFile || isUploadingTeachingPdf}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {isUploadingTeachingPdf ? "Uploading..." : "Upload PDF"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleOpenTeachingPdf}
+                      disabled={!teachingWeek?.schedule_pdf_path || isOpeningTeachingPdf}
+                      className="gap-2"
+                    >
+                      <FileText className="h-4 w-4" />
+                      {isOpeningTeachingPdf ? "Opening..." : "Open PDF"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={handleRemoveTeachingPdf}
+                      disabled={!teachingWeek?.schedule_pdf_path || isRemovingTeachingPdf}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {isRemovingTeachingPdf ? "Removing..." : "Remove PDF"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {teachingWeek?.schedule_pdf_path
+                      ? "A PDF is attached to this teaching week."
+                      : "No PDF attached for this teaching week."}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleCreateOrUpdateTeachingWeek} disabled={isTeachingLoading}>
+                    {teachingWeek ? "Save Teaching Week" : "Create Teaching Week"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleAnalyzeChapter}
+                    disabled={!teachingWeek || isAnalyzingChapter}
+                  >
+                    {isAnalyzingChapter ? "Analyzing..." : "Analyze Chapter"}
+                  </Button>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         </CardContent>
       </Card>
 

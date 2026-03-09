@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
-import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones } from "lucide-react";
+import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen } from "lucide-react";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 
 interface ScheduledTeamRosterProps {
@@ -43,6 +43,11 @@ const isProductionPosition = (pos: string) => {
     "foh", "monitor", "audio", "sound", "lighting", "lights", "stage"
   ];
   return productionKeywords.some(keyword => lower.includes(keyword));
+};
+
+const isSpeakerPosition = (pos: string) => {
+  const lower = pos.toLowerCase();
+  return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer";
 };
 
 interface RosterMember {
@@ -169,6 +174,13 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     positions: member.positions.filter(pos => isProductionPosition(pos))
   })) || [];
 
+  const speakerMembers = roster?.filter(member =>
+    member.positions.some(pos => isSpeakerPosition(pos))
+  ).map(member => ({
+    ...member,
+    positions: member.positions.filter(pos => isSpeakerPosition(pos))
+  })) || [];
+
   if (isLoading) {
     return (
       <Card>
@@ -224,7 +236,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             className="text-xs"
             style={{ borderColor: scheduledTeam.teamColor, color: scheduledTeam.teamColor }}
           >
-            {(vocalists.length + bandMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
+            {(vocalists.length + bandMembers.length + speakerMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
           </Badge>
           <GroupTextButton
             phoneNumbers={(roster || []).map((member) => member.phone)}
@@ -248,6 +260,12 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             icon={Guitar} 
             title="Band" 
             members={bandMembers} 
+            teamColor={scheduledTeam.teamColor}
+          />
+          <MemberSection
+            icon={BookOpen}
+            title="Speaker"
+            members={speakerMembers}
             teamColor={scheduledTeam.teamColor}
           />
           {showProduction && (

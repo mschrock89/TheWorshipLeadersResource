@@ -954,6 +954,7 @@ export type Database = {
           email: string
           full_name: string | null
           gender: string | null
+          has_completed_onboarding: boolean
           id: string
           ministry_types: string[] | null
           must_change_password: boolean
@@ -973,6 +974,7 @@ export type Database = {
           email: string
           full_name?: string | null
           gender?: string | null
+          has_completed_onboarding?: boolean
           id: string
           ministry_types?: string[] | null
           must_change_password?: boolean
@@ -992,6 +994,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           gender?: string | null
+          has_completed_onboarding?: boolean
           id?: string
           ministry_types?: string[] | null
           must_change_password?: boolean

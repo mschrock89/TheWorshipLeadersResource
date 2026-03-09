@@ -29,6 +29,7 @@ export function useServiceFlowTemplates(campusId?: string | null, ministryType?:
       let query = supabase
         .from("service_flow_templates")
         .select("*")
+        .order("updated_at", { ascending: false })
         .order("name", { ascending: true });
       
       if (campusId) {

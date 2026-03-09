@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,7 @@ import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { supabase } from "@/integrations/supabase/client";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
+import { buildBibleHref } from "@/lib/bible";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -126,7 +127,7 @@ function StandardMySetlists() {
   const confirmSetlist = useConfirmSetlist();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -443,6 +444,7 @@ function StandardMySetlists() {
                                     id: item.song_id,
                                     title: item.song?.title || "Unknown Song",
                                     author: item.song?.author || null,
+                                    draftSetSongId: item.id,
                                     originalKey: item.song_key || null,
                                   });
                                 }}
@@ -477,6 +479,7 @@ function StandardMySetlists() {
                                   id: item.song_id,
                                   title: item.song?.title || "Unknown Song",
                                   author: item.song?.author || null,
+                                  draftSetSongId: item.id,
                                   originalKey: item.song_key || null,
                                 })
                               }
@@ -615,12 +618,27 @@ function SetlistTeachingSchedule({
         <span className="text-sm font-medium">
           {formatTeachingReference(teachingWeek)}
         </span>
+        <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+          <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
+            Read Passage
+          </Link>
+        </Button>
       </div>
       {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
           {teachingWeek.themes_manual.join(", ")}
         </p>
       )}
+      {(teachingWeek.psa_highlight || teachingWeek.announcer_name) ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {[teachingWeek.psa_highlight, teachingWeek.announcer_name].filter(Boolean).join(" • ")}
+        </p>
+      ) : null}
+      {teachingWeek.ai_summary ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {teachingWeek.ai_summary}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -779,6 +797,11 @@ function SetlistTeamRoster({
     []
   );
 
+  const speakerPositions = useMemo(
+    () => new Set(["teacher", "announcement", "annoucement", "closing_prayer"]),
+    []
+  );
+
   const vocalists = useMemo(
     () =>
       roster.filter((member) => {
@@ -803,6 +826,18 @@ function SetlistTeamRoster({
     [roster, slotCategoryBySlot, bandFallbackPositions]
   );
 
+  const speakers = useMemo(
+    () =>
+      roster.filter((member) => {
+        const hasSpeakerSlot = member.positionSlots.some(
+          (slot) => slotCategoryBySlot.get(slot) === "Speaker"
+        );
+        if (hasSpeakerSlot) return true;
+        return member.positions.some((position) => speakerPositions.has(position));
+      }),
+    [roster, slotCategoryBySlot, speakerPositions]
+  );
+
   const rosterRows = useMemo(() => {
     if (customServiceId) {
       const byPerson = new Map<
@@ -817,6 +852,7 @@ function SetlistTeamRoster({
           positionSlots: Set<string>;
           hasVocalistRole: boolean;
           hasBandRole: boolean;
+          hasSpeakerRole: boolean;
         }
       >();
 
@@ -828,6 +864,7 @@ function SetlistTeamRoster({
         const roleCategory = slotCategoryBySlot.get(role);
         const hasVocalistRole = roleCategory === "Vocalists" || role === "vocalist";
         const hasBandRole = roleCategory === "Band" || bandFallbackPositions.has(role);
+        const hasSpeakerRole = roleCategory === "Speaker" || speakerPositions.has(role);
 
         if (!existing) {
           byPerson.set(key, {
@@ -840,12 +877,14 @@ function SetlistTeamRoster({
             positionSlots: new Set([role]),
             hasVocalistRole,
             hasBandRole,
+            hasSpeakerRole,
           });
         } else {
           existing.positions.add(role);
           existing.positionSlots.add(role);
           existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
           existing.hasBandRole = existing.hasBandRole || hasBandRole;
+          existing.hasSpeakerRole = existing.hasSpeakerRole || hasSpeakerRole;
         }
       }
 
@@ -899,17 +938,19 @@ function SetlistTeamRoster({
         isSwapped: boolean;
         positions: Set<string>;
         positionSlots: Set<string>;
-        hasVocalistRole: boolean;
-        hasBandRole: boolean;
-      }
-    >();
+          hasVocalistRole: boolean;
+          hasBandRole: boolean;
+          hasSpeakerRole: boolean;
+        }
+      >();
 
-    const allMembers = [...vocalists, ...band];
+    const allMembers = [...vocalists, ...band, ...speakers];
     for (const member of allMembers) {
       const key = member.userId || member.memberName;
       const existing = byPerson.get(key);
       const hasVocalistRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Vocalists") || member.positions.includes("vocalist");
       const hasBandRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Band") || member.positions.some((position) => bandFallbackPositions.has(position));
+      const hasSpeakerRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Speaker") || member.positions.some((position) => speakerPositions.has(position));
 
       if (!existing) {
         byPerson.set(key, {
@@ -922,6 +963,7 @@ function SetlistTeamRoster({
           positionSlots: new Set(member.positionSlots),
           hasVocalistRole,
           hasBandRole,
+          hasSpeakerRole,
         });
       } else {
         member.positions.forEach((position) => existing.positions.add(position));
@@ -930,6 +972,7 @@ function SetlistTeamRoster({
         existing.phone = existing.phone || member.phone;
         existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
         existing.hasBandRole = existing.hasBandRole || hasBandRole;
+        existing.hasSpeakerRole = existing.hasSpeakerRole || hasSpeakerRole;
       }
     }
 
@@ -943,7 +986,7 @@ function SetlistTeamRoster({
         roleLabels,
       };
     });
-  }, [customServiceId, ministryType, customAssignments, auditionCandidates, vocalists, band, slotCategoryBySlot, bandFallbackPositions]);
+  }, [customServiceId, ministryType, customAssignments, auditionCandidates, vocalists, band, speakers, slotCategoryBySlot, bandFallbackPositions, speakerPositions]);
 
   const vocalistRows = useMemo(
     () => rosterRows.filter((member) => member.hasVocalistRole),
@@ -952,6 +995,11 @@ function SetlistTeamRoster({
 
   const bandRows = useMemo(
     () => rosterRows.filter((member) => member.hasBandRole && !member.hasVocalistRole),
+    [rosterRows]
+  );
+
+  const speakerRows = useMemo(
+    () => rosterRows.filter((member) => member.hasSpeakerRole && !member.hasVocalistRole && !member.hasBandRole),
     [rosterRows]
   );
 
@@ -973,15 +1021,15 @@ function SetlistTeamRoster({
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (customServiceId && !vocalistRows.length && !bandRows.length) {
+  if (customServiceId && !vocalistRows.length && !bandRows.length && !speakerRows.length) {
     return null;
   }
 
-  if (!customServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length))) {
+  if (!customServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length && !speakerRows.length))) {
     return null;
   }
 
-  if (!customServiceId && ministryType === "audition" && !vocalistRows.length && !bandRows.length) {
+  if (!customServiceId && ministryType === "audition" && !vocalistRows.length && !bandRows.length && !speakerRows.length) {
     return null;
   }
 
@@ -1065,6 +1113,39 @@ function SetlistTeamRoster({
           </div>
         </div>
       )}
+
+      {speakerRows.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-primary">
+            <BookOpen className="h-4 w-4" />
+            <p className="text-sm font-medium">Speaker</p>
+          </div>
+          <div className="space-y-1">
+            {speakerRows.map((member) => (
+              <div
+                key={`speaker-${member.id}-${member.memberName}`}
+                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
+                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[11px]">
+                      {getInitials(member.memberName || "?")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm">{member.memberName}</span>
+                  {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+                </div>
+                <span className="text-xs text-muted-foreground text-right">
+                  {member.roleLabels.join(", ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1083,7 +1164,7 @@ function ApproverMySetlists({
   const rejectSetlist = useRejectSetlist();
   const { data: pendingApprovals = [], isLoading: loadingPending, error: pendingError } = usePendingApprovals();
   const [rejectNotesBySetId, setRejectNotesBySetId] = useState<Record<string, string>>({});
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
 
   const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
@@ -1254,6 +1335,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.song?.title || "Unknown Song",
                                   author: song.song?.author || null,
+                                  draftSetSongId: song.id,
                                   originalKey: song.song_key || null,
                                 });
                               }}
@@ -1277,6 +1359,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.song?.title || "Unknown Song",
                                   author: song.song?.author || null,
+                                  draftSetSongId: song.id,
                                   originalKey: song.song_key || null,
                                 })
                               }
@@ -1373,6 +1456,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.songs?.title || "Unknown Song",
                                   author: song.songs?.author || null,
+                                  draftSetSongId: song.id,
                                   originalKey: song.song_key || null,
                                 });
                               }}
@@ -1396,6 +1480,7 @@ function ApproverMySetlists({
                                   id: song.song_id,
                                   title: song.songs?.title || "Unknown Song",
                                   author: song.songs?.author || null,
+                                  draftSetSongId: song.id,
                                   originalKey: song.song_key || null,
                                 })
                               }
@@ -1428,7 +1513,7 @@ function AuditionCandidateSetlists() {
   const { user } = useAuth();
   const confirmSetlist = useConfirmSetlist();
   const { data: playlists = [], isLoading: playlistsLoading } = useMySetlistPlaylists();
-  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null } | null>(null);
+  const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
   const { data: assignedSetlists = [], isLoading } = useQuery({
     queryKey: ["audition-assigned-setlists", user?.id],
     enabled: !!user?.id,
@@ -1556,6 +1641,7 @@ function AuditionCandidateSetlists() {
                               id: item.song_id,
                               title: item.song?.title || "Unknown Song",
                               author: item.song?.author || null,
+                              draftSetSongId: item.id,
                               originalKey: item.song_key || null,
                             });
                           }}
@@ -1573,6 +1659,7 @@ function AuditionCandidateSetlists() {
                                 id: item.song_id,
                                 title: item.song?.title || "Unknown Song",
                                 author: item.song?.author || null,
+                                draftSetSongId: item.id,
                                 originalKey: item.song_key || null,
                               })
                             }

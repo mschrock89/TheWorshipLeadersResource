@@ -316,23 +316,6 @@ export function TemplateManager() {
           </SelectContent>
         </Select>
 
-        <Select
-          value={selectedTemplateId || ""}
-          onValueChange={setSelectedTemplateId}
-          disabled={!selectedCampusId || isLoading || templates.length === 0}
-        >
-          <SelectTrigger className="w-[260px]">
-            <SelectValue placeholder={templates.length ? "Select Template" : "No templates yet"} />
-          </SelectTrigger>
-          <SelectContent>
-            {templates.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <Button size="sm" variant="outline" onClick={() => setIsCreateDialogOpen(true)} disabled={!selectedCampusId}>
           <Plus className="h-4 w-4 mr-1" />
           New Template

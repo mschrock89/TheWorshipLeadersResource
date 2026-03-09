@@ -42,7 +42,7 @@ export function BreakRequestWidget() {
             <CardTitle className="text-lg">Need a Break?</CardTitle>
           </div>
           <CardDescription>
-            Request time off from your scheduled rotation
+            Request time off from your scheduled rotation or add blackout dates
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

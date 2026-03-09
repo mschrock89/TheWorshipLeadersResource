@@ -576,6 +576,7 @@ export async function generateServiceFlowFromTemplate(params: {
   serviceDate: string;
   draftSetId: string;
   createdBy: string;
+  forceTemplateResync?: boolean;
   songs: Array<{
     id: string;
     title: string;
@@ -781,7 +782,7 @@ export async function generateServiceFlowFromTemplate(params: {
   // Check if service flow already exists
   let { data: existingFlow } = await supabase
     .from("service_flows")
-    .select("id, ministry_type, custom_service_id, created_from_template_id")
+    .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
     .eq("draft_set_id", params.draftSetId)
     .maybeSingle();
 
@@ -790,7 +791,7 @@ export async function generateServiceFlowFromTemplate(params: {
   if (!existingFlow) {
     const scopedBase = supabase
       .from("service_flows")
-      .select("id, ministry_type, custom_service_id, created_from_template_id")
+      .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
       .eq("campus_id", params.campusId)
       .eq("ministry_type", resolvedMinistryType)
       .eq("service_date", params.serviceDate)
@@ -808,7 +809,7 @@ export async function generateServiceFlowFromTemplate(params: {
         }
         const scopedFallback = await supabase
           .from("service_flows")
-          .select("id, ministry_type, custom_service_id, created_from_template_id")
+          .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
           .eq("campus_id", params.campusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
@@ -828,7 +829,7 @@ export async function generateServiceFlowFromTemplate(params: {
         }
         const scopedFallback = await supabase
           .from("service_flows")
-          .select("id, ministry_type, custom_service_id, created_from_template_id")
+          .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
           .eq("campus_id", params.campusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
@@ -850,7 +851,15 @@ export async function generateServiceFlowFromTemplate(params: {
       ministry_type?: string | null;
       custom_service_id?: string | null;
       created_from_template_id?: string | null;
+      updated_at?: string | null;
     };
+
+    const templateUpdatedAt = template?.updated_at ? new Date(template.updated_at).getTime() : null;
+    const flowUpdatedAt = existingFlowMeta.updated_at ? new Date(existingFlowMeta.updated_at).getTime() : null;
+    const templateWasUpdatedAfterFlow =
+      templateUpdatedAt !== null &&
+      flowUpdatedAt !== null &&
+      templateUpdatedAt > flowUpdatedAt;
 
     const updatePayloadWithCustom = {
       draft_set_id: params.draftSetId,
@@ -891,9 +900,11 @@ export async function generateServiceFlowFromTemplate(params: {
     const requiresTemplateResync =
       !!template &&
       (
+        params.forceTemplateResync === true ||
         (existingFlowMeta.created_from_template_id || null) !== (template.id || null) ||
         (existingFlowMeta.ministry_type || null) !== resolvedMinistryType ||
         (existingFlowMeta.custom_service_id || null) !== (resolvedCustomServiceId || null) ||
+        templateWasUpdatedAfterFlow ||
         hasLegacyPlaceholderRows
       );
 
