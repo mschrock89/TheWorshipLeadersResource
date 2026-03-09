@@ -35,12 +35,13 @@ export function TestPushNotification() {
           message: "Push notifications are working! This is a test from your worship team.",
           url: "/dashboard",
           tag: "test-notification",
+          userIds: [user.id],
         },
       });
 
       if (error) {
         console.error("Push notification error:", error);
-        toast.error("Failed to send test notification");
+        toast.error(error.message || "Failed to send test notification");
         return;
       }
 
@@ -50,9 +51,14 @@ export function TestPushNotification() {
         return;
       }
 
+      if (!data?.sent) {
+        toast.error("No active push subscription found for your account on this device.");
+        return;
+      }
+
       setSent(true);
       const recipientCount = data?.sent || 0;
-      toast.success(`Test notification sent to ${recipientCount} subscriber${recipientCount !== 1 ? 's' : ''}!`);
+      toast.success(`Test notification sent to ${recipientCount} device${recipientCount !== 1 ? "s" : ""}.`);
     } catch (error) {
       console.error("Error sending test notification:", error);
       toast.error("Failed to send test notification");
@@ -90,7 +96,7 @@ export function TestPushNotification() {
         <div>
           <p className="text-sm font-medium">Test Push Notifications</p>
           <p className="text-xs text-muted-foreground">
-            Send a test to all subscribed volunteers
+            Send a test notification to this device
           </p>
         </div>
       </div>

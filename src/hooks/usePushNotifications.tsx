@@ -3,8 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-// VAPID public key for web push notifications
-const VAPID_PUBLIC_KEY = "BE70AEUYN37VSL-tITYcT98oHCR3fO_X2LGq43087GyANeaONzB-n_FQ7TiV5GIbn5WatlewV3W0YAj1GX7XCLo";
+const FALLBACK_VAPID_PUBLIC_KEY = "BNoojURZExaEDa__wxop-vbJTADNuajws8p50EoWcsIwvAE9XhQMTk6Oki7YKYgWQEGZPaoQiEbZ1IpmEkiq3nk";
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || FALLBACK_VAPID_PUBLIC_KEY;
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
