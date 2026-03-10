@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:charts": "vite --config vite.charts.config.ts",
     "build": "vite build",
+    "build:charts": "vite build --config vite.charts.config.ts",
+    "build:charts:vercel": "CHARTS_OUT_DIR=dist vite build --config vite.charts.config.ts",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "preview:charts": "vite preview --config vite.charts.config.ts",
     "data:export": "node scripts/export-from-supabase.mjs",
     "data:import": "node scripts/import-to-supabase.mjs",
     "data:import-file": "node scripts/import-from-json.mjs"
