@@ -1,4 +1,4 @@
-export type BibleTranslation = "ESV" | "KJV" | "WEB";
+export type BibleTranslation = "ESV";
 
 export interface BibleBook {
   name: string;
@@ -7,17 +7,10 @@ export interface BibleBook {
 
 export const BIBLE_TRANSLATIONS: Array<{ value: BibleTranslation; label: string; description: string }> = [
   { value: "ESV", label: "ESV", description: "English Standard Version" },
-  { value: "KJV", label: "KJV", description: "King James Version" },
-  { value: "WEB", label: "WEB", description: "World English Bible" },
 ];
 
 export function getBibleReaderTranslation(translation?: string | null): BibleTranslation {
-  const normalized = String(translation || "").trim().toUpperCase();
-
-  if (normalized === "KJV") return "KJV";
-  if (normalized === "WEB") return "WEB";
-
-  return "WEB";
+  return "ESV";
 }
 
 export const BIBLE_BOOKS: BibleBook[] = [

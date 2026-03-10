@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { parseBibleReference, type BibleTranslation } from "@/lib/bible";
+import type { BibleTranslation } from "@/lib/bible";
 
 export interface BibleVerse {
   book_name: string;
@@ -69,7 +69,7 @@ async function getFunctionErrorMessage(error: unknown, translation?: BibleTransl
   }
 
   if (translation === "ESV") {
-    return "The ESV service is unavailable right now. Try WEB or KJV while the Supabase function is being repaired.";
+    return "The ESV service is unavailable right now.";
   }
 
   if (error instanceof Error && error.message) {
@@ -77,67 +77,6 @@ async function getFunctionErrorMessage(error: unknown, translation?: BibleTransl
   }
 
   return "Failed to load passage.";
-}
-
-async function upsertPassageCache(reference: string, translation: BibleTranslation, text: string, verses: BibleVerse[]) {
-  const parsed = parseBibleReference(reference);
-  const payload = {
-    lookup_key: normalizeLookupKey(reference),
-    reference,
-    translation,
-    book: parsed.book,
-    chapter: parsed.chapter,
-    verse_start: parsed.verseStart,
-    verse_end: parsed.verseEnd,
-    text,
-    verses,
-    source: "bible_api",
-  };
-
-  const { data, error } = await supabase
-    .from("bible_passage_cache")
-    .upsert(payload, { onConflict: "lookup_key,translation" })
-    .select("*")
-    .maybeSingle();
-
-  if (error || !data) {
-    return {
-      id: `ephemeral:${payload.lookup_key}:${translation}`,
-      ...payload,
-      fetched_at: new Date().toISOString(),
-      from_cache: false,
-    } as BiblePassage;
-  }
-
-  return {
-    ...data,
-    verses: Array.isArray(data.verses) ? (data.verses as BibleVerse[]) : [],
-    from_cache: false,
-  } as BiblePassage;
-}
-
-async function fetchPublicBibleApiPassage(reference: string, translation: Exclude<BibleTranslation, "ESV">) {
-  const response = await fetch(
-    `https://bible-api.com/${encodeURIComponent(reference)}?translation=${encodeURIComponent(translation.toLowerCase())}`
-  );
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(typeof payload?.error === "string" ? payload.error : "Failed to load passage.");
-  }
-
-  const resolvedReference = typeof payload?.reference === "string" ? payload.reference : reference;
-  const text = typeof payload?.text === "string" ? payload.text.trim() : "";
-  const verses = Array.isArray(payload?.verses)
-    ? (payload.verses as BibleVerse[]).map((verse) => ({
-        book_name: String(verse.book_name || ""),
-        chapter: Number(verse.chapter || 0),
-        verse: Number(verse.verse || 0),
-        text: String(verse.text || ""),
-      }))
-    : [];
-
-  return upsertPassageCache(resolvedReference, translation, text, verses);
 }
 
 async function fetchBiblePassage(reference: string, translation: BibleTranslation) {
@@ -162,23 +101,15 @@ async function fetchBiblePassage(reference: string, translation: BibleTranslatio
     } as BiblePassage;
   }
 
-  if (translation !== "ESV") {
-    return fetchPublicBibleApiPassage(reference, translation);
+  const { data, error } = await supabase.functions.invoke("get-passage", {
+    body: { reference, translation },
+  });
+
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error, translation));
   }
 
-  try {
-    const { data, error } = await supabase.functions.invoke("get-passage", {
-      body: { reference, translation },
-    });
-
-    if (error) {
-      throw new Error(await getFunctionErrorMessage(error, translation));
-    }
-
-    return data as BiblePassage;
-  } catch {
-    return fetchPublicBibleApiPassage(reference, "WEB");
-  }
+  return data as BiblePassage;
 }
 
 export function useBiblePassage(reference: string, translation: BibleTranslation) {

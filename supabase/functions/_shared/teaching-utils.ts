@@ -210,12 +210,26 @@ export async function fetchBibleChapter(
     apiUrl.searchParams.set("include-passage-horizontal-lines", "false");
     apiUrl.searchParams.set("include-heading-horizontal-lines", "false");
 
+    console.log("fetchBibleChapter ESV start", {
+      reference,
+      translation,
+      hasKey: Boolean(esvApiKey),
+      keyPrefix: esvApiKey.slice(0, 6),
+      url: apiUrl.toString(),
+    });
+
     const response = await fetch(apiUrl.toString(), {
       headers: {
         Authorization: `Token ${esvApiKey}`,
       },
     });
     const payload = await response.json();
+
+    console.log("fetchBibleChapter ESV result", {
+      ok: response.ok,
+      status: response.status,
+      payload,
+    });
 
     if (!response.ok) {
       throw new Error(payload?.detail || payload?.error || "esv_api_failed");

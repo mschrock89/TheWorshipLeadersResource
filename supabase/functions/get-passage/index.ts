@@ -89,12 +89,27 @@ async function fetchPassageByReference(reference: string, translation: string) {
     apiUrl.searchParams.set("include-passage-horizontal-lines", "false");
     apiUrl.searchParams.set("include-heading-horizontal-lines", "false");
 
+    console.log("ESV request start", {
+      reference,
+      translation,
+      url: apiUrl.toString(),
+      hasKey: Boolean(esvApiKey),
+      keyPrefix: esvApiKey.slice(0, 6),
+    });
+
     const response = await fetch(apiUrl.toString(), {
       headers: {
         Authorization: `Token ${esvApiKey}`,
       },
     });
     const payload = await response.json();
+
+    console.log("ESV request result", {
+      ok: response.ok,
+      status: response.status,
+      payload,
+    });
+
     if (!response.ok) {
       throw new Error(payload?.detail || payload?.error || "esv_api_failed");
     }
@@ -211,6 +226,11 @@ Deno.serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
     const status = message === "unauthorized" ? 401 : 500;
+
+    console.error("get-passage failed", {
+      message,
+      stack: error instanceof Error ? error.stack : null,
+    });
 
     return new Response(JSON.stringify({ error: message }), {
       status,

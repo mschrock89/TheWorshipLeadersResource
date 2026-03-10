@@ -10,12 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   BIBLE_BOOKS,
-  BIBLE_TRANSLATIONS,
   buildChapterReference,
   getBookMeta,
   getBibleReaderTranslation,
   parseBibleReference,
-  type BibleTranslation,
 } from "@/lib/bible";
 import {
   useBiblePassage,
@@ -75,11 +73,6 @@ export default function Bible() {
     () => parseBibleReference(activeReference),
     [activeReference]
   );
-  const fallbackNotice = useMemo(() => {
-    if (!passage?.translation) return null;
-    if (translation === passage.translation) return null;
-    return `Requested ${translation}, showing ${passage.translation} because the preferred source is unavailable right now.`;
-  }, [passage?.translation, translation]);
   const selectedBook = parsedActiveReference.book || "John";
   const selectedChapter = parsedActiveReference.chapter || 1;
   const selectedBookMeta = useMemo(() => getBookMeta(selectedBook), [selectedBook]);
@@ -105,18 +98,10 @@ export default function Bible() {
     recordRecentPassage.mutate(passage);
   }, [passage?.id]);
 
-  useEffect(() => {
-    if (!passage?.translation) return;
-    const resolvedTranslation = getBibleReaderTranslation(passage.translation);
-    if (resolvedTranslation !== translation) {
-      updatePassageParams(activeReference, resolvedTranslation);
-    }
-  }, [activeReference, passage?.translation, translation]);
-
-  const updatePassageParams = (reference: string, nextTranslation?: BibleTranslation) => {
+  const updatePassageParams = (reference: string) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("reference", reference);
-    nextParams.set("translation", nextTranslation || translation);
+    nextParams.set("translation", translation);
     setSearchParams(nextParams, { replace: true });
   };
 
@@ -151,7 +136,7 @@ export default function Bible() {
                 <div>
                   <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-950">Read Scripture in the app</h1>
                   <p className="mt-2 max-w-xl text-sm text-slate-700">
-                    Search by reference, browse by book and chapter, switch translations, and keep your saved and recent passages close.
+                    Search by reference, browse by book and chapter, and keep your saved and recent passages close.
                   </p>
                 </div>
               </div>
@@ -172,22 +157,6 @@ export default function Bible() {
               <CardDescription>Look up a reference directly or browse chapter-by-chapter.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Select
-                value={translation}
-                onValueChange={(value) => updatePassageParams(activeReference, value as BibleTranslation)}
-              >
-                <SelectTrigger className="md:max-w-sm">
-                  <SelectValue placeholder="Translation" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BIBLE_TRANSLATIONS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label} - {item.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               <Tabs value={finderMode} onValueChange={(value) => setFinderMode(value as "search" | "browse")} className="space-y-4">
                 <TabsList className="grid h-auto w-full grid-cols-2">
                   <TabsTrigger value="search">Search</TabsTrigger>
@@ -315,11 +284,6 @@ export default function Bible() {
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-6">
-              {fallbackNotice ? (
-                <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  {fallbackNotice}
-                </div>
-              ) : null}
               {isLoading ? (
                 <div className="space-y-3">
                   <div className="h-5 w-40 animate-pulse rounded bg-muted" />
