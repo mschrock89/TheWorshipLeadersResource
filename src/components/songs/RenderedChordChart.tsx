@@ -9,6 +9,7 @@ interface RenderedChordChartProps {
   scaleClassName?: string;
   pageIndex?: number;
   pageSize?: number;
+  showHeader?: boolean;
 }
 
 export function RenderedChordChart({
@@ -19,6 +20,7 @@ export function RenderedChordChart({
   scaleClassName = "text-[20px] leading-[1.45] sm:text-[22px]",
   pageIndex = 0,
   pageSize,
+  showHeader = true,
 }: RenderedChordChartProps) {
   const renderedLines = useMemo(() => renderChordChartText(chordChartText), [chordChartText]);
   const visibleLines = useMemo(() => {
@@ -32,10 +34,12 @@ export function RenderedChordChart({
       className={`rounded-md border bg-background p-4 overflow-hidden ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY }}
     >
-      <div className="mb-5 border-b pb-3">
-        <h3 className="text-xl font-bold">{title}</h3>
-        {author ? <p className="text-sm text-muted-foreground">{author}</p> : null}
-      </div>
+      {showHeader ? (
+        <div className="mb-5 border-b pb-3">
+          <h3 className="text-xl font-bold">{title}</h3>
+          {author ? <p className="text-sm text-muted-foreground">{author}</p> : null}
+        </div>
+      ) : null}
 
       <div className="space-y-0.5">
         {visibleLines.map((line, index) => {

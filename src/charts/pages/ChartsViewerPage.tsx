@@ -28,9 +28,9 @@ import {
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 
 const FONT_SIZES = [
-  { value: "compact", label: "Compact", className: "text-[15px] leading-[1.25] sm:text-[16px]", pageUnits: 22 },
-  { value: "comfortable", label: "Comfortable", className: "text-[17px] leading-[1.32] sm:text-[18px]", pageUnits: 19 },
-  { value: "large", label: "Large", className: "text-[20px] leading-[1.4] sm:text-[21px]", pageUnits: 16 },
+  { value: "compact", label: "Compact", className: "text-[14px] leading-[1.22] sm:text-[15px]", pageUnits: 30 },
+  { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.26] sm:text-[17px]", pageUnits: 26 },
+  { value: "large", label: "Large", className: "text-[18px] leading-[1.32] sm:text-[19px]", pageUnits: 22 },
 ];
 
 async function fetchSongChartVersions(songId: string, draftSetSongId?: string | null) {
@@ -95,7 +95,7 @@ export function ChartsViewerPage() {
   const [originalKeyIndex, setOriginalKeyIndex] = useState(0);
   const [targetKeyIndex, setTargetKeyIndex] = useState(0);
   const [fontSize, setFontSize] = useState("comfortable");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isImmersive, setIsImmersive] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
 
@@ -129,10 +129,11 @@ export function ChartsViewerPage() {
   }, [versions, selectedVersionId]);
 
   useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
+    document.documentElement.classList.toggle("charts-immersive", isImmersive);
+    return () => {
+      document.documentElement.classList.remove("charts-immersive");
+    };
+  }, [isImmersive]);
 
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
   const chartText = selectedVersion?.chord_chart_text?.trim() || "";
@@ -222,8 +223,8 @@ export function ChartsViewerPage() {
   };
 
   return (
-    <div className="space-y-5 overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className={`overflow-hidden ${isImmersive ? "space-y-3" : "space-y-5"}`}>
+      <div className={`flex flex-wrap items-center gap-3 ${isImmersive ? "rounded-2xl border border-border bg-background/80 p-3 backdrop-blur-sm" : ""}`}>
         <Button asChild variant="ghost" size="lg" className="h-11 rounded-xl px-3">
           <Link to={`/setlists/${setlist.id}`}>
             <ArrowLeft className="mr-2 h-5 w-5" />
@@ -237,9 +238,14 @@ export function ChartsViewerPage() {
         <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
           Page {pageIndex + 1} of {totalPages}
         </Badge>
+        {isImmersive ? (
+          <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
+            Swipe to turn
+          </Badge>
+        ) : null}
       </div>
 
-      <section className="rounded-3xl border border-border bg-card/90 p-4 shadow-ecc">
+      <section className={`rounded-3xl border border-border bg-card/90 shadow-ecc ${isImmersive ? "hidden" : "p-4"}`}>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-3xl font-semibold">{activeSong.song?.title || "Untitled Song"}</h2>
@@ -301,23 +307,17 @@ export function ChartsViewerPage() {
               type="button"
               variant="outline"
               className="h-12 rounded-xl text-base"
-              onClick={async () => {
-                if (!document.fullscreenElement) {
-                  await document.documentElement.requestFullscreen();
-                } else {
-                  await document.exitFullscreen();
-                }
-              }}
+              onClick={() => setIsImmersive((current) => !current)}
             >
-              {isFullscreen ? <Minimize className="mr-2 h-5 w-5" /> : <Expand className="mr-2 h-5 w-5" />}
-              {isFullscreen ? "Exit" : "Full Screen"}
+              {isImmersive ? <Minimize className="mr-2 h-5 w-5" /> : <Expand className="mr-2 h-5 w-5" />}
+              {isImmersive ? "Exit Focus" : "Full Screen"}
             </Button>
           </div>
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[150px_minmax(0,1fr)_150px]">
-        <div className="order-2 flex gap-3 lg:order-1 lg:flex-col">
+      <div className={`grid gap-4 ${isImmersive ? "grid-cols-1" : "lg:grid-cols-[150px_minmax(0,1fr)_150px]"}`}>
+        <div className={`order-2 flex gap-3 lg:order-1 lg:flex-col ${isImmersive ? "hidden" : ""}`}>
           {pageIndex > 0 || previousSong ? (
             <Button type="button" variant="outline" size="lg" className="h-auto min-h-24 flex-1 rounded-2xl px-4 py-4 text-left lg:w-full" onClick={goBackward}>
               <div className="flex flex-col items-start gap-2">
@@ -341,23 +341,24 @@ export function ChartsViewerPage() {
               title={activeSong.song?.title || "Chord Chart"}
               author={activeSong.song?.author || null}
               chordChartText={transposedChartText}
-              className="min-h-[62vh] rounded-[28px] p-5 shadow-ecc"
+              className={isImmersive ? "min-h-[78vh] rounded-[30px] p-4 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
               scaleClassName={fontSizeClassName}
               pageIndex={pageIndex}
               pageSize={fontConfig.pageUnits}
+              showHeader={false}
             />
           ) : lyricsText ? (
-            <div className="min-h-[62vh] rounded-[28px] border bg-background p-6 shadow-ecc overflow-hidden">
+            <div className={`${isImmersive ? "min-h-[78vh] rounded-[30px] p-4" : "min-h-[62vh] rounded-[28px] p-6"} border bg-background shadow-ecc overflow-hidden`}>
               <pre className={`whitespace-pre-wrap break-words ${fontSizeClassName}`}>{lyricsText}</pre>
             </div>
           ) : (
-            <div className="flex min-h-[62vh] items-center justify-center rounded-[28px] border border-dashed bg-muted/10 p-8 text-center text-muted-foreground shadow-ecc">
+            <div className={`${isImmersive ? "min-h-[78vh] rounded-[30px]" : "min-h-[62vh] rounded-[28px]"} flex items-center justify-center border border-dashed bg-muted/10 p-8 text-center text-muted-foreground shadow-ecc`}>
               No chart or lyrics are available for this song yet.
             </div>
           )}
         </div>
 
-        <div className="order-3 flex gap-3 lg:flex-col">
+        <div className={`order-3 flex gap-3 lg:flex-col ${isImmersive ? "hidden" : ""}`}>
           {pageIndex < totalPages - 1 || nextSong ? (
             <Button type="button" size="lg" className="h-auto min-h-24 flex-1 rounded-2xl px-4 py-4 text-left lg:w-full" onClick={goForward}>
               <div className="flex flex-col items-start gap-2">
@@ -375,6 +376,23 @@ export function ChartsViewerPage() {
           )}
         </div>
       </div>
+
+      {isImmersive ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/80 p-3 backdrop-blur-sm">
+          <Button type="button" variant="outline" className="h-11 rounded-xl px-4" onClick={goBackward} disabled={!previousSong && pageIndex === 0}>
+            <ChevronLeft className="mr-2 h-5 w-5" />
+            Prev
+          </Button>
+          <div className="text-center">
+            <p className="text-lg font-semibold">{activeSong.song?.title || "Untitled Song"}</p>
+            <p className="text-sm text-muted-foreground">{activeSong.song?.author || "Unknown author"}</p>
+          </div>
+          <Button type="button" className="h-11 rounded-xl px-4" onClick={goForward} disabled={!nextSong && pageIndex >= totalPages - 1}>
+            Next
+            <ChevronRight className="ml-2 h-5 w-5" />
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
