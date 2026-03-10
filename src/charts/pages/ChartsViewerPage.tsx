@@ -38,7 +38,6 @@ const FONT_SIZES = [
 function paginateMeasuredLines(
   root: HTMLDivElement,
   blocks: ReturnType<typeof buildRenderedBlocks>,
-  lineOffsets: number[],
 ): RenderedLine[][] {
   if (!blocks.length) return [[]];
 
@@ -52,12 +51,42 @@ function paginateMeasuredLines(
   const pages: RenderedLine[][] = [];
   let currentPage: RenderedLine[] = [];
   let usedHeight = 0;
+  const minimumFillRatio = 0.72;
 
   const flushPage = () => {
     if (!currentPage.length) return;
     pages.push(currentPage);
     currentPage = [];
     usedHeight = 0;
+  };
+
+  const appendBlockByLines = (
+    blockLines: RenderedLine[],
+    lineHeights: number[],
+    allowSectionCarryOver: boolean,
+  ) => {
+    blockLines.forEach((line, lineIndex) => {
+      const height = lineHeights[lineIndex] ?? 0;
+
+      if (currentPage.length > 0 && usedHeight + height > availableHeight) {
+        flushPage();
+      }
+
+      currentPage.push(line);
+      usedHeight += height;
+
+      const nextLine = blockLines[lineIndex + 1];
+      const nextHeight = lineHeights[lineIndex + 1] ?? 0;
+      if (
+        allowSectionCarryOver &&
+        nextLine?.kind === "section" &&
+        currentPage.length > 0 &&
+        usedHeight / availableHeight >= minimumFillRatio &&
+        usedHeight + nextHeight > availableHeight
+      ) {
+        flushPage();
+      }
+    });
   };
 
   blocks.forEach((block, blockIndex) => {
@@ -68,15 +97,6 @@ function paginateMeasuredLines(
     }
 
     const blockHeight = blockElement.offsetHeight;
-    if (blockHeight <= availableHeight) {
-      if (currentPage.length > 0 && usedHeight + blockHeight > availableHeight) {
-        flushPage();
-      }
-      currentPage.push(...block.lines);
-      usedHeight += blockHeight;
-      return;
-    }
-
     const lineElements = Array.from(blockElement.querySelectorAll<HTMLElement>("[data-line-index]"));
     const blockRect = blockElement.getBoundingClientRect();
     const lineHeights = lineElements.map((lineElement, lineIndex) => {
@@ -87,27 +107,27 @@ function paginateMeasuredLines(
       return Math.max(0, nextTop - currentTop);
     });
 
-    block.lines.forEach((line, lineIndex) => {
-      const height = lineHeights[lineIndex] ?? 0;
-      if (currentPage.length > 0 && usedHeight + height > availableHeight) {
-        flushPage();
+    const remainingHeight = availableHeight - usedHeight;
+    const shouldSplitToFillPage =
+      currentPage.length > 0 &&
+      blockHeight > remainingHeight &&
+      usedHeight / availableHeight < minimumFillRatio;
+
+    if (blockHeight <= availableHeight) {
+      if (shouldSplitToFillPage) {
+        appendBlockByLines(block.lines, lineHeights, false);
+        return;
       }
 
-      currentPage.push(line);
-      usedHeight += height;
-
-      const absoluteIndex = lineOffsets[blockIndex] + lineIndex;
-      const nextLine = block.lines[lineIndex + 1];
-      const nextHeight = lineHeights[lineIndex + 1] ?? 0;
-      if (
-        nextLine?.kind === "section" &&
-        currentPage.length > 0 &&
-        usedHeight + nextHeight > availableHeight &&
-        absoluteIndex < lineOffsets[blockIndex] + block.lines.length - 1
-      ) {
+      if (currentPage.length > 0 && usedHeight + blockHeight > availableHeight) {
         flushPage();
       }
-    });
+      currentPage.push(...block.lines);
+      usedHeight += blockHeight;
+      return;
+    }
+
+    appendBlockByLines(block.lines, lineHeights, true);
   });
 
   flushPage();
@@ -281,8 +301,8 @@ export function ChartsViewerPage() {
 
     const root = measureRootRef.current;
     if (!root || chartViewport.width === 0 || chartViewport.height === 0) return;
-    setMeasuredPages(paginateMeasuredLines(root, renderedBlocks, blockLineOffsets));
-  }, [blockLineOffsets, chartViewport.height, chartViewport.width, fontSizeClassName, renderedBlocks, transposedChartText]);
+    setMeasuredPages(paginateMeasuredLines(root, renderedBlocks));
+  }, [chartViewport.height, chartViewport.width, fontSizeClassName, renderedBlocks, transposedChartText]);
 
   useEffect(() => {
     setPageIndex(0);
