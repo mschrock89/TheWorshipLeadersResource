@@ -127,25 +127,85 @@ export function getRenderedLineUnits(line: RenderedLine): number {
   return 1;
 }
 
+type RenderedBlock = {
+  lines: RenderedLine[];
+  units: number;
+  startsSection: boolean;
+};
+
+function buildRenderedBlocks(lines: RenderedLine[]): RenderedBlock[] {
+  if (lines.length === 0) return [];
+
+  const blocks: RenderedBlock[] = [];
+  let currentLines: RenderedLine[] = [];
+  let currentUnits = 0;
+  let currentStartsSection = false;
+
+  const pushCurrent = () => {
+    if (currentLines.length === 0) return;
+    blocks.push({
+      lines: currentLines,
+      units: currentUnits,
+      startsSection: currentStartsSection,
+    });
+    currentLines = [];
+    currentUnits = 0;
+    currentStartsSection = false;
+  };
+
+  for (const line of lines) {
+    if (line.kind === "section") {
+      pushCurrent();
+      currentStartsSection = true;
+    }
+
+    currentLines.push(line);
+    currentUnits += getRenderedLineUnits(line);
+  }
+
+  pushCurrent();
+  return blocks;
+}
+
 export function paginateRenderedChordLines(
   lines: RenderedLine[],
   maxUnitsPerPage: number,
 ): RenderedLine[][] {
   if (lines.length === 0) return [[]];
+
+  const blocks = buildRenderedBlocks(lines);
+  if (blocks.length === 0) return [lines];
+
   const pages: RenderedLine[][] = [];
   let currentPage: RenderedLine[] = [];
   let usedUnits = 0;
 
-  for (const line of lines) {
-    const nextUnits = getRenderedLineUnits(line);
-    if (currentPage.length > 0 && usedUnits + nextUnits > maxUnitsPerPage) {
+  for (const block of blocks) {
+    const blockUnits = block.units;
+
+    if (currentPage.length > 0 && usedUnits + blockUnits > maxUnitsPerPage) {
       pages.push(currentPage);
       currentPage = [];
       usedUnits = 0;
     }
 
-    currentPage.push(line);
-    usedUnits += nextUnits;
+    if (blockUnits > maxUnitsPerPage) {
+      for (const line of block.lines) {
+        const nextUnits = getRenderedLineUnits(line);
+        if (currentPage.length > 0 && usedUnits + nextUnits > maxUnitsPerPage) {
+          pages.push(currentPage);
+          currentPage = [];
+          usedUnits = 0;
+        }
+
+        currentPage.push(line);
+        usedUnits += nextUnits;
+      }
+      continue;
+    }
+
+    currentPage.push(...block.lines);
+    usedUnits += blockUnits;
   }
 
   if (currentPage.length > 0) {

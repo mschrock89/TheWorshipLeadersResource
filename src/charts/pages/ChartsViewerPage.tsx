@@ -28,9 +28,9 @@ import {
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 
 const FONT_SIZES = [
-  { value: "compact", label: "Compact", className: "text-[14px] leading-[1.18] sm:text-[15px]", pageUnits: 38 },
-  { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.22] sm:text-[17px]", pageUnits: 33 },
-  { value: "large", label: "Large", className: "text-[18px] leading-[1.28] sm:text-[19px]", pageUnits: 28 },
+  { value: "compact", label: "Compact", className: "text-[14px] leading-[1.15] sm:text-[15px]", pageUnits: 44 },
+  { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.2] sm:text-[17px]", pageUnits: 38 },
+  { value: "large", label: "Large", className: "text-[18px] leading-[1.25] sm:text-[19px]", pageUnits: 32 },
 ];
 
 async function fetchSongChartVersions(songId: string, draftSetSongId?: string | null) {
@@ -159,7 +159,7 @@ export function ChartsViewerPage() {
   const fontSizeClassName = fontConfig.className;
   const pagedLines = useMemo(() => paginateRenderedChordLines(renderChordChartText(transposedChartText), fontConfig.pageUnits), [fontConfig.pageUnits, transposedChartText]);
   const totalPages = transposedChartText ? Math.max(1, pagedLines.length) : 1;
-  const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 92px)";
+  const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 84px)";
 
   useEffect(() => {
     setPageIndex(0);
@@ -361,7 +361,7 @@ export function ChartsViewerPage() {
               title={activeSong.song?.title || "Chord Chart"}
               author={activeSong.song?.author || null}
               chordChartText={transposedChartText}
-              className={isImmersive ? "rounded-[30px] p-3 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
+              className={isImmersive ? "rounded-[30px] p-2 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
               scaleClassName={fontSizeClassName}
               pageIndex={pageIndex}
               pageSize={fontConfig.pageUnits}
