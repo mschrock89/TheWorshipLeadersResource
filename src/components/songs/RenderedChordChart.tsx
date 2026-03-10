@@ -62,7 +62,7 @@ export function RenderedChartLines({
   lineOffset?: number;
 }) {
   return (
-    <div className="space-y-0.5">
+    <div className="h-full max-w-full space-y-0.5 overflow-hidden pr-1">
       {lines.map((line, index) => {
         const lineIndex = lineOffset + index;
 
@@ -72,7 +72,7 @@ export function RenderedChartLines({
 
         if (line.kind === "section") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="mt-2 whitespace-pre-wrap font-bold">
+            <pre key={index} data-line-index={lineIndex} className="mt-2 max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">
               {line.text}
             </pre>
           );
@@ -80,7 +80,7 @@ export function RenderedChartLines({
 
         if (line.kind === "chords") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="whitespace-pre-wrap font-bold">
+            <pre key={index} data-line-index={lineIndex} className="max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">
               {line.text}
             </pre>
           );
@@ -88,19 +88,19 @@ export function RenderedChartLines({
 
         if (line.kind === "lyricWithChords") {
           return (
-            <div key={index} data-line-index={lineIndex} className="space-y-0">
+            <div key={index} data-line-index={lineIndex} className="max-w-full space-y-0 overflow-hidden">
               {line.chords.trim().length > 0 ? (
-                <pre className="whitespace-pre-wrap font-bold">{line.chords}</pre>
+                <pre className="max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">{line.chords}</pre>
               ) : (
                 <div className="h-[1.45em]" />
               )}
-              <pre className="whitespace-pre-wrap">{line.lyric}</pre>
+              <pre className="max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{line.lyric}</pre>
             </div>
           );
         }
 
         return (
-          <pre key={index} data-line-index={lineIndex} className="whitespace-pre-wrap">
+          <pre key={index} data-line-index={lineIndex} className="max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {line.text}
           </pre>
         );
