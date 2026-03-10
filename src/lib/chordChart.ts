@@ -140,13 +140,13 @@ export function getRenderedLineUnits(line: RenderedLine): number {
   return 1;
 }
 
-type RenderedBlock = {
+export type RenderedBlock = {
   lines: RenderedLine[];
   units: number;
   startsSection: boolean;
 };
 
-function buildRenderedBlocks(lines: RenderedLine[]): RenderedBlock[] {
+export function buildRenderedBlocks(lines: RenderedLine[]): RenderedBlock[] {
   if (lines.length === 0) return [];
 
   const blocks: RenderedBlock[] = [];

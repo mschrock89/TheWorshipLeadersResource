@@ -1,38 +1,44 @@
-import { CSSProperties, useMemo } from "react";
-import { paginateRenderedChordLines, renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
+import { CSSProperties, Ref, useMemo } from "react";
+import { paginateRenderedChordLines, RenderedLine, renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
 
 interface RenderedChordChartProps {
   title: string;
   author: string | null;
   chordChartText: string;
+  lines?: RenderedLine[];
   className?: string;
   scaleClassName?: string;
   pageIndex?: number;
   pageSize?: number;
   showHeader?: boolean;
   style?: CSSProperties;
+  containerRef?: Ref<HTMLDivElement>;
 }
 
 export function RenderedChordChart({
   title,
   author,
   chordChartText,
+  lines,
   className,
   scaleClassName = "text-[20px] leading-[1.45] sm:text-[22px]",
   pageIndex = 0,
   pageSize,
   showHeader = true,
   style,
+  containerRef,
 }: RenderedChordChartProps) {
   const renderedLines = useMemo(() => renderChordChartText(chordChartText), [chordChartText]);
   const visibleLines = useMemo(() => {
+    if (lines) return lines;
     if (!pageSize) return renderedLines;
     const pages = paginateRenderedChordLines(renderedLines, pageSize);
     return pages[Math.max(0, Math.min(pageIndex, pages.length - 1))] || [];
-  }, [pageIndex, pageSize, renderedLines]);
+  }, [lines, pageIndex, pageSize, renderedLines]);
 
   return (
     <div
+      ref={containerRef}
       className={`rounded-md border bg-background p-4 overflow-hidden ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY, ...style }}
     >
@@ -43,48 +49,62 @@ export function RenderedChordChart({
         </div>
       ) : null}
 
-      <div className="space-y-0.5">
-        {visibleLines.map((line, index) => {
-          if (line.kind === "empty") {
-            return <div key={index} className="h-4" />;
-          }
+      <RenderedChartLines lines={visibleLines} />
+    </div>
+  );
+}
 
-          if (line.kind === "section") {
-            return (
-              <pre key={index} className="mt-2 whitespace-pre-wrap font-bold">
-                {line.text}
-              </pre>
-            );
-          }
+export function RenderedChartLines({
+  lines,
+  lineOffset = 0,
+}: {
+  lines: RenderedLine[];
+  lineOffset?: number;
+}) {
+  return (
+    <div className="space-y-0.5">
+      {lines.map((line, index) => {
+        const lineIndex = lineOffset + index;
 
-          if (line.kind === "chords") {
-            return (
-              <pre key={index} className="whitespace-pre-wrap font-bold">
-                {line.text}
-              </pre>
-            );
-          }
+        if (line.kind === "empty") {
+          return <div key={index} data-line-index={lineIndex} className="h-4" />;
+        }
 
-          if (line.kind === "lyricWithChords") {
-            return (
-              <div key={index} className="space-y-0">
-                {line.chords.trim().length > 0 ? (
-                  <pre className="whitespace-pre-wrap font-bold">{line.chords}</pre>
-                ) : (
-                  <div className="h-[1.45em]" />
-                )}
-                <pre className="whitespace-pre-wrap">{line.lyric}</pre>
-              </div>
-            );
-          }
-
+        if (line.kind === "section") {
           return (
-            <pre key={index} className="whitespace-pre-wrap">
+            <pre key={index} data-line-index={lineIndex} className="mt-2 whitespace-pre-wrap font-bold">
               {line.text}
             </pre>
           );
-        })}
-      </div>
+        }
+
+        if (line.kind === "chords") {
+          return (
+            <pre key={index} data-line-index={lineIndex} className="whitespace-pre-wrap font-bold">
+              {line.text}
+            </pre>
+          );
+        }
+
+        if (line.kind === "lyricWithChords") {
+          return (
+            <div key={index} data-line-index={lineIndex} className="space-y-0">
+              {line.chords.trim().length > 0 ? (
+                <pre className="whitespace-pre-wrap font-bold">{line.chords}</pre>
+              ) : (
+                <div className="h-[1.45em]" />
+              )}
+              <pre className="whitespace-pre-wrap">{line.lyric}</pre>
+            </div>
+          );
+        }
+
+        return (
+          <pre key={index} data-line-index={lineIndex} className="whitespace-pre-wrap">
+            {line.text}
+          </pre>
+        );
+      })}
     </div>
   );
 }

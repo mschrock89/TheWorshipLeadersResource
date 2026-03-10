@@ -1,4 +1,4 @@
-import { TouchEvent, useEffect, useMemo, useRef, useState } from "react";
+import { TouchEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -14,14 +14,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useAssignedChartsSetlists } from "@/charts/hooks/useAssignedChartsSetlists";
 import { useSongChartVersions } from "@/hooks/useSongs";
-import { RenderedChordChart } from "@/components/songs/RenderedChordChart";
+import { RenderedChartLines, RenderedChordChart } from "@/components/songs/RenderedChordChart";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  buildRenderedBlocks,
   detectKeyIndexFromChart,
   getSignedSemitoneDelta,
   KEY_LABELS_FLAT,
   KEY_LABELS_SHARP,
-  paginateRenderedChordLines,
+  RenderedLine,
+  RENDERED_CHART_FONT_FAMILY,
   renderChordChartText,
   transposeChordChartText,
 } from "@/lib/chordChart";
@@ -32,6 +34,85 @@ const FONT_SIZES = [
   { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.2] sm:text-[17px]", pageUnits: 38 },
   { value: "large", label: "Large", className: "text-[18px] leading-[1.25] sm:text-[19px]", pageUnits: 32 },
 ];
+
+function paginateMeasuredLines(
+  root: HTMLDivElement,
+  blocks: ReturnType<typeof buildRenderedBlocks>,
+  lineOffsets: number[],
+): RenderedLine[][] {
+  if (!blocks.length) return [[]];
+
+  const styles = window.getComputedStyle(root);
+  const paddingTop = Number.parseFloat(styles.paddingTop || "0");
+  const paddingBottom = Number.parseFloat(styles.paddingBottom || "0");
+  const availableHeight = root.clientHeight - paddingTop - paddingBottom;
+  if (availableHeight <= 0) return [blocks.flatMap((block) => block.lines)];
+
+  const blockElements = Array.from(root.querySelectorAll<HTMLElement>("[data-block-index]"));
+  const pages: RenderedLine[][] = [];
+  let currentPage: RenderedLine[] = [];
+  let usedHeight = 0;
+
+  const flushPage = () => {
+    if (!currentPage.length) return;
+    pages.push(currentPage);
+    currentPage = [];
+    usedHeight = 0;
+  };
+
+  blocks.forEach((block, blockIndex) => {
+    const blockElement = blockElements[blockIndex];
+    if (!blockElement) {
+      currentPage.push(...block.lines);
+      return;
+    }
+
+    const blockHeight = blockElement.offsetHeight;
+    if (blockHeight <= availableHeight) {
+      if (currentPage.length > 0 && usedHeight + blockHeight > availableHeight) {
+        flushPage();
+      }
+      currentPage.push(...block.lines);
+      usedHeight += blockHeight;
+      return;
+    }
+
+    const lineElements = Array.from(blockElement.querySelectorAll<HTMLElement>("[data-line-index]"));
+    const blockRect = blockElement.getBoundingClientRect();
+    const lineHeights = lineElements.map((lineElement, lineIndex) => {
+      const currentTop = lineElement.getBoundingClientRect().top - blockRect.top;
+      const nextTop = lineIndex < lineElements.length - 1
+        ? lineElements[lineIndex + 1].getBoundingClientRect().top - blockRect.top
+        : blockRect.height;
+      return Math.max(0, nextTop - currentTop);
+    });
+
+    block.lines.forEach((line, lineIndex) => {
+      const height = lineHeights[lineIndex] ?? 0;
+      if (currentPage.length > 0 && usedHeight + height > availableHeight) {
+        flushPage();
+      }
+
+      currentPage.push(line);
+      usedHeight += height;
+
+      const absoluteIndex = lineOffsets[blockIndex] + lineIndex;
+      const nextLine = block.lines[lineIndex + 1];
+      const nextHeight = lineHeights[lineIndex + 1] ?? 0;
+      if (
+        nextLine?.kind === "section" &&
+        currentPage.length > 0 &&
+        usedHeight + nextHeight > availableHeight &&
+        absoluteIndex < lineOffsets[blockIndex] + block.lines.length - 1
+      ) {
+        flushPage();
+      }
+    });
+  });
+
+  flushPage();
+  return pages.length ? pages : [[]];
+}
 
 async function fetchSongChartVersions(songId: string, draftSetSongId?: string | null) {
   const { data: baseVersions, error: baseError } = await supabase
@@ -98,6 +179,10 @@ export function ChartsViewerPage() {
   const [isImmersive, setIsImmersive] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const measureRootRef = useRef<HTMLDivElement | null>(null);
+  const [chartViewport, setChartViewport] = useState({ width: 0, height: 0 });
+  const [measuredPages, setMeasuredPages] = useState<RenderedLine[][]>([[]]);
 
   useEffect(() => {
     if (!setlist) return;
@@ -157,9 +242,47 @@ export function ChartsViewerPage() {
   );
   const fontConfig = FONT_SIZES.find((entry) => entry.value === fontSize) || FONT_SIZES[1];
   const fontSizeClassName = fontConfig.className;
-  const pagedLines = useMemo(() => paginateRenderedChordLines(renderChordChartText(transposedChartText), fontConfig.pageUnits), [fontConfig.pageUnits, transposedChartText]);
-  const totalPages = transposedChartText ? Math.max(1, pagedLines.length) : 1;
+  const chartShellClassName = isImmersive ? "rounded-[30px] p-2 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc";
+  const renderedLines = useMemo(() => renderChordChartText(transposedChartText), [transposedChartText]);
+  const renderedBlocks = useMemo(() => buildRenderedBlocks(renderedLines), [renderedLines]);
+  const blockLineOffsets = useMemo(() => {
+    let offset = 0;
+    return renderedBlocks.map((block) => {
+      const current = offset;
+      offset += block.lines.length;
+      return current;
+    });
+  }, [renderedBlocks]);
+  const totalPages = transposedChartText ? Math.max(1, measuredPages.length) : 1;
   const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 84px)";
+
+  useLayoutEffect(() => {
+    const node = chartContainerRef.current;
+    if (!node) return;
+
+    const updateViewport = () => {
+      setChartViewport({
+        width: node.clientWidth,
+        height: node.clientHeight,
+      });
+    };
+
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [fontSizeClassName, isImmersive, transposedChartText]);
+
+  useLayoutEffect(() => {
+    if (!transposedChartText) {
+      setMeasuredPages([[]]);
+      return;
+    }
+
+    const root = measureRootRef.current;
+    if (!root || chartViewport.width === 0 || chartViewport.height === 0) return;
+    setMeasuredPages(paginateMeasuredLines(root, renderedBlocks, blockLineOffsets));
+  }, [blockLineOffsets, chartViewport.height, chartViewport.width, fontSizeClassName, renderedBlocks, transposedChartText]);
 
   useEffect(() => {
     setPageIndex(0);
@@ -357,17 +480,37 @@ export function ChartsViewerPage() {
 
         <div className="order-1 lg:order-2" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           {transposedChartText ? (
-            <RenderedChordChart
-              title={activeSong.song?.title || "Chord Chart"}
-              author={activeSong.song?.author || null}
-              chordChartText={transposedChartText}
-              className={isImmersive ? "rounded-[30px] p-2 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
-              scaleClassName={fontSizeClassName}
-              pageIndex={pageIndex}
-              pageSize={fontConfig.pageUnits}
-              showHeader={false}
-              style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
-            />
+            <>
+              <RenderedChordChart
+                title={activeSong.song?.title || "Chord Chart"}
+                author={activeSong.song?.author || null}
+                chordChartText={transposedChartText}
+                lines={measuredPages[Math.max(0, Math.min(pageIndex, measuredPages.length - 1))] || renderedLines}
+                className={chartShellClassName}
+                scaleClassName={fontSizeClassName}
+                showHeader={false}
+                containerRef={chartContainerRef}
+                style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
+              />
+
+              <div className="pointer-events-none fixed left-[-200vw] top-0 opacity-0" aria-hidden="true">
+                <div
+                  ref={measureRootRef}
+                  className={`${chartShellClassName} border bg-background overflow-hidden ${fontSizeClassName}`}
+                  style={{
+                    width: chartViewport.width || undefined,
+                    height: chartViewport.height || undefined,
+                    fontFamily: RENDERED_CHART_FONT_FAMILY,
+                  }}
+                >
+                  {renderedBlocks.map((block, blockIndex) => (
+                    <div key={`${blockIndex}-${blockLineOffsets[blockIndex]}`} data-block-index={blockIndex}>
+                      <RenderedChartLines lines={block.lines} lineOffset={blockLineOffsets[blockIndex]} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           ) : lyricsText ? (
             <div
               className={`${isImmersive ? "rounded-[30px] p-3" : "min-h-[62vh] rounded-[28px] p-6"} border bg-background shadow-ecc overflow-hidden`}
