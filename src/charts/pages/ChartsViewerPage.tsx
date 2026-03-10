@@ -18,14 +18,9 @@ import { RenderedChartLines, RenderedChordChart } from "@/components/songs/Rende
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildRenderedBlocks,
-  detectKeyIndexFromChart,
-  getSignedSemitoneDelta,
-  KEY_LABELS_FLAT,
-  KEY_LABELS_SHARP,
   RenderedLine,
   RENDERED_CHART_FONT_FAMILY,
   renderChordChartText,
-  transposeChordChartText,
 } from "@/lib/chordChart";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 
@@ -34,6 +29,11 @@ const FONT_SIZES = [
   { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.2] sm:text-[17px]", pageUnits: 38 },
   { value: "large", label: "Large", className: "text-[18px] leading-[1.25] sm:text-[19px]", pageUnits: 32 },
 ];
+
+const CAPO_OPTIONS = Array.from({ length: 13 }, (_, index) => ({
+  value: String(index),
+  label: index === 0 ? "Capo Off" : `Capo ${index}`,
+}));
 
 function paginateMeasuredLines(
   root: HTMLDivElement,
@@ -193,9 +193,7 @@ export function ChartsViewerPage() {
     !!activeSong,
   );
   const [selectedVersionId, setSelectedVersionId] = useState("");
-  const [accidentalPreference, setAccidentalPreference] = useState<"flats" | "sharps">("flats");
-  const [originalKeyIndex, setOriginalKeyIndex] = useState(0);
-  const [targetKeyIndex, setTargetKeyIndex] = useState(0);
+  const [capo, setCapo] = useState("0");
   const [fontSize, setFontSize] = useState("comfortable");
   const [isImmersive, setIsImmersive] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
@@ -244,27 +242,10 @@ export function ChartsViewerPage() {
   const selectedVersion = versions.find((version) => version.id === selectedVersionId) ?? versions[0] ?? null;
   const chartText = selectedVersion?.chord_chart_text?.trim() || "";
   const lyricsText = selectedVersion?.lyrics?.trim() || "";
-  const keyLabels = accidentalPreference === "flats" ? KEY_LABELS_FLAT : KEY_LABELS_SHARP;
-
-  useEffect(() => {
-    if (!chartText) return;
-    const detected = detectKeyIndexFromChart(chartText);
-    setOriginalKeyIndex(detected);
-    setTargetKeyIndex(detected);
-  }, [chartText, selectedVersion?.id]);
-
-  const transposeSemitones = useMemo(
-    () => getSignedSemitoneDelta(originalKeyIndex, targetKeyIndex),
-    [originalKeyIndex, targetKeyIndex],
-  );
-  const transposedChartText = useMemo(
-    () => transposeChordChartText(chartText, transposeSemitones, accidentalPreference),
-    [chartText, transposeSemitones, accidentalPreference],
-  );
   const fontConfig = FONT_SIZES.find((entry) => entry.value === fontSize) || FONT_SIZES[1];
   const fontSizeClassName = fontConfig.className;
   const chartShellClassName = isImmersive ? "rounded-[30px] p-2 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc";
-  const renderedLines = useMemo(() => renderChordChartText(transposedChartText), [transposedChartText]);
+  const renderedLines = useMemo(() => renderChordChartText(chartText), [chartText]);
   const renderedBlocks = useMemo(() => buildRenderedBlocks(renderedLines), [renderedLines]);
   const blockLineOffsets = useMemo(() => {
     let offset = 0;
@@ -274,7 +255,7 @@ export function ChartsViewerPage() {
       return current;
     });
   }, [renderedBlocks]);
-  const totalPages = transposedChartText ? Math.max(1, measuredPages.length) : 1;
+  const totalPages = chartText ? Math.max(1, measuredPages.length) : 1;
   const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 84px)";
 
   useLayoutEffect(() => {
@@ -292,10 +273,10 @@ export function ChartsViewerPage() {
     const observer = new ResizeObserver(updateViewport);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [fontSizeClassName, isImmersive, transposedChartText]);
+  }, [chartText, fontSizeClassName, isImmersive]);
 
   useLayoutEffect(() => {
-    if (!transposedChartText) {
+    if (!chartText) {
       setMeasuredPages([[]]);
       return;
     }
@@ -303,7 +284,7 @@ export function ChartsViewerPage() {
     const root = measureRootRef.current;
     if (!root || chartViewport.width === 0 || chartViewport.height === 0) return;
     setMeasuredPages(paginateMeasuredLines(root, renderedBlocks));
-  }, [chartViewport.height, chartViewport.width, fontSizeClassName, renderedBlocks, transposedChartText]);
+  }, [chartText, chartViewport.height, chartViewport.width, fontSizeClassName, renderedBlocks]);
 
   useEffect(() => {
     setPageIndex(0);
@@ -416,7 +397,7 @@ export function ChartsViewerPage() {
             <p className="text-base text-muted-foreground">{activeSong.song?.author || "Unknown author"}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
             <Select value={selectedVersion?.id || ""} onValueChange={setSelectedVersionId}>
               <SelectTrigger className="h-12 rounded-xl text-base">
                 <SelectValue placeholder="Version" />
@@ -430,26 +411,16 @@ export function ChartsViewerPage() {
               </SelectContent>
             </Select>
 
-            <Select value={String(targetKeyIndex)} onValueChange={(value) => setTargetKeyIndex(Number(value))}>
+            <Select value={capo} onValueChange={setCapo}>
               <SelectTrigger className="h-12 rounded-xl text-base">
-                <SelectValue placeholder="Key" />
+                <SelectValue placeholder="Capo" />
               </SelectTrigger>
               <SelectContent>
-                {keyLabels.map((label, index) => (
-                  <SelectItem key={label} value={String(index)}>
-                    {label}
+                {CAPO_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={accidentalPreference} onValueChange={(value: "flats" | "sharps") => setAccidentalPreference(value)}>
-              <SelectTrigger className="h-12 rounded-xl text-base">
-                <SelectValue placeholder="Accidentals" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="flats">Flats</SelectItem>
-                <SelectItem value="sharps">Sharps</SelectItem>
               </SelectContent>
             </Select>
 
@@ -500,12 +471,12 @@ export function ChartsViewerPage() {
         </div>
 
         <div className="order-1 lg:order-2" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          {transposedChartText ? (
+          {chartText ? (
             <>
               <RenderedChordChart
                 title={activeSong.song?.title || "Chord Chart"}
                 author={activeSong.song?.author || null}
-                chordChartText={transposedChartText}
+                chordChartText={chartText}
                 lines={measuredPages[Math.max(0, Math.min(pageIndex, measuredPages.length - 1))] || renderedLines}
                 className={chartShellClassName}
                 scaleClassName={fontSizeClassName}
