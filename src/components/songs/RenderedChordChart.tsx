@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { CSSProperties, useMemo } from "react";
 import { paginateRenderedChordLines, renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
 
 interface RenderedChordChartProps {
@@ -10,6 +10,7 @@ interface RenderedChordChartProps {
   pageIndex?: number;
   pageSize?: number;
   showHeader?: boolean;
+  style?: CSSProperties;
 }
 
 export function RenderedChordChart({
@@ -21,6 +22,7 @@ export function RenderedChordChart({
   pageIndex = 0,
   pageSize,
   showHeader = true,
+  style,
 }: RenderedChordChartProps) {
   const renderedLines = useMemo(() => renderChordChartText(chordChartText), [chordChartText]);
   const visibleLines = useMemo(() => {
@@ -32,7 +34,7 @@ export function RenderedChordChart({
   return (
     <div
       className={`rounded-md border bg-background p-4 overflow-hidden ${scaleClassName} ${className || ""}`.trim()}
-      style={{ fontFamily: RENDERED_CHART_FONT_FAMILY }}
+      style={{ fontFamily: RENDERED_CHART_FONT_FAMILY, ...style }}
     >
       {showHeader ? (
         <div className="mb-5 border-b pb-3">

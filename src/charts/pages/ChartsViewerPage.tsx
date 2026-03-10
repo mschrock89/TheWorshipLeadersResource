@@ -28,9 +28,9 @@ import {
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 
 const FONT_SIZES = [
-  { value: "compact", label: "Compact", className: "text-[14px] leading-[1.22] sm:text-[15px]", pageUnits: 30 },
-  { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.26] sm:text-[17px]", pageUnits: 26 },
-  { value: "large", label: "Large", className: "text-[18px] leading-[1.32] sm:text-[19px]", pageUnits: 22 },
+  { value: "compact", label: "Compact", className: "text-[14px] leading-[1.18] sm:text-[15px]", pageUnits: 38 },
+  { value: "comfortable", label: "Comfortable", className: "text-[16px] leading-[1.22] sm:text-[17px]", pageUnits: 33 },
+  { value: "large", label: "Large", className: "text-[18px] leading-[1.28] sm:text-[19px]", pageUnits: 28 },
 ];
 
 async function fetchSongChartVersions(songId: string, draftSetSongId?: string | null) {
@@ -159,6 +159,7 @@ export function ChartsViewerPage() {
   const fontSizeClassName = fontConfig.className;
   const pagedLines = useMemo(() => paginateRenderedChordLines(renderChordChartText(transposedChartText), fontConfig.pageUnits), [fontConfig.pageUnits, transposedChartText]);
   const totalPages = transposedChartText ? Math.max(1, pagedLines.length) : 1;
+  const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 132px)";
 
   useEffect(() => {
     setPageIndex(0);
@@ -223,8 +224,8 @@ export function ChartsViewerPage() {
   };
 
   return (
-    <div className={`overflow-hidden ${isImmersive ? "space-y-3" : "space-y-5"}`}>
-      <div className={`flex flex-wrap items-center gap-3 ${isImmersive ? "rounded-2xl border border-border bg-background/80 p-3 backdrop-blur-sm" : ""}`}>
+    <div className={`overflow-hidden ${isImmersive ? "space-y-2" : "space-y-5"}`}>
+      <div className={`flex flex-wrap items-center gap-2 ${isImmersive ? "rounded-2xl border border-border bg-background/80 px-3 py-2 backdrop-blur-sm" : ""}`}>
         <Button asChild variant="ghost" size="lg" className="h-11 rounded-xl px-3">
           <Link to={`/setlists/${setlist.id}`}>
             <ArrowLeft className="mr-2 h-5 w-5" />
@@ -238,11 +239,7 @@ export function ChartsViewerPage() {
         <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
           Page {pageIndex + 1} of {totalPages}
         </Badge>
-        {isImmersive ? (
-          <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
-            Swipe to turn
-          </Badge>
-        ) : null}
+        {isImmersive ? <p className="text-sm text-muted-foreground">Swipe to turn</p> : null}
       </div>
 
       <section className={`rounded-3xl border border-border bg-card/90 shadow-ecc ${isImmersive ? "hidden" : "p-4"}`}>
@@ -341,18 +338,25 @@ export function ChartsViewerPage() {
               title={activeSong.song?.title || "Chord Chart"}
               author={activeSong.song?.author || null}
               chordChartText={transposedChartText}
-              className={isImmersive ? "min-h-[78vh] rounded-[30px] p-4 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
+              className={isImmersive ? "rounded-[30px] p-3 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc"}
               scaleClassName={fontSizeClassName}
               pageIndex={pageIndex}
               pageSize={fontConfig.pageUnits}
               showHeader={false}
+              style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
             />
           ) : lyricsText ? (
-            <div className={`${isImmersive ? "min-h-[78vh] rounded-[30px] p-4" : "min-h-[62vh] rounded-[28px] p-6"} border bg-background shadow-ecc overflow-hidden`}>
+            <div
+              className={`${isImmersive ? "rounded-[30px] p-3" : "min-h-[62vh] rounded-[28px] p-6"} border bg-background shadow-ecc overflow-hidden`}
+              style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
+            >
               <pre className={`whitespace-pre-wrap break-words ${fontSizeClassName}`}>{lyricsText}</pre>
             </div>
           ) : (
-            <div className={`${isImmersive ? "min-h-[78vh] rounded-[30px]" : "min-h-[62vh] rounded-[28px]"} flex items-center justify-center border border-dashed bg-muted/10 p-8 text-center text-muted-foreground shadow-ecc`}>
+            <div
+              className={`${isImmersive ? "rounded-[30px]" : "min-h-[62vh] rounded-[28px]"} flex items-center justify-center border border-dashed bg-muted/10 p-8 text-center text-muted-foreground shadow-ecc`}
+              style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
+            >
               No chart or lyrics are available for this song yet.
             </div>
           )}
@@ -378,16 +382,16 @@ export function ChartsViewerPage() {
       </div>
 
       {isImmersive ? (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/80 p-3 backdrop-blur-sm">
-          <Button type="button" variant="outline" className="h-11 rounded-xl px-4" onClick={goBackward} disabled={!previousSong && pageIndex === 0}>
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/80 px-3 py-2 backdrop-blur-sm">
+          <Button type="button" variant="outline" className="h-10 rounded-xl px-3" onClick={goBackward} disabled={!previousSong && pageIndex === 0}>
             <ChevronLeft className="mr-2 h-5 w-5" />
             Prev
           </Button>
           <div className="text-center">
-            <p className="text-lg font-semibold">{activeSong.song?.title || "Untitled Song"}</p>
-            <p className="text-sm text-muted-foreground">{activeSong.song?.author || "Unknown author"}</p>
+            <p className="text-base font-semibold">{activeSong.song?.title || "Untitled Song"}</p>
+            <p className="text-xs text-muted-foreground">{activeSong.song?.author || "Unknown author"}</p>
           </div>
-          <Button type="button" className="h-11 rounded-xl px-4" onClick={goForward} disabled={!nextSong && pageIndex >= totalPages - 1}>
+          <Button type="button" className="h-10 rounded-xl px-3" onClick={goForward} disabled={!nextSong && pageIndex >= totalPages - 1}>
             Next
             <ChevronRight className="ml-2 h-5 w-5" />
           </Button>
