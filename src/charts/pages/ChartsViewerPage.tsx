@@ -159,7 +159,7 @@ export function ChartsViewerPage() {
   const fontSizeClassName = fontConfig.className;
   const pagedLines = useMemo(() => paginateRenderedChordLines(renderChordChartText(transposedChartText), fontConfig.pageUnits), [fontConfig.pageUnits, transposedChartText]);
   const totalPages = transposedChartText ? Math.max(1, pagedLines.length) : 1;
-  const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 132px)";
+  const immersiveChartHeight = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 92px)";
 
   useEffect(() => {
     setPageIndex(0);
@@ -225,22 +225,45 @@ export function ChartsViewerPage() {
 
   return (
     <div className={`overflow-hidden ${isImmersive ? "space-y-2" : "space-y-5"}`}>
-      <div className={`flex flex-wrap items-center gap-2 ${isImmersive ? "rounded-2xl border border-border bg-background/80 px-3 py-2 backdrop-blur-sm" : ""}`}>
-        <Button asChild variant="ghost" size="lg" className="h-11 rounded-xl px-3">
-          <Link to={`/setlists/${setlist.id}`}>
-            <ArrowLeft className="mr-2 h-5 w-5" />
-            Back to set
-          </Link>
-        </Button>
+      {isImmersive ? (
+        <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-border bg-background/80 px-3 py-2 backdrop-blur-sm">
+          <Button asChild variant="ghost" className="h-10 rounded-xl px-3">
+            <Link to={`/setlists/${setlist.id}`}>
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <Button type="button" variant="outline" className="h-10 rounded-xl px-3" onClick={goBackward} disabled={!previousSong && pageIndex === 0}>
+            <ChevronLeft className="mr-2 h-5 w-5" />
+            Prev
+          </Button>
+          <div className="min-w-0 px-2 text-center">
+            <p className="truncate text-base font-semibold">{activeSong.song?.title || "Untitled Song"}</p>
+            <p className="text-xs text-muted-foreground">
+              {songIndex + 1} of {setlist.songs.length} • Page {pageIndex + 1} of {totalPages}
+            </p>
+          </div>
+          <Button type="button" className="h-10 rounded-xl px-3" onClick={goForward} disabled={!nextSong && pageIndex >= totalPages - 1}>
+            Next
+            <ChevronRight className="ml-2 h-5 w-5" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="ghost" size="lg" className="h-11 rounded-xl px-3">
+            <Link to={`/setlists/${setlist.id}`}>
+              <ArrowLeft className="mr-2 h-5 w-5" />
+              Back to set
+            </Link>
+          </Button>
 
-        <Badge variant="secondary" className="h-9 rounded-full px-4 text-sm">
-          {songIndex + 1} of {setlist.songs.length}
-        </Badge>
-        <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
-          Page {pageIndex + 1} of {totalPages}
-        </Badge>
-        {isImmersive ? <p className="text-sm text-muted-foreground">Swipe to turn</p> : null}
-      </div>
+          <Badge variant="secondary" className="h-9 rounded-full px-4 text-sm">
+            {songIndex + 1} of {setlist.songs.length}
+          </Badge>
+          <Badge variant="outline" className="h-9 rounded-full px-4 text-sm">
+            Page {pageIndex + 1} of {totalPages}
+          </Badge>
+        </div>
+      )}
 
       <section className={`rounded-3xl border border-border bg-card/90 shadow-ecc ${isImmersive ? "hidden" : "p-4"}`}>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -381,22 +404,6 @@ export function ChartsViewerPage() {
         </div>
       </div>
 
-      {isImmersive ? (
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background/80 px-3 py-2 backdrop-blur-sm">
-          <Button type="button" variant="outline" className="h-10 rounded-xl px-3" onClick={goBackward} disabled={!previousSong && pageIndex === 0}>
-            <ChevronLeft className="mr-2 h-5 w-5" />
-            Prev
-          </Button>
-          <div className="text-center">
-            <p className="text-base font-semibold">{activeSong.song?.title || "Untitled Song"}</p>
-            <p className="text-xs text-muted-foreground">{activeSong.song?.author || "Unknown author"}</p>
-          </div>
-          <Button type="button" className="h-10 rounded-xl px-3" onClick={goForward} disabled={!nextSong && pageIndex >= totalPages - 1}>
-            Next
-            <ChevronRight className="ml-2 h-5 w-5" />
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }
