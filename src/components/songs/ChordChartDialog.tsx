@@ -76,6 +76,14 @@ const NOTE_INDEX: Record<string, number> = {
   Cb: 11,
 };
 
+function parseKeyIndex(keyLabel?: string | null): number | null {
+  if (!keyLabel) return null;
+  const rootMatch = keyLabel.trim().match(/^([A-G](?:#|b)?)/);
+  if (!rootMatch) return null;
+  const keyIndex = NOTE_INDEX[rootMatch[1]];
+  return typeof keyIndex === "number" ? keyIndex : null;
+}
+
 function padToLength(input: string, targetLength: number): string {
   if (input.length >= targetLength) return input;
   return input + " ".repeat(targetLength - input.length);
@@ -480,9 +488,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
   useEffect(() => {
     if (!open) return;
     const detected = chordChartText ? detectKeyIndexFromChart(chordChartText) : 0;
+    const setKeyIndex = parseKeyIndex(song?.originalKey);
     setOriginalKeyIndex(detected);
-    setTargetKeyIndex(detected);
-  }, [open, chordChartText, selectedVersion?.id]);
+    setTargetKeyIndex(setKeyIndex ?? detected);
+  }, [open, chordChartText, selectedVersion?.id, song?.originalKey]);
 
   const saveVersionChart = async (nextChartText: string) => {
     if (!selectedVersion?.id) throw new Error("No song version selected.");
@@ -620,7 +629,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col space-y-4 px-6 pb-6">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">
                   {versions.length} version{versions.length === 1 ? "" : "s"}
@@ -632,90 +641,100 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
               </div>
 
               <div className="w-full">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-6">
-                  <Select value={selectedVersion?.id || ""} onValueChange={setSelectedVersionId}>
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Select version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {versions.map((version) => (
-                        <SelectItem key={version.id} value={version.id}>
-                          {version.version_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={String(originalKeyIndex)}
-                    onValueChange={(value) => {
-                      const nextIndex = Number(value);
-                      setOriginalKeyIndex(nextIndex);
-                      setTargetKeyIndex(nextIndex);
-                      saveOriginalKey.mutate(nextIndex);
-                    }}
-                    disabled={isEditingRaw || saveOriginalKey.isPending}
-                  >
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Original Key" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {keyLabels.map((label, index) => (
-                        <SelectItem key={`original-${label}-${index}`} value={String(index)}>
-                          Original: {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={String(targetKeyIndex)}
-                    onValueChange={(value) => setTargetKeyIndex(Number(value))}
-                    disabled={isEditingRaw}
-                  >
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Target Key" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {keyLabels.map((label, index) => (
-                        <SelectItem key={`target-${label}-${index}`} value={String(index)}>
-                          To: {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={accidentalPreference}
-                    onValueChange={(value: "sharps" | "flats") => setAccidentalPreference(value)}
-                    disabled={isEditingRaw}
-                  >
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Accidentals" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="flats">Flats</SelectItem>
-                      <SelectItem value="sharps">Sharps</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant={displayMode === "rendered" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setDisplayMode("rendered")}
-                    disabled={isEditingRaw}
-                    className="h-12 w-full gap-1.5 text-base"
-                  >
-                    <Eye className="h-4 w-4" />
-                    Rendered
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={displayMode === "raw" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setDisplayMode("raw")}
-                    className="h-12 w-full gap-1.5 text-base"
-                  >
-                    <Code2 className="h-4 w-4" />
-                    Raw
-                  </Button>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-12">
+                  <div className="xl:col-span-3">
+                    <Select value={selectedVersion?.id || ""} onValueChange={setSelectedVersionId}>
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Select version" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {versions.map((version) => (
+                          <SelectItem key={version.id} value={version.id}>
+                            {version.version_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="xl:col-span-2">
+                    <Select
+                      value={String(originalKeyIndex)}
+                      onValueChange={(value) => {
+                        const nextIndex = Number(value);
+                        setOriginalKeyIndex(nextIndex);
+                        setTargetKeyIndex(nextIndex);
+                        saveOriginalKey.mutate(nextIndex);
+                      }}
+                      disabled={isEditingRaw || saveOriginalKey.isPending}
+                    >
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Original Key" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {keyLabels.map((label, index) => (
+                          <SelectItem key={`original-${label}-${index}`} value={String(index)}>
+                            Original: {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="xl:col-span-2">
+                    <Select
+                      value={String(targetKeyIndex)}
+                      onValueChange={(value) => setTargetKeyIndex(Number(value))}
+                      disabled={isEditingRaw}
+                    >
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Target Key" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {keyLabels.map((label, index) => (
+                          <SelectItem key={`target-${label}-${index}`} value={String(index)}>
+                            To: {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="xl:col-span-2">
+                    <Select
+                      value={accidentalPreference}
+                      onValueChange={(value: "sharps" | "flats") => setAccidentalPreference(value)}
+                      disabled={isEditingRaw}
+                    >
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Accidentals" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="flats">Flats</SelectItem>
+                        <SelectItem value="sharps">Sharps</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:col-span-3">
+                    <Button
+                      type="button"
+                      variant={displayMode === "rendered" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDisplayMode("rendered")}
+                      disabled={isEditingRaw}
+                      className="h-12 w-full gap-1.5 text-base"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Rendered
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={displayMode === "raw" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setDisplayMode("raw")}
+                      className="h-12 w-full gap-1.5 text-base"
+                    >
+                      <Code2 className="h-4 w-4" />
+                      Raw
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
