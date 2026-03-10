@@ -53,7 +53,20 @@ function isSectionHeader(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
   if (trimmed.includes("[") || trimmed.includes("]")) return false;
-  return /^(intro|verse(?:\s+\d+)?|chorus|bridge|tag|turnaround|pre[-\s]?chorus|outro|interlude|repeat chorus)$/i.test(trimmed);
+  if (/^(intro|verse(?:\s+\d+)?|chorus|bridge|tag|turnaround|pre[-\s]?chorus|outro|interlude|repeat chorus|ending|ending chorus|instrumental|refrain|hook)$/i.test(trimmed)) {
+    return true;
+  }
+
+  const alphaOnly = trimmed.replace(/[^A-Za-z]/g, "");
+  const upperOnly = trimmed.replace(/[^A-Z]/g, "");
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+
+  // Treat short all-caps labels like VERSE, CHORUS, BRIDGE, TAG, etc. as identifiers.
+  if (alphaOnly.length >= 3 && alphaOnly === upperOnly && wordCount <= 4) {
+    return true;
+  }
+
+  return false;
 }
 
 function isChordOnlyLine(line: string): boolean {
