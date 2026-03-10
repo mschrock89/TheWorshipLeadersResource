@@ -44,7 +44,8 @@ function paginateMeasuredLines(
   const styles = window.getComputedStyle(root);
   const paddingTop = Number.parseFloat(styles.paddingTop || "0");
   const paddingBottom = Number.parseFloat(styles.paddingBottom || "0");
-  const availableHeight = root.clientHeight - paddingTop - paddingBottom;
+  const bottomSafetyBuffer = 28;
+  const availableHeight = root.clientHeight - paddingTop - paddingBottom - bottomSafetyBuffer;
   if (availableHeight <= 0) return [blocks.flatMap((block) => block.lines)];
 
   const blockElements = Array.from(root.querySelectorAll<HTMLElement>("[data-block-index]"));
