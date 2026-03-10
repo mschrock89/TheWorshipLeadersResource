@@ -72,7 +72,7 @@ export function ChartsSetlistsPage() {
                     </div>
 
                     <Button asChild size="lg" className="h-12 rounded-xl px-5 text-base">
-                      <Link to={`/setlists/${setlist.id}`}>
+                      <Link to={setlist.songs[0] ? `/setlists/${setlist.id}/songs/${setlist.songs[0].id}` : `/setlists/${setlist.id}`}>
                         Open Set
                         <ChevronRight className="ml-2 h-5 w-5" />
                       </Link>

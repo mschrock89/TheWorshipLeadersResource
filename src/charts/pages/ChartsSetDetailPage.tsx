@@ -63,6 +63,15 @@ export function ChartsSetDetailPage() {
         </div>
       </section>
 
+      {setlist.songs.length > 0 ? (
+        <Button asChild size="lg" className="h-14 w-full rounded-2xl px-6 text-base sm:w-fit">
+          <Link to={`/setlists/${setlist.id}/songs/${setlist.songs[0].id}`}>
+            Open Set Reader
+            <Expand className="ml-2 h-5 w-5" />
+          </Link>
+        </Button>
+      ) : null}
+
       <div className="grid gap-4">
         {setlist.songs.map((song, index) => (
           <Card key={song.id} className="rounded-3xl bg-card/90 shadow-ecc">

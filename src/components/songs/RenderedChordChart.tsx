@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
+import { paginateRenderedChordLines, renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
 
 interface RenderedChordChartProps {
   title: string;
@@ -7,6 +7,8 @@ interface RenderedChordChartProps {
   chordChartText: string;
   className?: string;
   scaleClassName?: string;
+  pageIndex?: number;
+  pageSize?: number;
 }
 
 export function RenderedChordChart({
@@ -15,12 +17,19 @@ export function RenderedChordChart({
   chordChartText,
   className,
   scaleClassName = "text-[20px] leading-[1.45] sm:text-[22px]",
+  pageIndex = 0,
+  pageSize,
 }: RenderedChordChartProps) {
   const renderedLines = useMemo(() => renderChordChartText(chordChartText), [chordChartText]);
+  const visibleLines = useMemo(() => {
+    if (!pageSize) return renderedLines;
+    const pages = paginateRenderedChordLines(renderedLines, pageSize);
+    return pages[Math.max(0, Math.min(pageIndex, pages.length - 1))] || [];
+  }, [pageIndex, pageSize, renderedLines]);
 
   return (
     <div
-      className={`rounded-md border bg-background p-4 ${scaleClassName} ${className || ""}`.trim()}
+      className={`rounded-md border bg-background p-4 overflow-hidden ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY }}
     >
       <div className="mb-5 border-b pb-3">
@@ -29,14 +38,14 @@ export function RenderedChordChart({
       </div>
 
       <div className="space-y-0.5">
-        {renderedLines.map((line, index) => {
+        {visibleLines.map((line, index) => {
           if (line.kind === "empty") {
             return <div key={index} className="h-4" />;
           }
 
           if (line.kind === "section") {
             return (
-              <pre key={index} className="mt-2 whitespace-pre font-bold">
+              <pre key={index} className="mt-2 whitespace-pre-wrap font-bold">
                 {line.text}
               </pre>
             );
@@ -44,7 +53,7 @@ export function RenderedChordChart({
 
           if (line.kind === "chords") {
             return (
-              <pre key={index} className="whitespace-pre font-bold">
+              <pre key={index} className="whitespace-pre-wrap font-bold">
                 {line.text}
               </pre>
             );
@@ -54,17 +63,17 @@ export function RenderedChordChart({
             return (
               <div key={index} className="space-y-0">
                 {line.chords.trim().length > 0 ? (
-                  <pre className="whitespace-pre font-bold">{line.chords}</pre>
+                  <pre className="whitespace-pre-wrap font-bold">{line.chords}</pre>
                 ) : (
                   <div className="h-[1.45em]" />
                 )}
-                <pre className="whitespace-pre">{line.lyric}</pre>
+                <pre className="whitespace-pre-wrap">{line.lyric}</pre>
               </div>
             );
           }
 
           return (
-            <pre key={index} className="whitespace-pre">
+            <pre key={index} className="whitespace-pre-wrap">
               {line.text}
             </pre>
           );

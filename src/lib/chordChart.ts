@@ -121,6 +121,40 @@ export function renderChordChartText(chordChartText: string): RenderedLine[] {
   });
 }
 
+export function getRenderedLineUnits(line: RenderedLine): number {
+  if (line.kind === "lyricWithChords") return 2;
+  if (line.kind === "empty") return 1;
+  return 1;
+}
+
+export function paginateRenderedChordLines(
+  lines: RenderedLine[],
+  maxUnitsPerPage: number,
+): RenderedLine[][] {
+  if (lines.length === 0) return [[]];
+  const pages: RenderedLine[][] = [];
+  let currentPage: RenderedLine[] = [];
+  let usedUnits = 0;
+
+  for (const line of lines) {
+    const nextUnits = getRenderedLineUnits(line);
+    if (currentPage.length > 0 && usedUnits + nextUnits > maxUnitsPerPage) {
+      pages.push(currentPage);
+      currentPage = [];
+      usedUnits = 0;
+    }
+
+    currentPage.push(line);
+    usedUnits += nextUnits;
+  }
+
+  if (currentPage.length > 0) {
+    pages.push(currentPage);
+  }
+
+  return pages;
+}
+
 function transposeNoteWithPreference(
   note: string,
   semitones: number,
