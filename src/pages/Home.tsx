@@ -12,6 +12,7 @@ import {
   Music,
   Settings,
   Users,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -116,6 +117,14 @@ export default function Home() {
                       Audio Library
                     </Link>
                   </DropdownMenuItem>
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/drum-tech" className="flex items-center gap-2">
+                        <Wrench className="h-4 w-4" />
+                        Drum Tech
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {!isAuditionCandidate && (
                     <DropdownMenuItem asChild>
                       <Link to="/games" className="flex items-center gap-2">

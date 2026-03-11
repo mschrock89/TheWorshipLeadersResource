@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import { formatDistanceToNowStrict, parseISO, differenceInCalendarDays } from "date-fns";
+import { MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { differenceInCalendarDays, formatDistanceToNowStrict, isValid, parseISO } from "date-fns";
 import {
   AlertTriangle,
   CalendarClock,
   CircleGauge,
   Disc3,
   Drum,
+  Lock,
   Plus,
   Save,
   Settings2,
   Trash2,
+  Unlock,
   Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +22,7 @@ import {
   DrumKitPiece,
   DrumKitPieceInput,
   DrumPieceType,
+  CymbalCrackMarker,
   useDeleteDrumKit,
   useDrumKits,
   useDrumTechAccess,
@@ -66,15 +69,55 @@ const PIECE_TYPE_OPTIONS = Object.entries(PIECE_META).map(([value, meta]) => ({
 }));
 
 const DEFAULT_PIECES: DrumKitPieceInput[] = [
-  { piece_type: "kick", piece_label: "Kick", size_inches: 22, sort_order: 0, expected_head_life_days: 180 },
-  { piece_type: "snare", piece_label: "Snare", size_inches: 14, sort_order: 1, expected_head_life_days: 120 },
-  { piece_type: "rack_tom", piece_label: "Rack Tom", size_inches: 12, sort_order: 2, expected_head_life_days: 180 },
-  { piece_type: "floor_tom", piece_label: "Floor Tom", size_inches: 16, sort_order: 3, expected_head_life_days: 180 },
+  {
+    piece_type: "kick",
+    piece_label: "Kick",
+    size_inches: 22,
+    sort_order: 0,
+    batter_expected_head_life_days: 180,
+    reso_expected_head_life_days: 365,
+  },
+  {
+    piece_type: "snare",
+    piece_label: "Snare",
+    size_inches: 14,
+    sort_order: 1,
+    batter_expected_head_life_days: 120,
+    reso_expected_head_life_days: 240,
+  },
+  {
+    piece_type: "rack_tom",
+    piece_label: "Rack Tom",
+    size_inches: 12,
+    sort_order: 2,
+    batter_expected_head_life_days: 180,
+    reso_expected_head_life_days: 365,
+  },
+  {
+    piece_type: "floor_tom",
+    piece_label: "Floor Tom",
+    size_inches: 16,
+    sort_order: 3,
+    batter_expected_head_life_days: 180,
+    reso_expected_head_life_days: 365,
+  },
   { piece_type: "hi_hats", piece_label: "Hi-Hats", size_inches: 14, sort_order: 4 },
   { piece_type: "left_crash", piece_label: "Left Crash", size_inches: 18, sort_order: 5 },
   { piece_type: "right_crash", piece_label: "Right Crash", size_inches: 19, sort_order: 6 },
   { piece_type: "ride", piece_label: "Ride", size_inches: 21, sort_order: 7 },
 ];
+
+const KIT_BUILDER_DRAFT_PREFIX = "drum-tech-kit-builder-draft";
+
+type HeadSide = "batter" | "reso";
+type HeadHealth = {
+  label: string;
+  tone: "good" | "warning" | "critical" | "neutral";
+  percentLeft: number | null;
+  daysRemaining: number | null;
+};
+
+type WearBand = "green" | "yellow" | "orange" | "red" | "neutral";
 
 function formatSize(size: number) {
   return `${size}"`;
@@ -82,6 +125,10 @@ function formatSize(size: number) {
 
 function getPieceMeta(type: string) {
   return PIECE_META[(type as DrumPieceType) || "custom"] || PIECE_META.custom;
+}
+
+function isCymbalPiece(type: string) {
+  return ["hi_hats", "left_crash", "right_crash", "ride"].includes(type);
 }
 
 function buildDefaultKit(campusId: string): DrumKitInput {
@@ -93,40 +140,139 @@ function buildDefaultKit(campusId: string): DrumKitInput {
   };
 }
 
-function getHealthSummary(piece: DrumKitPiece | DrumKitPieceInput) {
+function normalizeDraftPiece(piece: Partial<DrumKitPieceInput>, index: number): DrumKitPieceInput {
+  const rawMarkers = Array.isArray(piece.cymbal_crack_markers) ? piece.cymbal_crack_markers : [];
+
+  return {
+    id: typeof piece.id === "string" ? piece.id : undefined,
+    layout_x: typeof piece.layout_x === "number" ? piece.layout_x : null,
+    layout_y: typeof piece.layout_y === "number" ? piece.layout_y : null,
+    piece_type: typeof piece.piece_type === "string" && piece.piece_type.length > 0 ? piece.piece_type : "custom",
+    piece_label: typeof piece.piece_label === "string" ? piece.piece_label : "Custom Piece",
+    size_inches: typeof piece.size_inches === "number" && Number.isFinite(piece.size_inches) ? piece.size_inches : 18,
+    sort_order: typeof piece.sort_order === "number" ? piece.sort_order : index,
+    cymbal_brand: typeof piece.cymbal_brand === "string" ? piece.cymbal_brand : null,
+    cymbal_crack_markers: rawMarkers
+      .filter((marker): marker is CymbalCrackMarker => {
+        if (!marker || typeof marker !== "object") return false;
+        return typeof marker.x === "number" && typeof marker.y === "number";
+      })
+      .map((marker, markerIndex) => ({
+        id: typeof marker.id === "string" && marker.id.length > 0 ? marker.id : `marker-${markerIndex}`,
+        x: marker.x,
+        y: marker.y,
+        description: typeof marker.description === "string" ? marker.description : "",
+      })),
+    cymbal_model: typeof piece.cymbal_model === "string" ? piece.cymbal_model : null,
+    batter_head_brand: typeof piece.batter_head_brand === "string" ? piece.batter_head_brand : null,
+    batter_head_model: typeof piece.batter_head_model === "string" ? piece.batter_head_model : null,
+    batter_head_installed_on: typeof piece.batter_head_installed_on === "string" ? piece.batter_head_installed_on : null,
+    batter_expected_head_life_days:
+      typeof piece.batter_expected_head_life_days === "number" ? piece.batter_expected_head_life_days : null,
+    reso_head_brand: typeof piece.reso_head_brand === "string" ? piece.reso_head_brand : null,
+    reso_head_model: typeof piece.reso_head_model === "string" ? piece.reso_head_model : null,
+    reso_head_installed_on: typeof piece.reso_head_installed_on === "string" ? piece.reso_head_installed_on : null,
+    reso_expected_head_life_days:
+      typeof piece.reso_expected_head_life_days === "number" ? piece.reso_expected_head_life_days : null,
+    notes: typeof piece.notes === "string" ? piece.notes : null,
+  };
+}
+
+function normalizeDraft(input: Partial<DrumKitInput>, campusId: string): DrumKitInput {
+  return {
+    id: typeof input.id === "string" ? input.id : undefined,
+    campus_id: typeof input.campus_id === "string" && input.campus_id.length > 0 ? input.campus_id : campusId,
+    name: typeof input.name === "string" ? input.name : "",
+    description: typeof input.description === "string" ? input.description : "",
+    pieces: Array.isArray(input.pieces) ? input.pieces.map((piece, index) => normalizeDraftPiece(piece, index)) : [],
+  };
+}
+
+function getBuilderDraftKey(campusId: string, kitId?: string | null) {
+  return `${KIT_BUILDER_DRAFT_PREFIX}:${campusId}:${kitId || "new"}`;
+}
+
+function getHeadHealth(
+  installedOn: string | null | undefined,
+  expectedLifeDays: number | null | undefined,
+): HeadHealth {
+  if (!installedOn || !expectedLifeDays) {
+    return {
+      label: "Head data incomplete",
+      tone: "neutral",
+      percentLeft: null,
+      daysRemaining: null,
+    };
+  }
+
+  const parsedDate = parseISO(installedOn);
+  if (!isValid(parsedDate)) {
+    return {
+      label: "Head data incomplete",
+      tone: "neutral",
+      percentLeft: null,
+      daysRemaining: null,
+    };
+  }
+
+  const daysUsed = differenceInCalendarDays(new Date(), parsedDate);
+  const daysRemaining = expectedLifeDays - daysUsed;
+  const percentLeft = Math.max(0, Math.min(100, (daysRemaining / expectedLifeDays) * 100));
+
+  if (daysRemaining <= 0) {
+    return { label: "Replacement due", tone: "critical", percentLeft, daysRemaining };
+  }
+  if (percentLeft <= 25) {
+    return { label: "Monitor closely", tone: "warning", percentLeft, daysRemaining };
+  }
+  return { label: "Healthy", tone: "good", percentLeft, daysRemaining };
+}
+
+function formatInstalledDate(installedOn: string | null | undefined) {
+  if (!installedOn) return "No install date";
+
+  const parsedDate = parseISO(installedOn);
+  if (!isValid(parsedDate)) return "Install date is invalid";
+
+  return `${installedOn} · ${formatDistanceToNowStrict(parsedDate, { addSuffix: true })}`;
+}
+
+function getPieceHeadHealth(piece: DrumKitPiece | DrumKitPieceInput, side: HeadSide): HeadHealth {
+  if (side === "batter") {
+    return getHeadHealth(piece.batter_head_installed_on, piece.batter_expected_head_life_days);
+  }
+  return getHeadHealth(piece.reso_head_installed_on, piece.reso_expected_head_life_days);
+}
+
+function getPieceHealthSummary(piece: DrumKitPiece | DrumKitPieceInput): HeadHealth {
   const meta = getPieceMeta(piece.piece_type);
   if (!meta.hasHeads) {
     return {
       label: "No head tracking",
-      tone: "neutral" as const,
+      tone: "neutral",
       percentLeft: null,
       daysRemaining: null,
     };
   }
 
-  if (!piece.head_installed_on || !piece.expected_head_life_days) {
-    return {
-      label: "Head data incomplete",
-      tone: "neutral" as const,
-      percentLeft: null,
-      daysRemaining: null,
-    };
-  }
+  const batter = getPieceHeadHealth(piece, "batter");
+  const reso = getPieceHeadHealth(piece, "reso");
+  const ordered = [batter, reso];
 
-  const daysUsed = differenceInCalendarDays(new Date(), parseISO(piece.head_installed_on));
-  const daysRemaining = piece.expected_head_life_days - daysUsed;
-  const percentLeft = Math.max(0, Math.min(100, (daysRemaining / piece.expected_head_life_days) * 100));
-
-  if (daysRemaining <= 0) {
-    return { label: "Replacement due", tone: "critical" as const, percentLeft, daysRemaining };
+  if (ordered.some((head) => head.tone === "critical")) {
+    return { ...ordered.find((head) => head.tone === "critical")!, label: "At least one head is due" };
   }
-  if (percentLeft <= 25) {
-    return { label: "Monitor closely", tone: "warning" as const, percentLeft, daysRemaining };
+  if (ordered.some((head) => head.tone === "warning")) {
+    return { ...ordered.find((head) => head.tone === "warning")!, label: "One head needs attention" };
   }
-  return { label: "Healthy", tone: "good" as const, percentLeft, daysRemaining };
+  if (ordered.every((head) => head.tone === "neutral")) {
+    return { label: "Head data incomplete", tone: "neutral", percentLeft: null, daysRemaining: null };
+  }
+  const primary = ordered.find((head) => head.tone === "good") || ordered[0];
+  return { ...primary, label: "Both heads look healthy" };
 }
 
-function healthClasses(tone: ReturnType<typeof getHealthSummary>["tone"]) {
+function healthClasses(tone: HeadHealth["tone"]) {
   switch (tone) {
     case "good":
       return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
@@ -140,6 +286,9 @@ function healthClasses(tone: ReturnType<typeof getHealthSummary>["tone"]) {
 }
 
 function getPieceCoords(piece: DrumKitPiece, indexWithinType: number) {
+  if (piece.layout_x != null && piece.layout_y != null) {
+    return { x: piece.layout_x, y: piece.layout_y };
+  }
   const meta = getPieceMeta(piece.piece_type);
   const offset = indexWithinType * 7;
   const x = piece.piece_type === "rack_tom" ? meta.x + offset : piece.piece_type === "floor_tom" ? meta.x + offset : meta.x;
@@ -147,55 +296,276 @@ function getPieceCoords(piece: DrumKitPiece, indexWithinType: number) {
   return { x, y };
 }
 
+function getPieceDimensions(piece: DrumKitPiece) {
+  const isCymbal = isCymbalPiece(piece.piece_type);
+  const base = Math.max(52, Math.min(150, piece.size_inches * (isCymbal ? 5.2 : 4.1)));
+
+  if (piece.piece_type === "kick") {
+    return { width: base * 1.05, height: base * 1.05 };
+  }
+
+  if (isCymbal) {
+    return {
+      width: base,
+      height: base,
+    };
+  }
+
+  return { width: base, height: base };
+}
+
+function getWearDisplay(piece: DrumKitPiece) {
+  const health = getPieceHealthSummary(piece);
+  if (health.percentLeft === null) {
+    return { value: "--", band: "neutral" as WearBand };
+  }
+
+  return {
+    value: `${Math.round(health.percentLeft)}%`,
+    band: getWearBand(health.percentLeft),
+  };
+}
+
+function getWearBand(percentLeft: number): WearBand {
+  if (percentLeft >= 80) return "green";
+  if (percentLeft >= 50) return "yellow";
+  if (percentLeft >= 30) return "orange";
+  return "red";
+}
+
+function getWearTextClasses(band: WearBand) {
+  switch (band) {
+    case "green":
+      return "text-emerald-500";
+    case "yellow":
+      return "text-amber-400";
+    case "orange":
+      return "text-orange-500";
+    case "red":
+      return "text-rose-500";
+    default:
+      return "text-slate-400";
+  }
+}
+
+function getStagePieceClasses(piece: DrumKitPiece, isSelected: boolean) {
+  if (isCymbalPiece(piece.piece_type)) {
+    return cn(
+      "rounded-full border border-amber-100/50 bg-[radial-gradient(circle_at_34%_30%,rgba(255,251,235,0.98),rgba(253,230,138,0.96)_20%,rgba(245,158,11,0.92)_46%,rgba(146,64,14,0.98)_100%)] shadow-[inset_0_10px_28px_rgba(255,255,255,0.28),inset_0_-16px_26px_rgba(120,53,15,0.36),0_20px_28px_rgba(0,0,0,0.24)]",
+      isSelected && "ring-2 ring-sky-400/65 ring-offset-2 ring-offset-slate-950",
+    );
+  }
+
+  const health = getPieceHealthSummary(piece);
+  const band = health.percentLeft === null ? "neutral" : getWearBand(health.percentLeft);
+  const toneClasses =
+    band === "green"
+      ? "border-emerald-500/70 bg-emerald-500/10"
+      : band === "yellow"
+        ? "border-amber-400/70 bg-amber-400/10"
+        : band === "orange"
+          ? "border-orange-500/75 bg-orange-500/10"
+          : band === "red"
+          ? "border-rose-500/75 bg-rose-500/10"
+          : "border-slate-500/60 bg-slate-500/10";
+
+  return cn(
+    "rounded-full border-2 bg-slate-950/90",
+    toneClasses,
+    isSelected && "ring-2 ring-sky-400/65 ring-offset-2 ring-offset-slate-950",
+  );
+}
+
+function CymbalCrackMonitor({
+  markers,
+  onAdd,
+  onUpdate,
+  onRemove,
+  editable,
+}: {
+  markers: CymbalCrackMarker[];
+  onAdd: (marker: CymbalCrackMarker) => void;
+  onUpdate: (markerId: string, description: string) => void;
+  onRemove: (markerId: string) => void;
+  editable: boolean;
+}) {
+  const monitorRef = useRef<HTMLButtonElement | null>(null);
+
+  const handleAddMarker = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!editable || !monitorRef.current) return;
+    const rect = monitorRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
+
+    onAdd({
+      id: crypto.randomUUID(),
+      x,
+      y,
+      description: "",
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <button
+        ref={monitorRef}
+        type="button"
+        onClick={handleAddMarker}
+        className={cn(
+          "relative mx-auto block aspect-square w-full max-w-[260px] rounded-full border border-amber-300/25 bg-[radial-gradient(circle_at_30%_30%,rgba(254,243,199,0.85),rgba(217,119,6,0.92))] shadow-[inset_0_6px_22px_rgba(255,255,255,0.22),0_12px_24px_rgba(0,0,0,0.18)]",
+          editable ? "cursor-crosshair" : "cursor-default",
+        )}
+      >
+        <span className="absolute inset-3 rounded-full border border-white/20" />
+        <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-white/40" />
+        {markers.map((marker, index) => (
+          <span
+            key={marker.id}
+            className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-rose-500 shadow-[0_0_0_4px_rgba(244,63,94,0.18)]"
+            style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+            title={marker.description || `Crack ${index + 1}`}
+          />
+        ))}
+      </button>
+
+      <div className="space-y-3">
+        {markers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {editable ? "Click the cymbal to pin a crack location." : "No crack markers logged."}
+          </p>
+        ) : (
+          markers.map((marker, index) => (
+            <div key={marker.id} className="rounded-xl border border-border p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-foreground">Crack {index + 1}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Position: {Math.round(marker.x)}% x, {Math.round(marker.y)}% y
+                  </p>
+                </div>
+                {editable && (
+                  <Button type="button" variant="ghost" size="icon" onClick={() => onRemove(marker.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                className="mt-3"
+                value={marker.description}
+                onChange={(event) => onUpdate(marker.id, event.target.value)}
+                placeholder="Describe the crack length, edge location, or whether it is spreading."
+                rows={2}
+                disabled={!editable}
+              />
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function InteractiveKitStage({
   pieces,
   selectedPieceId,
   onSelect,
+  editable,
+  onMove,
 }: {
   pieces: DrumKitPiece[];
   selectedPieceId: string | null;
   onSelect: (pieceId: string) => void;
+  editable: boolean;
+  onMove: (pieceId: string, x: number, y: number) => void;
 }) {
   const counts = new Map<string, number>();
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [draggingPieceId, setDraggingPieceId] = useState<string | null>(null);
+
+  const updatePiecePosition = (pieceId: string, clientX: number, clientY: number) => {
+    if (!editable || !stageRef.current) return;
+    const rect = stageRef.current.getBoundingClientRect();
+    const x = Math.max(8, Math.min(92, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(16, Math.min(84, ((clientY - rect.top) / rect.height) * 100));
+    onMove(pieceId, Number(x.toFixed(2)), Number(y.toFixed(2)));
+  };
 
   return (
-    <div className="relative h-[420px] overflow-hidden rounded-3xl border border-border bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_35%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.82))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div
+      ref={stageRef}
+      className="relative h-[520px] overflow-hidden rounded-3xl border border-border bg-[radial-gradient(circle_at_50%_14%,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_top,rgba(56,189,248,0.18),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.92))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+      onPointerMove={(event) => {
+        if (!draggingPieceId) return;
+        updatePiecePosition(draggingPieceId, event.clientX, event.clientY);
+      }}
+      onPointerUp={() => setDraggingPieceId(null)}
+      onPointerLeave={() => setDraggingPieceId(null)}
+    >
       <div className="absolute inset-x-8 top-6 flex items-center justify-between text-xs uppercase tracking-[0.24em] text-slate-400">
-        <span>Stage Plot</span>
-        <span>Tap a piece to inspect it</span>
+        <span>Top-Down Kit View</span>
+        <span>{editable ? "Positioning unlocked" : "Tap a drum head or cymbal to inspect it"}</span>
       </div>
-      <div className="absolute inset-x-10 bottom-5 h-24 rounded-[2rem] border border-slate-800/80 bg-slate-950/70" />
       {pieces.map((piece) => {
         const seen = counts.get(piece.piece_type) || 0;
         counts.set(piece.piece_type, seen + 1);
         const meta = getPieceMeta(piece.piece_type);
-        const health = getHealthSummary(piece);
+        const wear = getWearDisplay(piece);
         const coords = getPieceCoords(piece, seen);
+        const dimensions = getPieceDimensions(piece);
+        const isSelected = selectedPieceId === piece.id;
+        const isCymbal = isCymbalPiece(piece.piece_type);
 
         return (
           <button
             key={piece.id}
             type="button"
             onClick={() => onSelect(piece.id)}
+            onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+              if (!editable) return;
+              event.preventDefault();
+              onSelect(piece.id);
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setDraggingPieceId(piece.id);
+              updatePiecePosition(piece.id, event.clientX, event.clientY);
+            }}
+            onPointerUp={(event: PointerEvent<HTMLButtonElement>) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              setDraggingPieceId(null);
+            }}
             className={cn(
-              "absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl border px-3 py-2 text-left shadow-lg transition-all",
-              selectedPieceId === piece.id
-                ? "scale-105 border-white/70 bg-white/12 ring-2 ring-sky-400/50"
-                : "border-white/10 bg-slate-950/75 hover:border-sky-300/40 hover:bg-slate-900/90",
+              "absolute -translate-x-1/2 -translate-y-1/2 touch-none transition-transform duration-150 hover:scale-[1.03]",
+              isSelected && "z-20 scale-[1.04]",
+              editable && "cursor-grab active:cursor-grabbing",
+              draggingPieceId === piece.id && "z-30 scale-[1.05]",
             )}
-            style={{ left: `${coords.x}%`, top: `${coords.y}%` }}
+            style={{ left: `${coords.x}%`, top: `${coords.y}%`, width: dimensions.width, height: dimensions.height }}
           >
-            <div className="flex items-center gap-2">
-              <span className={cn("h-2.5 w-2.5 rounded-full", meta.accent)} />
-              <span className="text-sm font-medium text-slate-50">{piece.piece_label}</span>
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-slate-300">
-              <span>{formatSize(piece.size_inches)}</span>
-              {health.daysRemaining !== null && (
-                <span className={cn("rounded-full border px-1.5 py-0.5", healthClasses(health.tone))}>
-                  {health.daysRemaining > 0 ? `${health.daysRemaining}d left` : "Due"}
-                </span>
+            <div className={cn("relative h-full w-full", getStagePieceClasses(piece, isSelected))}>
+              {!isCymbal && (
+                <>
+                  <span className="absolute inset-[8%] rounded-full border border-white/18" />
+                  <span className="absolute inset-[18%] rounded-full border border-white/10" />
+                </>
               )}
+              {isCymbal && (
+                <>
+                  <span className="absolute inset-[8%] rounded-full border border-white/25" />
+                  <span className="absolute inset-[20%] rounded-full border border-amber-50/12" />
+                  <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-50/80 ring-[6px] ring-amber-950/18" />
+                </>
+              )}
+
+              {!isCymbal && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className={cn("text-sm font-semibold tracking-tight", getWearTextClasses(wear.band))}>
+                    {wear.value}
+                  </span>
+                </div>
+              )}
+
+              <span className={cn("absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[0_0_0_4px_rgba(15,23,42,0.24)]", meta.accent)} />
             </div>
           </button>
         );
@@ -220,9 +590,23 @@ function KitBuilderDialog({
   onSave: (input: DrumKitInput) => Promise<void>;
 }) {
   const [form, setForm] = useState<DrumKitInput>(() => buildDefaultKit(campusId));
+  const draftKey = getBuilderDraftKey(campusId, initialKit?.id);
 
   useEffect(() => {
     if (!open) return;
+
+    if (typeof window !== "undefined") {
+      const savedDraft = window.localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft) as Partial<DrumKitInput>;
+          setForm(normalizeDraft(parsed, campusId));
+          return;
+        } catch {
+          window.localStorage.removeItem(draftKey);
+        }
+      }
+    }
 
     if (initialKit) {
       setForm({
@@ -232,14 +616,23 @@ function KitBuilderDialog({
         description: initialKit.description || "",
         pieces: initialKit.drum_kit_pieces.map((piece, index) => ({
           id: piece.id,
+          layout_x: piece.layout_x,
+          layout_y: piece.layout_y,
           piece_type: piece.piece_type,
           piece_label: piece.piece_label,
           size_inches: piece.size_inches,
           sort_order: index,
-          head_brand: piece.head_brand,
-          head_model: piece.head_model,
-          head_installed_on: piece.head_installed_on,
-          expected_head_life_days: piece.expected_head_life_days,
+          cymbal_brand: piece.cymbal_brand,
+          cymbal_crack_markers: piece.cymbal_crack_markers || [],
+          cymbal_model: piece.cymbal_model,
+          batter_head_brand: piece.batter_head_brand,
+          batter_head_model: piece.batter_head_model,
+          batter_head_installed_on: piece.batter_head_installed_on,
+          batter_expected_head_life_days: piece.batter_expected_head_life_days,
+          reso_head_brand: piece.reso_head_brand,
+          reso_head_model: piece.reso_head_model,
+          reso_head_installed_on: piece.reso_head_installed_on,
+          reso_expected_head_life_days: piece.reso_expected_head_life_days,
           notes: piece.notes,
         })),
       });
@@ -247,7 +640,12 @@ function KitBuilderDialog({
     }
 
     setForm(buildDefaultKit(campusId));
-  }, [campusId, initialKit, open]);
+  }, [campusId, draftKey, initialKit, open]);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    window.localStorage.setItem(draftKey, JSON.stringify(form));
+  }, [draftKey, form, open]);
 
   const updatePiece = (index: number, patch: Partial<DrumKitPieceInput>) => {
     setForm((current) => ({
@@ -290,6 +688,9 @@ function KitBuilderDialog({
         .filter((piece) => piece.piece_label.trim().length > 0 && piece.size_inches > 0)
         .map((piece, index) => ({ ...piece, sort_order: index })),
     });
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(draftKey);
+    }
   };
 
   return (
@@ -327,7 +728,7 @@ function KitBuilderDialog({
               <p className="text-sm font-medium text-foreground">Builder guidance</p>
               <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
                 <li>Use one entry per physical piece on the kit.</li>
-                <li>Only drum pieces need head brand, model, and lifespan.</li>
+                <li>Only drum pieces need batter and resonant head brand, model, and lifespan.</li>
                 <li>Cymbals stay interactive in the stage plot but won’t show head wear.</li>
               </ul>
             </div>
@@ -362,10 +763,14 @@ function KitBuilderDialog({
                               piece_type: value,
                               piece_label: option?.label || "Custom Piece",
                               size_inches: option?.defaultSize || piece.size_inches,
-                              expected_head_life_days: option?.hasHeads ? piece.expected_head_life_days ?? 180 : null,
-                              head_brand: option?.hasHeads ? piece.head_brand ?? "" : null,
-                              head_model: option?.hasHeads ? piece.head_model ?? "" : null,
-                              head_installed_on: option?.hasHeads ? piece.head_installed_on ?? "" : null,
+                              batter_expected_head_life_days: option?.hasHeads ? piece.batter_expected_head_life_days ?? 180 : null,
+                              batter_head_brand: option?.hasHeads ? piece.batter_head_brand ?? "" : null,
+                              batter_head_model: option?.hasHeads ? piece.batter_head_model ?? "" : null,
+                              batter_head_installed_on: option?.hasHeads ? piece.batter_head_installed_on ?? "" : null,
+                              reso_expected_head_life_days: option?.hasHeads ? piece.reso_expected_head_life_days ?? 365 : null,
+                              reso_head_brand: option?.hasHeads ? piece.reso_head_brand ?? "" : null,
+                              reso_head_model: option?.hasHeads ? piece.reso_head_model ?? "" : null,
+                              reso_head_installed_on: option?.hasHeads ? piece.reso_head_installed_on ?? "" : null,
                             });
                           }}
                         >
@@ -410,42 +815,110 @@ function KitBuilderDialog({
                     </div>
 
                     {meta.hasHeads && (
-                      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                          <p className="mb-3 text-sm font-medium text-foreground">Batter Head</p>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Brand</Label>
+                              <Input
+                                value={piece.batter_head_brand || ""}
+                                onChange={(event) => updatePiece(index, { batter_head_brand: event.target.value })}
+                                placeholder="Remo"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Model</Label>
+                              <Input
+                                value={piece.batter_head_model || ""}
+                                onChange={(event) => updatePiece(index, { batter_head_model: event.target.value })}
+                                placeholder="Emperor Clear"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Installed on</Label>
+                              <Input
+                                type="date"
+                                value={piece.batter_head_installed_on || ""}
+                                onChange={(event) => updatePiece(index, { batter_head_installed_on: event.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Expected life (days)</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={piece.batter_expected_head_life_days || ""}
+                                onChange={(event) =>
+                                  updatePiece(index, {
+                                    batter_expected_head_life_days: event.target.value ? Number(event.target.value) : null,
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                          <p className="mb-3 text-sm font-medium text-foreground">Reso Head</p>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label>Brand</Label>
+                              <Input
+                                value={piece.reso_head_brand || ""}
+                                onChange={(event) => updatePiece(index, { reso_head_brand: event.target.value })}
+                                placeholder="Remo"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Model</Label>
+                              <Input
+                                value={piece.reso_head_model || ""}
+                                onChange={(event) => updatePiece(index, { reso_head_model: event.target.value })}
+                                placeholder="Ambassador Clear"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Installed on</Label>
+                              <Input
+                                type="date"
+                                value={piece.reso_head_installed_on || ""}
+                                onChange={(event) => updatePiece(index, { reso_head_installed_on: event.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Expected life (days)</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={piece.reso_expected_head_life_days || ""}
+                                onChange={(event) =>
+                                  updatePiece(index, {
+                                    reso_expected_head_life_days: event.target.value ? Number(event.target.value) : null,
+                                  })
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {isCymbalPiece(piece.piece_type) && (
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                          <Label>Head brand</Label>
+                          <Label>Make</Label>
                           <Input
-                            value={piece.head_brand || ""}
-                            onChange={(event) => updatePiece(index, { head_brand: event.target.value })}
-                            placeholder="Remo"
+                            value={piece.cymbal_brand || ""}
+                            onChange={(event) => updatePiece(index, { cymbal_brand: event.target.value })}
+                            placeholder="Zildjian"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Head model</Label>
+                          <Label>Model</Label>
                           <Input
-                            value={piece.head_model || ""}
-                            onChange={(event) => updatePiece(index, { head_model: event.target.value })}
-                            placeholder="Emperor Clear"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Installed on</Label>
-                          <Input
-                            type="date"
-                            value={piece.head_installed_on || ""}
-                            onChange={(event) => updatePiece(index, { head_installed_on: event.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Expected life (days)</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={piece.expected_head_life_days || ""}
-                            onChange={(event) =>
-                              updatePiece(index, {
-                                expected_head_life_days: event.target.value ? Number(event.target.value) : null,
-                              })
-                            }
+                            value={piece.cymbal_model || ""}
+                            onChange={(event) => updatePiece(index, { cymbal_model: event.target.value })}
+                            placeholder="K Custom Dark Crash"
                           />
                         </div>
                       </div>
@@ -506,6 +979,9 @@ export default function DrumTech() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingKit, setEditingKit] = useState<DrumKit | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  const [pieceDraft, setPieceDraft] = useState<DrumKitPiece | null>(null);
+  const [layoutDrafts, setLayoutDrafts] = useState<Record<string, { x: number | null; y: number | null }>>({});
+  const [layoutUnlocked, setLayoutUnlocked] = useState(false);
 
   useEffect(() => {
     if (!kits.length) {
@@ -522,6 +998,11 @@ export default function DrumTech() {
   const selectedKit = kits.find((kit) => kit.id === selectedKitId) || null;
 
   useEffect(() => {
+    setLayoutDrafts({});
+    setLayoutUnlocked(false);
+  }, [selectedKitId]);
+
+  useEffect(() => {
     if (!selectedKit?.drum_kit_pieces.length) {
       setSelectedPieceId(null);
       return;
@@ -532,12 +1013,28 @@ export default function DrumTech() {
     }
   }, [selectedKit, selectedPieceId]);
 
-  const selectedPiece = selectedKit?.drum_kit_pieces.find((piece) => piece.id === selectedPieceId) || null;
+  const stagePieces = useMemo(() => {
+    if (!selectedKit) return [];
+    return selectedKit.drum_kit_pieces.map((piece) => {
+      const layoutDraft = layoutDrafts[piece.id];
+      if (!layoutDraft) return piece;
+      return {
+        ...piece,
+        layout_x: layoutDraft.x,
+        layout_y: layoutDraft.y,
+      };
+    });
+  }, [layoutDrafts, selectedKit]);
+  const selectedPiece = stagePieces.find((piece) => piece.id === selectedPieceId) || null;
+
+  useEffect(() => {
+    setPieceDraft(selectedPiece ? { ...selectedPiece, cymbal_crack_markers: selectedPiece.cymbal_crack_markers || [] } : null);
+  }, [selectedPiece]);
 
   const stats = useMemo(() => {
     const headTrackedPieces = selectedKit?.drum_kit_pieces.filter((piece) => getPieceMeta(piece.piece_type).hasHeads) || [];
-    const dueCount = headTrackedPieces.filter((piece) => getHealthSummary(piece).tone === "critical").length;
-    const monitorCount = headTrackedPieces.filter((piece) => getHealthSummary(piece).tone === "warning").length;
+    const dueCount = headTrackedPieces.filter((piece) => getPieceHealthSummary(piece).tone === "critical").length;
+    const monitorCount = headTrackedPieces.filter((piece) => getPieceHealthSummary(piece).tone === "warning").length;
     return { headTrackedPieces, dueCount, monitorCount };
   }, [selectedKit]);
 
@@ -562,6 +1059,106 @@ export default function DrumTech() {
     if (!selectedKit || !selectedCampusId) return;
     if (!window.confirm(`Delete ${selectedKit.name}? This removes its full digital kit definition.`)) return;
     await deleteKit.mutateAsync({ kitId: selectedKit.id, campusId: selectedCampusId });
+  };
+
+  const handleSavePieceMonitor = async () => {
+    if (!selectedKit || !pieceDraft || !selectedCampusId || !access.canEditCampus) return;
+
+    const pieces = selectedKit.drum_kit_pieces.map((piece) =>
+      piece.id === pieceDraft.id
+        ? {
+            ...piece,
+            cymbal_brand: pieceDraft.cymbal_brand,
+            cymbal_model: pieceDraft.cymbal_model,
+            cymbal_crack_markers: pieceDraft.cymbal_crack_markers || [],
+            notes: pieceDraft.notes,
+          }
+        : piece,
+    );
+
+    await upsertKit.mutateAsync({
+      id: selectedKit.id,
+      campus_id: selectedCampusId,
+      name: selectedKit.name,
+      description: selectedKit.description,
+      pieces: pieces.map((piece, index) => ({
+        id: piece.id,
+        layout_x: piece.id === pieceDraft.id ? pieceDraft.layout_x : piece.layout_x,
+        layout_y: piece.id === pieceDraft.id ? pieceDraft.layout_y : piece.layout_y,
+        piece_type: piece.piece_type,
+        piece_label: piece.piece_label,
+        size_inches: piece.size_inches,
+        sort_order: index,
+        cymbal_brand: piece.cymbal_brand,
+        cymbal_model: piece.cymbal_model,
+        cymbal_crack_markers: piece.cymbal_crack_markers || [],
+        batter_head_brand: piece.batter_head_brand,
+        batter_head_model: piece.batter_head_model,
+        batter_head_installed_on: piece.batter_head_installed_on,
+        batter_expected_head_life_days: piece.batter_expected_head_life_days,
+        reso_head_brand: piece.reso_head_brand,
+        reso_head_model: piece.reso_head_model,
+        reso_head_installed_on: piece.reso_head_installed_on,
+        reso_expected_head_life_days: piece.reso_expected_head_life_days,
+        notes: piece.notes,
+      })),
+    });
+  };
+
+  const handleMovePiece = (pieceId: string, x: number, y: number) => {
+    setLayoutDrafts((current) => ({
+      ...current,
+      [pieceId]: { x, y },
+    }));
+    setPieceDraft((current) => (current && current.id === pieceId ? { ...current, layout_x: x, layout_y: y } : current));
+  };
+
+  const handleSaveLayout = async () => {
+    if (!selectedKit || !selectedCampusId || !pieceDraft || !access.canEditCampus) return;
+
+    await upsertKit.mutateAsync({
+      id: selectedKit.id,
+      campus_id: selectedCampusId,
+      name: selectedKit.name,
+      description: selectedKit.description,
+      pieces: selectedKit.drum_kit_pieces.map((piece, index) => ({
+        id: piece.id,
+        layout_x: layoutDrafts[piece.id]?.x ?? piece.layout_x,
+        layout_y: layoutDrafts[piece.id]?.y ?? piece.layout_y,
+        piece_type: piece.piece_type,
+        piece_label: piece.piece_label,
+        size_inches: piece.size_inches,
+        sort_order: index,
+        cymbal_brand: piece.id === pieceDraft.id ? pieceDraft.cymbal_brand : piece.cymbal_brand,
+        cymbal_model: piece.id === pieceDraft.id ? pieceDraft.cymbal_model : piece.cymbal_model,
+        cymbal_crack_markers: piece.id === pieceDraft.id ? pieceDraft.cymbal_crack_markers || [] : piece.cymbal_crack_markers || [],
+        batter_head_brand: piece.batter_head_brand,
+        batter_head_model: piece.batter_head_model,
+        batter_head_installed_on: piece.batter_head_installed_on,
+        batter_expected_head_life_days: piece.batter_expected_head_life_days,
+        reso_head_brand: piece.reso_head_brand,
+        reso_head_model: piece.reso_head_model,
+        reso_head_installed_on: piece.reso_head_installed_on,
+        reso_expected_head_life_days: piece.reso_expected_head_life_days,
+        notes: piece.id === pieceDraft.id ? pieceDraft.notes : piece.notes,
+      })),
+    });
+
+  };
+
+  const handleToggleLayoutLock = async () => {
+    if (!access.canEditCampus) return;
+
+    if (!layoutUnlocked) {
+      setLayoutUnlocked(true);
+      return;
+    }
+
+    if (Object.keys(layoutDrafts).length > 0) {
+      await handleSaveLayout();
+    }
+
+    setLayoutUnlocked(false);
   };
 
   if (!selectedCampusId) {
@@ -646,7 +1243,7 @@ export default function DrumTech() {
               ) : (
                 kits.map((kit) => {
                   const tracked = kit.drum_kit_pieces.filter((piece) => getPieceMeta(piece.piece_type).hasHeads);
-                  const overdue = tracked.filter((piece) => getHealthSummary(piece).tone === "critical").length;
+                  const overdue = tracked.filter((piece) => getPieceHealthSummary(piece).tone === "critical").length;
 
                   return (
                     <button
@@ -772,30 +1369,67 @@ export default function DrumTech() {
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-6 p-6 xl:grid-cols-[1.4fr_0.8fr]">
-                  <InteractiveKitStage
-                    pieces={selectedKit.drum_kit_pieces}
-                    selectedPieceId={selectedPieceId}
-                    onSelect={setSelectedPieceId}
-                  />
+                  <div className="space-y-4">
+                    {access.canEditCampus && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/20 p-3">
+                        <div>
+                          <p className="font-medium text-foreground">Kit Positioning</p>
+                          <p className="text-sm text-muted-foreground">
+                            Unlock positioning to move pieces. Lock the kit again to save the new layout.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={handleToggleLayoutLock}
+                          title={layoutUnlocked ? "Lock positioning and save layout" : "Unlock positioning"}
+                          disabled={upsertKit.isPending}
+                        >
+                          {layoutUnlocked ? (
+                            <Unlock className="h-4 w-4 text-primary" />
+                          ) : (
+                            <Lock className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                    )}
+
+                    <InteractiveKitStage
+                      pieces={stagePieces}
+                      selectedPieceId={selectedPieceId}
+                      onSelect={setSelectedPieceId}
+                      editable={access.canEditCampus && layoutUnlocked}
+                      onMove={handleMovePiece}
+                    />
+                  </div>
 
                   <div className="space-y-4">
-                    {selectedPiece ? (
+                    {selectedPiece && pieceDraft ? (
                       <Card className="border-border/70 bg-muted/20">
                         <CardHeader>
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <CardTitle className="text-xl">{selectedPiece.piece_label}</CardTitle>
+                              <CardTitle className="text-xl">{pieceDraft.piece_label}</CardTitle>
                               <CardDescription>
-                                {getPieceMeta(selectedPiece.piece_type).label} · {formatSize(selectedPiece.size_inches)}
+                                {getPieceMeta(pieceDraft.piece_type).label} · {formatSize(pieceDraft.size_inches)}
                               </CardDescription>
+                              {pieceDraft.layout_x != null && pieceDraft.layout_y != null && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Position: {pieceDraft.layout_x.toFixed(1)}%, {pieceDraft.layout_y.toFixed(1)}%
+                                </p>
+                              )}
                             </div>
                             <Disc3 className="h-5 w-5 text-muted-foreground" />
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
                           {(() => {
-                            const health = getHealthSummary(selectedPiece);
-                            const meta = getPieceMeta(selectedPiece.piece_type);
+                            const health = getPieceHealthSummary(pieceDraft);
+                            const meta = getPieceMeta(pieceDraft.piece_type);
+                            const batterHealth = getPieceHeadHealth(pieceDraft, "batter");
+                            const resoHealth = getPieceHeadHealth(pieceDraft, "reso");
                             return (
                               <>
                                 <div className={cn("rounded-2xl border p-3 text-sm", healthClasses(health.tone))}>
@@ -809,47 +1443,177 @@ export default function DrumTech() {
 
                                 {meta.hasHeads && (
                                   <>
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between text-sm">
-                                        <span className="text-muted-foreground">Estimated head life</span>
-                                        <span className="font-medium">
-                                          {health.percentLeft !== null ? `${Math.round(health.percentLeft)}% left` : "No estimate"}
-                                        </span>
-                                      </div>
-                                      <Progress value={health.percentLeft ?? 0} />
-                                    </div>
+                                    <div className="grid gap-4">
+                                      {([
+                                        {
+                                          key: "batter",
+                                          title: "Batter Head",
+                                          health: batterHealth,
+                                          brand: pieceDraft.batter_head_brand,
+                                          model: pieceDraft.batter_head_model,
+                                          installedOn: pieceDraft.batter_head_installed_on,
+                                        },
+                                        {
+                                          key: "reso",
+                                          title: "Reso Head",
+                                          health: resoHealth,
+                                          brand: pieceDraft.reso_head_brand,
+                                          model: pieceDraft.reso_head_model,
+                                          installedOn: pieceDraft.reso_head_installed_on,
+                                        },
+                                      ] as const).map((head) => (
+                                        <div key={head.key} className="rounded-2xl border border-border p-4">
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                              <p className="font-medium text-foreground">{head.title}</p>
+                                              <p className="text-sm text-muted-foreground">{head.health.label}</p>
+                                            </div>
+                                            <span className={cn("rounded-full border px-2 py-1 text-xs", healthClasses(head.health.tone))}>
+                                              {head.health.daysRemaining !== null
+                                                ? head.health.daysRemaining > 0
+                                                  ? `${head.health.daysRemaining}d left`
+                                                  : "Due"
+                                                : "No estimate"}
+                                            </span>
+                                          </div>
 
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      <div className="rounded-xl border border-border p-3">
-                                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Head spec</p>
-                                        <p className="mt-1 font-medium">
-                                          {[selectedPiece.head_brand, selectedPiece.head_model].filter(Boolean).join(" " ) || "Not recorded"}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border border-border p-3">
-                                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Installed</p>
-                                        <p className="mt-1 font-medium">
-                                          {selectedPiece.head_installed_on
-                                            ? `${selectedPiece.head_installed_on} · ${formatDistanceToNowStrict(parseISO(selectedPiece.head_installed_on), { addSuffix: true })}`
-                                            : "No install date"}
-                                        </p>
-                                      </div>
+                                          <div className="mt-3 space-y-2">
+                                            <div className="flex items-center justify-between text-sm">
+                                              <span className="text-muted-foreground">Estimated life</span>
+                                              <span className="font-medium">
+                                                {head.health.percentLeft !== null ? `${Math.round(head.health.percentLeft)}% left` : "No estimate"}
+                                              </span>
+                                            </div>
+                                            <Progress value={head.health.percentLeft ?? 0} />
+                                          </div>
+
+                                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                            <div className="rounded-xl border border-border p-3">
+                                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Head spec</p>
+                                              <p className="mt-1 font-medium">
+                                                {[head.brand, head.model].filter(Boolean).join(" ") || "Not recorded"}
+                                              </p>
+                                            </div>
+                                            <div className="rounded-xl border border-border p-3">
+                                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Installed</p>
+                                              <p className="mt-1 font-medium">
+                                                {formatInstalledDate(head.installedOn)}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   </>
                                 )}
 
                                 {!meta.hasHeads && (
-                                  <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
-                                    Cymbals and hardware stay interactive here, but head wear tracking only applies to drum shells.
+                                  <div className="space-y-4">
+                                    {isCymbalPiece(pieceDraft.piece_type) ? (
+                                      <>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                          <div className="space-y-2">
+                                            <Label>Make</Label>
+                                            <Input
+                                              value={pieceDraft.cymbal_brand || ""}
+                                              onChange={(event) =>
+                                                setPieceDraft((current) =>
+                                                  current ? { ...current, cymbal_brand: event.target.value } : current,
+                                                )
+                                              }
+                                              disabled={!access.canEditCampus}
+                                              placeholder="Zildjian"
+                                            />
+                                          </div>
+                                          <div className="space-y-2">
+                                            <Label>Model</Label>
+                                            <Input
+                                              value={pieceDraft.cymbal_model || ""}
+                                              onChange={(event) =>
+                                                setPieceDraft((current) =>
+                                                  current ? { ...current, cymbal_model: event.target.value } : current,
+                                                )
+                                              }
+                                              disabled={!access.canEditCampus}
+                                              placeholder="A Custom Mastersound Hi-Hats"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-border p-4">
+                                          <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div>
+                                              <p className="font-medium text-foreground">Crack Monitor</p>
+                                              <p className="text-sm text-muted-foreground">
+                                                Pin crack locations directly on the cymbal from the stage plot view.
+                                              </p>
+                                            </div>
+                                            {access.canEditCampus && (
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleSavePieceMonitor}
+                                                disabled={upsertKit.isPending}
+                                              >
+                                                <Save className="mr-2 h-4 w-4" />
+                                                Save cymbal
+                                              </Button>
+                                            )}
+                                          </div>
+                                          <CymbalCrackMonitor
+                                            markers={pieceDraft.cymbal_crack_markers || []}
+                                            editable={access.canEditCampus}
+                                            onAdd={(marker) =>
+                                              setPieceDraft((current) =>
+                                                current
+                                                  ? {
+                                                      ...current,
+                                                      cymbal_crack_markers: [...(current.cymbal_crack_markers || []), marker],
+                                                    }
+                                                  : current,
+                                              )
+                                            }
+                                            onUpdate={(markerId, description) =>
+                                              setPieceDraft((current) =>
+                                                current
+                                                  ? {
+                                                      ...current,
+                                                      cymbal_crack_markers: (current.cymbal_crack_markers || []).map((marker) =>
+                                                        marker.id === markerId ? { ...marker, description } : marker,
+                                                      ),
+                                                    }
+                                                  : current,
+                                              )
+                                            }
+                                            onRemove={(markerId) =>
+                                              setPieceDraft((current) =>
+                                                current
+                                                  ? {
+                                                      ...current,
+                                                      cymbal_crack_markers: (current.cymbal_crack_markers || []).filter(
+                                                        (marker) => marker.id !== markerId,
+                                                      ),
+                                                    }
+                                                  : current,
+                                              )
+                                            }
+                                          />
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+                                        Hardware stays interactive here, but crack monitoring is only enabled for cymbals.
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
-                                {selectedPiece.notes && (
+                                {pieceDraft.notes && (
                                   <div className="rounded-xl border border-border p-3">
                                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Notes</p>
-                                    <p className="mt-1 text-sm">{selectedPiece.notes}</p>
+                                    <p className="mt-1 text-sm">{pieceDraft.notes}</p>
                                   </div>
                                 )}
+
                               </>
                             );
                           })()}

@@ -691,46 +691,73 @@ export type Database = {
       }
       drum_kit_pieces: {
         Row: {
+          batter_expected_head_life_days: number | null
+          batter_head_brand: string | null
+          batter_head_installed_on: string | null
+          batter_head_model: string | null
           created_at: string
-          expected_head_life_days: number | null
-          head_brand: string | null
-          head_installed_on: string | null
-          head_model: string | null
+          cymbal_brand: string | null
+          cymbal_crack_markers: Json
+          cymbal_model: string | null
           id: string
           kit_id: string
+          layout_x: number | null
+          layout_y: number | null
           notes: string | null
           piece_label: string
           piece_type: string
+          reso_expected_head_life_days: number | null
+          reso_head_brand: string | null
+          reso_head_installed_on: string | null
+          reso_head_model: string | null
           size_inches: number
           sort_order: number
           updated_at: string
         }
         Insert: {
+          batter_expected_head_life_days?: number | null
+          batter_head_brand?: string | null
+          batter_head_installed_on?: string | null
+          batter_head_model?: string | null
           created_at?: string
-          expected_head_life_days?: number | null
-          head_brand?: string | null
-          head_installed_on?: string | null
-          head_model?: string | null
+          cymbal_brand?: string | null
+          cymbal_crack_markers?: Json
+          cymbal_model?: string | null
           id?: string
           kit_id: string
+          layout_x?: number | null
+          layout_y?: number | null
           notes?: string | null
           piece_label: string
           piece_type: string
+          reso_expected_head_life_days?: number | null
+          reso_head_brand?: string | null
+          reso_head_installed_on?: string | null
+          reso_head_model?: string | null
           size_inches: number
           sort_order?: number
           updated_at?: string
         }
         Update: {
+          batter_expected_head_life_days?: number | null
+          batter_head_brand?: string | null
+          batter_head_installed_on?: string | null
+          batter_head_model?: string | null
           created_at?: string
-          expected_head_life_days?: number | null
-          head_brand?: string | null
-          head_installed_on?: string | null
-          head_model?: string | null
+          cymbal_brand?: string | null
+          cymbal_crack_markers?: Json
+          cymbal_model?: string | null
           id?: string
           kit_id?: string
+          layout_x?: number | null
+          layout_y?: number | null
           notes?: string | null
           piece_label?: string
           piece_type?: string
+          reso_expected_head_life_days?: number | null
+          reso_head_brand?: string | null
+          reso_head_installed_on?: string | null
+          reso_head_model?: string | null
           size_inches?: number
           sort_order?: number
           updated_at?: string

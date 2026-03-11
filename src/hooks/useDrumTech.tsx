@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useToast } from "@/hooks/use-toast";
@@ -16,17 +17,33 @@ export type DrumPieceType =
   | "ride"
   | "custom";
 
+export interface CymbalCrackMarker {
+  id: string;
+  x: number;
+  y: number;
+  description: string;
+}
+
 export interface DrumKitPiece {
+  batter_expected_head_life_days: number | null;
+  batter_head_brand: string | null;
+  batter_head_installed_on: string | null;
+  batter_head_model: string | null;
+  cymbal_brand: string | null;
+  cymbal_crack_markers: CymbalCrackMarker[] | null;
+  cymbal_model: string | null;
   id: string;
   kit_id: string;
+  layout_x: number | null;
+  layout_y: number | null;
   piece_type: DrumPieceType | string;
   piece_label: string;
+  reso_expected_head_life_days: number | null;
+  reso_head_brand: string | null;
+  reso_head_installed_on: string | null;
+  reso_head_model: string | null;
   size_inches: number;
   sort_order: number;
-  head_brand: string | null;
-  head_model: string | null;
-  head_installed_on: string | null;
-  expected_head_life_days: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -45,15 +62,24 @@ export interface DrumKit {
 }
 
 export interface DrumKitPieceInput {
+  batter_expected_head_life_days?: number | null;
+  batter_head_brand?: string | null;
+  batter_head_installed_on?: string | null;
+  batter_head_model?: string | null;
+  cymbal_brand?: string | null;
+  cymbal_crack_markers?: CymbalCrackMarker[] | null;
+  cymbal_model?: string | null;
   id?: string;
+  layout_x?: number | null;
+  layout_y?: number | null;
   piece_type: DrumPieceType | string;
   piece_label: string;
+  reso_expected_head_life_days?: number | null;
+  reso_head_brand?: string | null;
+  reso_head_installed_on?: string | null;
+  reso_head_model?: string | null;
   size_inches: number;
   sort_order: number;
-  head_brand?: string | null;
-  head_model?: string | null;
-  head_installed_on?: string | null;
-  expected_head_life_days?: number | null;
   notes?: string | null;
 }
 
@@ -63,6 +89,169 @@ export interface DrumKitInput {
   name: string;
   description?: string | null;
   pieces: DrumKitPieceInput[];
+}
+
+const LOCAL_DRUM_KITS_KEY = "drum-tech-local-kits";
+
+function isSchemaMismatchError(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "42P01" ||
+    error.code === "42703" ||
+    error.message?.toLowerCase().includes("could not find the table") ||
+    error.message?.toLowerCase().includes("relation") ||
+    error.message?.toLowerCase().includes("column")
+  );
+}
+
+function normalizeCrackMarker(marker: unknown, index: number): CymbalCrackMarker | null {
+  if (!marker || typeof marker !== "object") return null;
+
+  const candidate = marker as Partial<CymbalCrackMarker>;
+  const x = typeof candidate.x === "number" ? candidate.x : null;
+  const y = typeof candidate.y === "number" ? candidate.y : null;
+
+  if (x === null || y === null) return null;
+
+  return {
+    id: typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id : `marker-${index}`,
+    x,
+    y,
+    description: typeof candidate.description === "string" ? candidate.description : "",
+  };
+}
+
+function normalizePiece(piece: Partial<DrumKitPiece> & { piece_type?: string; piece_label?: string }, kitId: string, index: number): DrumKitPiece {
+  const now = new Date().toISOString();
+  const rawMarkers = Array.isArray(piece.cymbal_crack_markers) ? piece.cymbal_crack_markers : [];
+
+  return {
+    batter_expected_head_life_days:
+      typeof piece.batter_expected_head_life_days === "number" ? piece.batter_expected_head_life_days : null,
+    batter_head_brand: typeof piece.batter_head_brand === "string" ? piece.batter_head_brand : null,
+    batter_head_installed_on: typeof piece.batter_head_installed_on === "string" ? piece.batter_head_installed_on : null,
+    batter_head_model: typeof piece.batter_head_model === "string" ? piece.batter_head_model : null,
+    cymbal_brand: typeof piece.cymbal_brand === "string" ? piece.cymbal_brand : null,
+    cymbal_crack_markers: rawMarkers
+      .map((marker, markerIndex) => normalizeCrackMarker(marker, markerIndex))
+      .filter((marker): marker is CymbalCrackMarker => marker !== null),
+    cymbal_model: typeof piece.cymbal_model === "string" ? piece.cymbal_model : null,
+    id: typeof piece.id === "string" && piece.id.length > 0 ? piece.id : `local-piece-${crypto.randomUUID()}`,
+    kit_id: typeof piece.kit_id === "string" && piece.kit_id.length > 0 ? piece.kit_id : kitId,
+    layout_x: typeof piece.layout_x === "number" ? piece.layout_x : null,
+    layout_y: typeof piece.layout_y === "number" ? piece.layout_y : null,
+    piece_type: typeof piece.piece_type === "string" && piece.piece_type.length > 0 ? piece.piece_type : "custom",
+    piece_label: typeof piece.piece_label === "string" && piece.piece_label.length > 0 ? piece.piece_label : "Custom Piece",
+    reso_expected_head_life_days:
+      typeof piece.reso_expected_head_life_days === "number" ? piece.reso_expected_head_life_days : null,
+    reso_head_brand: typeof piece.reso_head_brand === "string" ? piece.reso_head_brand : null,
+    reso_head_installed_on: typeof piece.reso_head_installed_on === "string" ? piece.reso_head_installed_on : null,
+    reso_head_model: typeof piece.reso_head_model === "string" ? piece.reso_head_model : null,
+    size_inches: typeof piece.size_inches === "number" && Number.isFinite(piece.size_inches) ? piece.size_inches : 18,
+    sort_order: typeof piece.sort_order === "number" ? piece.sort_order : index,
+    notes: typeof piece.notes === "string" ? piece.notes : null,
+    created_at: typeof piece.created_at === "string" ? piece.created_at : now,
+    updated_at: typeof piece.updated_at === "string" ? piece.updated_at : now,
+  };
+}
+
+function normalizeKit(kit: Partial<DrumKit>, index: number): DrumKit {
+  const now = new Date().toISOString();
+  const kitId = typeof kit.id === "string" && kit.id.length > 0 ? kit.id : `local-kit-${index}`;
+  const pieces = Array.isArray(kit.drum_kit_pieces) ? kit.drum_kit_pieces : [];
+
+  return {
+    id: kitId,
+    campus_id: typeof kit.campus_id === "string" ? kit.campus_id : "",
+    name: typeof kit.name === "string" ? kit.name : "Untitled Kit",
+    description: typeof kit.description === "string" ? kit.description : null,
+    created_by: typeof kit.created_by === "string" ? kit.created_by : null,
+    updated_by: typeof kit.updated_by === "string" ? kit.updated_by : null,
+    created_at: typeof kit.created_at === "string" ? kit.created_at : now,
+    updated_at: typeof kit.updated_at === "string" ? kit.updated_at : now,
+    drum_kit_pieces: pieces
+      .map((piece, pieceIndex) => normalizePiece(piece, kitId, pieceIndex))
+      .sort((a, b) => a.sort_order - b.sort_order),
+  };
+}
+
+function getLocalDrumKits(): DrumKit[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DRUM_KITS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((kit, index) => normalizeKit(kit, index));
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalDrumKits(kits: DrumKit[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LOCAL_DRUM_KITS_KEY, JSON.stringify(kits));
+}
+
+function upsertLocalDrumKit(input: DrumKitInput): string {
+  const now = new Date().toISOString();
+  const existing = getLocalDrumKits();
+  const kitId = input.id || `local-kit-${crypto.randomUUID()}`;
+
+  const nextKit: DrumKit = {
+    id: kitId,
+    campus_id: input.campus_id,
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    created_by: null,
+    updated_by: null,
+    created_at: existing.find((kit) => kit.id === kitId)?.created_at || now,
+    updated_at: now,
+    drum_kit_pieces: input.pieces.map((piece, index) => ({
+      cymbal_brand: piece.cymbal_brand?.trim() || null,
+      cymbal_crack_markers: piece.cymbal_crack_markers || null,
+      cymbal_model: piece.cymbal_model?.trim() || null,
+      id: piece.id || `local-piece-${crypto.randomUUID()}`,
+      kit_id: kitId,
+      layout_x: piece.layout_x ?? null,
+      layout_y: piece.layout_y ?? null,
+      piece_type: piece.piece_type,
+      piece_label: piece.piece_label.trim(),
+      size_inches: piece.size_inches,
+      sort_order: index,
+      batter_head_brand: piece.batter_head_brand?.trim() || null,
+      batter_head_model: piece.batter_head_model?.trim() || null,
+      batter_head_installed_on: piece.batter_head_installed_on || null,
+      batter_expected_head_life_days: piece.batter_expected_head_life_days ?? null,
+      reso_head_brand: piece.reso_head_brand?.trim() || null,
+      reso_head_model: piece.reso_head_model?.trim() || null,
+      reso_head_installed_on: piece.reso_head_installed_on || null,
+      reso_expected_head_life_days: piece.reso_expected_head_life_days ?? null,
+      notes: piece.notes?.trim() || null,
+      created_at: now,
+      updated_at: now,
+    })),
+  };
+
+  const updated = [...existing.filter((kit) => kit.id !== kitId), nextKit];
+  saveLocalDrumKits(updated);
+  return kitId;
+}
+
+function deleteLocalDrumKit(kitId: string) {
+  const existing = getLocalDrumKits();
+  saveLocalDrumKits(existing.filter((kit) => kit.id !== kitId));
+}
+
+function normalizeCrackMarkers(markers: CymbalCrackMarker[] | null | undefined): Json {
+  if (!markers?.length) return [];
+  return markers.map((marker) => ({
+    id: marker.id,
+    x: marker.x,
+    y: marker.y,
+    description: marker.description,
+  }));
 }
 
 export function useDrumTechAccess(campusId?: string | null) {
@@ -112,12 +301,14 @@ export function useDrumKits(campusId?: string | null) {
         .order("name", { ascending: true })
         .order("sort_order", { ascending: true, foreignTable: "drum_kit_pieces" });
 
-      if (error) throw error;
+      if (error) {
+        if (isSchemaMismatchError(error)) {
+          return getLocalDrumKits().filter((kit) => kit.campus_id === campusId);
+        }
+        throw error;
+      }
 
-      return ((data || []) as DrumKit[]).map((kit) => ({
-        ...kit,
-        drum_kit_pieces: [...(kit.drum_kit_pieces || [])].sort((a, b) => a.sort_order - b.sort_order),
-      }));
+      return ((data || []) as DrumKit[]).map((kit, index) => normalizeKit(kit, index));
     },
   });
 }
@@ -129,76 +320,98 @@ export function useUpsertDrumKit() {
 
   return useMutation({
     mutationFn: async (input: DrumKitInput) => {
-      const now = new Date().toISOString();
-      const basePayload = {
-        campus_id: input.campus_id,
-        name: input.name.trim(),
-        description: input.description?.trim() || null,
-        updated_at: now,
-        updated_by: user?.id ?? null,
-      };
+      try {
+        const now = new Date().toISOString();
+        const basePayload = {
+          campus_id: input.campus_id,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+          updated_at: now,
+          updated_by: user?.id ?? null,
+        };
 
-      let kitId = input.id;
+        let kitId = input.id;
 
-      if (kitId) {
-        const { error } = await supabase.from("drum_kits").update(basePayload).eq("id", kitId);
-        if (error) throw error;
+        if (kitId && !kitId.startsWith("local-kit-")) {
+          const { error } = await supabase.from("drum_kits").update(basePayload).eq("id", kitId);
+          if (error) throw error;
 
-        const { error: deleteError } = await supabase.from("drum_kit_pieces").delete().eq("kit_id", kitId);
-        if (deleteError) throw deleteError;
-      } else {
-        const { data, error } = await supabase
-          .from("drum_kits")
-          .insert({
-            ...basePayload,
-            created_by: user?.id ?? null,
-          })
-          .select("id")
-          .single();
+          const { error: deleteError } = await supabase.from("drum_kit_pieces").delete().eq("kit_id", kitId);
+          if (deleteError) throw deleteError;
+        } else {
+          const { data, error } = await supabase
+            .from("drum_kits")
+            .insert({
+              ...basePayload,
+              created_by: user?.id ?? null,
+            })
+            .select("id")
+            .single();
 
-        if (error) throw error;
-        kitId = data.id;
+          if (error) throw error;
+          kitId = data.id;
+        }
+
+        if (!kitId) {
+          throw new Error("Unable to save drum kit.");
+        }
+
+        const piecesPayload = input.pieces.map((piece, index) => ({
+          kit_id: kitId,
+          piece_type: piece.piece_type,
+          piece_label: piece.piece_label.trim(),
+          size_inches: piece.size_inches,
+          sort_order: index,
+          layout_x: piece.layout_x ?? null,
+          layout_y: piece.layout_y ?? null,
+          cymbal_brand: piece.cymbal_brand?.trim() || null,
+          cymbal_crack_markers: normalizeCrackMarkers(piece.cymbal_crack_markers),
+          cymbal_model: piece.cymbal_model?.trim() || null,
+          batter_head_brand: piece.batter_head_brand?.trim() || null,
+          batter_head_model: piece.batter_head_model?.trim() || null,
+          batter_head_installed_on: piece.batter_head_installed_on || null,
+          batter_expected_head_life_days: piece.batter_expected_head_life_days ?? null,
+          reso_head_brand: piece.reso_head_brand?.trim() || null,
+          reso_head_model: piece.reso_head_model?.trim() || null,
+          reso_head_installed_on: piece.reso_head_installed_on || null,
+          reso_expected_head_life_days: piece.reso_expected_head_life_days ?? null,
+          notes: piece.notes?.trim() || null,
+          updated_at: now,
+        }));
+
+        if (piecesPayload.length > 0) {
+          const { error: insertError } = await supabase.from("drum_kit_pieces").insert(piecesPayload);
+          if (insertError) throw insertError;
+        }
+
+        return kitId;
+      } catch (error) {
+        if (isSchemaMismatchError(error as { code?: string; message?: string })) {
+          return upsertLocalDrumKit(input);
+        }
+        throw error;
       }
-
-      if (!kitId) {
-        throw new Error("Unable to save drum kit.");
-      }
-
-      const piecesPayload = input.pieces.map((piece, index) => ({
-        kit_id: kitId,
-        piece_type: piece.piece_type,
-        piece_label: piece.piece_label.trim(),
-        size_inches: piece.size_inches,
-        sort_order: index,
-        head_brand: piece.head_brand?.trim() || null,
-        head_model: piece.head_model?.trim() || null,
-        head_installed_on: piece.head_installed_on || null,
-        expected_head_life_days: piece.expected_head_life_days ?? null,
-        notes: piece.notes?.trim() || null,
-        updated_at: now,
-      }));
-
-      if (piecesPayload.length > 0) {
-        const { error: insertError } = await supabase.from("drum_kit_pieces").insert(piecesPayload);
-        if (insertError) throw insertError;
-      }
-
-      return kitId;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (kitId, variables) => {
       queryClient.invalidateQueries({ queryKey: ["drum-kits", variables.campus_id] });
       toast({
         title: variables.id ? "Kit updated" : "Kit created",
-        description: `${variables.name} is ready in Drum Tech.`,
+        description: kitId.startsWith("local-kit-")
+          ? `${variables.name} was saved locally because the Drum Tech tables are not available yet.`
+          : `${variables.name} is ready in Drum Tech.`,
       });
     },
     onError: (error) => {
+      if (isSchemaMismatchError(error)) {
+        return;
+      }
       toast({
         title: "Unable to save kit",
         description: error.message,
         variant: "destructive",
       });
     },
+    retry: false,
   });
 }
 
@@ -208,6 +421,10 @@ export function useDeleteDrumKit() {
 
   return useMutation({
     mutationFn: async ({ kitId }: { kitId: string; campusId: string }) => {
+      if (kitId.startsWith("local-kit-")) {
+        deleteLocalDrumKit(kitId);
+        return;
+      }
       const { error } = await supabase.from("drum_kits").delete().eq("id", kitId);
       if (error) throw error;
     },
@@ -216,11 +433,15 @@ export function useDeleteDrumKit() {
       toast({ title: "Kit deleted" });
     },
     onError: (error) => {
+      if (isSchemaMismatchError(error)) {
+        return;
+      }
       toast({
         title: "Unable to delete kit",
         description: error.message,
         variant: "destructive",
       });
     },
+    retry: false,
   });
 }
