@@ -188,6 +188,67 @@ function normalizeDraft(input: Partial<DrumKitInput>, campusId: string): DrumKit
   };
 }
 
+function buildFormFromKit(kit: DrumKit, campusId: string): DrumKitInput {
+  return {
+    id: kit.id,
+    campus_id: campusId,
+    name: kit.name,
+    description: kit.description || "",
+    pieces: kit.drum_kit_pieces.map((piece, index) => ({
+      id: piece.id,
+      layout_x: piece.layout_x,
+      layout_y: piece.layout_y,
+      piece_type: piece.piece_type,
+      piece_label: piece.piece_label,
+      size_inches: piece.size_inches,
+      sort_order: index,
+      cymbal_brand: piece.cymbal_brand,
+      cymbal_crack_markers: piece.cymbal_crack_markers || [],
+      cymbal_model: piece.cymbal_model,
+      batter_head_brand: piece.batter_head_brand,
+      batter_head_model: piece.batter_head_model,
+      batter_head_installed_on: piece.batter_head_installed_on,
+      batter_expected_head_life_days: piece.batter_expected_head_life_days,
+      reso_head_brand: piece.reso_head_brand,
+      reso_head_model: piece.reso_head_model,
+      reso_head_installed_on: piece.reso_head_installed_on,
+      reso_expected_head_life_days: piece.reso_expected_head_life_days,
+      notes: piece.notes,
+    })),
+  };
+}
+
+function mergeDraftWithKit(draft: DrumKitInput, kit: DrumKit, campusId: string): DrumKitInput {
+  const base = buildFormFromKit(kit, campusId);
+  const draftById = new Map(draft.pieces.filter((piece) => piece.id).map((piece) => [piece.id!, piece]));
+
+  const mergedPieces = base.pieces.map((basePiece, index) => {
+    const draftPiece = draftById.get(basePiece.id || "") || draft.pieces[index];
+    if (!draftPiece) return basePiece;
+
+    return {
+      ...basePiece,
+      ...draftPiece,
+      id: basePiece.id,
+      layout_x: draftPiece.layout_x ?? basePiece.layout_x,
+      layout_y: draftPiece.layout_y ?? basePiece.layout_y,
+      sort_order: index,
+    };
+  });
+
+  const extraPieces = draft.pieces
+    .filter((piece) => !piece.id || !base.pieces.some((basePiece) => basePiece.id === piece.id))
+    .map((piece, index) => ({ ...piece, sort_order: mergedPieces.length + index }));
+
+  return {
+    ...base,
+    ...draft,
+    id: base.id,
+    campus_id: campusId,
+    pieces: [...mergedPieces, ...extraPieces],
+  };
+}
+
 function getBuilderDraftKey(campusId: string, kitId?: string | null) {
   return `${KIT_BUILDER_DRAFT_PREFIX}:${campusId}:${kitId || "new"}`;
 }
@@ -595,12 +656,15 @@ function KitBuilderDialog({
   useEffect(() => {
     if (!open) return;
 
+    const baseForm = initialKit ? buildFormFromKit(initialKit, campusId) : buildDefaultKit(campusId);
+
     if (typeof window !== "undefined") {
       const savedDraft = window.localStorage.getItem(draftKey);
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft) as Partial<DrumKitInput>;
-          setForm(normalizeDraft(parsed, campusId));
+          const normalizedDraft = normalizeDraft(parsed, campusId);
+          setForm(initialKit ? mergeDraftWithKit(normalizedDraft, initialKit, campusId) : normalizedDraft);
           return;
         } catch {
           window.localStorage.removeItem(draftKey);
@@ -608,38 +672,7 @@ function KitBuilderDialog({
       }
     }
 
-    if (initialKit) {
-      setForm({
-        id: initialKit.id,
-        campus_id: campusId,
-        name: initialKit.name,
-        description: initialKit.description || "",
-        pieces: initialKit.drum_kit_pieces.map((piece, index) => ({
-          id: piece.id,
-          layout_x: piece.layout_x,
-          layout_y: piece.layout_y,
-          piece_type: piece.piece_type,
-          piece_label: piece.piece_label,
-          size_inches: piece.size_inches,
-          sort_order: index,
-          cymbal_brand: piece.cymbal_brand,
-          cymbal_crack_markers: piece.cymbal_crack_markers || [],
-          cymbal_model: piece.cymbal_model,
-          batter_head_brand: piece.batter_head_brand,
-          batter_head_model: piece.batter_head_model,
-          batter_head_installed_on: piece.batter_head_installed_on,
-          batter_expected_head_life_days: piece.batter_expected_head_life_days,
-          reso_head_brand: piece.reso_head_brand,
-          reso_head_model: piece.reso_head_model,
-          reso_head_installed_on: piece.reso_head_installed_on,
-          reso_expected_head_life_days: piece.reso_expected_head_life_days,
-          notes: piece.notes,
-        })),
-      });
-      return;
-    }
-
-    setForm(buildDefaultKit(campusId));
+    setForm(baseForm);
   }, [campusId, draftKey, initialKit, open]);
 
   useEffect(() => {
