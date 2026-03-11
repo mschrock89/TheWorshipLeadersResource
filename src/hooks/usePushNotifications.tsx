@@ -54,7 +54,7 @@ export function usePushNotifications() {
             .select("id")
             .eq("user_id", user!.id)
             .eq("endpoint", subscription.endpoint)
-            .single();
+            .maybeSingle();
           
           setIsSubscribed(!!data);
         } else {

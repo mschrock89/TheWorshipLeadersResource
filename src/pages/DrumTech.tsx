@@ -108,6 +108,8 @@ const DEFAULT_PIECES: DrumKitPieceInput[] = [
 ];
 
 const KIT_BUILDER_DRAFT_PREFIX = "drum-tech-kit-builder-draft";
+const STAGE_CANVAS_WIDTH = 1000;
+const STAGE_CANVAS_HEIGHT = 560;
 
 type HeadSide = "batter" | "reso";
 type HeadHealth = {
@@ -359,20 +361,28 @@ function getPieceCoords(piece: DrumKitPiece, indexWithinType: number) {
 
 function getPieceDimensions(piece: DrumKitPiece) {
   const isCymbal = isCymbalPiece(piece.piece_type);
-  const base = Math.max(52, Math.min(150, piece.size_inches * (isCymbal ? 5.2 : 4.1)));
+  const meta = getPieceMeta(piece.piece_type);
+  const cymbalBase = Math.max(52, Math.min(150, piece.size_inches * 5.2));
+  const shellBase = Math.max(58, Math.min(118, meta.defaultSize * 4.6));
 
   if (piece.piece_type === "kick") {
-    return { width: base * 1.05, height: base * 1.05 };
+    return { width: shellBase * 1.18, height: shellBase * 1.18 };
   }
 
   if (isCymbal) {
     return {
-      width: base,
-      height: base,
+      width: cymbalBase,
+      height: cymbalBase,
     };
   }
 
-  return { width: base, height: base };
+  return { width: shellBase, height: shellBase };
+}
+
+function getStageScaleFactor(stageWidth: number, stageHeight: number) {
+  if (!stageWidth || !stageHeight) return 1;
+  if (stageWidth < 640) return 0.74;
+  return 1;
 }
 
 function getWearDisplay(piece: DrumKitPiece) {
@@ -540,12 +550,34 @@ function InteractiveKitStage({
   onMove: (pieceId: string, x: number, y: number) => void;
 }) {
   const counts = new Map<string, number>();
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageFrameRef = useRef<HTMLDivElement | null>(null);
+  const stageCanvasRef = useRef<HTMLDivElement | null>(null);
   const [draggingPieceId, setDraggingPieceId] = useState<string | null>(null);
+  const [stageWidth, setStageWidth] = useState(0);
+  const [stageHeight, setStageHeight] = useState(0);
+
+  useEffect(() => {
+    if (!stageFrameRef.current || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setStageWidth(entry.contentRect.width);
+      setStageHeight(entry.contentRect.height);
+    });
+
+    observer.observe(stageFrameRef.current);
+
+    const rect = stageFrameRef.current.getBoundingClientRect();
+    setStageWidth(rect.width);
+    setStageHeight(rect.height);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const scaleFactor = getStageScaleFactor(stageWidth, stageHeight);
 
   const updatePiecePosition = (pieceId: string, clientX: number, clientY: number) => {
-    if (!editable || !stageRef.current) return;
-    const rect = stageRef.current.getBoundingClientRect();
+    if (!editable || !stageCanvasRef.current) return;
+    const rect = stageCanvasRef.current.getBoundingClientRect();
     const x = Math.max(8, Math.min(92, ((clientX - rect.left) / rect.width) * 100));
     const y = Math.max(16, Math.min(84, ((clientY - rect.top) / rect.height) * 100));
     onMove(pieceId, Number(x.toFixed(2)), Number(y.toFixed(2)));
@@ -553,8 +585,9 @@ function InteractiveKitStage({
 
   return (
     <div
-      ref={stageRef}
-      className="relative h-[520px] overflow-hidden rounded-3xl border border-border bg-[radial-gradient(circle_at_50%_14%,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_top,rgba(56,189,248,0.18),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.92))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+      ref={stageFrameRef}
+      className="relative h-[520px] overflow-hidden rounded-3xl border border-border bg-[radial-gradient(circle_at_50%_14%,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_top,rgba(56,189,248,0.18),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.92))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:h-[560px]"
+      style={{ touchAction: editable ? "none" : "pan-y" }}
       onPointerMove={(event) => {
         if (!draggingPieceId) return;
         updatePiecePosition(draggingPieceId, event.clientX, event.clientY);
@@ -566,71 +599,87 @@ function InteractiveKitStage({
         <span>Top-Down Kit View</span>
         <span>{editable ? "Positioning unlocked" : "Tap a drum head or cymbal to inspect it"}</span>
       </div>
-      {pieces.map((piece) => {
-        const seen = counts.get(piece.piece_type) || 0;
-        counts.set(piece.piece_type, seen + 1);
-        const meta = getPieceMeta(piece.piece_type);
-        const wear = getWearDisplay(piece);
-        const coords = getPieceCoords(piece, seen);
-        const dimensions = getPieceDimensions(piece);
-        const isSelected = selectedPieceId === piece.id;
-        const isCymbal = isCymbalPiece(piece.piece_type);
+      <div
+        ref={stageCanvasRef}
+        className="absolute left-1/2 top-1/2"
+        style={{
+          width: STAGE_CANVAS_WIDTH,
+          height: STAGE_CANVAS_HEIGHT,
+          transform: `translate(-50%, -50%) scale(${scaleFactor})`,
+          transformOrigin: "center center",
+        }}
+      >
+        {pieces.map((piece) => {
+          const seen = counts.get(piece.piece_type) || 0;
+          counts.set(piece.piece_type, seen + 1);
+          const meta = getPieceMeta(piece.piece_type);
+          const wear = getWearDisplay(piece);
+          const coords = getPieceCoords(piece, seen);
+          const dimensions = getPieceDimensions(piece);
+          const isSelected = selectedPieceId === piece.id;
+          const isCymbal = isCymbalPiece(piece.piece_type);
 
-        return (
-          <button
-            key={piece.id}
-            type="button"
-            onClick={() => onSelect(piece.id)}
-            onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
-              if (!editable) return;
-              event.preventDefault();
-              onSelect(piece.id);
-              event.currentTarget.setPointerCapture(event.pointerId);
-              setDraggingPieceId(piece.id);
-              updatePiecePosition(piece.id, event.clientX, event.clientY);
-            }}
-            onPointerUp={(event: PointerEvent<HTMLButtonElement>) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              }
-              setDraggingPieceId(null);
-            }}
-            className={cn(
-              "absolute -translate-x-1/2 -translate-y-1/2 touch-none transition-transform duration-150 hover:scale-[1.03]",
-              isSelected && "z-20 scale-[1.04]",
-              editable && "cursor-grab active:cursor-grabbing",
-              draggingPieceId === piece.id && "z-30 scale-[1.05]",
-            )}
-            style={{ left: `${coords.x}%`, top: `${coords.y}%`, width: dimensions.width, height: dimensions.height }}
-          >
-            <div className={cn("relative h-full w-full", getStagePieceClasses(piece, isSelected))}>
-              {!isCymbal && (
-                <>
-                  <span className="absolute inset-[8%] rounded-full border border-white/18" />
-                  <span className="absolute inset-[18%] rounded-full border border-white/10" />
-                </>
+          return (
+            <button
+              key={piece.id}
+              type="button"
+              onClick={() => onSelect(piece.id)}
+              onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+                if (!editable) return;
+                event.preventDefault();
+                onSelect(piece.id);
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setDraggingPieceId(piece.id);
+                updatePiecePosition(piece.id, event.clientX, event.clientY);
+              }}
+              onPointerUp={(event: PointerEvent<HTMLButtonElement>) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+                setDraggingPieceId(null);
+              }}
+              className={cn(
+                "absolute -translate-x-1/2 -translate-y-1/2 select-none touch-none transition-transform duration-150 hover:scale-[1.03]",
+                isSelected && "z-20 scale-[1.04]",
+                editable && "cursor-grab active:cursor-grabbing",
+                draggingPieceId === piece.id && "z-30 scale-[1.05]",
               )}
-              {isCymbal && (
-                <>
-                  <span className="absolute inset-[8%] rounded-full border border-white/25" />
-                  <span className="absolute inset-[20%] rounded-full border border-amber-50/12" />
-                  <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-50/80 ring-[6px] ring-amber-950/18" />
-                </>
-              )}
+              style={{
+                left: `${(coords.x / 100) * STAGE_CANVAS_WIDTH}px`,
+                top: `${(coords.y / 100) * STAGE_CANVAS_HEIGHT}px`,
+                width: dimensions.width,
+                height: dimensions.height,
+              }}
+            >
+              <div className={cn("relative h-full w-full", getStagePieceClasses(piece, isSelected))}>
+                {!isCymbal && (
+                  <>
+                    <span className="absolute inset-[8%] rounded-full border border-white/18" />
+                    <span className="absolute inset-[18%] rounded-full border border-white/10" />
+                  </>
+                )}
+                {isCymbal && (
+                  <>
+                    <span className="absolute inset-[8%] rounded-full border border-white/25" />
+                    <span className="absolute inset-[20%] rounded-full border border-amber-50/12" />
+                    <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-50/80 ring-[6px] ring-amber-950/18" />
+                  </>
+                )}
 
-              {!isCymbal && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className={cn("text-sm font-semibold tracking-tight", getWearTextClasses(wear.band))}>
-                    {wear.value}
-                  </span>
-                </div>
-              )}
+                {!isCymbal && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className={cn("text-sm font-semibold tracking-tight", getWearTextClasses(wear.band))}>
+                      {wear.value}
+                    </span>
+                  </div>
+                )}
 
-              <span className={cn("absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[0_0_0_4px_rgba(15,23,42,0.24)]", meta.accent)} />
-            </div>
-          </button>
-        );
-      })}
+                <span className={cn("absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[0_0_0_4px_rgba(15,23,42,0.24)]", meta.accent)} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
