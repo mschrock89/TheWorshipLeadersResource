@@ -11,9 +11,10 @@ import { SwapManagementWidget } from "@/components/dashboard/SwapManagementWidge
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
+import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench } from "lucide-react";
 export default function Dashboard() {
   const {
     user,
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const {
     data: profileCampusMap = {}
   } = useProfilesWithCampuses();
+  const drumTechAccess = useDrumTechAccess();
   const [selectedCampusId, setSelectedCampusId] = useState<string>(() => {
     return localStorage.getItem("dashboard-campus-filter") || "all";
   });
@@ -106,6 +108,16 @@ export default function Dashboard() {
       buttonClassName: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
     },
     {
+      title: "Drum Tech",
+      description: "Track kit health, head lifespan, and the digital build of each campus drum setup.",
+      to: "/drum-tech",
+      icon: Wrench,
+      actionLabel: "Open Drum Tech",
+      cardClassName: "border-sky-300/30 bg-[linear-gradient(145deg,rgba(14,165,233,0.18),rgba(15,23,42,0.32))] text-white",
+      iconClassName: "border-sky-200/20 bg-sky-400/15 text-sky-100",
+      buttonClassName: "bg-sky-300 text-slate-950 hover:bg-sky-200",
+    },
+    {
       title: "Auditions",
       description: "Track candidates, schedule evaluations, and move people through the process.",
       to: "/auditions",
@@ -128,6 +140,13 @@ export default function Dashboard() {
         }]
       : []),
   ];
+  const visibleQuickActions = quickActions.filter((action) => {
+    if (action.to === "/drum-tech") {
+      return canManageTeam || drumTechAccess.hasAnyAccess;
+    }
+    return canManageTeam;
+  });
+
   return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"]]}>
       {/* Push Notification Banner */}
       <PushNotificationBanner />
@@ -169,7 +188,7 @@ export default function Dashboard() {
         </section>}
 
       {/* Quick actions - Team cards */}
-      {canManageTeam && <section className="mb-8 space-y-4">
+      {visibleQuickActions.length > 0 && <section className="mb-8 space-y-4">
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="font-display text-xl font-semibold text-foreground">Builder Tools</h2>
@@ -180,7 +199,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            {quickActions.map(action => {
+            {visibleQuickActions.map(action => {
             const Icon = action.icon;
             return <div key={action.title} className={`group relative overflow-hidden rounded-2xl border p-6 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.8)] transition-transform duration-200 hover:-translate-y-0.5 ${action.cardClassName}`}>
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_45%)] opacity-80" />

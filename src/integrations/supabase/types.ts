@@ -689,6 +689,117 @@ export type Database = {
           },
         ]
       }
+      drum_kit_pieces: {
+        Row: {
+          created_at: string
+          expected_head_life_days: number | null
+          head_brand: string | null
+          head_installed_on: string | null
+          head_model: string | null
+          id: string
+          kit_id: string
+          notes: string | null
+          piece_label: string
+          piece_type: string
+          size_inches: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          expected_head_life_days?: number | null
+          head_brand?: string | null
+          head_installed_on?: string | null
+          head_model?: string | null
+          id?: string
+          kit_id: string
+          notes?: string | null
+          piece_label: string
+          piece_type: string
+          size_inches: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          expected_head_life_days?: number | null
+          head_brand?: string | null
+          head_installed_on?: string | null
+          head_model?: string | null
+          id?: string
+          kit_id?: string
+          notes?: string | null
+          piece_label?: string
+          piece_type?: string
+          size_inches?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drum_kit_pieces_kit_id_fkey"
+            columns: ["kit_id"]
+            isOneToOne: false
+            referencedRelation: "drum_kits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drum_kits: {
+        Row: {
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drum_kits_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drum_kits_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drum_kits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           campus_id: string | null
@@ -2132,8 +2243,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_manage_drum_kits: {
+        Args: { _campus_id: string }
+        Returns: boolean
+      }
       can_review_break_request: {
         Args: { _request_user_id: string }
+        Returns: boolean
+      }
+      can_view_drum_kits: {
+        Args: { _campus_id: string }
         Returns: boolean
       }
       can_view_break_request: {

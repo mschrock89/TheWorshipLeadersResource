@@ -4,9 +4,10 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import { useProfile } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
+import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2 } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -49,6 +50,7 @@ export function MainHeader({
   const {
     data: pendingApprovalCount
   } = usePendingApprovalCount();
+  const drumTechAccess = useDrumTechAccess();
   const campusCtx = useCampusSelectionOptional();
   const selectedCampusId = selectedCampusIdProp ?? campusCtx?.selectedCampusId;
   const onSelectCampus = onSelectCampusProp ?? campusCtx?.setSelectedCampusId;
@@ -164,6 +166,14 @@ export function MainHeader({
                   Audio Library
                 </Link>
               </DropdownMenuItem>
+              {!isAuditionCandidate && drumTechAccess.hasAnyAccess && (
+                <DropdownMenuItem asChild>
+                  <Link to="/drum-tech" className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4" />
+                    Drum Tech
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {!isAuditionCandidate && (
                 <DropdownMenuItem asChild>
                   <Link to="/games" className="flex items-center gap-2">

@@ -1034,7 +1034,9 @@ export default function Profile() {
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                 Positions by Ministry
                               </p>
-                              {campusMinistries.map((ministryType) => {
+                              {campusMinistries
+                                .filter((ministryType) => MINISTRY_TYPES.some((m) => m.value === ministryType))
+                                .map((ministryType) => {
                                 const ministry = MINISTRY_TYPES.find(m => m.value === ministryType);
                                 const ministryPositions = campusMinistryPositions
                                   .filter(p => p.campus_id === campus.id && p.ministry_type === ministryType)
@@ -1042,7 +1044,7 @@ export default function Profile() {
                                 
                                 // Determine which position categories to show based on ministry type
                                 // weekend_team shows all position categories (worship + production + video)
-                                const showMusicPositions = ['weekend', 'weekend_team', 'encounter', 'eon', 'eon_weekend', 'evident', 'er'].includes(ministryType);
+                                const showMusicPositions = ['weekend', 'weekend_team', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production' || ministryType === 'weekend_team';
                                 const showVideoPositions = ministryType === 'video' || ministryType === 'weekend_team';
@@ -1056,6 +1058,37 @@ export default function Profile() {
                                     
                                     {isLeader || canEdit ? (
                                       <div className="space-y-2">
+                                        <div className="flex flex-wrap gap-2">
+                                          <span className="text-xs text-muted-foreground w-16 pt-0.5">Support:</span>
+                                          {['drum_tech'].map((pos) => {
+                                            const isPositionActive = ministryPositions.includes(pos);
+                                            return (
+                                              <label
+                                                key={pos}
+                                                className="flex items-center gap-1.5 cursor-pointer text-xs"
+                                              >
+                                                <Checkbox
+                                                  className="h-3.5 w-3.5"
+                                                  checked={isPositionActive}
+                                                  onCheckedChange={() => {
+                                                    if (profileId) {
+                                                      toggleCampusMinistryPosition.mutate({
+                                                        userId: profileId,
+                                                        campusId: campus.id,
+                                                        ministryType,
+                                                        position: pos,
+                                                        isActive: isPositionActive,
+                                                      });
+                                                    }
+                                                  }}
+                                                  disabled={toggleCampusMinistryPosition.isPending}
+                                                />
+                                                <span>{POSITION_LABELS[pos]}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+
                                         {showSpeakerPositions && (
                                           <div className="flex flex-wrap gap-2">
                                             <span className="text-xs text-muted-foreground w-16 pt-0.5">Speaker:</span>

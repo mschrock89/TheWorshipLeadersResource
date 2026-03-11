@@ -33,6 +33,7 @@ import Approvals from "./pages/Approvals";
 import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
+import DrumTech from "./pages/DrumTech";
 import Bible from "./pages/Bible";
 import Snake from "./pages/Snake";
 import Pong from "./pages/Pong";
@@ -314,6 +315,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><Resources /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/drum-tech"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><DrumTech /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }
