@@ -1199,7 +1199,7 @@ export default function Profile() {
                                                   return (
                                                     <label
                                                       key={pos}
-                                                      className={`flex items-center gap-1.5 cursor-pointer text-xs min-w-0 ${index === 0 ? "col-start-1" : "col-start-2"}`}
+                                                      className={`flex items-center gap-1.5 cursor-pointer text-xs min-w-0 ${index === 0 ? "col-start-2" : "col-start-3"}`}
                                                     >
                                                       <Checkbox
                                                         className="h-3.5 w-3.5"
