@@ -166,7 +166,7 @@ export function MainHeader({
                   Audio Library
                 </Link>
               </DropdownMenuItem>
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && (drumTechAccess.hasAnyAccess || isLeader) && (
                 <DropdownMenuItem asChild>
                   <Link to="/drum-tech" className="flex items-center gap-2">
                     <Wrench className="h-4 w-4" />

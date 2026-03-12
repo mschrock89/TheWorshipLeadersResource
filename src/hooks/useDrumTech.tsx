@@ -390,19 +390,37 @@ export function useDrumTechAccess(campusId?: string | null) {
   const { user } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
 
-  const { data: assignments = [] } = useQuery({
+  const { data: assignments = { viewCampusIds: [], editCampusIds: [] } } = useQuery({
     queryKey: ["drum-tech-assignments", user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) {
+        return { viewCampusIds: [], editCampusIds: [] };
+      }
 
       const { data, error } = await supabase
         .from("user_campus_ministry_positions")
-        .select("campus_id")
-        .eq("user_id", user.id)
-        .eq("position", "drum_tech");
+        .select("campus_id, position")
+        .eq("user_id", user.id);
 
       if (error) throw error;
-      return (data || []).map((row) => row.campus_id);
+
+      const rows = data || [];
+      const normalizedRows = rows.map((row) => ({
+        campus_id: row.campus_id,
+        position: String(row.position || "").trim().toLowerCase().replace(/\s+/g, "_"),
+      }));
+      const relevantRows = normalizedRows.filter((row) => row.position === "drums" || row.position === "drum_tech");
+
+      return {
+        viewCampusIds: Array.from(new Set(relevantRows.map((row) => row.campus_id))),
+        editCampusIds: Array.from(
+          new Set(
+            relevantRows
+              .filter((row) => row.position === "drum_tech")
+              .map((row) => row.campus_id),
+          ),
+        ),
+      };
     },
     enabled: !!user?.id,
   });
@@ -410,13 +428,14 @@ export function useDrumTechAccess(campusId?: string | null) {
   return useMemo(() => {
     const roleNames = roles.map((role) => role.role);
     const isAdminLike = roleNames.includes("admin") || roleNames.includes("campus_admin");
-    const assignedCampusIds = Array.from(new Set(assignments));
+    const assignedCampusIds = assignments.viewCampusIds;
+    const editableCampusIds = assignments.editCampusIds;
 
     return {
       isAdminLike,
       assignedCampusIds,
       hasAnyAccess: isAdminLike || assignedCampusIds.length > 0,
-      canEditCampus: !!campusId && (isAdminLike || assignedCampusIds.includes(campusId)),
+      canEditCampus: !!campusId && (isAdminLike || editableCampusIds.includes(campusId)),
     };
   }, [assignments, campusId, roles]);
 }

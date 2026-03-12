@@ -142,7 +142,7 @@ export default function Dashboard() {
   ];
   const visibleQuickActions = quickActions.filter((action) => {
     if (action.to === "/drum-tech") {
-      return true;
+      return drumTechAccess.hasAnyAccess || canManageTeam;
     }
     return canManageTeam;
   });
