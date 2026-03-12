@@ -361,22 +361,26 @@ function getPieceCoords(piece: DrumKitPiece, indexWithinType: number) {
 
 function getPieceDimensions(piece: DrumKitPiece) {
   const isCymbal = isCymbalPiece(piece.piece_type);
-  const meta = getPieceMeta(piece.piece_type);
-  const cymbalBase = Math.max(52, Math.min(150, piece.size_inches * 5.2));
-  const shellBase = Math.max(58, Math.min(118, meta.defaultSize * 4.6));
+  const cymbalBase = Math.max(62, Math.min(118, piece.size_inches * 4.8));
+  const shellBase = Math.max(54, Math.min(132, piece.size_inches * 4.45));
 
   if (piece.piece_type === "kick") {
-    return { width: shellBase * 1.18, height: shellBase * 1.18 };
+    const size = Math.max(108, Math.min(144, piece.size_inches * 5.6));
+    return { width: size, height: size };
   }
 
   if (isCymbal) {
-    return {
-      width: cymbalBase,
-      height: cymbalBase,
-    };
+    return { width: cymbalBase, height: cymbalBase };
   }
 
-  return { width: shellBase, height: shellBase };
+  const size =
+    piece.piece_type === "floor_tom"
+      ? shellBase * 1.08
+      : piece.piece_type === "snare"
+        ? shellBase * 0.9
+        : shellBase * 0.96;
+
+  return { width: size, height: size };
 }
 
 function getStageScaleFactor(stageWidth: number, stageHeight: number) {
@@ -419,11 +423,26 @@ function getWearTextClasses(band: WearBand) {
   }
 }
 
+function getWearRingClasses(band: WearBand) {
+  switch (band) {
+    case "green":
+      return "border-emerald-400/85";
+    case "yellow":
+      return "border-yellow-400/90";
+    case "orange":
+      return "border-orange-500/90";
+    case "red":
+      return "border-rose-500/90";
+    default:
+      return "border-slate-500/60";
+  }
+}
+
 function getStagePieceClasses(piece: DrumKitPiece, isSelected: boolean) {
   if (isCymbalPiece(piece.piece_type)) {
     return cn(
-      "rounded-full border border-amber-100/50 bg-[radial-gradient(circle_at_34%_30%,rgba(255,251,235,0.98),rgba(253,230,138,0.96)_20%,rgba(245,158,11,0.92)_46%,rgba(146,64,14,0.98)_100%)] shadow-[inset_0_10px_28px_rgba(255,255,255,0.28),inset_0_-16px_26px_rgba(120,53,15,0.36),0_20px_28px_rgba(0,0,0,0.24)]",
-      isSelected && "ring-2 ring-sky-400/65 ring-offset-2 ring-offset-slate-950",
+      "rounded-full border border-amber-100/45 bg-[radial-gradient(circle_at_38%_28%,rgba(255,251,214,0.98),rgba(249,229,152,0.98)_18%,rgba(233,168,26,0.96)_52%,rgba(162,92,12,0.98)_100%)] shadow-[inset_0_10px_30px_rgba(255,255,255,0.32),inset_0_-18px_28px_rgba(120,53,15,0.34),0_18px_26px_rgba(0,0,0,0.22)]",
+      isSelected && "ring-[4px] ring-sky-400/80 ring-offset-2 ring-offset-[#020817]",
     );
   }
 
@@ -441,9 +460,9 @@ function getStagePieceClasses(piece: DrumKitPiece, isSelected: boolean) {
           : "border-slate-500/60 bg-slate-500/10";
 
   return cn(
-    "rounded-full border-2 bg-slate-950/90",
+    "rounded-full border-[4px] bg-[radial-gradient(circle_at_50%_44%,rgba(43,19,52,0.92),rgba(28,13,39,0.94)_50%,rgba(20,9,28,0.98)_100%)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03),0_18px_30px_rgba(0,0,0,0.22)]",
     toneClasses,
-    isSelected && "ring-2 ring-sky-400/65 ring-offset-2 ring-offset-slate-950",
+    isSelected && "ring-[4px] ring-sky-400/80 ring-offset-2 ring-offset-[#020817]",
   );
 }
 
@@ -594,10 +613,11 @@ function InteractiveKitStage({
       }}
       onPointerUp={() => setDraggingPieceId(null)}
       onPointerLeave={() => setDraggingPieceId(null)}
+      onPointerCancel={() => setDraggingPieceId(null)}
     >
-      <div className="absolute inset-x-8 top-6 flex items-center justify-between text-xs uppercase tracking-[0.24em] text-slate-400">
-        <span>Top-Down Kit View</span>
-        <span>{editable ? "Positioning unlocked" : "Tap a drum head or cymbal to inspect it"}</span>
+      <div className="absolute inset-x-10 top-7 flex items-start justify-between text-xs uppercase tracking-[0.28em] text-slate-400">
+        <span className="max-w-[14rem] leading-8">Top-Down Kit Positioning View</span>
+        <span className="leading-8">{editable ? "Unlocked" : "Tap a drum head or cymbal to inspect it"}</span>
       </div>
       <div
         ref={stageCanvasRef}
@@ -654,27 +674,28 @@ function InteractiveKitStage({
               <div className={cn("relative h-full w-full", getStagePieceClasses(piece, isSelected))}>
                 {!isCymbal && (
                   <>
-                    <span className="absolute inset-[8%] rounded-full border border-white/18" />
-                    <span className="absolute inset-[18%] rounded-full border border-white/10" />
+                    <span className={cn("absolute inset-[5%] rounded-full border-[4px]", getWearRingClasses(wear.band))} />
+                    <span className="absolute inset-[18%] rounded-full border border-white/12" />
+                    <span className="absolute inset-[31%] rounded-full border border-white/10" />
                   </>
                 )}
                 {isCymbal && (
                   <>
-                    <span className="absolute inset-[8%] rounded-full border border-white/25" />
-                    <span className="absolute inset-[20%] rounded-full border border-amber-50/12" />
-                    <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-50/80 ring-[6px] ring-amber-950/18" />
+                    <span className="absolute inset-[8%] rounded-full border border-white/30" />
+                    <span className="absolute inset-[22%] rounded-full border-[3px] border-slate-900/70" />
+                    <span className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f2e7c2] ring-[10px] ring-slate-400/80" />
                   </>
                 )}
 
                 {!isCymbal && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <span className={cn("text-sm font-semibold tracking-tight", getWearTextClasses(wear.band))}>
+                    <span className={cn("text-[18px] font-medium tracking-tight", getWearTextClasses(wear.band))}>
                       {wear.value}
                     </span>
                   </div>
                 )}
 
-                <span className={cn("absolute left-2 top-2 h-2.5 w-2.5 rounded-full shadow-[0_0_0_4px_rgba(15,23,42,0.24)]", meta.accent)} />
+                <span className={cn("absolute left-[9%] top-[9%] h-4 w-4 rounded-full shadow-[0_0_0_6px_rgba(255,255,255,0.18)]", meta.accent)} />
               </div>
             </button>
           );
