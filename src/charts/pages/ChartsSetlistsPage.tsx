@@ -82,9 +82,9 @@ export function ChartsSetlistsPage() {
 
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    {setlist.songs.map((song) => (
+                    {setlist.songs.map((song, index) => (
                       <Badge key={song.id} variant="outline" className="rounded-full px-3 py-1 text-sm">
-                        {song.sequence_order}. {song.song?.title || "Untitled Song"}
+                        {index + 1}. {song.song?.title || "Untitled Song"}
                       </Badge>
                     ))}
                   </div>
