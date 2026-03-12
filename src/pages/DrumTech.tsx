@@ -616,7 +616,7 @@ function InteractiveKitStage({
       onPointerCancel={() => setDraggingPieceId(null)}
     >
       <div className="absolute inset-x-10 top-7 flex items-start justify-between text-xs uppercase tracking-[0.28em] text-slate-400">
-        <span className="max-w-[14rem] leading-8">Top-Down Kit Positioning View</span>
+        <span className="max-w-[14rem] leading-8">Top-Down Kit</span>
         <span className="leading-8">{editable ? "Unlocked" : "Tap a drum head or cymbal to inspect it"}</span>
       </div>
       <div
@@ -1067,7 +1067,6 @@ export default function DrumTech() {
   const campusCtx = useCampusSelectionOptional();
   const selectedCampusId = campusCtx?.selectedCampusId || userCampuses[0]?.campus_id || null;
   const setSelectedCampusId = campusCtx?.setSelectedCampusId;
-
   const access = useDrumTechAccess(selectedCampusId);
   const { data: kits = [], isLoading } = useDrumKits(selectedCampusId);
   const upsertKit = useUpsertDrumKit();
