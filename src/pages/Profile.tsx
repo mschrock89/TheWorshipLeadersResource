@@ -1194,12 +1194,12 @@ export default function Profile() {
                                                 })}
                                               </div>
                                               <div className="grid grid-cols-5 gap-2">
-                                                {bandBottomRowPositions.map((pos, index) => {
+                                                {bandBottomRowPositions.map((pos) => {
                                                   const isPositionActive = ministryPositions.includes(pos);
                                                   return (
                                                     <label
                                                       key={pos}
-                                                      className={`flex items-center gap-1.5 cursor-pointer text-xs min-w-0 ${index === 0 ? "col-start-2" : "col-start-3"}`}
+                                                      className="flex items-center gap-1.5 cursor-pointer text-xs min-w-0"
                                                     >
                                                       <Checkbox
                                                         className="h-3.5 w-3.5"
