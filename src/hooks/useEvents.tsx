@@ -165,6 +165,64 @@ export function useCreateEvent() {
   });
 }
 
+export function useUpdateEvent() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      eventId,
+      event,
+    }: {
+      eventId: string;
+      event: {
+        title: string;
+        description?: string;
+        event_date: string;
+        start_time?: string;
+        end_time?: string;
+        campus_id?: string;
+        campus_ids?: string[];
+        ministry_type?: string;
+        ministry_types?: string[];
+        audience_type?: string;
+      };
+    }) => {
+      const { data, error } = await supabase
+        .from("events")
+        .update({
+          title: event.title,
+          description: event.description,
+          event_date: event.event_date,
+          start_time: event.start_time,
+          end_time: event.end_time,
+          campus_id: event.campus_id,
+          campus_ids: event.campus_ids?.length ? event.campus_ids : event.campus_id ? [event.campus_id] : null,
+          ministry_type: event.ministry_type || "weekend",
+          ministry_types: event.ministry_types?.length ? event.ministry_types : event.ministry_type ? [event.ministry_type] : null,
+          audience_type: event.audience_type || "volunteers_only",
+        })
+        .eq("id", eventId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast({ title: "Event updated successfully" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error updating event",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useDeleteEvent() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

@@ -150,7 +150,7 @@ export const POSITION_SLOTS: {
 ];
 
 export const MINISTRY_TYPES = [
-  { value: "weekend_team", label: "Weekend Team", shortLabel: "WKDT", color: "bg-blue-600" },
+  { value: "weekend_team", label: "Weekend Worship", shortLabel: "WKDT", color: "bg-blue-600" },
   { value: "weekend", label: "Weekend Worship", shortLabel: "WKD", color: "bg-blue-500", hidden: true },
   { value: "prayer_night", label: "Prayer Night", shortLabel: "PRAY", color: "bg-cyan-600" },
   { value: "encounter", label: "Encounter", shortLabel: "EN", color: "bg-accent" },

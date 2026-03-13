@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
-import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, Event } from "@/hooks/useEvents";
+import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, useUpdateEvent, Event } from "@/hooks/useEvents";
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
@@ -61,6 +61,20 @@ const teamIcons: Record<string, React.ElementType> = {
   zap: Zap,
   diamond: Diamond
 };
+const defaultNewEventState = {
+  event_type: "team_event" as "team_event" | "service",
+  title: "",
+  description: "",
+  start_time: "",
+  end_time: "",
+  ministry_type: "weekend",
+  ministry_types: ["weekend"],
+  audience_type: "volunteers_only",
+  campus_id: "",
+  campus_ids: [] as string[],
+  repeats_weekly: false,
+  send_invite: true,
+};
 function StandardCalendar() {
   const {
     canManageTeam,
@@ -78,20 +92,8 @@ function StandardCalendar() {
   const campusFilter = campusContext?.selectedCampusId || localCampusFilter;
   const setCampusFilter = campusContext?.setSelectedCampusId || setLocalCampusFilter;
   const [ministryFilter, setMinistryFilter] = useState<string>("weekend_team");
-  const [newEvent, setNewEvent] = useState({
-    event_type: "team_event" as "team_event" | "service",
-    title: "",
-    description: "",
-    start_time: "",
-    end_time: "",
-    ministry_type: "weekend",
-    ministry_types: ["weekend"],
-    audience_type: "volunteers_only",
-    campus_id: "",
-    campus_ids: [] as string[],
-    repeats_weekly: false,
-    send_invite: true,
-  });
+  const [newEvent, setNewEvent] = useState(defaultNewEventState);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -169,6 +171,7 @@ function StandardCalendar() {
     uniqueTeams
   } = useMyTeamAssignments();
   const createEvent = useCreateEvent();
+  const updateEvent = useUpdateEvent();
   const createCustomService = useCreateCustomService();
   const deleteCustomService = useDeleteCustomService();
   const deleteEvent = useDeleteEvent();
@@ -533,6 +536,29 @@ function StandardCalendar() {
         : [newEvent.ministry_type];
       if (selectedCampusIds.length === 0) return;
 
+      if (editingEventId) {
+        await updateEvent.mutateAsync({
+          eventId: editingEventId,
+          event: {
+            title: newEvent.title,
+            description: newEvent.description || undefined,
+            event_date: dateStr,
+            start_time: newEvent.start_time || undefined,
+            end_time: newEvent.end_time || undefined,
+            campus_id: selectedCampusIds[0],
+            campus_ids: selectedCampusIds,
+            ministry_type: newEvent.ministry_type,
+            ministry_types: selectedMinistryTypes,
+            audience_type: newEvent.audience_type,
+          },
+        });
+
+        setNewEvent(defaultNewEventState);
+        setEditingEventId(null);
+        setIsAddOpen(false);
+        return;
+      }
+
       const createdEvent = await createEvent.mutateAsync({
         title: newEvent.title,
         description: newEvent.description || undefined,
@@ -612,20 +638,40 @@ function StandardCalendar() {
       }
 
     }
+    setNewEvent(defaultNewEventState);
+    setEditingEventId(null);
+    setIsAddOpen(false);
+  };
+  const handleEditEvent = (event: Event) => {
+    setSelectedDate(new Date(`${event.event_date}T12:00:00`));
     setNewEvent({
       event_type: "team_event",
-      title: "",
-      description: "",
-      start_time: "",
-      end_time: "",
-      ministry_type: "weekend",
-      ministry_types: ["weekend"],
-      audience_type: "volunteers_only",
-      campus_id: "",
-      campus_ids: [],
+      title: event.title,
+      description: event.description || "",
+      start_time: event.start_time || "",
+      end_time: event.end_time || "",
+      ministry_type: event.ministry_types?.[0] || event.ministry_type || "weekend",
+      ministry_types: event.ministry_types && event.ministry_types.length > 0
+        ? event.ministry_types
+        : event.ministry_type
+          ? [event.ministry_type]
+          : ["weekend"],
+      audience_type: event.audience_type || "volunteers_only",
+      campus_id: event.campus_ids?.[0] || event.campus_id || "",
+      campus_ids: event.campus_ids && event.campus_ids.length > 0
+        ? event.campus_ids
+        : event.campus_id
+          ? [event.campus_id]
+          : [],
       repeats_weekly: false,
-      send_invite: true,
+      send_invite: false,
     });
+    setEditingEventId(event.id);
+    setIsAddOpen(true);
+  };
+  const resetEventComposer = () => {
+    setNewEvent(defaultNewEventState);
+    setEditingEventId(null);
     setIsAddOpen(false);
   };
   const formatTime = (time: string | null) => {
@@ -992,18 +1038,24 @@ function StandardCalendar() {
                         ? "No events"
                         : `${selectedDayEvents.length + selectedDayServices.length} item${selectedDayEvents.length + selectedDayServices.length > 1 ? "s" : ""}`}
                     </p>
-                    {canManageTeam && <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                    {canManageTeam && <Dialog open={isAddOpen} onOpenChange={(open) => {
+                    setIsAddOpen(open);
+                    if (!open) {
+                      setEditingEventId(null);
+                      setNewEvent(defaultNewEventState);
+                    }
+                  }}>
                         <DialogTrigger asChild>
                           <Button size="sm" variant="outline" className="gap-1 h-7 text-xs">
                             <Plus className="h-3 w-3" />
                             Add Event
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="bg-card">
+                        <DialogContent className="max-h-[85vh] overflow-hidden bg-card sm:max-w-2xl">
                           <DialogHeader>
-                            <DialogTitle>Add Event</DialogTitle>
+                            <DialogTitle>{editingEventId ? "Edit Event" : "Add Event"}</DialogTitle>
                           </DialogHeader>
-                          <div className="space-y-4 pt-4">
+                          <div className="max-h-[calc(85vh-5rem)] space-y-4 overflow-y-auto pr-1 pt-4">
                             <div>
                               <Label htmlFor="event_type">Event Type</Label>
                               <Select value={newEvent.event_type} onValueChange={(value: "team_event" | "service") => setNewEvent({
@@ -1084,13 +1136,13 @@ function StandardCalendar() {
                                     </SelectContent>
                                   </Select>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                {!editingEventId && <div className="flex items-center gap-2">
                                   <Checkbox id="send-invite" checked={newEvent.send_invite} onCheckedChange={checked => setNewEvent({
                             ...newEvent,
                             send_invite: Boolean(checked)
                           })} />
                                   <Label htmlFor="send-invite" className="font-normal">Send invite notification</Label>
-                                </div>
+                                </div>}
                               </>}
                             {newEvent.event_type === "service" && <>
                                 <div>
@@ -1149,9 +1201,14 @@ function StandardCalendar() {
                           })} />
                                 <Label htmlFor="repeats_weekly" className="font-normal">Repeat weekly</Label>
                               </div>}
-                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && (newEvent.campus_ids.length === 0 || newEvent.ministry_types.length === 0)) || createEvent.isPending || createCustomService.isPending} className="w-full">
-                              {createEvent.isPending || createCustomService.isPending ? "Creating..." : newEvent.event_type === "service" ? "Create Service" : "Create Event"}
-                            </Button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && (newEvent.campus_ids.length === 0 || newEvent.ministry_types.length === 0)) || createEvent.isPending || createCustomService.isPending || updateEvent.isPending} className="w-full">
+                                {createEvent.isPending || createCustomService.isPending || updateEvent.isPending ? editingEventId ? "Saving..." : "Creating..." : newEvent.event_type === "service" ? "Create Service" : editingEventId ? "Update Event" : "Create Event"}
+                              </Button>
+                              {editingEventId && <Button type="button" variant="outline" onClick={resetEventComposer} className="w-full">
+                                  Cancel Edit
+                                </Button>}
+                            </div>
                           </div>
                         </DialogContent>
                       </Dialog>}
@@ -1217,9 +1274,14 @@ function StandardCalendar() {
                           </Badge>
                         </div>
                       </div>
-                      {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteEvent.mutate(event.id)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>}
+                      {canManageTeam && <div className="ml-3 flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditEvent(event)} className="h-8 w-8 text-muted-foreground hover:bg-muted">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => deleteEvent.mutate(event.id)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>}
                     </div>)}
                 </div>
 
@@ -1341,7 +1403,7 @@ function BandRoster({
       return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;
     }
     if (ministryFilter === "weekend_team") {
-      return "Weekend Team";
+      return "Weekend Worship";
     }
     return "this service";
   }, [ministryFilter]);

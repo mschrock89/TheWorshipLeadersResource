@@ -22,6 +22,17 @@ export interface Notification {
   read: boolean;
   link?: string;
   swapRequestId?: string;
+  eventDetails?: {
+    eventId: string;
+    title: string;
+    description: string | null;
+    eventDate: string;
+    startTime: string | null;
+    endTime: string | null;
+    campusName: string;
+    audienceType: string | null;
+    isComing: boolean;
+  };
 }
 
 export function useNotifications() {
@@ -127,8 +138,12 @@ export function useNotifications() {
           .select(`
             id,
             title,
+            description,
             event_date,
             created_at,
+            start_time,
+            end_time,
+            audience_type,
             campus_id,
             campuses:campuses(name)
           `)
@@ -234,6 +249,20 @@ export function useNotifications() {
         }
       });
 
+      const newEventIds = newEvents.map((event) => event.id);
+      let comingEventIds = new Set<string>();
+
+      if (newEventIds.length > 0) {
+        const { data: eventRsvps } = await supabase
+          .from("event_rsvps")
+          .select("event_id")
+          .eq("user_id", user.id)
+          .eq("status", "coming")
+          .in("event_id", newEventIds);
+
+        comingEventIds = new Set((eventRsvps || []).map((rsvp) => rsvp.event_id));
+      }
+
       // Process new events - filter by user's campuses
       newEvents.forEach((event) => {
         if (!event.campus_id || userCampusIds.includes(event.campus_id)) {
@@ -247,6 +276,17 @@ export function useNotifications() {
             timestamp: event.created_at || new Date().toISOString(),
             read: currentReadIds.has(notifId),
             link: "/calendar",
+            eventDetails: {
+              eventId: event.id,
+              title: event.title,
+              description: "description" in event ? (event.description as string | null) : null,
+              eventDate: event.event_date,
+              startTime: "start_time" in event ? (event.start_time as string | null) : null,
+              endTime: "end_time" in event ? (event.end_time as string | null) : null,
+              campusName,
+              audienceType: "audience_type" in event ? (event.audience_type as string | null) : null,
+              isComing: comingEventIds.has(event.id),
+            },
           });
         }
       });
