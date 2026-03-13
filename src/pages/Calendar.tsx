@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
-import { useEventsForMonth, useCreateEvent, useDeleteEvent, Event } from "@/hooks/useEvents";
+import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, Event } from "@/hooks/useEvents";
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
@@ -44,6 +44,17 @@ import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const EVENT_AUDIENCE_OPTIONS = [{
+  value: "family_event",
+  label: "Family Event"
+}, {
+  value: "volunteers_only",
+  label: "Volunteer's Only"
+}, {
+  value: "volunteer_and_spouse",
+  label: "Volunteer and Spouse"
+}] as const;
+const WEEKEND_EVENT_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const teamIcons: Record<string, React.ElementType> = {
   star: Star,
   heart: Heart,
@@ -74,7 +85,10 @@ function StandardCalendar() {
     start_time: "",
     end_time: "",
     ministry_type: "weekend",
+    ministry_types: ["weekend"],
+    audience_type: "volunteers_only",
     campus_id: "",
+    campus_ids: [] as string[],
     repeats_weekly: false,
     send_invite: true,
   });
@@ -158,6 +172,7 @@ function StandardCalendar() {
   const createCustomService = useCreateCustomService();
   const deleteCustomService = useDeleteCustomService();
   const deleteEvent = useDeleteEvent();
+  const toggleEventRsvp = useToggleEventRsvp();
   const {
     data: pendingSwaps = 0
   } = usePendingSwapRequestsCount();
@@ -375,26 +390,39 @@ function StandardCalendar() {
   const getEventsForDay = (day: number): Event[] => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     let filteredEvents = events.filter(e => e.event_date === dateStr);
+    const eventMatchesCampus = (event: Event, scopedCampusId: string) => {
+      if (event.campus_ids && event.campus_ids.length > 0) {
+        return event.campus_ids.includes(scopedCampusId);
+      }
+      return event.campus_id === scopedCampusId;
+    };
+    const eventMatchesMinistry = (event: Event, scopedMinistry: string) => {
+      const ministryTypes = event.ministry_types && event.ministry_types.length > 0
+        ? event.ministry_types
+        : event.ministry_type
+          ? [event.ministry_type]
+          : [];
+      if (ministryTypes.length === 0) return true;
+      const weekendAliases = new Set(["weekend", "weekend_team", "sunday_am"]);
+      if (scopedMinistry === "weekend_team") {
+        return ministryTypes.some(type => weekendAliases.has(type));
+      }
+      if (weekendAliases.has(scopedMinistry)) {
+        return ministryTypes.some(type => weekendAliases.has(type));
+      }
+      return ministryTypes.includes(scopedMinistry);
+    };
 
     // Apply campus filter for campus admins
     if (isCampusAdmin && campusFilter === "network-wide") {
       // For network-wide view, only show events without a campus (network-wide events)
-      filteredEvents = filteredEvents.filter(e => e.campus_id === null);
+      filteredEvents = filteredEvents.filter(e => e.campus_id === null && (!e.campus_ids || e.campus_ids.length === 0));
     } else if (isCampusAdmin && campusFilter !== "network-wide") {
-      filteredEvents = filteredEvents.filter(e => e.campus_id === campusFilter || e.campus_id === null);
+      filteredEvents = filteredEvents.filter(e => eventMatchesCampus(e, campusFilter) || (e.campus_id === null && (!e.campus_ids || e.campus_ids.length === 0)));
     }
 
     if (ministryFilter && ministryFilter !== "all") {
-      const weekendAliases = new Set(["weekend", "weekend_team", "sunday_am"]);
-      if (ministryFilter === "weekend_team") {
-        filteredEvents = filteredEvents.filter(
-          (event) => !event.ministry_type || weekendAliases.has(event.ministry_type)
-        );
-      } else {
-        filteredEvents = filteredEvents.filter(
-          (event) => !event.ministry_type || event.ministry_type === ministryFilter
-        );
-      }
+      filteredEvents = filteredEvents.filter((event) => eventMatchesMinistry(event, ministryFilter));
     }
 
     return filteredEvents;
@@ -495,7 +523,15 @@ function StandardCalendar() {
       });
     } else {
       const selectedCampusId = newEvent.campus_id || (campusFilter && campusFilter !== "network-wide" ? campusFilter : "");
-      if (!selectedCampusId) return;
+      const selectedCampusIds = newEvent.campus_ids.length > 0
+        ? newEvent.campus_ids
+        : selectedCampusId
+          ? [selectedCampusId]
+          : [];
+      const selectedMinistryTypes = newEvent.ministry_types.length > 0
+        ? newEvent.ministry_types
+        : [newEvent.ministry_type];
+      if (selectedCampusIds.length === 0) return;
 
       const createdEvent = await createEvent.mutateAsync({
         title: newEvent.title,
@@ -503,8 +539,11 @@ function StandardCalendar() {
         event_date: dateStr,
         start_time: newEvent.start_time || undefined,
         end_time: newEvent.end_time || undefined,
-        campus_id: selectedCampusId,
+        campus_id: selectedCampusIds[0],
+        campus_ids: selectedCampusIds,
         ministry_type: newEvent.ministry_type,
+        ministry_types: selectedMinistryTypes,
+        audience_type: newEvent.audience_type,
       });
 
       let inviteUserIds: string[] = [];
@@ -514,13 +553,13 @@ function StandardCalendar() {
           let recipientsQuery = supabase
             .from("user_campus_ministry_positions")
             .select("user_id")
-            .eq("campus_id", selectedCampusId);
+            .in("campus_id", selectedCampusIds);
 
-          if (newEvent.ministry_type === "weekend_team") {
-            recipientsQuery = recipientsQuery.in("ministry_type", weekendAliases);
-          } else {
-            recipientsQuery = recipientsQuery.eq("ministry_type", newEvent.ministry_type);
-          }
+          const recipientMinistryTypes = selectedMinistryTypes.some((type) => WEEKEND_EVENT_MINISTRY_ALIASES.includes(type))
+            ? Array.from(new Set([...selectedMinistryTypes, ...weekendAliases]))
+            : selectedMinistryTypes;
+
+          recipientsQuery = recipientsQuery.in("ministry_type", recipientMinistryTypes);
 
           const { data: recipients, error: recipientsError } = await recipientsQuery;
           if (recipientsError) throw recipientsError;
@@ -534,9 +573,12 @@ function StandardCalendar() {
           );
 
           if (inviteUserIds.length > 0) {
-            const campusName = campuses.find((c) => c.id === selectedCampusId)?.name || "Campus";
-            const ministryLabel =
-              MINISTRY_TYPES.find((m) => m.value === newEvent.ministry_type)?.label || "Ministry";
+            const campusLabel = selectedCampusIds.length === 1
+              ? campuses.find((c) => c.id === selectedCampusIds[0])?.name || "Campus"
+              : `${selectedCampusIds.length} campuses`;
+            const ministryLabel = selectedMinistryTypes.length === 1
+              ? MINISTRY_TYPES.find((m) => m.value === selectedMinistryTypes[0])?.label || "Ministry"
+              : `${selectedMinistryTypes.length} ministries`;
             const timeLabel = newEvent.start_time
               ? ` at ${formatTime(newEvent.start_time)}`
               : "";
@@ -544,17 +586,17 @@ function StandardCalendar() {
             await supabase.functions.invoke("send-push-notification", {
               body: {
                 title: "Event Invite",
-                message: `${newEvent.title} • ${campusName} • ${ministryLabel} on ${new Date(`${dateStr}T00:00:00`).toLocaleDateString()}${timeLabel}`,
+                message: `${newEvent.title} • ${campusLabel} • ${ministryLabel} on ${new Date(`${dateStr}T00:00:00`).toLocaleDateString()}${timeLabel}`,
                 url: "/calendar",
-                tag: `event-invite-${dateStr}-${selectedCampusId}-${newEvent.ministry_type}`,
+                tag: `event-invite-${dateStr}-${selectedCampusIds.join("-")}-${selectedMinistryTypes.join("-")}`,
                 userIds: inviteUserIds,
                 contextType: "event_invite",
                 contextId: createdEvent.id,
                 createdBy: user?.id,
                 metadata: {
                   eventId: createdEvent.id,
-                  campusId: selectedCampusId,
-                  ministryType: newEvent.ministry_type,
+                  campusIds: selectedCampusIds,
+                  ministryTypes: selectedMinistryTypes,
                   eventDate: dateStr,
                 },
               },
@@ -577,7 +619,10 @@ function StandardCalendar() {
       start_time: "",
       end_time: "",
       ministry_type: "weekend",
+      ministry_types: ["weekend"],
+      audience_type: "volunteers_only",
       campus_id: "",
+      campus_ids: [],
       repeats_weekly: false,
       send_invite: true,
     });
@@ -989,33 +1034,51 @@ function StandardCalendar() {
                         })} placeholder="Event description" />
                               </div>}
                             {newEvent.event_type === "team_event" && <>
-                                <div>
-                                  <Label htmlFor="event-campus">Campus</Label>
-                                  <Select value={newEvent.campus_id} onValueChange={value => setNewEvent({
-                            ...newEvent,
-                            campus_id: value
-                          })}>
-                                    <SelectTrigger id="event-campus">
-                                      <SelectValue placeholder="Select campus" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {(isCampusAdmin ? campuses : userCampuses.map(uc => uc.campuses).filter(Boolean)).map(campus => <SelectItem key={campus?.id} value={campus?.id || ""}>
-                                          {campus?.name}
-                                        </SelectItem>)}
-                                    </SelectContent>
-                                  </Select>
+                                <div className="space-y-3">
+                                  <Label>Campuses</Label>
+                                  <div className="grid gap-2 rounded-md border border-border p-3">
+                                    {(isCampusAdmin ? campuses : userCampuses.map(uc => uc.campuses).filter(Boolean)).map(campus => <label key={campus?.id} className="flex items-center gap-2 text-sm">
+                                        <Checkbox checked={Boolean(campus?.id && newEvent.campus_ids.includes(campus.id))} onCheckedChange={checked => {
+                                  if (!campus?.id) return;
+                                  setNewEvent(current => ({
+                                    ...current,
+                                    campus_id: checked ? campus.id : current.campus_id === campus.id ? current.campus_ids.filter(id => id !== campus.id)[0] || "" : current.campus_id,
+                                    campus_ids: checked ? Array.from(new Set([...current.campus_ids, campus.id])) : current.campus_ids.filter(id => id !== campus.id)
+                                  }));
+                                }} />
+                                        <span>{campus?.name}</span>
+                                      </label>)}
+                                  </div>
+                                </div>
+                                <div className="space-y-3">
+                                  <Label>Ministries</Label>
+                                  <div className="grid gap-2 rounded-md border border-border p-3">
+                                    {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition").map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
+                                        <Checkbox checked={newEvent.ministry_types.includes(option.value)} onCheckedChange={checked => {
+                                  setNewEvent(current => {
+                                    const nextMinistryTypes = checked ? Array.from(new Set([...current.ministry_types, option.value])) : current.ministry_types.filter(value => value !== option.value);
+                                    return {
+                                      ...current,
+                                      ministry_type: checked ? option.value : nextMinistryTypes[0] || "weekend",
+                                      ministry_types: nextMinistryTypes
+                                    };
+                                  });
+                                }} />
+                                        <span>{option.label}</span>
+                                      </label>)}
+                                  </div>
                                 </div>
                                 <div>
-                                  <Label htmlFor="event-ministry">Ministry</Label>
-                                  <Select value={newEvent.ministry_type} onValueChange={value => setNewEvent({
+                                  <Label htmlFor="event-audience">Audience</Label>
+                                  <Select value={newEvent.audience_type} onValueChange={value => setNewEvent({
                             ...newEvent,
-                            ministry_type: value
+                            audience_type: value
                           })}>
-                                    <SelectTrigger id="event-ministry">
+                                    <SelectTrigger id="event-audience">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition").map(option => <SelectItem key={option.value} value={option.value}>
+                                      {EVENT_AUDIENCE_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>
                                           {option.label}
                                         </SelectItem>)}
                                     </SelectContent>
@@ -1086,7 +1149,7 @@ function StandardCalendar() {
                           })} />
                                 <Label htmlFor="repeats_weekly" className="font-normal">Repeat weekly</Label>
                               </div>}
-                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && !newEvent.campus_id) || createEvent.isPending || createCustomService.isPending} className="w-full">
+                            <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && (newEvent.campus_ids.length === 0 || newEvent.ministry_types.length === 0)) || createEvent.isPending || createCustomService.isPending} className="w-full">
                               {createEvent.isPending || createCustomService.isPending ? "Creating..." : newEvent.event_type === "service" ? "Create Service" : "Create Event"}
                             </Button>
                           </div>
@@ -1119,11 +1182,40 @@ function StandardCalendar() {
                       <div className="flex-1">
                         <h3 className="font-medium text-foreground">{event.title}</h3>
                         {event.description && <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {(() => {
+                            const campusNames = (event.campus_ids && event.campus_ids.length > 0 ? event.campus_ids : event.campus_id ? [event.campus_id] : [])
+                              .map(id => campuses.find(c => c.id === id)?.name)
+                              .filter(Boolean);
+                            const ministryLabels = (event.ministry_types && event.ministry_types.length > 0 ? event.ministry_types : event.ministry_type ? [event.ministry_type] : [])
+                              .map(value => MINISTRY_TYPES.find(option => option.value === value)?.label || value)
+                              .filter(Boolean);
+                            return [campusNames.join(", "), ministryLabels.join(", ")].filter(Boolean).join(" • ");
+                          })()}
+                        </p>
+                        {event.audience_type && <p className="mt-1 text-xs text-muted-foreground">
+                            {EVENT_AUDIENCE_OPTIONS.find(option => option.value === event.audience_type)?.label || event.audience_type}
+                          </p>}
                         {(event.start_time || event.end_time) && <p className="mt-1 text-xs text-primary">
                             {formatTime(event.start_time)}
                             {event.start_time && event.end_time && " – "}
                             {formatTime(event.end_time)}
                           </p>}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Button
+                            variant={event.is_coming ? "secondary" : "outline"}
+                            size="sm"
+                            onClick={() => toggleEventRsvp.mutate({ eventId: event.id, isComing: Boolean(event.is_coming) })}
+                            disabled={toggleEventRsvp.isPending}
+                            className="gap-2"
+                          >
+                            <Check className="h-4 w-4" />
+                            {event.is_coming ? "You're coming" : "I'm Coming"}
+                          </Button>
+                          <Badge variant="outline">
+                            {(event.attendee_count ?? 0)} coming
+                          </Badge>
+                        </div>
                       </div>
                       {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteEvent.mutate(event.id)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
                           <Trash2 className="h-4 w-4" />

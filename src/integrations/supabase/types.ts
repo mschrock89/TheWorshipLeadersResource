@@ -829,7 +829,9 @@ export type Database = {
       }
       events: {
         Row: {
+          audience_type: string | null
           campus_id: string | null
+          campus_ids: string[] | null
           created_at: string | null
           created_by: string | null
           description: string | null
@@ -837,13 +839,16 @@ export type Database = {
           event_date: string
           id: string
           ministry_type: string | null
+          ministry_types: string[] | null
           start_time: string | null
           teaching_week_id: string | null
           title: string
           updated_at: string | null
         }
         Insert: {
+          audience_type?: string | null
           campus_id?: string | null
+          campus_ids?: string[] | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -851,13 +856,16 @@ export type Database = {
           event_date: string
           id?: string
           ministry_type?: string | null
+          ministry_types?: string[] | null
           start_time?: string | null
           teaching_week_id?: string | null
           title: string
           updated_at?: string | null
         }
         Update: {
+          audience_type?: string | null
           campus_id?: string | null
+          campus_ids?: string[] | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -865,6 +873,7 @@ export type Database = {
           event_date?: string
           id?: string
           ministry_type?: string | null
+          ministry_types?: string[] | null
           start_time?: string | null
           teaching_week_id?: string | null
           title?: string
@@ -883,6 +892,48 @@ export type Database = {
             columns: ["teaching_week_id"]
             isOneToOne: false
             referencedRelation: "teaching_weeks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_rsvps: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_rsvps_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_rsvps_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
