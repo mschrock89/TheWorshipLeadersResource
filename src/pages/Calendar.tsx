@@ -383,6 +383,20 @@ function StandardCalendar() {
     } else if (isCampusAdmin && campusFilter !== "network-wide") {
       filteredEvents = filteredEvents.filter(e => e.campus_id === campusFilter || e.campus_id === null);
     }
+
+    if (ministryFilter && ministryFilter !== "all") {
+      const weekendAliases = new Set(["weekend", "weekend_team", "sunday_am"]);
+      if (ministryFilter === "weekend_team") {
+        filteredEvents = filteredEvents.filter(
+          (event) => !event.ministry_type || weekendAliases.has(event.ministry_type)
+        );
+      } else {
+        filteredEvents = filteredEvents.filter(
+          (event) => !event.ministry_type || event.ministry_type === ministryFilter
+        );
+      }
+    }
+
     return filteredEvents;
   };
   const getCustomServicesForDay = (day: number) => {
@@ -534,6 +548,15 @@ function StandardCalendar() {
                 url: "/calendar",
                 tag: `event-invite-${dateStr}-${selectedCampusId}-${newEvent.ministry_type}`,
                 userIds: inviteUserIds,
+                contextType: "event_invite",
+                contextId: createdEvent.id,
+                createdBy: user?.id,
+                metadata: {
+                  eventId: createdEvent.id,
+                  campusId: selectedCampusId,
+                  ministryType: newEvent.ministry_type,
+                  eventDate: dateStr,
+                },
               },
             });
             toast.success(`Invite sent to ${inviteUserIds.length} team member${inviteUserIds.length === 1 ? "" : "s"}.`);

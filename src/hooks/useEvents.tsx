@@ -10,6 +10,7 @@ export interface Event {
   start_time: string | null;
   end_time: string | null;
   campus_id: string | null;
+  ministry_type: string | null;
   teaching_week_id?: string | null;
   created_by: string | null;
   created_at: string;
@@ -90,6 +91,7 @@ export function useCreateEvent() {
           start_time: event.start_time,
           end_time: event.end_time,
           campus_id: event.campus_id,
+          ministry_type: event.ministry_type || "weekend",
           teaching_week_id: teachingWeekId,
           created_by: user?.id,
         })

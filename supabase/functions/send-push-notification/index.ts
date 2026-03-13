@@ -12,6 +12,11 @@ interface PushPayload {
   url?: string;
   tag?: string;
   userIds?: string[];
+  contextType?: string;
+  contextId?: string;
+  createdBy?: string;
+  metadata?: Record<string, unknown>;
+  skipLogging?: boolean;
 }
 
 // Convert URL-safe base64 to regular base64
@@ -409,6 +414,44 @@ serve(async (req) => {
     }
 
     console.log(`Found ${subscriptions.length} subscription(s)`);
+    const uniqueUserIds = Array.from(new Set(subscriptions.map((subscription) => subscription.user_id).filter(Boolean)));
+    let notificationLogId: string | null = null;
+
+    if (!payload.skipLogging) {
+      const { data: notificationLog, error: notificationLogError } = await supabase
+        .from("push_notification_logs")
+        .insert({
+          title: payload.title,
+          message: payload.message,
+          url: payload.url || null,
+          tag: payload.tag || null,
+          context_type: payload.contextType || null,
+          context_id: payload.contextId || null,
+          metadata: payload.metadata || {},
+          created_by: payload.createdBy || null,
+        })
+        .select("id")
+        .single();
+
+      if (notificationLogError) {
+        console.error("Failed to log notification:", notificationLogError);
+      } else {
+        notificationLogId = notificationLog.id;
+        const recipientRows = uniqueUserIds.map((userId) => ({
+          notification_log_id: notificationLogId,
+          user_id: userId,
+          delivery_status: "pending",
+        }));
+
+        const { error: recipientInsertError } = await supabase
+          .from("push_notification_recipients")
+          .upsert(recipientRows, { onConflict: "notification_log_id,user_id" });
+
+        if (recipientInsertError) {
+          console.error("Failed to seed notification recipients:", recipientInsertError);
+        }
+      }
+    }
 
     // Build notification payload
     const notificationPayload = JSON.stringify({
@@ -427,6 +470,7 @@ serve(async (req) => {
     let failed = 0;
     const expiredEndpoints: string[] = [];
     const vapidSubject = "mailto:support@worshipleadersresource.lovable.app";
+    const userDeliveryMap = new Map<string, { sent: boolean; failureReason?: string }>();
 
     for (const sub of subscriptions) {
       try {
@@ -440,9 +484,16 @@ serve(async (req) => {
 
         if (result.success) {
           sent++;
+          userDeliveryMap.set(sub.user_id, { sent: true });
           console.log(`Sent to user ${sub.user_id} (status: ${result.statusCode})`);
         } else {
           failed++;
+          if (!userDeliveryMap.get(sub.user_id)?.sent) {
+            userDeliveryMap.set(sub.user_id, {
+              sent: false,
+              failureReason: result.error || `HTTP ${result.statusCode || 0}`,
+            });
+          }
           console.error(`Failed to send to ${sub.user_id}: status ${result.statusCode}, error: ${result.error}`);
           
           // If subscription is expired/invalid, mark for deletion
@@ -452,7 +503,31 @@ serve(async (req) => {
         }
       } catch (error: unknown) {
         failed++;
+        if (!userDeliveryMap.get(sub.user_id)?.sent) {
+          userDeliveryMap.set(sub.user_id, {
+            sent: false,
+            failureReason: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
         console.error(`Exception sending to ${sub.user_id}:`, error);
+      }
+    }
+
+    if (notificationLogId && userDeliveryMap.size > 0) {
+      const recipientUpdates = Array.from(userDeliveryMap.entries()).map(([userId, status]) => ({
+        notification_log_id: notificationLogId,
+        user_id: userId,
+        delivery_status: status.sent ? "sent" : "failed",
+        delivered_at: status.sent ? new Date().toISOString() : null,
+        failure_reason: status.sent ? null : status.failureReason || null,
+      }));
+
+      const { error: recipientUpdateError } = await supabase
+        .from("push_notification_recipients")
+        .upsert(recipientUpdates, { onConflict: "notification_log_id,user_id" });
+
+      if (recipientUpdateError) {
+        console.error("Failed to update notification recipient statuses:", recipientUpdateError);
       }
     }
 
@@ -477,6 +552,7 @@ serve(async (req) => {
         sent,
         failed,
         total: subscriptions.length,
+        notificationLogId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

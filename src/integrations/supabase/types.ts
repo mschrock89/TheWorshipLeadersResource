@@ -836,7 +836,9 @@ export type Database = {
           end_time: string | null
           event_date: string
           id: string
+          ministry_type: string | null
           start_time: string | null
+          teaching_week_id: string | null
           title: string
           updated_at: string | null
         }
@@ -848,7 +850,9 @@ export type Database = {
           end_time?: string | null
           event_date: string
           id?: string
+          ministry_type?: string | null
           start_time?: string | null
+          teaching_week_id?: string | null
           title: string
           updated_at?: string | null
         }
@@ -860,7 +864,9 @@ export type Database = {
           end_time?: string | null
           event_date?: string
           id?: string
+          ministry_type?: string | null
           start_time?: string | null
+          teaching_week_id?: string | null
           title?: string
           updated_at?: string | null
         }
@@ -870,6 +876,13 @@ export type Database = {
             columns: ["campus_id"]
             isOneToOne: false
             referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_teaching_week_id_fkey"
+            columns: ["teaching_week_id"]
+            isOneToOne: false
+            referencedRelation: "teaching_weeks"
             referencedColumns: ["id"]
           },
         ]
