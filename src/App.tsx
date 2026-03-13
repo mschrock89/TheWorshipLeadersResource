@@ -35,6 +35,7 @@ import Resources from "./pages/Resources";
 import ServiceFlow from "./pages/ServiceFlow";
 import DrumTech from "./pages/DrumTech";
 import Bible from "./pages/Bible";
+import Feed from "./pages/Feed";
 import Snake from "./pages/Snake";
 import Pong from "./pages/Pong";
 import Galaga from "./pages/Galaga";
@@ -315,6 +316,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><Resources /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/feed"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><Feed /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }

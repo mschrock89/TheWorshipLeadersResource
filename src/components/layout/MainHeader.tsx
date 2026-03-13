@@ -7,7 +7,7 @@ import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprov
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Wrench } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -154,6 +154,12 @@ export function MainHeader({
                   </Link>
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem asChild>
+                <Link to="/feed" className="flex items-center gap-2">
+                  <Newspaper className="h-4 w-4" />
+                  The Feed
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link to="/songs" className="flex items-center gap-2">
                   <FolderOpen className="h-4 w-4" />

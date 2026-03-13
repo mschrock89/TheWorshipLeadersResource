@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
-import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Clock3, Search, Sparkles } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Clock3, Search, Share2, Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 import {
   BIBLE_BOOKS,
   buildChapterReference,
@@ -53,6 +54,8 @@ function PassageSidebarSection({
 }
 
 export default function Bible() {
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultReference = "John 1";
   const defaultTranslation = getBibleReaderTranslation(null);
@@ -117,6 +120,17 @@ export default function Bible() {
     const nextReference = buildChapterReference(book, chapter);
     setReferenceInput(nextReference);
     updatePassageParams(nextReference);
+  };
+
+  const handleShareToFeed = () => {
+    if (!passage) return;
+
+    const params = new URLSearchParams();
+    params.set("compose", "scripture");
+    params.set("reference", passage.reference);
+    params.set("body", passage.text.trim());
+
+    navigate(`/feed?${params.toString()}`);
   };
 
   const canGoPrevious = selectedChapter > 1;
@@ -280,6 +294,18 @@ export default function Bible() {
                       Save Passage
                     </Button>
                   )}
+                  {isAdmin ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleShareToFeed}
+                      disabled={!passage}
+                      className="gap-2"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      Share To Feed
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </CardHeader>

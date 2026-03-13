@@ -874,6 +874,99 @@ export type Database = {
           },
         ]
       }
+      feed_post_likes: {
+        Row: {
+          created_at: string
+          id: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feed_post_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_posts: {
+        Row: {
+          body: string | null
+          category: string
+          created_at: string
+          created_by: string
+          id: string
+          scripture_reference: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+          youtube_url: string | null
+          youtube_video_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          category: string
+          created_at?: string
+          created_by: string
+          id?: string
+          scripture_reference?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          youtube_url?: string | null
+          youtube_video_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          scripture_reference?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          youtube_url?: string | null
+          youtube_video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_posts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feed_posts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reactions: {
         Row: {
           created_at: string
