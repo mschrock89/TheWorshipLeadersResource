@@ -3,14 +3,15 @@ import { useSearchParams } from "react-router-dom";
 import {
   ArrowUpRight,
   BookOpenText,
+  ChevronDown,
   Clock3,
   Edit3,
   Filter,
   Heart,
   Loader2,
+  MessageSquare,
   PenSquare,
   PlayCircle,
-  Send,
   Sparkles,
   Trash2,
   Youtube,
@@ -26,8 +27,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
   type FeedCategory,
+  type FeedCommentRecord,
   type FeedPostInput,
   type FeedPostRecord,
+  useCreateFeedComment,
   useCreateFeedPost,
   useDeleteFeedPost,
   useFeedPosts,
@@ -156,21 +159,35 @@ function buildComposerPayload(state: ComposerState): FeedPostInput | null {
 function PostCard({
   post,
   isAdmin,
+  currentUserId,
   onLikeToggle,
+  onCommentSubmit,
   onEdit,
   onDelete,
   isTogglingLike,
+  isSubmittingComment,
   isDeleting,
 }: {
   post: FeedPostRecord;
   isAdmin: boolean;
+  currentUserId?: string;
   onLikeToggle: (post: FeedPostRecord) => void;
+  onCommentSubmit: (postId: string, body: string) => Promise<void>;
   onEdit: (post: FeedPostRecord) => void;
   onDelete: (post: FeedPostRecord) => void;
   isTogglingLike: boolean;
+  isSubmittingComment: boolean;
   isDeleting: boolean;
 }) {
   const CategoryIcon = categoryIcon(post.category);
+  const [isConversationOpen, setIsConversationOpen] = useState(post.comment_count > 0);
+  const [commentBody, setCommentBody] = useState("");
+
+  const handleCommentSubmit = async () => {
+    await onCommentSubmit(post.id, commentBody);
+    setCommentBody("");
+    setIsConversationOpen(true);
+  };
 
   return (
     <Card className="overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(21,30,37,0.96),rgba(13,19,24,0.96))] shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
@@ -272,9 +289,14 @@ function PostCard({
               {isTogglingLike ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className="h-4 w-4" />}
               {post.like_count}
             </button>
-            <button className="inline-flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-white/5 hover:text-foreground">
-              <Send className="h-4 w-4" />
-              Share
+            <button
+              className="inline-flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-white/5 hover:text-foreground"
+              onClick={() => setIsConversationOpen((current) => !current)}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Conversation
+              <span>{post.comment_count}</span>
+              <ChevronDown className={cn("h-4 w-4 transition-transform", isConversationOpen && "rotate-180")} />
             </button>
             {isAdmin ? (
               <>
@@ -296,6 +318,54 @@ function PostCard({
               </>
             ) : null}
           </div>
+
+          {isConversationOpen ? (
+            <div className="space-y-4 rounded-2xl border border-white/8 bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">Conversation</p>
+                <p className="text-xs text-muted-foreground">{post.comment_count} comment{post.comment_count === 1 ? "" : "s"}</p>
+              </div>
+
+              <div className="space-y-3">
+                {post.comments.length > 0 ? (
+                  post.comments.map((comment: FeedCommentRecord) => (
+                    <div key={comment.id} className="rounded-xl border border-white/8 bg-white/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">
+                          {comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{timeAgoLabel(comment.created_at)}</p>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No conversation yet. Start it below.</p>
+                )}
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-white/8 bg-white/5 p-3">
+                <Textarea
+                  value={commentBody}
+                  onChange={(event) => setCommentBody(event.target.value.slice(0, 100))}
+                  placeholder="Add to the conversation..."
+                  maxLength={100}
+                  className="min-h-[88px] resize-y rounded-xl border-white/10 bg-black/20 text-sm leading-6 placeholder:text-muted-foreground/70"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">{commentBody.length}/100 characters</p>
+                  <Button
+                    size="sm"
+                    className="rounded-lg bg-gradient-primary text-primary-foreground hover:opacity-95"
+                    disabled={isSubmittingComment || !commentBody.trim()}
+                    onClick={handleCommentSubmit}
+                  >
+                    {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -305,13 +375,14 @@ function PostCard({
 export default function Feed() {
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { toast } = useToast();
   const { data: posts = [], isLoading } = useFeedPosts();
   const createPost = useCreateFeedPost();
   const updatePost = useUpdateFeedPost();
   const deletePost = useDeleteFeedPost();
   const toggleLike = useToggleFeedLike();
+  const createComment = useCreateFeedComment();
   const [activeTab, setActiveTab] = useState<FeedTab>("all");
   const [composer, setComposer] = useState<ComposerState>(emptyComposerState);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -419,11 +490,15 @@ export default function Feed() {
     await toggleLike.mutateAsync({ postId: post.id, liked: post.liked_by_me });
   };
 
+  const handleCommentSubmit = async (postId: string, body: string) => {
+    await createComment.mutateAsync({ postId, body });
+  };
+
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8">
+    <div className="mx-auto w-full max-w-6xl min-w-0 space-y-8 overflow-x-hidden">
       <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(53,176,229,0.22),transparent_32%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-6 py-7 shadow-[0_28px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-8">
         <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(255,184,56,0.10),transparent_60%)] lg:block" />
-        <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_320px]">
+        <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1.4fr)_320px]">
           <div className="space-y-5">
             <Badge className="border-0 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-primary">
               <Sparkles className="mr-1.5 h-3.5 w-3.5" />
@@ -459,7 +534,7 @@ export default function Feed() {
                   video resources.
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-4">
                   <p className="text-2xl font-semibold text-foreground">{posts.length}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Posts</p>
@@ -471,8 +546,10 @@ export default function Feed() {
                   <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Likes</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-4">
-                  <p className="text-2xl font-semibold text-foreground">3</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Formats</p>
+                  <p className="text-2xl font-semibold text-foreground">
+                    {posts.reduce((count, post) => count + (post.comment_count ?? 0), 0)}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Comments</p>
                 </div>
               </div>
             </CardContent>
@@ -480,16 +557,16 @@ export default function Feed() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-6">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-6">
           {isAdmin ? (
             <Card
               ref={composerRef}
               className="border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]"
             >
               <CardContent className="space-y-5 p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <h2 className="text-xl font-semibold text-foreground">
                       {editingPostId ? "Edit post" : "Start a post"}
                     </h2>
@@ -497,19 +574,22 @@ export default function Feed() {
                       Share a thought, scripture, or YouTube link with the whole app.
                     </p>
                   </div>
-                  <Badge variant="secondary" className="border border-primary/20 bg-primary/10 text-primary">
+                  <Badge
+                    variant="secondary"
+                    className="max-w-full border border-primary/20 bg-primary/10 text-primary"
+                  >
                     {editingPostId ? "Editing" : "Admin Composer"}
                   </Badge>
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid min-w-0 gap-4">
                   <Input
                     placeholder="Post title"
                     className="rounded-xl border-white/10 bg-black/20"
                     value={composer.title}
                     onChange={(event) => setComposer((current) => ({ ...current, title: event.target.value }))}
                   />
-                  <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+                  <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
                     <Textarea
                       placeholder="What is God teaching your team right now?"
                       className="min-h-[170px] resize-none rounded-2xl border-white/10 bg-black/20 text-base placeholder:text-muted-foreground/70"
@@ -560,7 +640,7 @@ export default function Feed() {
           <Card className="border-white/10 bg-transparent shadow-none">
             <CardContent className="flex flex-col gap-4 px-0 pb-0 pt-0 sm:flex-row sm:items-center sm:justify-between">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FeedTab)}>
-                <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+                <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 sm:w-auto">
                   {Object.entries(categoryLabels).map(([value, label]) => (
                     <TabsTrigger
                       key={value}
@@ -605,10 +685,13 @@ export default function Feed() {
                   key={post.id}
                   post={post}
                   isAdmin={isAdmin}
+                  currentUserId={user?.id}
                   onLikeToggle={handleToggleLike}
+                  onCommentSubmit={handleCommentSubmit}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   isTogglingLike={toggleLike.isPending}
+                  isSubmittingComment={createComment.isPending}
                   isDeleting={deletePost.isPending}
                 />
               ))
@@ -616,7 +699,7 @@ export default function Feed() {
           </div>
         </div>
 
-        <aside className="space-y-5">
+        <aside className="min-w-0 space-y-5">
           <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(18,25,31,0.94),rgba(13,18,22,0.94))]">
             <CardContent className="space-y-4 p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Feed Permissions</p>

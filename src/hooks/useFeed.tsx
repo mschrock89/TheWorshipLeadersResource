@@ -20,6 +20,18 @@ export interface FeedPostRecord {
   author_name: string | null;
   like_count: number;
   liked_by_me: boolean;
+  comment_count: number;
+  comments: FeedCommentRecord[];
+}
+
+export interface FeedCommentRecord {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author_name: string | null;
 }
 
 interface FeedPostRow {
@@ -41,6 +53,16 @@ interface FeedLikeRow {
   id: string;
   post_id: string;
   user_id: string;
+}
+
+interface FeedCommentRow {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author: { full_name: string | null } | null;
 }
 
 export interface FeedPostInput {
@@ -81,8 +103,26 @@ async function fetchFeedPosts(userId: string | undefined) {
 
   if (likeError) throw likeError;
 
+  const { data: commentRows, error: commentError } = await supabase
+    .from("feed_post_comments")
+    .select(`
+      id,
+      post_id,
+      user_id,
+      body,
+      created_at,
+      updated_at,
+      author:profiles!feed_post_comments_user_id_fkey (
+        full_name
+      )
+    `)
+    .order("created_at", { ascending: true });
+
+  if (commentError) throw commentError;
+
   const likesByPostId = new Map<string, number>();
   const likedPostIds = new Set<string>();
+  const commentsByPostId = new Map<string, FeedCommentRecord[]>();
 
   ((likeRows || []) as FeedLikeRow[]).forEach((like) => {
     likesByPostId.set(like.post_id, (likesByPostId.get(like.post_id) || 0) + 1);
@@ -91,11 +131,27 @@ async function fetchFeedPosts(userId: string | undefined) {
     }
   });
 
+  ((commentRows || []) as FeedCommentRow[]).forEach((comment) => {
+    const existing = commentsByPostId.get(comment.post_id) || [];
+    existing.push({
+      id: comment.id,
+      post_id: comment.post_id,
+      user_id: comment.user_id,
+      body: comment.body,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      author_name: comment.author?.full_name ?? null,
+    });
+    commentsByPostId.set(comment.post_id, existing);
+  });
+
   return ((postRows || []) as FeedPostRow[]).map((post) => ({
     ...post,
     author_name: post.author?.full_name ?? null,
     like_count: likesByPostId.get(post.id) || 0,
     liked_by_me: likedPostIds.has(post.id),
+    comment_count: (commentsByPostId.get(post.id) || []).length,
+    comments: commentsByPostId.get(post.id) || [],
   })) as FeedPostRecord[];
 }
 
@@ -250,6 +306,42 @@ export function useToggleFeedLike() {
     onError: (error) => {
       toast({
         title: "Could not update like",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useCreateFeedComment() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ postId, body }: { postId: string; body: string }) => {
+      if (!user?.id) throw new Error("You must be signed in to comment.");
+
+      const trimmedBody = body.trim();
+      if (!trimmedBody) throw new Error("Write a comment before posting.");
+      if (trimmedBody.length > 100) throw new Error("Comments must be 100 characters or less.");
+
+      const { error } = await supabase
+        .from("feed_post_comments")
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+          body: trimmedBody,
+        });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["feed-posts"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Could not post comment",
         description: error.message,
         variant: "destructive",
       });
