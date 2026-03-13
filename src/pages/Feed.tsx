@@ -41,13 +41,6 @@ import { cn } from "@/lib/utils";
 
 type FeedTab = "all" | FeedCategory;
 
-const quickPrompts = [
-  "Share a pastoral thought",
-  "Post this week's scripture",
-  "Drop a YouTube resource",
-  "Celebrate a team win",
-];
-
 const categoryLabels: Record<FeedTab, string> = {
   all: "All Posts",
   blog: "Blog Style",
@@ -506,22 +499,8 @@ export default function Feed() {
             </Badge>
             <div className="space-y-3">
               <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                A clean space for worship leaders to share what is shaping their ministry.
+                Welcome to THE FEED
               </h1>
-              <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-                Everyone can read and respond. Admins can publish thoughtful reflections, scripture, and
-                YouTube resources for the whole team.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {quickPrompts.map((prompt) => (
-                <span
-                  key={prompt}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-muted-foreground"
-                >
-                  {prompt}
-                </span>
-              ))}
             </div>
           </div>
 
