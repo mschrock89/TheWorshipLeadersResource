@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Send, Loader2, Users, AlertTriangle, Clock } from "lucide-react";
-import { useSubmitForApproval } from "@/hooks/useSetlistApprovals";
+import { useIsApprover, useSubmitForApproval } from "@/hooks/useSetlistApprovals";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -44,6 +44,7 @@ export function PublishSetlistDialog({
   const [checkingExisting, setCheckingExisting] = useState(false);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
   const submitForApproval = useSubmitForApproval();
+  const { data: isApprover = false } = useIsApprover();
 
   // Get scheduled team for this date (campus-specific)
   const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId);
@@ -121,7 +122,7 @@ export function PublishSetlistDialog({
     if (!draftSetId) return;
     
     await submitForApproval.mutateAsync(draftSetId);
-    setIsPendingApproval(true);
+    setIsPendingApproval(!isApprover);
     setOpen(false);
     onPublished?.();
   };
@@ -135,7 +136,7 @@ export function PublishSetlistDialog({
         className="gap-2"
       >
         <Send className="h-4 w-4" />
-        Submit for Approval
+        {isApprover ? "Publish Setlist" : "Submit for Approval"}
       </Button>
     );
   }
@@ -164,14 +165,14 @@ export function PublishSetlistDialog({
           className="gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg"
         >
           <Send className="h-4 w-4" />
-          Submit for Approval
+          {isApprover ? "Publish Setlist" : "Submit for Approval"}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-amber-600" />
-            Submit for Approval
+            {isApprover ? "Publish Setlist" : "Submit for Approval"}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
@@ -190,14 +191,26 @@ export function PublishSetlistDialog({
               )}
 
               <p>
-                This will submit the setlist to <span className="font-semibold">Kyle Elkins</span> for approval.
-                Once approved, push notifications will be sent to all {customServiceId ? "assigned custom service members" : "scheduled team members"}.
+                {isApprover ? (
+                  <>
+                    This will publish the setlist immediately and send push notifications to all{" "}
+                    {customServiceId ? "assigned custom service members" : "scheduled team members"}.
+                  </>
+                ) : (
+                  <>
+                    This will submit the setlist to <span className="font-semibold">Kyle Elkins</span> for approval.
+                    Once approved, push notifications will be sent to all{" "}
+                    {customServiceId ? "assigned custom service members" : "scheduled team members"}.
+                  </>
+                )}
               </p>
               
               <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Users className="h-4 w-4" />
-                  <span>{teamMemberCount} team members will be notified after approval</span>
+                  <span>
+                    {teamMemberCount} team members will be notified {isApprover ? "right away" : "after approval"}
+                  </span>
                 </div>
                 
                 <div className="text-sm text-muted-foreground">
@@ -212,7 +225,9 @@ export function PublishSetlistDialog({
               </div>
 
               <p className="text-sm text-muted-foreground">
-                You'll be notified when the setlist is approved or if revisions are needed.
+                {isApprover
+                  ? "Publishing will make the setlist visible to volunteers immediately."
+                  : "You'll be notified when the setlist is approved or if revisions are needed."}
               </p>
             </div>
           </AlertDialogDescription>
@@ -227,17 +242,17 @@ export function PublishSetlistDialog({
             {submitForApproval.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
+                {isApprover ? "Publishing..." : "Submitting..."}
               </>
             ) : existingPublishedCount > 0 ? (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                Replace & Submit
+                {isApprover ? "Replace & Publish" : "Replace & Submit"}
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                Submit for Approval
+                {isApprover ? "Publish Setlist" : "Submit for Approval"}
               </>
             )}
           </AlertDialogAction>

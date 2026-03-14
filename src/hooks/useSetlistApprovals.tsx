@@ -255,6 +255,64 @@ export function useSubmitForApproval() {
           .in("id", idsToDelete);
       }
 
+      if (user.id === APPROVER_USER_ID) {
+        const publishTimestamp = new Date().toISOString();
+        const { data: publishedSet, error: publishError } = await supabase
+          .from("draft_sets")
+          .update({
+            status: "published",
+            submitted_for_approval_at: null,
+            published_at: publishTimestamp,
+            approved_by: user.id,
+            approved_at: publishTimestamp,
+          })
+          .eq("id", draftSetId)
+          .select("campus_id, ministry_type, plan_date")
+          .single();
+
+        if (publishError) throw publishError;
+
+        const { data: songs } = await supabase
+          .from("draft_set_songs")
+          .select(`
+            id,
+            song_id,
+            song_key,
+            vocalist_id,
+            songs(id, title)
+          `)
+          .eq("draft_set_id", draftSetId)
+          .order("sequence_order", { ascending: true });
+
+        try {
+          await generateServiceFlowFromTemplate({
+            campusId: publishedSet.campus_id,
+            ministryType: publishedSet.ministry_type,
+            serviceDate: publishedSet.plan_date,
+            draftSetId,
+            createdBy: user.id,
+            songs: (songs || []).map((song) => ({
+              id: song.song_id,
+              title: (song.songs as { id: string; title: string } | null)?.title || "Unknown Song",
+              key: song.song_key,
+              vocalistId: song.vocalist_id,
+            })),
+          });
+        } catch (e) {
+          console.error("Failed to generate service flow:", e);
+        }
+
+        const response = await supabase.functions.invoke("notify-setlist-published", {
+          body: { draftSetId },
+        });
+
+        return {
+          autoPublished: true,
+          deletedCount,
+          notificationResult: response.data,
+        };
+      }
+
       // Update draft set status to pending_approval
       const { error: updateError } = await supabase
         .from("draft_sets")
@@ -290,13 +348,31 @@ export function useSubmitForApproval() {
         console.error("Failed to send approval notification:", e);
       }
 
-      return { deletedCount };
+      return { autoPublished: false, deletedCount };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
-      
+      queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
+      queryClient.invalidateQueries({ queryKey: ["approver-published-setlists"] });
+      queryClient.invalidateQueries({ queryKey: ["service-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["service-flow-items"] });
+
+      if (data?.autoPublished) {
+        let description = data.notificationResult?.teamMembersNotified
+          ? `${data.notificationResult.teamMembersNotified} team members have been notified.`
+          : "The team has been notified.";
+        if (data?.deletedCount > 0) {
+          description += ` (Cleaned up ${data.deletedCount} old version${data.deletedCount > 1 ? "s" : ""})`;
+        }
+        toast({
+          title: "Setlist published!",
+          description,
+        });
+        return;
+      }
+
       let description = "Kyle Elkins has been notified and will review it shortly.";
       if (data?.deletedCount > 0) {
         description += ` (Cleaned up ${data.deletedCount} old version${data.deletedCount > 1 ? 's' : ''})`;
