@@ -1389,6 +1389,7 @@ function BandRoster({
   ministryFilter?: string;
   scheduledMinistries?: string[];
 }) {
+  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
   // Pass ministry filter to hook - 'all' or undefined means fetch all (we'll constrain by scheduledMinistries below)
   // Special handling for "weekend_team" - it's a combined view, so we fetch without ministry filter
   // and filter the results client-side
@@ -1756,13 +1757,19 @@ function BandRoster({
       </div>;
   };
 
+  const groupTextMembers = !isAdmin && isProductionManager && !isVideoDirector
+    ? productionVideoMembers.filter((member) => isAudio(member.positions))
+    : !isAdmin && isVideoDirector && !isProductionManager
+      ? productionVideoMembers.filter((member) => isBroadcast(member.positions))
+      : roster;
+
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
         <div className="flex justify-end">
           <GroupTextButton
-            phoneNumbers={roster.map((member) => member.phone)}
-            rosterMembers={roster.map((member) => ({ name: member.memberName, phone: member.phone }))}
+            phoneNumbers={groupTextMembers.map((member) => member.phone)}
+            rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
             defaultMessage={buildRosterGroupTextTemplate({
               date,
               serviceLabel,
@@ -1796,8 +1803,8 @@ function BandRoster({
   return <div className="mb-4">
       <div className="mb-3 flex justify-end">
         <GroupTextButton
-          phoneNumbers={roster.map((member) => member.phone)}
-          rosterMembers={roster.map((member) => ({ name: member.memberName, phone: member.phone }))}
+          phoneNumbers={groupTextMembers.map((member) => member.phone)}
+          rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date,
             serviceLabel,

@@ -384,9 +384,12 @@ export default function SetPlanner() {
       if (songAvail.isNewSong) {
         toast.error("New songs require at least a 3-week gap before scheduling again.");
       } else {
-        toast.error("Regular rotation songs require an 8-week gap before scheduling.");
+        toast.error("Regular rotation songs require at least a 5-week gap before scheduling again.");
       }
       return;
+    }
+    if (songAvail.status === 'warning') {
+      toast.warning("This song can be scheduled now, but waiting 8 weeks is still recommended for regular rotation songs.");
     }
     // Auto-populate with suggested key from PCO history
     setBuildingSongs(prev => [...prev, { ...songAvail, selectedKey: songAvail.suggestedKey }]);
@@ -880,7 +883,7 @@ export default function SetPlanner() {
 
             {/* Rules reminder */}
             <div className="mt-3 text-xs text-muted-foreground flex gap-4">
-              <span>• Standard songs: 8 week wait</span>
+              <span>• Standard songs: 5 week minimum, 8 weeks recommended</span>
               <span>• New songs (&lt;3 uses): 4 week wait</span>
             </div>
 

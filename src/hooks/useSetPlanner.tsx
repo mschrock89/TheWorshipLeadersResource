@@ -7,7 +7,7 @@ import { format } from "date-fns";
 
 export interface SongAvailability {
   song: SongWithStats;
-  status: 'available' | 'new-song-ok' | 'too-recent' | 'upcoming';
+  status: 'available' | 'new-song-ok' | 'warning' | 'too-recent' | 'upcoming';
   weeksUntilAvailable: number | null;
   lastUsedDate: string | null;
   totalUses: number;
@@ -44,7 +44,8 @@ export interface DraftSetSong {
 }
 
 const NEW_SONG_MIN_WEEKS = 3;
-const REGULAR_ROTATION_MIN_WEEKS = 8;
+const REGULAR_ROTATION_MIN_WEEKS = 5;
+const REGULAR_ROTATION_RECOMMENDED_WEEKS = 8;
 const NEW_SONG_MAX_USES = 3;
 const REGULAR_ROTATION_MIN_USES = 4;
 
@@ -163,6 +164,9 @@ export function useSongAvailability(
         } else if (!isNewSong && weeksSinceLastUse < REGULAR_ROTATION_MIN_WEEKS) {
           weeksUntilAvailable = REGULAR_ROTATION_MIN_WEEKS - weeksSinceLastUse;
           status = 'too-recent';
+        } else if (!isNewSong && weeksSinceLastUse < REGULAR_ROTATION_RECOMMENDED_WEEKS) {
+          weeksUntilAvailable = REGULAR_ROTATION_RECOMMENDED_WEEKS - weeksSinceLastUse;
+          status = 'warning';
         } else if (isNewSong) {
           status = 'new-song-ok';
         } else {

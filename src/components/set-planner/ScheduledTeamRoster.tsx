@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { useAuth } from "@/hooks/useAuth";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen } from "lucide-react";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
@@ -129,6 +130,7 @@ function MemberSection({
 }
 
 export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: ScheduledTeamRosterProps) {
+  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
   const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(targetDate, campusId);
   
   // For "weekend_team", we want all weekend/production/video members
@@ -180,6 +182,12 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     ...member,
     positions: member.positions.filter(pos => isSpeakerPosition(pos))
   })) || [];
+
+  const groupTextMembers = !isAdmin && isProductionManager && !isVideoDirector
+    ? productionMembers
+    : !isAdmin && isVideoDirector && !isProductionManager
+      ? videoMembers
+      : (roster || []);
 
   if (isLoading) {
     return (
@@ -239,8 +247,8 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             {(vocalists.length + bandMembers.length + speakerMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
           </Badge>
           <GroupTextButton
-            phoneNumbers={(roster || []).map((member) => member.phone)}
-            rosterMembers={(roster || []).map((member) => ({ name: member.memberName, phone: member.phone }))}
+            phoneNumbers={groupTextMembers.map((member) => member.phone)}
+            rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
             defaultMessage={buildRosterGroupTextTemplate({
               date: targetDate,
               serviceLabel: scheduledTeam.teamName,

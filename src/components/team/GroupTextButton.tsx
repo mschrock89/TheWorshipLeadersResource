@@ -56,6 +56,17 @@ export function GroupTextButton({
     return hasPlusPrefix ? `+${digitsOnly}` : digitsOnly;
   };
 
+  const formatAppleRecipient = (phone: string) => {
+    const digitsOnly = phone.replace(/\D/g, "");
+    if (digitsOnly.length === 10) {
+      return `${digitsOnly.slice(0, 3)}-${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+    }
+    if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+      return `1-${digitsOnly.slice(1, 4)}-${digitsOnly.slice(4, 7)}-${digitsOnly.slice(7)}`;
+    }
+    return phone;
+  };
+
   const recipientEntries = (rosterMembers || [])
     .map((member) => ({
       name: member.name,
@@ -121,9 +132,11 @@ export function GroupTextButton({
     });
 
     if (isIOS || isMacDesktop) {
-      const addresses = recipients.map((phone) => encodeURIComponent(phone)).join(",");
+      const addresses = recipients
+        .map((phone) => encodeURIComponent(formatAppleRecipient(phone)))
+        .join(",");
       const bodyParam = body ? `&body=${encodeURIComponent(body)}` : "";
-      window.open(`sms:/open?addresses=${addresses}${bodyParam}`, "_self");
+      window.open(`sms://open?addresses=${addresses}${bodyParam}`, "_self");
       setIsOpen(false);
       return;
     }

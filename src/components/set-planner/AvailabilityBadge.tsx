@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { CheckCircle2, Clock, AlertCircle, Calendar } from "lucide-react";
 
 interface AvailabilityBadgeProps {
-  status: 'available' | 'new-song-ok' | 'too-recent' | 'upcoming';
+  status: 'available' | 'new-song-ok' | 'warning' | 'too-recent' | 'upcoming';
   weeksUntilAvailable?: number | null;
   isNewSong?: boolean;
   compact?: boolean;
@@ -25,6 +25,11 @@ export function AvailabilityBadge({
       icon: CheckCircle2,
       label: 'New Song OK',
       className: 'bg-green-500/10 text-green-600 border-green-500/20',
+    },
+    warning: {
+      icon: AlertCircle,
+      label: 'Warning',
+      className: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
     },
     'too-recent': {
       icon: Clock,

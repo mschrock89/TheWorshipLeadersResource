@@ -69,12 +69,13 @@ export function SongAvailabilityList({
     // Status filter
     switch (filter) {
       case 'available': {
-        // Regular rotation only + schedulable (8+ weeks since last scheduled)
+        // Regular rotation only + schedulable (5+ weeks since last scheduled)
+        // Includes the 5-7 week warning window.
         // ALSO exclude songs on active setlists
         filtered = filtered.filter(a =>
           a.isInRegularRotation &&
           !a.isNewSong &&
-          a.status === 'available' &&
+          (a.status === 'available' || a.status === 'warning') &&
           (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
@@ -140,9 +141,9 @@ export function SongAvailabilityList({
       return { weeks, color: 'text-destructive', bg: 'bg-destructive/15', formattedDate };
     }
 
-    // Regular rotation: 0-2 red, 3-7 yellow, 8+ green.
+    // Regular rotation: 0-4 red, 5-7 yellow, 8+ green.
     if (weeks >= 8) return { weeks, color: 'text-ecc-teal', bg: 'bg-ecc-teal/15', formattedDate };
-    if (weeks >= 3) return { weeks, color: 'text-ecc-yellow', bg: 'bg-ecc-yellow/15', formattedDate };
+    if (weeks >= 5) return { weeks, color: 'text-ecc-yellow', bg: 'bg-ecc-yellow/15', formattedDate };
     return { weeks, color: 'text-destructive', bg: 'bg-destructive/15', formattedDate };
   };
 
@@ -267,6 +268,11 @@ export function SongAvailabilityList({
                     {filter === 'deep-cuts' && weeksInfo.formattedDate && (
                       <p className="text-xs text-muted-foreground truncate">
                         Last played: {weeksInfo.formattedDate}
+                      </p>
+                    )}
+                    {item.status === 'warning' && (
+                      <p className="text-xs text-amber-600 truncate">
+                        Allowed now, but 8 weeks is still recommended
                       </p>
                     )}
                   </div>
