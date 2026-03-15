@@ -237,18 +237,18 @@ export default function Team() {
           </p>
         </div>
         {isLeader && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setCreateMemberDialogOpen(true)}>
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
+            <Button className="w-full" variant="outline" onClick={() => setCreateMemberDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
               New Member
             </Button>
-            <Button variant="outline" onClick={() => setCandidateDialogOpen(true)}>
+            <Button className="w-full" variant="outline" onClick={() => setCandidateDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
               New Candidate
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button className="w-full justify-between sm:justify-center" variant="outline">
                   <Mail className="h-4 w-4 mr-2" />
                   Send Emails
                   <ChevronDown className="h-4 w-4 ml-2" />
@@ -279,7 +279,7 @@ export default function Team() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={() => setImportDialogOpen(true)}>
+            <Button className="w-full" onClick={() => setImportDialogOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Import Team
             </Button>
