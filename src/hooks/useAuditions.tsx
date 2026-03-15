@@ -134,6 +134,7 @@ export function useUpsertAudition() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["upcoming-audition", data.candidate_id] });
       queryClient.invalidateQueries({ queryKey: ["candidate-audition", data.candidate_id] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-auditions"] });
       toast({
         title: "Audition saved",
         description: "Audition details were updated successfully.",

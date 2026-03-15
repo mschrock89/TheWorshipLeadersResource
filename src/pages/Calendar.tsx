@@ -61,6 +61,20 @@ const teamIcons: Record<string, React.ElementType> = {
   zap: Zap,
   diamond: Diamond
 };
+type CalendarAudition = {
+  id: string;
+  candidate_id: string;
+  campus_id: string | null;
+  audition_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  stage: "pre_audition" | "audition";
+  status: "scheduled" | "completed" | "cancelled";
+  profiles: {
+    full_name: string | null;
+  } | null;
+};
+
 const defaultNewEventState = {
   event_type: "team_event" as "team_event" | "service",
   title: "",
@@ -77,6 +91,7 @@ const defaultNewEventState = {
 };
 function StandardCalendar() {
   const {
+    isAdmin,
     canManageTeam,
     user
   } = useAuth();
@@ -114,6 +129,30 @@ function StandardCalendar() {
     ministryType: ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : undefined,
     startDate: monthStart,
     endDate: monthEnd,
+  });
+  const { data: auditions = [] } = useQuery({
+    queryKey: ["calendar-auditions", monthStart, monthEnd, campusFilter, isAdmin],
+    enabled: isAdmin,
+    queryFn: async (): Promise<CalendarAudition[]> => {
+      let query = supabase
+        .from("auditions")
+        .select("id, candidate_id, campus_id, audition_date, start_time, end_time, stage, status, profiles:candidate_id(full_name)")
+        .eq("status", "scheduled")
+        .gte("audition_date", monthStart)
+        .lte("audition_date", monthEnd)
+        .order("audition_date", { ascending: true })
+        .order("start_time", { ascending: true, nullsFirst: true });
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.eq("campus_id", campusFilter);
+      } else if (campusFilter === "network-wide") {
+        query = query.is("campus_id", null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as CalendarAudition[];
+    },
   });
   const { data: customAssignedDates = [] } = useQuery({
     queryKey: [
@@ -434,10 +473,15 @@ function StandardCalendar() {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     return customServices.filter((service) => service.occurrence_date === dateStr);
   };
+  const getAuditionsForDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return auditions.filter((audition) => audition.audition_date === dateStr);
+  };
 
   // Get events for selected date
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
   const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
+  const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. Encounter) should still show even if the user isn't personally scheduled.
@@ -777,7 +821,8 @@ function StandardCalendar() {
               }
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
-              const hasEvents = dayEvents.length > 0 || dayServices.length > 0;
+              const dayAuditions = getAuditionsForDay(day);
+              const hasEvents = dayEvents.length > 0 || dayServices.length > 0 || dayAuditions.length > 0;
               const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
               const teamColor = teamEntry?.worship_teams?.color;
@@ -1034,9 +1079,9 @@ function StandardCalendar() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      {selectedDayEvents.length + selectedDayServices.length === 0
+                      {selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length === 0
                         ? "No events"
-                        : `${selectedDayEvents.length + selectedDayServices.length} item${selectedDayEvents.length + selectedDayServices.length > 1 ? "s" : ""}`}
+                        : `${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length} item${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length > 1 ? "s" : ""}`}
                     </p>
                     {canManageTeam && <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
@@ -1215,6 +1260,24 @@ function StandardCalendar() {
                   </div>
 
                   {/* Event List */}
+                  {selectedDayAuditions.map(audition => {
+                    const campusName = campuses.find((c) => c.id === audition.campus_id)?.name || "Campus TBD";
+                    const stageLabel = audition.stage === "pre_audition" ? "Pre-Audition" : "Audition";
+                    return <div key={audition.id} className="flex items-start justify-between rounded-md border-l-4 border-amber-500 bg-muted/50 p-3">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-foreground">
+                            {audition.profiles?.full_name || "Audition Candidate"} {stageLabel}
+                          </h3>
+                          <p className="mt-1 text-sm text-muted-foreground">{campusName} • {stageLabel}</p>
+                          {(audition.start_time || audition.end_time) && <p className="mt-1 text-xs text-primary">
+                              {formatTime(audition.start_time)}
+                              {audition.start_time && audition.end_time && " – "}
+                              {formatTime(audition.end_time)}
+                            </p>}
+                        </div>
+                        <Badge variant="secondary">Audition</Badge>
+                      </div>;
+                  })}
                   {selectedDayServices.map(service => {
                     const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                     return <div key={service.occurrence_key} className="flex items-start justify-between rounded-md border-l-4 border-sky-500 bg-muted/50 p-3">
