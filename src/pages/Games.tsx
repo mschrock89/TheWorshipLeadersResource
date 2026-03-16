@@ -1,6 +1,8 @@
+import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, CircleDot, Gamepad2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { haptic } from "@/lib/haptics";
 
 const gameActions = [
   {
@@ -36,6 +38,16 @@ const gameActions = [
 ];
 
 export default function Games() {
+  const handleGameLaunch = () => {
+    haptic("light");
+  };
+
+  const handleGameLaunchKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      handleGameLaunch();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -63,7 +75,7 @@ export default function Games() {
                 </p>
               </div>
               <div className="mt-auto pt-1">
-                <Link to={action.to}>
+                <Link to={action.to} onKeyDown={handleGameLaunchKeyDown} onPointerDown={handleGameLaunch}>
                   <Button className={`gap-2 h-11 px-5 text-base sm:h-12 sm:px-6 sm:text-lg ${action.buttonClassName}`}>
                     <action.icon className="h-4 w-4" />
                     {action.actionLabel}
