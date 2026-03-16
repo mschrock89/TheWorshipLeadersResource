@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useProfiles, useUpcomingBirthdays, useUpcomingAnniversaries } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses, useProfilesWithCampuses } from "@/hooks/useCampuses";
 import { QuickStats } from "@/components/dashboard/QuickStats";
@@ -14,7 +15,8 @@ import { PushNotificationBanner } from "@/components/settings/PushNotificationBa
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList } from "lucide-react";
+import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 export default function Dashboard() {
   const {
     user,
@@ -31,6 +33,7 @@ export default function Dashboard() {
     data: profiles = [],
     isLoading: profilesLoading
   } = useProfiles();
+  const { data: roles = [] } = useUserRoles(user?.id);
   const {
     data: upcomingBirthdays = [],
     isLoading: birthdaysLoading
@@ -86,6 +89,7 @@ export default function Dashboard() {
 
   // Check if user is a regular volunteer (not a leader/admin)
   const isVolunteer = !canManageTeam;
+  const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
   const quickActions = [
     {
       title: "Set Builder",
@@ -106,6 +110,16 @@ export default function Dashboard() {
       cardClassName: "border-emerald-400/35 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(6,78,59,0.28))] text-white",
       iconClassName: "border-emerald-300/25 bg-emerald-400/15 text-emerald-100",
       buttonClassName: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
+    },
+    {
+      title: "Weekend Rundown",
+      description: "Capture post-service notes, flag what went sideways, and log future planning cues.",
+      to: "/weekend-rundown",
+      icon: ClipboardList,
+      actionLabel: "Open Weekend Rundown",
+      cardClassName: "border-fuchsia-400/35 bg-[linear-gradient(145deg,rgba(217,70,239,0.18),rgba(88,28,135,0.3))] text-white",
+      iconClassName: "border-fuchsia-300/25 bg-fuchsia-400/15 text-fuchsia-100",
+      buttonClassName: "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200",
     },
     {
       title: "Drum Tech",
@@ -141,6 +155,9 @@ export default function Dashboard() {
       : []),
   ];
   const visibleQuickActions = quickActions.filter((action) => {
+    if (action.to === "/weekend-rundown") {
+      return canOpenWeekendRundown;
+    }
     if (action.to === "/drum-tech") {
       return drumTechAccess.hasAnyAccess || canManageTeam;
     }

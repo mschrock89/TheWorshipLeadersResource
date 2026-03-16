@@ -67,7 +67,7 @@ export function QuickStats({ profiles, isLoading }: QuickStatsProps) {
       color: "bg-accent text-accent-foreground",
     },
     {
-      label: "Tech Team",
+      label: "Production and Video",
       value: techCount,
       icon: Wrench,
       color: "bg-muted text-muted-foreground",
