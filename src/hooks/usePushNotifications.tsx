@@ -3,8 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-const FALLBACK_VAPID_PUBLIC_KEY = "BNoojURZExaEDa__wxop-vbJTADNuajws8p50EoWcsIwvAE9XhQMTk6Oki7YKYgWQEGZPaoQiEbZ1IpmEkiq3nk";
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || FALLBACK_VAPID_PUBLIC_KEY;
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -18,21 +17,90 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
+function isIosDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
+function isStandaloneDisplayMode() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+function uint8ArraysEqual(a: Uint8Array, b: Uint8Array) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [supportMessage, setSupportMessage] = useState<string | null>(null);
+
+  const ensureRegistration = useCallback(async () => {
+    return navigator.serviceWorker.register("/sw.js");
+  }, []);
+
+  const saveSubscription = useCallback(async (subscription: PushSubscription) => {
+    if (!user) return false;
+
+    const subscriptionJson = subscription.toJSON();
+
+    const { error } = await supabase.from("push_subscriptions").upsert({
+      user_id: user.id,
+      endpoint: subscription.endpoint,
+      p256dh: subscriptionJson.keys?.p256dh || "",
+      auth: subscriptionJson.keys?.auth || "",
+    }, {
+      onConflict: "user_id,endpoint",
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return true;
+  }, [user]);
 
   // Check if push notifications are supported
   useEffect(() => {
-    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const hasCoreSupport = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    const secureContextSupported = window.isSecureContext;
+    const requiresStandaloneInstall = isIosDevice() && !isStandaloneDisplayMode();
+    const hasVapidKey = Boolean(VAPID_PUBLIC_KEY);
+    const supported = hasCoreSupport && secureContextSupported && !requiresStandaloneInstall && hasVapidKey;
+
     setIsSupported(supported);
-    
-    if (supported) {
+
+    if (supported || hasCoreSupport) {
       setPermission(Notification.permission);
     }
+
+    if (!hasCoreSupport) {
+      setSupportMessage("This browser does not support push notifications.");
+      return;
+    }
+
+    if (!secureContextSupported) {
+      setSupportMessage("Push notifications require HTTPS.");
+      return;
+    }
+
+    if (requiresStandaloneInstall) {
+      setSupportMessage("On iPhone and iPad, install the app to your Home Screen to enable push notifications.");
+      return;
+    }
+
+    if (!hasVapidKey) {
+      setSupportMessage("Push notifications are not configured yet.");
+      return;
+    }
+
+    setSupportMessage(null);
   }, []);
 
   // Register service worker and check subscription status
@@ -44,17 +112,28 @@ export function usePushNotifications() {
 
     async function checkSubscription() {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js");
+        const registration = await ensureRegistration();
         const subscription = await registration.pushManager.getSubscription();
         
         if (subscription) {
           // Verify subscription exists in database
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from("push_subscriptions")
             .select("id")
             .eq("user_id", user!.id)
             .eq("endpoint", subscription.endpoint)
             .maybeSingle();
+
+          if (error) {
+            throw error;
+          }
+
+          if (!data) {
+            // Self-heal if the browser has an active subscription but the database row is missing.
+            await saveSubscription(subscription);
+            setIsSubscribed(true);
+            return;
+          }
           
           setIsSubscribed(!!data);
         } else {
@@ -68,11 +147,11 @@ export function usePushNotifications() {
     }
 
     checkSubscription();
-  }, [isSupported, user]);
+  }, [ensureRegistration, isSupported, saveSubscription, user]);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) {
-      toast.error("Push notifications are not supported in this browser");
+      toast.error(supportMessage || "Push notifications are not supported in this browser");
       return false;
     }
     if (!user) {
@@ -97,40 +176,46 @@ export function usePushNotifications() {
         return false;
       }
 
-      // Get or register service worker
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await ensureRegistration();
 
-      // Subscribe to push
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+      let subscription = await registration.pushManager.getSubscription();
 
-      const subscriptionJson = subscription.toJSON();
+      if (subscription) {
+        const currentServerKey = subscription.options.applicationServerKey;
+        const expectedServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
 
-      // Save subscription to database
-      const { error } = await supabase.from("push_subscriptions").upsert({
-        user_id: user.id,
-        endpoint: subscription.endpoint,
-        p256dh: subscriptionJson.keys?.p256dh || "",
-        auth: subscriptionJson.keys?.auth || "",
-      }, {
-        onConflict: "user_id,endpoint",
-      });
+        if (currentServerKey && !uint8ArraysEqual(new Uint8Array(currentServerKey), expectedServerKey)) {
+          await subscription.unsubscribe();
+          await supabase
+            .from("push_subscriptions")
+            .delete()
+            .eq("user_id", user.id)
+            .eq("endpoint", subscription.endpoint);
+          subscription = null;
+        }
+      }
 
-      if (error) throw error;
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+
+      await saveSubscription(subscription);
 
       setIsSubscribed(true);
       toast.success("Push notifications enabled!");
       return true;
     } catch (error) {
       console.error("Error subscribing to push:", error);
-      toast.error("Failed to enable push notifications");
+      const message = error instanceof Error ? error.message : "Failed to enable push notifications";
+      toast.error(message);
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported, user]);
+  }, [ensureRegistration, isSupported, saveSubscription, supportMessage, user]);
 
   const unsubscribe = useCallback(async () => {
     if (!user) return false;
@@ -138,7 +223,7 @@ export function usePushNotifications() {
     try {
       setIsLoading(true);
 
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await ensureRegistration();
       const subscription = await registration.pushManager.getSubscription();
 
       if (subscription) {
@@ -162,13 +247,14 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [ensureRegistration, user]);
 
   return {
     isSupported,
     isSubscribed,
     isLoading,
     permission,
+    supportMessage,
     subscribe,
     unsubscribe,
   };

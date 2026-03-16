@@ -7,7 +7,7 @@ const STORAGE_KEY = "push-notification-banner-dismissed";
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export function PushNotificationBanner() {
-  const { isSupported, isSubscribed, isLoading, permission, subscribe } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading, permission, supportMessage, subscribe } = usePushNotifications();
   const [isDismissed, setIsDismissed] = useState(true); // Start hidden to prevent flash
 
   useEffect(() => {

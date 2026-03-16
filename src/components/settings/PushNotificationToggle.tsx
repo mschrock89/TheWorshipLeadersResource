@@ -7,7 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export function PushNotificationToggle() {
-  const { isSupported, isSubscribed, isLoading, permission, subscribe, unsubscribe } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading, permission, supportMessage, subscribe, unsubscribe } = usePushNotifications();
   const [isResyncing, setIsResyncing] = useState(false);
 
   if (!isSupported) {
@@ -17,7 +17,7 @@ export function PushNotificationToggle() {
         <div>
           <p className="text-sm font-medium">Push Notifications</p>
           <p className="text-xs text-muted-foreground">
-            Not supported in this browser
+            {supportMessage || "Not supported in this browser"}
           </p>
         </div>
       </div>

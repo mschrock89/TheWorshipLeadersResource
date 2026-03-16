@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export function TestPushNotification() {
   const { user } = useAuth();
-  const { isSupported } = usePushNotifications();
+  const { isSupported, supportMessage } = usePushNotifications();
   const { data: userRole } = useUserRole(user?.id);
   const [isSending, setIsSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -52,6 +52,11 @@ export function TestPushNotification() {
       }
 
       if (!data?.sent) {
+        if (data?.failed) {
+          toast.error("Push delivery failed. Try re-syncing your push subscription and test again.");
+          return;
+        }
+
         toast.error("No active push subscription found for your account on this device.");
         return;
       }
@@ -81,7 +86,7 @@ export function TestPushNotification() {
           <div>
             <p className="text-sm font-medium">Test Push Notifications</p>
             <p className="text-xs text-muted-foreground">
-              Push notifications not supported in this browser
+              {supportMessage || "Push notifications not supported in this browser"}
             </p>
           </div>
         </div>
