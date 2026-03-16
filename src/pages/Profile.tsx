@@ -199,6 +199,48 @@ export default function Profile() {
     );
   };
 
+  const renderMinistryPositionGroup = (
+    label: string,
+    ministryType: string,
+    campusId: string,
+    ministryPositions: string[],
+    positionOptions: readonly string[],
+  ) => (
+    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[72px_minmax(0,1fr)] sm:gap-3">
+      <span className="text-xs text-muted-foreground sm:pt-1">{label}</span>
+      <div className="flex flex-wrap gap-x-4 gap-y-3">
+        {positionOptions.map((pos) => {
+          const isPositionActive = ministryPositions.includes(pos);
+
+          return (
+            <label
+              key={pos}
+              className="flex min-w-[120px] items-start gap-2 text-xs leading-tight sm:min-w-0"
+            >
+              <Checkbox
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                checked={isPositionActive}
+                onCheckedChange={() => {
+                  if (profileId) {
+                    toggleCampusMinistryPosition.mutate({
+                      userId: profileId,
+                      campusId,
+                      ministryType,
+                      position: pos,
+                      isActive: isPositionActive,
+                    });
+                  }
+                }}
+                disabled={toggleCampusMinistryPosition.isPending}
+              />
+              <span>{POSITION_LABELS[pos]}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -1053,245 +1095,74 @@ export default function Profile() {
                                 const showVideoPositions = ministryType === 'video' || ministryType === 'weekend_team';
                                 
                                 return (
-                                  <div key={ministryType} className="rounded-md bg-muted/30 p-3 space-y-2">
+                                  <div key={ministryType} className="space-y-3 rounded-md bg-muted/30 p-3 sm:p-4">
                                     <p className="text-sm font-medium flex items-center gap-1.5">
                                       <span className={`w-2 h-2 rounded-full ${ministry?.color || 'bg-muted'}`} />
                                       {ministry?.label || ministryType}
                                     </p>
                                     
                                     {canManageAssignments ? (
-                                      <div className="space-y-2">
-                                        <div className="flex flex-wrap gap-2">
-                                          <span className="text-xs text-muted-foreground w-16 pt-0.5">Support:</span>
-                                          {['drum_tech'].map((pos) => {
-                                            const isPositionActive = ministryPositions.includes(pos);
-                                            return (
-                                              <label
-                                                key={pos}
-                                                className="flex items-center gap-1.5 cursor-pointer text-xs"
-                                              >
-                                                <Checkbox
-                                                  className="h-3.5 w-3.5"
-                                                  checked={isPositionActive}
-                                                  onCheckedChange={() => {
-                                                    if (profileId) {
-                                                      toggleCampusMinistryPosition.mutate({
-                                                        userId: profileId,
-                                                        campusId: campus.id,
-                                                        ministryType,
-                                                        position: pos,
-                                                        isActive: isPositionActive,
-                                                      });
-                                                    }
-                                                  }}
-                                                  disabled={toggleCampusMinistryPosition.isPending}
-                                                />
-                                                <span>{POSITION_LABELS[pos]}</span>
-                                              </label>
-                                            );
-                                          })}
-                                        </div>
+                                      <div className="space-y-3">
+                                        {renderMinistryPositionGroup(
+                                          "Support:",
+                                          ministryType,
+                                          campus.id,
+                                          ministryPositions,
+                                          ["drum_tech"],
+                                        )}
 
                                         {showSpeakerPositions && (
-                                          <div className="flex flex-wrap gap-2">
-                                            <span className="text-xs text-muted-foreground w-16 pt-0.5">Speaker:</span>
-                                            {POSITION_CATEGORIES.speaker.map((pos) => {
-                                              const isPositionActive = ministryPositions.includes(pos);
-                                              return (
-                                                <label
-                                                  key={pos}
-                                                  className="flex items-center gap-1.5 cursor-pointer text-xs"
-                                                >
-                                                  <Checkbox
-                                                    className="h-3.5 w-3.5"
-                                                    checked={isPositionActive}
-                                                    onCheckedChange={() => {
-                                                      if (profileId) {
-                                                        toggleCampusMinistryPosition.mutate({
-                                                          userId: profileId,
-                                                          campusId: campus.id,
-                                                          ministryType,
-                                                          position: pos,
-                                                          isActive: isPositionActive,
-                                                        });
-                                                      }
-                                                    }}
-                                                    disabled={toggleCampusMinistryPosition.isPending}
-                                                  />
-                                                  <span>{POSITION_LABELS[pos]}</span>
-                                                </label>
-                                              );
-                                            })}
-                                          </div>
+                                          renderMinistryPositionGroup(
+                                            "Speaker:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.speaker,
+                                          )
                                         )}
 
                                         {/* Vocals */}
                                         {showMusicPositions && (
-                                          <div className="flex flex-wrap gap-2">
-                                            <span className="text-xs text-muted-foreground w-16 pt-0.5">Vocals:</span>
-                                            {POSITION_CATEGORIES.vocals.map((pos) => {
-                                              const isPositionActive = ministryPositions.includes(pos);
-                                              return (
-                                                <label
-                                                  key={pos}
-                                                  className="flex items-center gap-1.5 cursor-pointer text-xs"
-                                                >
-                                                  <Checkbox
-                                                    className="h-3.5 w-3.5"
-                                                    checked={isPositionActive}
-                                                    onCheckedChange={() => {
-                                                      if (profileId) {
-                                                        toggleCampusMinistryPosition.mutate({
-                                                          userId: profileId,
-                                                          campusId: campus.id,
-                                                          ministryType,
-                                                          position: pos,
-                                                          isActive: isPositionActive,
-                                                        });
-                                                      }
-                                                    }}
-                                                    disabled={toggleCampusMinistryPosition.isPending}
-                                                  />
-                                                  <span>{POSITION_LABELS[pos]}</span>
-                                                </label>
-                                              );
-                                            })}
-                                          </div>
+                                          renderMinistryPositionGroup(
+                                            "Vocals:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.vocals,
+                                          )
                                         )}
                                         
                                         {/* Instruments */}
                                         {showMusicPositions && (
-                                          <div className="flex gap-2">
-                                            <span className="text-xs text-muted-foreground w-16 pt-0.5 shrink-0">Band:</span>
-                                            <div className="flex-1 space-y-2">
-                                              <div className="grid grid-cols-5 gap-2">
-                                                {bandTopRowPositions.map((pos) => {
-                                                  const isPositionActive = ministryPositions.includes(pos);
-                                                  return (
-                                                    <label
-                                                      key={pos}
-                                                      className="flex items-center gap-1.5 cursor-pointer text-xs min-w-0"
-                                                    >
-                                                      <Checkbox
-                                                        className="h-3.5 w-3.5"
-                                                        checked={isPositionActive}
-                                                        onCheckedChange={() => {
-                                                          if (profileId) {
-                                                            toggleCampusMinistryPosition.mutate({
-                                                              userId: profileId,
-                                                              campusId: campus.id,
-                                                              ministryType,
-                                                              position: pos,
-                                                              isActive: isPositionActive,
-                                                            });
-                                                          }
-                                                        }}
-                                                        disabled={toggleCampusMinistryPosition.isPending}
-                                                      />
-                                                      <span>{POSITION_LABELS[pos]}</span>
-                                                    </label>
-                                                  );
-                                                })}
-                                              </div>
-                                              <div className="grid grid-cols-5 gap-2">
-                                                {bandBottomRowPositions.map((pos) => {
-                                                  const isPositionActive = ministryPositions.includes(pos);
-                                                  return (
-                                                    <label
-                                                      key={pos}
-                                                      className="flex items-center gap-1.5 cursor-pointer text-xs min-w-0"
-                                                    >
-                                                      <Checkbox
-                                                        className="h-3.5 w-3.5"
-                                                        checked={isPositionActive}
-                                                        onCheckedChange={() => {
-                                                          if (profileId) {
-                                                            toggleCampusMinistryPosition.mutate({
-                                                              userId: profileId,
-                                                              campusId: campus.id,
-                                                              ministryType,
-                                                              position: pos,
-                                                              isActive: isPositionActive,
-                                                            });
-                                                          }
-                                                        }}
-                                                        disabled={toggleCampusMinistryPosition.isPending}
-                                                      />
-                                                      <span>{POSITION_LABELS[pos]}</span>
-                                                    </label>
-                                                  );
-                                                })}
-                                              </div>
-                                            </div>
-                                          </div>
+                                          renderMinistryPositionGroup(
+                                            "Band:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            [...bandTopRowPositions, ...bandBottomRowPositions],
+                                          )
                                         )}
                                         
                                         {/* Production */}
                                         {showProductionPositions && (
-                                          <div className="flex flex-wrap gap-2">
-                                            <span className="text-xs text-muted-foreground w-16 pt-0.5">Audio:</span>
-                                            {POSITION_CATEGORIES.audio.map((pos) => {
-                                              const isPositionActive = ministryPositions.includes(pos);
-                                              return (
-                                                <label
-                                                  key={pos}
-                                                  className="flex items-center gap-1.5 cursor-pointer text-xs"
-                                                >
-                                                  <Checkbox
-                                                    className="h-3.5 w-3.5"
-                                                    checked={isPositionActive}
-                                                    onCheckedChange={() => {
-                                                      if (profileId) {
-                                                        toggleCampusMinistryPosition.mutate({
-                                                          userId: profileId,
-                                                          campusId: campus.id,
-                                                          ministryType,
-                                                          position: pos,
-                                                          isActive: isPositionActive,
-                                                        });
-                                                      }
-                                                    }}
-                                                    disabled={toggleCampusMinistryPosition.isPending}
-                                                  />
-                                                  <span>{POSITION_LABELS[pos]}</span>
-                                                </label>
-                                              );
-                                            })}
-                                          </div>
+                                          renderMinistryPositionGroup(
+                                            "Audio:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.audio,
+                                          )
                                         )}
                                         
                                         {/* Video */}
                                         {showVideoPositions && (
-                                          <div className="flex flex-wrap gap-2">
-                                            <span className="text-xs text-muted-foreground w-16 pt-0.5">Video:</span>
-                                            {POSITION_CATEGORIES.video.map((pos) => {
-                                              const isPositionActive = ministryPositions.includes(pos);
-                                              return (
-                                                <label
-                                                  key={pos}
-                                                  className="flex items-center gap-1.5 cursor-pointer text-xs"
-                                                >
-                                                  <Checkbox
-                                                    className="h-3.5 w-3.5"
-                                                    checked={isPositionActive}
-                                                    onCheckedChange={() => {
-                                                      if (profileId) {
-                                                        toggleCampusMinistryPosition.mutate({
-                                                          userId: profileId,
-                                                          campusId: campus.id,
-                                                          ministryType,
-                                                          position: pos,
-                                                          isActive: isPositionActive,
-                                                        });
-                                                      }
-                                                    }}
-                                                    disabled={toggleCampusMinistryPosition.isPending}
-                                                  />
-                                                  <span>{POSITION_LABELS[pos]}</span>
-                                                </label>
-                                              );
-                                            })}
-                                          </div>
+                                          renderMinistryPositionGroup(
+                                            "Video:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.video,
+                                          )
                                         )}
                                       </div>
                                     ) : (
