@@ -20,6 +20,7 @@ interface SongAvailabilityListProps {
   isLoading?: boolean;
   allowSchedulingOverrides?: boolean;
   referenceDate?: Date;
+  goodFitHighlights?: Record<string, string[]>;
 }
 
 type FilterType = 'all' | 'available' | 'new-songs' | 'deep-cuts';
@@ -32,6 +33,7 @@ export function SongAvailabilityList({
   isLoading,
   allowSchedulingOverrides = false,
   referenceDate = new Date(),
+  goodFitHighlights = {},
 }: SongAvailabilityListProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -222,6 +224,8 @@ export function SongAvailabilityList({
               const isAdded = addedSongIds.has(item.song.id);
               const isScheduledOnActiveSet = publishedSetlistSongIds.has(item.song.id);
               const isTooRecentLocked = item.status === 'too-recent';
+              const goodFitNames = goodFitHighlights[item.song.id] || [];
+              const hasGoodFitMatch = goodFitNames.length > 0;
               const isDisabled =
                 isAdded ||
                 item.status === 'upcoming' ||
@@ -244,6 +248,8 @@ export function SongAvailabilityList({
                       ? 'bg-muted/50 opacity-60'
                       : item.status === 'too-recent'
                       ? 'bg-red-500/5 border-red-500/10'
+                      : hasGoodFitMatch
+                      ? 'border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10'
                       : 'bg-card hover:bg-accent/50'
                   )}
                 >
@@ -264,10 +270,22 @@ export function SongAvailabilityList({
                   
                   {/* Column 2: Song title + optional last played date */}
                   <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{item.song.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm truncate">{item.song.title}</p>
+                      {hasGoodFitMatch && (
+                        <Badge variant="outline" className="h-5 border-emerald-500/50 text-[10px] text-emerald-600">
+                          Good Fit
+                        </Badge>
+                      )}
+                    </div>
                     {filter === 'deep-cuts' && weeksInfo.formattedDate && (
                       <p className="text-xs text-muted-foreground truncate">
                         Last played: {weeksInfo.formattedDate}
+                      </p>
+                    )}
+                    {hasGoodFitMatch && (
+                      <p className="text-xs text-emerald-600 truncate">
+                        Marked good fit for: {goodFitNames.join(", ")}
                       </p>
                     )}
                     {item.status === 'warning' && (

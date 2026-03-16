@@ -25,6 +25,7 @@ import { PublishSetlistDialog } from "@/components/set-planner/PublishSetlistDia
 import { useSongAvailability, useSaveDraftSet, useExistingSet, usePublishedSetlistSongs, SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledVocalists } from "@/hooks/useScheduledVocalists";
 import { useAddCustomServiceAssignment, useCustomServiceAssignments, useCustomServiceCampusMembers, useCustomServiceOccurrences, useRemoveCustomServiceAssignment } from "@/hooks/useCustomServices";
+import { useWeekendRundownGoodFitHighlights } from "@/hooks/useWeekendRundown";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
@@ -605,6 +606,14 @@ export default function SetPlanner() {
   }, [selectedCustomService, scheduledVocalists, customServiceAssignments]);
 
   const canOverrideSongRestrictions = isAdmin && !!selectedCustomService;
+  const { data: goodFitHighlights = {} } = useWeekendRundownGoodFitHighlights(
+    user?.id,
+    effectiveCampusId || null,
+    effectiveVocalists.map((vocalist) => ({
+      userId: vocalist.userId,
+      name: vocalist.name,
+    })),
+  );
 
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -1424,6 +1433,7 @@ export default function SetPlanner() {
                 isLoading={isLoading}
                 allowSchedulingOverrides={canOverrideSongRestrictions}
                 referenceDate={selectedDate}
+                goodFitHighlights={goodFitHighlights}
               />
             </CardContent>
           </Card>

@@ -29,6 +29,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { isAuditionCandidateRole } from "@/lib/access";
+import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import worshipImage from "@/assets/worship-night.jpg";
 import emLogo from "@/assets/em-logo-transparent-new.png";
 
@@ -39,6 +40,7 @@ export default function Home() {
   const { data: isApprover } = useIsApprover();
   const { data: pendingApprovalCount } = usePendingApprovalCount();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
+  const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
 
   const getInitials = () => {
     if (profile?.full_name) {
@@ -129,6 +131,14 @@ export default function Home() {
                       <Link to="/drum-tech" className="flex items-center gap-2">
                         <Wrench className="h-4 w-4" />
                         Drum Tech
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && canOpenWeekendRundown && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/weekend-rundown" className="flex items-center gap-2">
+                        <ClipboardList className="h-4 w-4" />
+                        Weekend Rundown
                       </Link>
                     </DropdownMenuItem>
                   )}

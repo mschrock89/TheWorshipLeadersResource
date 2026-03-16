@@ -40,6 +40,7 @@ import Snake from "./pages/Snake";
 import Pong from "./pages/Pong";
 import Galaga from "./pages/Galaga";
 import Games from "./pages/Games";
+import WeekendRundown from "./pages/WeekendRundown";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
@@ -246,6 +247,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <ProtectedLayout>
               <AnimatedPage><SetPlanner /></AnimatedPage>
+            </ProtectedLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/weekend-rundown"
+        element={
+          <ProtectedRoute>
+            <ProtectedLayout>
+              <AnimatedPage><WeekendRundown /></AnimatedPage>
             </ProtectedLayout>
           </ProtectedRoute>
         }

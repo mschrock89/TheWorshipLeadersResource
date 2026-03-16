@@ -2440,6 +2440,151 @@ export type Database = {
           },
         ]
       }
+      weekend_rundown_song_feedback: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          rundown_id: string
+          song_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          rundown_id: string
+          song_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          rundown_id?: string
+          song_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekend_rundown_song_feedback_rundown_id_fkey"
+            columns: ["rundown_id"]
+            isOneToOne: false
+            referencedRelation: "weekend_rundowns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekend_rundown_song_feedback_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "songs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekend_rundown_vocal_feedback: {
+        Row: {
+          created_at: string
+          fit_label: string | null
+          id: string
+          notes: string | null
+          rundown_id: string
+          song_id: string
+          updated_at: string
+          vocalist_id: string
+        }
+        Insert: {
+          created_at?: string
+          fit_label?: string | null
+          id?: string
+          notes?: string | null
+          rundown_id: string
+          song_id: string
+          updated_at?: string
+          vocalist_id: string
+        }
+        Update: {
+          created_at?: string
+          fit_label?: string | null
+          id?: string
+          notes?: string | null
+          rundown_id?: string
+          song_id?: string
+          updated_at?: string
+          vocalist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekend_rundown_vocal_feedback_rundown_id_fkey"
+            columns: ["rundown_id"]
+            isOneToOne: false
+            referencedRelation: "weekend_rundowns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekend_rundown_vocal_feedback_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "songs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekend_rundown_vocal_feedback_vocalist_id_fkey"
+            columns: ["vocalist_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekend_rundowns: {
+        Row: {
+          campus_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          overall_status: string
+          updated_at: string
+          user_id: string
+          weekend_date: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          overall_status: string
+          updated_at?: string
+          user_id: string
+          weekend_date: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          overall_status?: string
+          updated_at?: string
+          user_id?: string
+          weekend_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekend_rundowns_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekend_rundowns_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worship_teams: {
         Row: {
           color: string
