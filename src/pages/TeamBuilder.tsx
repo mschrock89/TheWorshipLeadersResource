@@ -58,7 +58,7 @@ export default function TeamBuilder() {
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
-  const [selectedMinistryType, setSelectedMinistryType] = useState<string>("weekend");
+  const [selectedMinistryType, setSelectedMinistryType] = useState<string>("weekend_team");
   const [showAutoBuilder, setShowAutoBuilder] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [assigningSlot, setAssigningSlot] = useState<{
@@ -120,6 +120,13 @@ export default function TeamBuilder() {
       setSelectedPeriodId(null);
     }
   }, [periods]);
+
+  // Normalize legacy weekend filter to the combined Weekend Worship view used by Team Builder.
+  useEffect(() => {
+    if (selectedMinistryType === "weekend") {
+      setSelectedMinistryType("weekend_team");
+    }
+  }, [selectedMinistryType]);
 
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
   const selectedCampus = campuses.find(c => c.id === selectedCampusId);

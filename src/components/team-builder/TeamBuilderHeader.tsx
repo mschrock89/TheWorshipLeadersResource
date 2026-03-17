@@ -122,7 +122,7 @@ export function TeamBuilderHeader({
             <SelectValue placeholder="Select ministry" />
           </SelectTrigger>
           <SelectContent>
-            {MINISTRY_TYPES.map(ministry => (
+            {MINISTRY_TYPES.filter((ministry) => !("hidden" in ministry && ministry.hidden)).map(ministry => (
               <SelectItem key={ministry.value} value={ministry.value}>
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${ministry.color}`} />
