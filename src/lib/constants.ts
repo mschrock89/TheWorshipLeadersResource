@@ -205,7 +205,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Experience Music
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Encounter
-  eon: ["Team 1", "Team 2"], // 2 teams for EON (smaller ministry)
+  eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // EON uses the full 4-team rotation
   eon_weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for EON Weekend
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
