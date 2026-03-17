@@ -21,6 +21,7 @@ interface SongAvailabilityListProps {
   allowSchedulingOverrides?: boolean;
   referenceDate?: Date;
   goodFitHighlights?: Record<string, string[]>;
+  readOnly?: boolean;
 }
 
 type FilterType = 'all' | 'available' | 'new-songs' | 'deep-cuts';
@@ -34,6 +35,7 @@ export function SongAvailabilityList({
   allowSchedulingOverrides = false,
   referenceDate = new Date(),
   goodFitHighlights = {},
+  readOnly = false,
 }: SongAvailabilityListProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
@@ -328,7 +330,7 @@ export function SongAvailabilityList({
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => onAddSong(item)}
-                      disabled={isDisabled}
+                      disabled={isDisabled || readOnly}
                     >
                       <Plus className={cn('h-4 w-4', isAdded && 'opacity-30')} />
                     </Button>

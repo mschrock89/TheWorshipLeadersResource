@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
+import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 
 export interface SetlistConfirmation {
@@ -519,7 +520,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
       
-      const { data: allSongs } = await supabase
+      let allSongs: any[] | null = null;
+      const baseSongIds = setlistIds.length > 0 ? setlistIds : ["00000000-0000-0000-0000-000000000000"];
+      const primarySongsQuery = await supabase
         .from("draft_set_songs")
         .select(`
           id,
@@ -527,11 +530,33 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           song_id,
           sequence_order,
           song_key,
+          youtube_url,
           vocalist_id,
           songs(title, author)
         `)
-        .in("draft_set_id", setlistIds.length > 0 ? setlistIds : ["00000000-0000-0000-0000-000000000000"])
+        .in("draft_set_id", baseSongIds)
         .order("sequence_order");
+
+      if (primarySongsQuery.error && isMissingYoutubeUrlColumnError(primarySongsQuery.error)) {
+        const legacySongsQuery = await supabase
+          .from("draft_set_songs")
+          .select(`
+            id,
+            draft_set_id,
+            song_id,
+            sequence_order,
+            song_key,
+            vocalist_id,
+            songs(title, author)
+          `)
+          .in("draft_set_id", baseSongIds)
+          .order("sequence_order");
+        if (legacySongsQuery.error) throw legacySongsQuery.error;
+        allSongs = legacySongsQuery.data;
+      } else {
+        if (primarySongsQuery.error) throw primarySongsQuery.error;
+        allSongs = primarySongsQuery.data;
+      }
 
       // Fetch multi-vocalist assignments from junction table
       const draftSetSongIds = (allSongs || []).map(s => s.id);
@@ -612,6 +637,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
               song_id: s.song_id,
               sequence_order: s.sequence_order,
               song_key: s.song_key || null,
+              youtube_url: s.youtube_url || null,
               vocalist: resolvedVocalists[0] || null,
               vocalists: resolvedVocalists,
               song: s.songs as { title: string; author: string | null } | null,

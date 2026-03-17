@@ -4,6 +4,7 @@ import { useSongsWithStats, SongWithStats } from "./useSongs";
 import { useMemo } from "react";
 import { useToast } from "./use-toast";
 import { format } from "date-fns";
+import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -39,6 +40,7 @@ export interface DraftSetSong {
   song_id: string;
   sequence_order: number;
   song_key: string | null;
+  youtube_url?: string | null;
   created_at: string;
   song?: SongWithStats;
 }
@@ -232,6 +234,27 @@ export function useExistingSet(
     queryFn: async () => {
       if (!campusId || !planDate) return null;
 
+      const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
+      const lookupDates = [planDate];
+      const planDateValue = new Date(`${planDate}T00:00:00`);
+      const dayOfWeek = planDateValue.getDay();
+      const isSaturday = dayOfWeek === 6;
+      const isSunday = dayOfWeek === 0;
+
+      if (isSaturday) {
+        const sunday = new Date(planDateValue);
+        sunday.setDate(sunday.getDate() + 1);
+        lookupDates.push(sunday.toISOString().split("T")[0]);
+      } else if (isSunday) {
+        const saturday = new Date(planDateValue);
+        saturday.setDate(saturday.getDate() - 1);
+        lookupDates.push(saturday.toISOString().split("T")[0]);
+      }
+
+      const ministryLookupValues = weekendAliases.includes(ministryType)
+        ? weekendAliases
+        : [ministryType];
+
       const baseSelect = `
         *,
         draft_set_songs(
@@ -239,19 +262,40 @@ export function useExistingSet(
           song_id,
           sequence_order,
           song_key,
-          vocalist_id
+          youtube_url,
+          vocalist_id,
+          songs(
+            title,
+            author,
+            bpm
+          )
+        )
+      `;
+      const legacyBaseSelect = `
+        *,
+        draft_set_songs(
+          id,
+          song_id,
+          sequence_order,
+          song_key,
+          vocalist_id,
+          songs(
+            title,
+            author,
+            bpm
+          )
         )
       `;
 
-      const runLookup = async (options: { includeMinistry: boolean }) => {
+      const runLookup = async (options: { includeMinistry: boolean; includeYoutubeUrl: boolean }) => {
         let query = supabase
           .from('draft_sets')
-          .select(baseSelect)
+          .select(options.includeYoutubeUrl ? baseSelect : legacyBaseSelect)
           .eq('campus_id', campusId)
-          .eq('plan_date', planDate);
+          .in('plan_date', lookupDates);
 
         if (options.includeMinistry) {
-          query = query.eq('ministry_type', ministryType);
+          query = query.in('ministry_type', ministryLookupValues);
         }
 
         if (customServiceId) {
@@ -262,20 +306,62 @@ export function useExistingSet(
 
         const { data, error } = await query
           .order('published_at', { ascending: false })
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('updated_at', { ascending: false });
 
         if (error) throw error;
-        return data;
+
+        const statusPriority: Record<string, number> = {
+          published: 0,
+          pending_approval: 1,
+          draft: 2,
+        };
+
+        const rankedRows = [...(data || [])].sort((a: any, b: any) => {
+          const aStatus = statusPriority[a.status] ?? 99;
+          const bStatus = statusPriority[b.status] ?? 99;
+          if (aStatus !== bStatus) return aStatus - bStatus;
+
+          const aDateScore = a.plan_date === planDate ? 0 : 1;
+          const bDateScore = b.plan_date === planDate ? 0 : 1;
+          if (aDateScore !== bDateScore) return aDateScore - bDateScore;
+
+          const aMinistryScore = a.ministry_type === ministryType ? 0 : 1;
+          const bMinistryScore = b.ministry_type === ministryType ? 0 : 1;
+          if (aMinistryScore !== bMinistryScore) return aMinistryScore - bMinistryScore;
+
+          const aSongCount = (a.draft_set_songs || []).length;
+          const bSongCount = (b.draft_set_songs || []).length;
+          if (aSongCount !== bSongCount) return bSongCount - aSongCount;
+
+          const aPublishedAt = a.published_at ? new Date(a.published_at).getTime() : 0;
+          const bPublishedAt = b.published_at ? new Date(b.published_at).getTime() : 0;
+          if (aPublishedAt !== bPublishedAt) return bPublishedAt - aPublishedAt;
+
+          const aUpdatedAt = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+          const bUpdatedAt = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+          return bUpdatedAt - aUpdatedAt;
+        });
+
+        return rankedRows[0] ?? null;
       };
 
       // Primary lookup: strict ministry match.
-      let data = await runLookup({ includeMinistry: true });
+      let data = null;
+      try {
+        data = await runLookup({ includeMinistry: true, includeYoutubeUrl: true });
+      } catch (error) {
+        if (!isMissingYoutubeUrlColumnError(error)) throw error;
+        data = await runLookup({ includeMinistry: true, includeYoutubeUrl: false });
+      }
 
       // Fallback for legacy custom-service sets (e.g. old Prayer Night saved as weekend).
       if (!data && customServiceId) {
-        data = await runLookup({ includeMinistry: false });
+        try {
+          data = await runLookup({ includeMinistry: false, includeYoutubeUrl: true });
+        } catch (error) {
+          if (!isMissingYoutubeUrlColumnError(error)) throw error;
+          data = await runLookup({ includeMinistry: false, includeYoutubeUrl: false });
+        }
       }
 
       if (!data) return null;
@@ -348,7 +434,7 @@ export function useSaveDraftSet() {
       songs,
     }: {
       draftSet: Omit<DraftSet, 'id' | 'created_at' | 'updated_at'> & { id?: string };
-      songs: { song_id: string; sequence_order: number; song_key?: string; vocalist_id?: string; vocalist_ids?: string[] }[];
+      songs: { song_id: string; sequence_order: number; song_key?: string; youtube_url?: string | null; vocalist_id?: string; vocalist_ids?: string[] }[];
     }) => {
       let setId = draftSet.id;
 
@@ -405,6 +491,14 @@ export function useSaveDraftSet() {
 
       // Apply existing vocalist assignments to songs that don't have one
       const songsWithVocalists = songs.map(s => {
+        const normalizedYouTubeUrl = s.youtube_url?.trim()
+          ? normalizeYouTubeUrl(s.youtube_url)
+          : null;
+
+        if (s.youtube_url?.trim() && !normalizedYouTubeUrl) {
+          throw new Error("Use full youtube.com or youtu.be links for setlist songs.");
+        }
+
         const vocalistIds = s.vocalist_ids && s.vocalist_ids.length > 0 
           ? s.vocalist_ids 
           : existingVocalistMap.get(s.song_id) || [];
@@ -412,6 +506,7 @@ export function useSaveDraftSet() {
           ...s,
           vocalist_id: vocalistIds[0] || null,
           vocalist_ids: vocalistIds,
+          youtube_url: normalizedYouTubeUrl,
         };
       });
 
@@ -454,18 +549,35 @@ export function useSaveDraftSet() {
 
       // Insert songs with preserved vocalist assignments
       if (songsWithVocalists.length > 0) {
-        const { data: insertedSongs, error: songsError } = await supabase
+        const buildSongRows = (includeYoutubeUrl: boolean) =>
+          songsWithVocalists.map(s => ({
+            draft_set_id: setId,
+            song_id: s.song_id,
+            sequence_order: s.sequence_order,
+            song_key: s.song_key || null,
+            ...(includeYoutubeUrl ? { youtube_url: s.youtube_url || null } : {}),
+            vocalist_id: s.vocalist_id || null,
+          }));
+
+        let insertedSongs: { id: string; song_id: string }[] | null = null;
+        let songsError: Error | null = null;
+
+        const primaryInsert = await supabase
           .from('draft_set_songs')
-          .insert(
-            songsWithVocalists.map(s => ({
-              draft_set_id: setId,
-              song_id: s.song_id,
-              sequence_order: s.sequence_order,
-              song_key: s.song_key || null,
-              vocalist_id: s.vocalist_id || null,
-            }))
-          )
+          .insert(buildSongRows(true))
           .select('id, song_id');
+
+        insertedSongs = primaryInsert.data;
+        songsError = primaryInsert.error;
+
+        if (songsError && isMissingYoutubeUrlColumnError(songsError)) {
+          const legacyInsert = await supabase
+            .from('draft_set_songs')
+            .insert(buildSongRows(false))
+            .select('id, song_id');
+          insertedSongs = legacyInsert.data;
+          songsError = legacyInsert.error;
+        }
 
         if (songsError) throw songsError;
 
@@ -499,9 +611,18 @@ export function useSaveDraftSet() {
       queryClient.invalidateQueries({ queryKey: ['draft-sets'] });
       queryClient.invalidateQueries({ queryKey: ['draft-set-songs'] });
       queryClient.invalidateQueries({ queryKey: ['existing-set', variables.draftSet.campus_id, variables.draftSet.ministry_type, variables.draftSet.plan_date, variables.draftSet.custom_service_id || null] });
+      queryClient.invalidateQueries({ queryKey: ['published-setlists'] });
+      queryClient.invalidateQueries({ queryKey: ['approver-published-setlists'] });
+      queryClient.invalidateQueries({ queryKey: ['audition-assigned-setlists'] });
       toast({
-        title: variables.draftSet.id ? 'Set updated' : 'Set saved',
-        description: 'Your set has been saved successfully.',
+        title: variables.draftSet.status === 'published'
+          ? 'Published set updated'
+          : variables.draftSet.id
+            ? 'Set updated'
+            : 'Set saved',
+        description: variables.draftSet.status === 'published'
+          ? 'Your published set changes are live.'
+          : 'Your set has been saved successfully.',
       });
     },
     onError: (error) => {

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { AvailabilityBadge } from "./AvailabilityBadge";
@@ -18,6 +19,7 @@ export interface BuildingSetSong extends SongAvailability {
   /** @deprecated Use selectedVocalistIds instead */
   selectedVocalistId?: string | null;
   selectedVocalistIds?: string[];
+  youtubeUrl?: string | null;
 }
 
 export type ApprovalStatus = "draft" | "pending_approval" | "published" | "rejected";
@@ -28,6 +30,8 @@ interface BuildingSetProps {
   onReorderSongs: (songs: BuildingSetSong[]) => void;
   onKeyChange: (songId: string, key: string | null) => void;
   onVocalistChange: (songId: string, vocalistIds: string[]) => void;
+  onYoutubeLinkChange: (songId: string, youtubeUrl: string) => void;
+  onEditingChange?: (isEditing: boolean) => void;
   onSave: () => void;
   isSaving?: boolean;
   notes: string;
@@ -46,6 +50,8 @@ export function BuildingSet({
   onReorderSongs,
   onKeyChange,
   onVocalistChange,
+  onYoutubeLinkChange,
+  onEditingChange,
   onSave,
   isSaving,
   notes,
@@ -80,7 +86,12 @@ export function BuildingSet({
 
     // Create a state snapshot for comparison
     const currentState = JSON.stringify({
-      songs: songs.map(s => ({ id: s.song.id, key: s.selectedKey, vocalists: s.selectedVocalistIds || [] })),
+      songs: songs.map(s => ({
+        id: s.song.id,
+        key: s.selectedKey,
+        vocalists: s.selectedVocalistIds || [],
+        youtubeUrl: s.youtubeUrl || null,
+      })),
       notes
     });
 
@@ -110,17 +121,24 @@ export function BuildingSet({
     setIsEditing(false);
   }, [isPublished]);
 
+  useEffect(() => {
+    onEditingChange?.(isEditing);
+  }, [isEditing, onEditingChange]);
+
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    if (isPublished && !isEditing) return;
     e.dataTransfer.setData('text/plain', index.toString());
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (isPublished && !isEditing) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    if (isPublished && !isEditing) return;
     e.preventDefault();
     const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'));
     if (sourceIndex === targetIndex) return;
@@ -133,6 +151,7 @@ export function BuildingSet({
 
   const conflictingSongs = songs.filter(s => s.status === 'too-recent');
   const showEditButton = isPublished && !isEditing;
+  const isReadOnly = isPublished && !isEditing;
 
   // Status badge renderer
   const renderStatusBadge = () => {
@@ -260,6 +279,18 @@ export function BuildingSet({
             </div>
           </div>
         )}
+
+        {isReadOnly && (
+          <div className="flex items-start gap-2 p-2 rounded-md border bg-muted/60 text-sm mt-2">
+            <Pencil className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+            <div>
+              <p className="font-medium">Published set locked</p>
+              <p className="text-xs text-muted-foreground">
+                Click <span className="font-medium text-foreground">Edit Published Set</span> to make changes.
+              </p>
+            </div>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col gap-3 overflow-hidden">
@@ -275,17 +306,18 @@ export function BuildingSet({
               {songs.map((item, index) => (
                 <div
                   key={item.song.id}
-                  draggable
+                  draggable={!isReadOnly}
                   onDragStart={e => handleDragStart(e, index)}
                   onDragOver={handleDragOver}
                   onDrop={e => handleDrop(e, index)}
                   className={cn(
-                    'grid items-center gap-1.5 p-2 rounded-lg border bg-card cursor-grab active:cursor-grabbing',
+                    'grid items-center gap-1.5 p-2 rounded-lg border bg-card',
                     // Grid layout: grip | number | title | controls
                     isMobile 
                       ? 'grid-cols-[16px_24px_1fr_auto]' 
                       : 'grid-cols-[16px_24px_1fr_auto]',
-                    item.status === 'too-recent' && 'border-amber-500/30 bg-amber-500/5'
+                    item.status === 'too-recent' && 'border-amber-500/30 bg-amber-500/5',
+                    isReadOnly ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'
                   )}
                 >
                   <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -295,7 +327,7 @@ export function BuildingSet({
                   </span>
 
                   {/* Song title - takes remaining space, truncates */}
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-2">
                     <div className="flex items-center gap-1.5">
                       <p className="font-medium text-sm truncate">{item.song.title}</p>
                       {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
@@ -309,6 +341,14 @@ export function BuildingSet({
                     {!isMobile && item.song.author && (
                       <p className="text-xs text-muted-foreground truncate">{item.song.author}</p>
                     )}
+                    <Input
+                      value={item.youtubeUrl || ""}
+                      onChange={(event) => onYoutubeLinkChange(item.song.id, event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      placeholder="Add YouTube link (optional)"
+                      className="h-8 text-xs"
+                      disabled={isReadOnly}
+                    />
                   </div>
 
                   {/* Controls - auto width */}
@@ -318,12 +358,14 @@ export function BuildingSet({
                       onChange={(key) => onKeyChange(item.song.id, key)}
                       suggestedKey={item.suggestedKey}
                       compact
+                      disabled={isReadOnly}
                     />
 
                     <MultiVocalistSelector
                       value={item.selectedVocalistIds || (item.selectedVocalistId ? [item.selectedVocalistId] : [])}
                       onChange={(vocalistIds) => onVocalistChange(item.song.id, vocalistIds)}
                       vocalists={vocalists}
+                      disabled={isReadOnly}
                     />
 
                     {item.status === 'too-recent' && (
@@ -342,6 +384,7 @@ export function BuildingSet({
                         isMobile ? "h-6 w-6" : "h-7 w-7"
                       )}
                       onClick={() => onRemoveSong(item.song.id)}
+                      disabled={isReadOnly}
                     >
                       <X className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
                     </Button>
@@ -359,6 +402,7 @@ export function BuildingSet({
             value={notes}
             onChange={e => onNotesChange(e.target.value)}
             className="resize-none h-20 text-sm"
+            disabled={isReadOnly}
           />
         </div>
       </CardContent>

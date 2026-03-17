@@ -276,7 +276,7 @@ export default function ManageSets() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Ministries</SelectItem>
-                  {MINISTRY_TYPES.map(m => (
+                  {MINISTRY_TYPES.filter((m) => !("hidden" in m && m.hidden)).map(m => (
                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
                 </SelectContent>

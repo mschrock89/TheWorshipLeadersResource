@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen, Youtube } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,7 @@ import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team
 import { supabase } from "@/integrations/supabase/client";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { buildBibleHref } from "@/lib/bible";
+import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -58,6 +59,25 @@ function getSetlistDisplayDate(planDate: string, ministryType: string) {
   }
 
   return format(date, "EEEE, MMMM d, yyyy");
+}
+
+function YouTubeButton({ href }: { href: string | null | undefined }) {
+  if (!href) return null;
+
+  return (
+    <Button
+      asChild
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-6 gap-1 rounded-full border-red-500/50 bg-red-500/10 px-2 text-[11px] font-medium text-red-400 hover:bg-red-500/20 hover:text-red-300 shrink-0"
+    >
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        <Youtube className="h-3 w-3" />
+        YouTube
+      </a>
+    </Button>
+  );
 }
 
 function StandardMySetlists() {
@@ -456,6 +476,7 @@ function StandardMySetlists() {
                                   NEW
                                 </Badge>
                               )}
+                              <YouTubeButton href={item.youtube_url} />
                             </div>
                             {item.song?.author && (
                               <p className="text-xs text-muted-foreground truncate">
@@ -1169,7 +1190,7 @@ function ApproverMySetlists({
   const { data: approvedSetlists = [], isLoading: loadingApproved, error: approvedError } = useQuery({
     queryKey: ["approver-published-setlists", selectedCampusId, today],
     queryFn: async () => {
-      const query = supabase
+      const primaryQuery = supabase
         .from("draft_sets")
         .select(`
           id,
@@ -1180,21 +1201,49 @@ function ApproverMySetlists({
           status,
           published_at,
           campuses(name),
-          draft_set_songs(
-            id,
-            song_id,
-            sequence_order,
-            song_key,
-            songs(title, author),
-            vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
-          )
+            draft_set_songs(
+              id,
+              song_id,
+              sequence_order,
+              song_key,
+              youtube_url,
+              songs(title, author),
+              vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+            )
         `)
         .eq("status", "published")
         .eq("campus_id", selectedCampusId)
         .gte("plan_date", today)
         .order("plan_date", { ascending: true });
 
-      const { data, error } = await query;
+      let { data, error } = await primaryQuery;
+      if (error && isMissingYoutubeUrlColumnError(error)) {
+        const legacyQuery = supabase
+          .from("draft_sets")
+          .select(`
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            notes,
+            status,
+            published_at,
+            campuses(name),
+              draft_set_songs(
+                id,
+                song_id,
+                sequence_order,
+                song_key,
+                songs(title, author),
+                vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+              )
+          `)
+          .eq("status", "published")
+          .eq("campus_id", selectedCampusId)
+          .gte("plan_date", today)
+          .order("plan_date", { ascending: true });
+        ({ data, error } = await legacyQuery);
+      }
       if (error) throw error;
       return (data || []) as any[];
     },
@@ -1368,6 +1417,7 @@ function ApproverMySetlists({
                               Chart
                             </Button>
                           )}
+                          <YouTubeButton href={song.youtube_url} />
                           {song.song_key && <Badge variant="outline" className="text-xs shrink-0">{song.song_key}</Badge>}
                         </div>
                       ))}
@@ -1530,7 +1580,9 @@ function AuditionCandidateSetlists() {
       const setIds = (assignments || []).map((a) => a.draft_set_id);
       if (setIds.length === 0) return [];
 
-      const { data: sets, error: setsError } = await supabase
+      let sets: any[] | null = null;
+      let setsError: any = null;
+      const primarySetsQuery = await supabase
         .from("draft_sets")
         .select(
           `
@@ -1547,6 +1599,7 @@ function AuditionCandidateSetlists() {
               song_id,
               sequence_order,
               song_key,
+              youtube_url,
               vocalist_id,
               songs(title, author),
               vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
@@ -1558,6 +1611,42 @@ function AuditionCandidateSetlists() {
         .eq("ministry_type", "audition")
         .gte("plan_date", today)
         .order("plan_date", { ascending: true });
+
+      sets = primarySetsQuery.data;
+      setsError = primarySetsQuery.error;
+
+      if (setsError && isMissingYoutubeUrlColumnError(setsError)) {
+        const legacySetsQuery = await supabase
+          .from("draft_sets")
+          .select(
+            `
+              id,
+              campus_id,
+              plan_date,
+              ministry_type,
+              notes,
+              status,
+              published_at,
+              campuses(name),
+              draft_set_songs(
+                id,
+                song_id,
+                sequence_order,
+                song_key,
+                vocalist_id,
+                songs(title, author),
+                vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+              )
+            `,
+          )
+          .in("id", setIds)
+          .eq("status", "published")
+          .eq("ministry_type", "audition")
+          .gte("plan_date", today)
+          .order("plan_date", { ascending: true });
+        sets = legacySetsQuery.data;
+        setsError = legacySetsQuery.error;
+      }
 
       if (setsError) throw setsError;
 
@@ -1668,6 +1757,7 @@ function AuditionCandidateSetlists() {
                             Chart
                           </Button>
                         )}
+                        <YouTubeButton href={item.youtube_url} />
                       </div>
                       {item.song?.author && (
                         <p className="text-xs text-muted-foreground mt-1">{item.song.author}</p>

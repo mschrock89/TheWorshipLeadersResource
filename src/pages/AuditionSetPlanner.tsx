@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 
 const LEADER_ROLES = [
   "admin",
@@ -110,7 +111,7 @@ export default function AuditionSetPlanner() {
       const assignedSetIds = (assignments || []).map((a) => a.draft_set_id);
       if (assignedSetIds.length === 0) return null;
 
-      const { data, error } = await supabase
+      const primaryQuery = await supabase
         .from("draft_sets")
         .select(
           `
@@ -126,7 +127,8 @@ export default function AuditionSetPlanner() {
             song_id,
             sequence_order,
             song_key,
-            songs(title, author)
+            youtube_url,
+            songs(title, author, bpm)
           )
         `,
         )
@@ -137,6 +139,41 @@ export default function AuditionSetPlanner() {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      let data = primaryQuery.data;
+      let error = primaryQuery.error;
+
+      if (error && isMissingYoutubeUrlColumnError(error)) {
+        const legacyQuery = await supabase
+          .from("draft_sets")
+          .select(
+            `
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            notes,
+            status,
+            published_at,
+            draft_set_songs(
+              id,
+              song_id,
+              sequence_order,
+              song_key,
+              songs(title, author, bpm)
+            )
+          `,
+          )
+          .in("id", assignedSetIds)
+          .eq("campus_id", selectedCampusId)
+          .eq("plan_date", selectedDateStr)
+          .eq("ministry_type", "audition")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = legacyQuery.data;
+        error = legacyQuery.error;
+      }
 
       if (error) throw error;
       return data;
@@ -159,9 +196,37 @@ export default function AuditionSetPlanner() {
         const songAvail = availability.find((a) => a.song.id === dss.song_id);
         if (!songAvail) return null;
         return {
-          ...songAvail,
+          ...(songAvail ?? {
+            song: {
+              id: dss.song_id,
+              pco_song_id: null,
+              title: dss.songs?.title || "Unknown Song",
+              author: dss.songs?.author || null,
+              ccli_number: null,
+              bpm: dss.songs?.bpm ?? null,
+              created_at: "",
+              updated_at: "",
+              usage_count: 0,
+              first_used: null,
+              last_used: null,
+              upcoming_uses: 0,
+              usages: [],
+            },
+            status: "available" as const,
+            weeksUntilAvailable: null,
+            lastUsedDate: null,
+            totalUses: 0,
+            isNewSong: false,
+            isGloballyNew: false,
+            isDeepCut: false,
+            isInRegularRotation: false,
+            usesInPastYear: 0,
+            scheduledDates: [],
+            suggestedKey: null,
+          }),
           selectedKey: dss.song_key,
           selectedVocalistIds: [],
+          youtubeUrl: dss.youtube_url || null,
         } as BuildingSetSong;
       })
       .filter(Boolean) as BuildingSetSong[];
@@ -193,6 +258,7 @@ export default function AuditionSetPlanner() {
           song_id: s.song.id,
           sequence_order: index,
           song_key: s.selectedKey || null,
+          youtube_url: s.youtubeUrl || null,
           vocalist_ids: [],
         })),
       });
@@ -314,6 +380,7 @@ export default function AuditionSetPlanner() {
           song_id: s.song.id,
           sequence_order: index,
           song_key: s.selectedKey || null,
+          youtube_url: s.youtubeUrl || null,
           vocalist_ids: [],
         })),
       });
@@ -525,6 +592,9 @@ export default function AuditionSetPlanner() {
           }}
           onVocalistChange={() => {
             // Audition setlists do not need vocalist assignments.
+          }}
+          onYoutubeLinkChange={(songId, youtubeUrl) => {
+            setBuildingSongs((prev) => prev.map((s) => (s.song.id === songId ? { ...s, youtubeUrl } : s)));
           }}
           onSave={() => saveAsDraft.mutate()}
           isSaving={saveAsDraft.isPending}

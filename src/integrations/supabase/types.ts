@@ -511,6 +511,7 @@ export type Database = {
           song_id: string
           song_key: string | null
           vocalist_id: string | null
+          youtube_url: string | null
         }
         Insert: {
           created_at?: string
@@ -520,6 +521,7 @@ export type Database = {
           song_id: string
           song_key?: string | null
           vocalist_id?: string | null
+          youtube_url?: string | null
         }
         Update: {
           created_at?: string
@@ -529,6 +531,7 @@ export type Database = {
           song_id?: string
           song_key?: string | null
           vocalist_id?: string | null
+          youtube_url?: string | null
         }
         Relationships: [
           {

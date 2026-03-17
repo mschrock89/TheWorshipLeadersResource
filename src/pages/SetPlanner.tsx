@@ -163,6 +163,7 @@ export default function SetPlanner() {
   const [assignmentSavedAt, setAssignmentSavedAt] = useState<Date | null>(null);
   const [buildingSongs, setBuildingSongs] = useState<BuildingSetSong[]>([]);
   const [notes, setNotes] = useState('');
+  const [isEditingPublishedSet, setIsEditingPublishedSet] = useState(false);
 
   // Check if user has network-level access (can see all campuses)
   const hasNetworkAccess = useMemo(() => {
@@ -296,7 +297,7 @@ export default function SetPlanner() {
   // Load existing set when one is found for the selected date/campus/ministry
   useEffect(() => {
     // Wait until we have both the existing set and availability data
-    if (existingSetLoading || !availability || availability.length === 0) {
+    if (existingSetLoading || !availability) {
       return;
     }
     
@@ -307,6 +308,7 @@ export default function SetPlanner() {
         setBuildingSongs([]);
         setNotes('');
         setLastSavedSetId(null);
+        setIsEditingPublishedSet(false);
       }
       setLoadedForPlanDate(planDateStr);
       return;
@@ -326,14 +328,44 @@ export default function SetPlanner() {
       .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
       .map((dss: any) => {
         const songAvail = availability.find(a => a.song.id === dss.song_id);
-        if (!songAvail) return null;
+        const baseSong = dss.songs;
+        if (!songAvail && !baseSong) return null;
         // Support both legacy single vocalist and new multi-vocalist format
         const vocalistIds = dss.vocalist_ids || (dss.vocalist_id ? [dss.vocalist_id] : []);
+        const fallbackSong = songAvail ?? {
+          song: {
+            id: dss.song_id,
+            pco_song_id: null,
+            title: baseSong?.title || "Unknown Song",
+            author: baseSong?.author || null,
+            ccli_number: null,
+            bpm: baseSong?.bpm ?? null,
+            created_at: "",
+            updated_at: "",
+            usage_count: 0,
+            first_used: null,
+            last_used: null,
+            upcoming_uses: 0,
+            usages: [],
+          },
+          status: "available" as const,
+          weeksUntilAvailable: null,
+          lastUsedDate: null,
+          totalUses: 0,
+          isNewSong: false,
+          isGloballyNew: false,
+          isDeepCut: false,
+          isInRegularRotation: false,
+          usesInPastYear: 0,
+          scheduledDates: [],
+          suggestedKey: null,
+        };
         return {
-          ...songAvail,
+          ...fallbackSong,
           selectedKey: dss.song_key,
           selectedVocalistId: vocalistIds[0] || null,
           selectedVocalistIds: vocalistIds,
+          youtubeUrl: dss.youtube_url || null,
         };
       })
       .filter(Boolean) as BuildingSetSong[];
@@ -341,6 +373,7 @@ export default function SetPlanner() {
     setBuildingSongs(existingSongs);
     setNotes(existingSet.notes || '');
     setLastSavedSetId(existingSet.id);
+    setIsEditingPublishedSet(false);
     setLoadedForPlanDate(planDateStr);
   }, [existingSet, existingSetLoading, availability, planDateStr]);
 
@@ -416,6 +449,12 @@ export default function SetPlanner() {
     ));
   }, []);
 
+  const handleYoutubeLinkChange = useCallback((songId: string, youtubeUrl: string) => {
+    setBuildingSongs(prev => prev.map(s =>
+      s.song.id === songId ? { ...s, youtubeUrl } : s
+    ));
+  }, []);
+
   // For weekend campuses, ensure we always store Saturday as the reference
   // For midweek ministries (Encounter/EON), only allow Wednesdays
   const handleDateSelect = (date: Date | undefined) => {
@@ -469,6 +508,15 @@ export default function SetPlanner() {
   const handleSave = async () => {
     if (!user || !effectiveCampusId) return;
 
+    if (
+      existingSet?.status === "published" &&
+      (existingSet.draft_set_songs?.length || 0) > 0 &&
+      buildingSongs.length === 0
+    ) {
+      toast.error("This published set already has songs. Reload before saving so it doesn't get overwritten.");
+      return;
+    }
+
     const result = await saveDraftSet.mutateAsync({
       draftSet: {
         // Prefer updating the set we found for this campus/ministry/date
@@ -481,13 +529,14 @@ export default function SetPlanner() {
         status: existingSet?.status || 'draft', // Preserve published status
         notes: notes || null,
       },
-      songs: buildingSongs.map((s, i) => ({
-        song_id: s.song.id,
-        sequence_order: i,
-        song_key: s.selectedKey || undefined,
-        vocalist_id: s.selectedVocalistIds?.[0] || s.selectedVocalistId || undefined,
-        vocalist_ids: s.selectedVocalistIds || (s.selectedVocalistId ? [s.selectedVocalistId] : []),
-      })),
+        songs: buildingSongs.map((s, i) => ({
+          song_id: s.song.id,
+          sequence_order: i,
+          song_key: s.selectedKey || undefined,
+          youtube_url: s.youtubeUrl || undefined,
+          vocalist_id: s.selectedVocalistIds?.[0] || s.selectedVocalistId || undefined,
+          vocalist_ids: s.selectedVocalistIds || (s.selectedVocalistId ? [s.selectedVocalistId] : []),
+        })),
     });
 
     // Store the saved set ID for publishing
@@ -1395,6 +1444,8 @@ export default function SetPlanner() {
             onReorderSongs={handleReorderSongs}
             onKeyChange={handleKeyChange}
             onVocalistChange={handleVocalistChange}
+            onYoutubeLinkChange={handleYoutubeLinkChange}
+            onEditingChange={setIsEditingPublishedSet}
             onSave={handleSave}
             isSaving={saveDraftSet.isPending}
             notes={notes}
@@ -1434,6 +1485,7 @@ export default function SetPlanner() {
                 allowSchedulingOverrides={canOverrideSongRestrictions}
                 referenceDate={selectedDate}
                 goodFitHighlights={goodFitHighlights}
+                readOnly={existingSet?.status === "published" && !isEditingPublishedSet}
               />
             </CardContent>
           </Card>
