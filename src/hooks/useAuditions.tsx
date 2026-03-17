@@ -27,6 +27,24 @@ export interface Audition {
   campuses?: { name: string } | null;
 }
 
+export interface AssignedAuditionSetlist {
+  id: string;
+  campus_id: string;
+  plan_date: string;
+  ministry_type: string;
+  notes: string | null;
+  published_at: string | null;
+  campuses: { name: string } | null;
+  songs: {
+    id: string;
+    song_id: string;
+    sequence_order: number;
+    song_key: string | null;
+    youtube_url?: string | null;
+    song: { title: string; author: string | null } | null;
+  }[];
+}
+
 export function useUpcomingAudition(candidateId: string | undefined) {
   return useQuery({
     queryKey: ["upcoming-audition", candidateId],
@@ -49,6 +67,105 @@ export function useUpcomingAudition(candidateId: string | undefined) {
 
       if (error) throw error;
       return (data as Audition | null) ?? null;
+    },
+  });
+}
+
+export function useAssignedAuditionSetlists(candidateId: string | undefined) {
+  return useQuery({
+    queryKey: ["audition-assigned-setlists", candidateId],
+    enabled: !!candidateId,
+    queryFn: async (): Promise<AssignedAuditionSetlist[]> => {
+      if (!candidateId) return [];
+
+      const today = new Date().toISOString().split("T")[0];
+
+      const { data: assignments, error: assignmentError } = await supabase
+        .from("audition_setlist_assignments")
+        .select("draft_set_id")
+        .eq("user_id", candidateId);
+
+      if (assignmentError) throw assignmentError;
+
+      const setIds = (assignments || []).map((assignment) => assignment.draft_set_id);
+      if (setIds.length === 0) return [];
+
+      let sets: any[] | null = null;
+      let setsError: any = null;
+
+      const primarySetsQuery = await supabase
+        .from("draft_sets")
+        .select(
+          `
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            notes,
+            published_at,
+            campuses(name),
+            draft_set_songs(
+              id,
+              song_id,
+              sequence_order,
+              song_key,
+              youtube_url,
+              songs(title, author)
+            )
+          `,
+        )
+        .in("id", setIds)
+        .eq("status", "published")
+        .eq("ministry_type", "audition")
+        .gte("plan_date", today)
+        .order("plan_date", { ascending: true });
+
+      sets = primarySetsQuery.data;
+      setsError = primarySetsQuery.error;
+
+      if (setsError && setsError.message?.includes("youtube_url")) {
+        const legacySetsQuery = await supabase
+          .from("draft_sets")
+          .select(
+            `
+              id,
+              campus_id,
+              plan_date,
+              ministry_type,
+              notes,
+              published_at,
+              campuses(name),
+              draft_set_songs(
+                id,
+                song_id,
+                sequence_order,
+                song_key,
+                songs(title, author)
+              )
+            `,
+          )
+          .in("id", setIds)
+          .eq("status", "published")
+          .eq("ministry_type", "audition")
+          .gte("plan_date", today)
+          .order("plan_date", { ascending: true });
+
+        sets = legacySetsQuery.data;
+        setsError = legacySetsQuery.error;
+      }
+
+      if (setsError) throw setsError;
+
+      return (sets || []).map((set: any) => ({
+        ...set,
+        songs: (set.draft_set_songs || [])
+          .slice()
+          .sort((a: any, b: any) => a.sequence_order - b.sequence_order)
+          .map((item: any) => ({
+            ...item,
+            song: item.songs,
+          })),
+      }));
     },
   });
 }

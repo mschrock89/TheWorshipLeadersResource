@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -34,7 +34,7 @@ import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { isAuditionCandidateRole } from "@/lib/access";
-import { useUpcomingAudition } from "@/hooks/useAuditions";
+import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
@@ -1366,6 +1366,7 @@ function StandardCalendar() {
 function AuditionCandidateCalendar() {
   const { user } = useAuth();
   const { data: audition, isLoading } = useUpcomingAudition(user?.id);
+  const { data: assignedSetlists = [], isLoading: setlistsLoading } = useAssignedAuditionSetlists(user?.id);
 
   const formatTime = (time: string | null) => {
     if (!time) return "";
@@ -1393,31 +1394,115 @@ function AuditionCandidateCalendar() {
       )}
 
       {!isLoading && audition && (
-        <div className="space-y-3 rounded-lg border border-border bg-card p-5">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-lg font-semibold text-foreground">
-              {new Date(`${audition.audition_date}T00:00:00`).toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
+        <div className="space-y-4">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-lg font-semibold text-foreground">
+                {new Date(`${audition.audition_date}T00:00:00`).toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+              <Badge variant="secondary">
+                {audition.stage === "pre_audition" ? "Pre-Audition" : "Audition"}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {audition.campuses?.name || "Campus TBD"}
+              {(audition.start_time || audition.end_time) && (
+                <>
+                  {" • "}
+                  {formatTime(audition.start_time)}
+                  {audition.start_time && audition.end_time ? ` - ${formatTime(audition.end_time)}` : ""}
+                </>
+              )}
             </p>
-            <Badge variant="secondary">
-              {audition.stage === "pre_audition" ? "Pre-Audition" : "Audition"}
-            </Badge>
+            {audition.notes && <p className="text-sm text-foreground">{audition.notes}</p>}
           </div>
-          <p className="text-sm text-muted-foreground">
-            {audition.campuses?.name || "Campus TBD"}
-            {(audition.start_time || audition.end_time) && (
-              <>
-                {" • "}
-                {formatTime(audition.start_time)}
-                {audition.start_time && audition.end_time ? ` - ${formatTime(audition.end_time)}` : ""}
-              </>
+
+          <div className="rounded-lg border border-border bg-card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <ListMusic className="h-5 w-5" />
+                  My Setlist
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Review the songs and notes for your scheduled audition.
+                </p>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/my-setlists">View Full Setlist</Link>
+              </Button>
+            </div>
+
+            {setlistsLoading && (
+              <p className="mt-4 text-sm text-muted-foreground">Loading assigned setlist...</p>
             )}
-          </p>
-          {audition.notes && <p className="text-sm text-foreground">{audition.notes}</p>}
+
+            {!setlistsLoading && assignedSetlists.length === 0 && (
+              <p className="mt-4 text-sm text-muted-foreground">
+                No published audition setlist has been assigned yet.
+              </p>
+            )}
+
+            {!setlistsLoading &&
+              assignedSetlists.map((setlist) => (
+                <div key={setlist.id} className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-foreground">
+                        {new Date(`${setlist.plan_date}T00:00:00`).toLocaleDateString(undefined, {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Audition{setlist.campuses?.name ? ` • ${setlist.campuses.name}` : ""}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">Published</Badge>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {setlist.songs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No songs assigned yet.</p>
+                    ) : (
+                      setlist.songs.map((song, index) => (
+                        <div key={song.id} className="flex items-center gap-3 rounded-md bg-background/80 p-3">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {song.song?.title || "Unknown Song"}
+                            </p>
+                            {song.song?.author && (
+                              <p className="truncate text-xs text-muted-foreground">{song.song.author}</p>
+                            )}
+                          </div>
+                          {song.song_key && (
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              {song.song_key}
+                            </Badge>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {setlist.notes && (
+                    <div className="mt-4 rounded-md border border-border/60 bg-background/80 p-3 text-sm text-foreground">
+                      {setlist.notes}
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
         </div>
       )}
     </div>
