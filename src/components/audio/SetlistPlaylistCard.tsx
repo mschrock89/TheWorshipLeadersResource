@@ -11,10 +11,12 @@ import { MINISTRY_TYPES } from "@/lib/constants";
 import { parseLocalDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { ReferenceTrackUploadDialog } from "./ReferenceTrackUploadDialog";
 import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDialog";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
 import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
+import { isAuditionCandidateRole } from "@/lib/access";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,13 +35,16 @@ interface SetlistPlaylistCardProps {
 
 export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
   const { setPlaylist, currentTrack, isPlaying, togglePlay, playlist: currentPlaylist, seekTo, play } = useAudioPlayer();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editMarkersOpen, setEditMarkersOpen] = useState(false);
   const [selectedRefTrack, setSelectedRefTrack] = useState<ReferenceTrack | null>(null);
   const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
   const deleteRefTrack = useDeleteReferenceTrack();
   const autoReorderCharts = useAutoReorderChartsFromReferenceTrack();
+  const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
+  const canUploadReferenceTrack = isAdmin || (playlist.ministry_type === "audition" && isAuditionCandidate);
 
   const getMinistryLabel = (type: string) => {
     return MINISTRY_TYPES.find((m) => m.value === type)?.label || type;
@@ -197,9 +202,23 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
         <CardContent className="pt-0">
           {!hasAudioTracks ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Music2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No audio files available for this setlist</p>
+            <div className="space-y-3">
+              <div className="text-center py-6 text-muted-foreground">
+                <Music2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No audio files available for this setlist</p>
+              </div>
+
+              {canUploadReferenceTrack && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={() => setUploadOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Reference Track
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
@@ -474,7 +493,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               )}
 
               {/* Admin Add Reference Track Button */}
-              {isAdmin && (
+              {canUploadReferenceTrack && (
                 <Button
                   variant="outline"
                   size="sm"
