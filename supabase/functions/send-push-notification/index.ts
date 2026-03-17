@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PUSH_DELIVERY_TIMEOUT_MS = 10000;
+
 interface PushPayload {
   title: string;
   message: string;
@@ -317,41 +319,48 @@ async function sendPushNotification(
   try {
     const endpoint = new URL(subscription.endpoint);
     const audience = `${endpoint.protocol}//${endpoint.host}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort("Push delivery timed out"), PUSH_DELIVERY_TIMEOUT_MS);
 
-    // Encrypt the payload using subscriber's keys
-    const encryptedPayload = await encryptPayload(
-      payload,
-      subscription.p256dh,
-      subscription.auth
-    );
+    try {
+      // Encrypt the payload using subscriber's keys
+      const encryptedPayload = await encryptPayload(
+        payload,
+        subscription.p256dh,
+        subscription.auth
+      );
 
-    const jwt = await generateVapidJwt(audience, vapidSubject, vapidPrivateKey, vapidPublicKey);
+      const jwt = await generateVapidJwt(audience, vapidSubject, vapidPrivateKey, vapidPublicKey);
 
-    const response = await fetch(subscription.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Encoding": "aes128gcm",
-        "Content-Length": encryptedPayload.length.toString(),
-        "TTL": "86400",
-        "Authorization": `vapid t=${jwt}, k=${vapidPublicKey}`,
-        "Urgency": "normal",
-      },
-      body: encryptedPayload.buffer as ArrayBuffer,
-    });
+      const response = await fetch(subscription.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "aes128gcm",
+          "Content-Length": encryptedPayload.length.toString(),
+          "TTL": "86400",
+          "Authorization": `vapid t=${jwt}, k=${vapidPublicKey}`,
+          "Urgency": "normal",
+        },
+        body: encryptedPayload.buffer as ArrayBuffer,
+        signal: controller.signal,
+      });
 
-    // Read response body for debugging
-    const responseText = await response.text();
+      // Read response body for debugging
+      const responseText = await response.text();
     
-    if (!response.ok) {
-      console.error(`Push failed: status ${response.status}, body: ${responseText}`);
-    }
+      if (!response.ok) {
+        console.error(`Push failed: status ${response.status}, body: ${responseText}`);
+      }
 
-    return {
-      success: response.ok,
-      statusCode: response.status,
-      error: response.ok ? undefined : responseText,
-    };
+      return {
+        success: response.ok,
+        statusCode: response.status,
+        error: response.ok ? undefined : responseText,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return { success: false, error: message };

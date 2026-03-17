@@ -7,6 +7,8 @@ import { useUserRole } from "@/hooks/useUserRoles";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { supabase } from "@/integrations/supabase/client";
 
+const TEST_PUSH_TIMEOUT_MS = 15000;
+
 export function TestPushNotification() {
   const { user } = useAuth();
   const { isSupported, supportMessage } = usePushNotifications();
@@ -28,16 +30,23 @@ export function TestPushNotification() {
     setSent(false);
 
     try {
-      // Send via VAPID/web-push to all subscribed users
-      const { data, error } = await supabase.functions.invoke("send-push-notification", {
-        body: {
-          title: "Test Notification 🎵",
-          message: "Push notifications are working! This is a test from your worship team.",
-          url: "/dashboard",
-          tag: "test-notification",
-          userIds: [user.id],
-        },
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error("Test notification timed out. Please try again.")), TEST_PUSH_TIMEOUT_MS);
       });
+
+      // Send via VAPID/web-push to all subscribed users
+      const { data, error } = await Promise.race([
+        supabase.functions.invoke("send-push-notification", {
+          body: {
+            title: "Test Notification 🎵",
+            message: "Push notifications are working! This is a test from your worship team.",
+            url: "/dashboard",
+            tag: "test-notification",
+            userIds: [user.id],
+          },
+        }),
+        timeoutPromise,
+      ]);
 
       if (error) {
         console.error("Push notification error:", error);

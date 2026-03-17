@@ -30,13 +30,17 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function AppOnboardingTour() {
+  if (import.meta.env.DEV) {
+    return null;
+  }
+
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { data: hasCompletedOnboarding, isLoading } = useOnboardingStatus(user?.id);
   const completeOnboarding = useCompleteOnboarding();
-  const { isSupported, isSubscribed } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading: isPushLoading, subscribe, supportMessage } = usePushNotifications();
   const [isOpen, setIsOpen] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
@@ -224,6 +228,13 @@ export function AppOnboardingTour() {
     setActiveStepIndex((current) => Math.max(0, current - 1));
   };
 
+  const handleEnablePush = async () => {
+    const success = await subscribe();
+    if (success) {
+      setActiveStepIndex((current) => Math.min(current + 1, steps.length - 1));
+    }
+  };
+
   const highlightPadding = 10;
   const highlightRect = targetRect
     ? {
@@ -248,8 +259,8 @@ export function AppOnboardingTour() {
     : clamp(window.innerWidth / 2 - cardWidth / 2, 12, window.innerWidth - cardWidth - 12);
 
   return createPortal(
-    <div className="fixed inset-0 z-[120]">
-      <div className="absolute inset-0 bg-black/65" />
+    <div className="pointer-events-none fixed inset-0 z-[120]">
+      <div className="pointer-events-none absolute inset-0 bg-black/65" />
       {highlightRect && (
         <div
           className="pointer-events-none absolute rounded-2xl border border-sky-300/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] transition-all duration-200"
@@ -264,7 +275,7 @@ export function AppOnboardingTour() {
 
       <div
         className={cn(
-          "absolute rounded-2xl border border-white/10 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur",
+          "pointer-events-auto absolute rounded-2xl border border-white/10 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur",
           "w-[min(360px,calc(100vw-24px))]",
         )}
         style={{ top: cardTop, left: cardLeft }}
@@ -290,6 +301,33 @@ export function AppOnboardingTour() {
         </div>
 
         <p className="text-sm leading-6 text-white/80">{step.description}</p>
+
+        {step.id === "push-notifications" && (
+          <div className="mt-4 rounded-xl border border-sky-400/20 bg-sky-400/10 p-3">
+            <p className="text-sm text-white/80">
+              {isSubscribed
+                ? "Push notifications are enabled for this device."
+                : supportMessage || "Turn them on now so swap requests and setlist updates reach you even when the app is closed."}
+            </p>
+            {!isSubscribed && (
+              <Button
+                size="sm"
+                onClick={() => void handleEnablePush()}
+                disabled={isPushLoading || completeOnboarding.isPending}
+                className="mt-3 bg-sky-500 text-slate-950 hover:bg-sky-400"
+              >
+                {isPushLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  "Enable Notifications"
+                )}
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-xs text-white/50">
@@ -318,7 +356,7 @@ export function AppOnboardingTour() {
             <Button
               size="sm"
               onClick={handleNext}
-              disabled={completeOnboarding.isPending}
+              disabled={completeOnboarding.isPending || (step.id === "push-notifications" && isPushLoading)}
               className="bg-sky-500 text-slate-950 hover:bg-sky-400"
             >
               {activeStepIndex === steps.length - 1 ? "Finish" : "Next"}
