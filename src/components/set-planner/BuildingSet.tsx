@@ -66,8 +66,6 @@ export function BuildingSet({
   const isMobile = useIsMobile();
   const [isEditing, setIsEditing] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSavedStateRef = useRef<string>('');
   const prevIsSavingRef = useRef(isSaving);
 
   // Show "Saved!" confirmation when save completes
@@ -79,42 +77,6 @@ export function BuildingSet({
     }
     prevIsSavingRef.current = isSaving;
   }, [isSaving]);
-
-  // Auto-save for published sets being edited
-  useEffect(() => {
-    if (!isPublished || !isEditing || songs.length === 0) return;
-
-    // Create a state snapshot for comparison
-    const currentState = JSON.stringify({
-      songs: songs.map(s => ({
-        id: s.song.id,
-        key: s.selectedKey,
-        vocalists: s.selectedVocalistIds || [],
-        youtubeUrl: s.youtubeUrl || null,
-      })),
-      notes
-    });
-
-    // Skip if nothing changed
-    if (currentState === lastSavedStateRef.current) return;
-
-    // Clear any existing timer
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-
-    // Auto-save after 1.5 seconds of no changes
-    autoSaveTimerRef.current = setTimeout(() => {
-      lastSavedStateRef.current = currentState;
-      onSave();
-    }, 1500);
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [songs, notes, isPublished, isEditing, onSave]);
 
   // Reset editing state when isPublished changes (e.g., switching dates)
   useEffect(() => {
@@ -202,7 +164,7 @@ export function BuildingSet({
               {isEditing && isPublished && (
                 <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600 gap-1 whitespace-nowrap">
                   <Pencil className="h-3 w-3" />
-                  <span className="hidden sm:inline">Editing •</span> Auto-saves
+                  Editing
                 </Badge>
               )}
             </div>

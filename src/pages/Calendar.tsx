@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -42,6 +42,8 @@ import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/h
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
+import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
+import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const EVENT_AUDIENCE_OPTIONS = [{
@@ -1367,6 +1369,7 @@ function AuditionCandidateCalendar() {
   const { user } = useAuth();
   const { data: audition, isLoading } = useUpcomingAudition(user?.id);
   const { data: assignedSetlists = [], isLoading: setlistsLoading } = useAssignedAuditionSetlists(user?.id);
+  const { data: playlists = [], isLoading: playlistsLoading } = useMySetlistPlaylists();
 
   const formatTime = (time: string | null) => {
     if (!time) return "";
@@ -1451,6 +1454,11 @@ function AuditionCandidateCalendar() {
             {!setlistsLoading &&
               assignedSetlists.map((setlist) => (
                 <div key={setlist.id} className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+                  {(() => {
+                    const setlistPlaylists = playlists.filter((playlist) => playlist.draft_set_id === setlist.id);
+
+                    return (
+                      <>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="font-medium text-foreground">
@@ -1500,6 +1508,28 @@ function AuditionCandidateCalendar() {
                       {setlist.notes}
                     </div>
                   )}
+
+                  <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Headphones className="h-4 w-4 text-primary" />
+                      The Practice Place
+                    </div>
+
+                    {playlistsLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading practice tracks...</p>
+                    ) : setlistPlaylists.length > 0 ? (
+                      setlistPlaylists.map((playlist) => (
+                        <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No practice playlist or reference tracks have been added yet.
+                      </p>
+                    )}
+                  </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
           </div>
