@@ -44,7 +44,7 @@ export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
   const { data: campuses = [] } = useCampuses();
-  const { isLeader, isAdmin } = useAuth();
+  const { canManageTeam, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -236,7 +236,7 @@ export default function Team() {
             {profiles.length} team member{profiles.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {isLeader && (
+        {canManageTeam && (
           <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
             <Button className="w-full" variant="outline" onClick={() => setCreateMemberDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
@@ -326,8 +326,8 @@ export default function Team() {
               key={member.id} 
               member={member} 
               campusNames={userCampusMap[member.id]?.names || []}
-              onSendEmail={isLeader ? handleSendIndividualEmail : undefined}
-              onResetPassword={isLeader ? handleResetPassword : undefined}
+              onSendEmail={canManageTeam ? handleSendIndividualEmail : undefined}
+              onResetPassword={canManageTeam ? handleResetPassword : undefined}
               onDelete={isAdmin ? handleDeleteProfile : undefined}
             />
           ))}

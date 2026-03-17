@@ -80,24 +80,43 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Verify the user exists and check admin role using service role client
-    const { data: hasRole, error: roleError } = await adminClient.rpc('has_role', { 
-      _user_id: userId, 
-      _role: 'admin' 
-    });
+    const allowedRoles = [
+      'admin',
+      'campus_admin',
+      'campus_worship_pastor',
+      'student_worship_pastor',
+      'video_director',
+      'production_manager',
+      'network_worship_pastor',
+      'network_worship_leader',
+      'leader',
+    ];
 
-    if (roleError) {
-      console.log('Error checking role:', roleError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify permissions' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let hasRole = false;
+    for (const role of allowedRoles) {
+      const { data, error: roleError } = await adminClient.rpc('has_role', {
+        _user_id: userId,
+        _role: role,
+      });
+
+      if (roleError) {
+        console.log('Error checking role:', roleError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify permissions' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (data) {
+        hasRole = true;
+        break;
+      }
     }
 
     if (!hasRole) {
-      console.log(`User ${userId} is not an admin`);
+      console.log(`User ${userId} is not allowed to reset passwords`);
       return new Response(
-        JSON.stringify({ error: 'Only admins can reset passwords' }),
+        JSON.stringify({ error: 'Only team managers can reset passwords' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

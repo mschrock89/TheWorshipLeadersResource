@@ -38,7 +38,7 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isLeader, isAdmin } = useAuth();
+  const { user, isLeader, isAdmin, canManageTeam } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -50,8 +50,8 @@ export default function Profile() {
   // If no ID provided, show current user's profile
   const profileId = id || user?.id;
   const isOwnProfile = profileId === user?.id;
-  const canEdit = isOwnProfile || isLeader;
-  const canManageAssignments = isLeader || isAdmin;
+  const canEdit = isOwnProfile || canManageTeam;
+  const canManageAssignments = canManageTeam;
   const bandTopRowPositions = ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "bass"];
   const bandBottomRowPositions = ["drums", "keys"];
 
@@ -206,9 +206,9 @@ export default function Profile() {
     ministryPositions: string[],
     positionOptions: readonly string[],
   ) => (
-    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[72px_minmax(0,1fr)] sm:gap-3">
+    <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[68px_minmax(0,1fr)] sm:gap-2">
       <span className="text-xs text-muted-foreground sm:pt-1">{label}</span>
-      <div className="flex flex-wrap gap-x-4 gap-y-3">
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
         {positionOptions.map((pos) => {
           const isPositionActive = ministryPositions.includes(pos);
 
@@ -475,8 +475,8 @@ export default function Profile() {
             <CardTitle className="mt-4 font-display text-2xl">
               {isOwnProfile ? "My Profile" : profile.full_name || "Team Member"}
             </CardTitle>
-            {/* Email display with edit capability for leaders */}
-            {isLeader && !isOwnProfile ? (
+            {/* Email display with edit capability for team managers */}
+            {canManageTeam && !isOwnProfile ? (
               <div className="flex items-center gap-2 mt-1">
                 {isEditingEmail ? (
                   <>
@@ -707,7 +707,7 @@ export default function Profile() {
               </div>
 
               {/* Audition Candidate Setup */}
-              {isLeader && isAuditionCandidate && (
+              {canManageTeam && isAuditionCandidate && (
                 <Card className="border-primary/30">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Audition Plan</CardTitle>
@@ -924,7 +924,7 @@ export default function Profile() {
                   />
                 </div>
               </div>
-              {/* Campus Assignments - Leaders can edit */}
+              {/* Campus Assignments - team managers can edit */}
               {canManageAssignments && (
                 <div className="space-y-4">
                   <Label className="flex items-center gap-2">
@@ -948,8 +948,8 @@ export default function Profile() {
                 </div>
               )}
 
-              {/* Default Campus - Visible to admins (for any profile) or profile owner if admin/leader */}
-              {(isAdmin || (isOwnProfile && isLeader)) && (
+              {/* Default Campus - visible to admins for any profile, or team managers on their own profile */}
+              {(isAdmin || (isOwnProfile && canManageTeam)) && (
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <Home className="h-4 w-4" />
@@ -973,8 +973,8 @@ export default function Profile() {
                 </div>
               )}
 
-              {/* Show campus info for non-leaders */}
-              {!isLeader && userCampuses.length > 0 && (
+              {/* Show campus info for non-managers */}
+              {!canManageTeam && userCampuses.length > 0 && (
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <MapPin className="h-4 w-4" />
@@ -1009,7 +1009,7 @@ export default function Profile() {
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {(isLeader ? campuses.filter(c => selectedCampuses.includes(c.id)) : campuses.filter(c => userCampuses.some(uc => uc.campus_id === c.id))).map((campus) => {
+                    {(canManageTeam ? campuses.filter(c => selectedCampuses.includes(c.id)) : campuses.filter(c => userCampuses.some(uc => uc.campus_id === c.id))).map((campus) => {
                       const campusMinistries = ministryAssignments
                         .filter(a => a.campus_id === campus.id)
                         .map(a => a.ministry_type);
@@ -1075,7 +1075,7 @@ export default function Profile() {
                           
                           {/* Positions per Ministry - only show for active ministries */}
                           {campusMinistries.length > 0 && (
-                            <div className="space-y-3 pt-2 border-t border-border/50">
+                            <div className="space-y-2 pt-2 border-t border-border/50">
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                 Positions by Ministry
                               </p>
@@ -1095,14 +1095,14 @@ export default function Profile() {
                                 const showVideoPositions = ministryType === 'video' || ministryType === 'weekend_team';
                                 
                                 return (
-                                  <div key={ministryType} className="space-y-3 rounded-md bg-muted/30 p-3 sm:p-4">
+                                  <div key={ministryType} className="space-y-2 rounded-md bg-muted/30 p-3">
                                     <p className="text-sm font-medium flex items-center gap-1.5">
                                       <span className={`w-2 h-2 rounded-full ${ministry?.color || 'bg-muted'}`} />
                                       {ministry?.label || ministryType}
                                     </p>
                                     
                                     {canManageAssignments ? (
-                                      <div className="space-y-3">
+                                      <div className="space-y-2">
                                         {renderMinistryPositionGroup(
                                           "Support:",
                                           ministryType,

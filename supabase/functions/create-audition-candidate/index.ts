@@ -57,6 +57,8 @@ serve(async (req) => {
       "student_worship_pastor",
       "network_worship_pastor",
       "network_worship_leader",
+      "video_director",
+      "production_manager",
       "leader",
     ];
     let isAllowed = false;

@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLeader(hasRole("admin") || hasRole("campus_admin"));
     setIsVideoDirector(hasRole("admin") || hasRole("video_director"));
     setIsProductionManager(hasRole("admin") || hasRole("production_manager"));
-    setCanManageTeam(hasRole("admin") || hasRole("campus_admin") || hasRole("campus_worship_pastor") || hasRole("student_worship_pastor"));
+    setCanManageTeam(
+      hasRole("admin") ||
+      hasRole("campus_admin") ||
+      hasRole("campus_worship_pastor") ||
+      hasRole("student_worship_pastor") ||
+      hasRole("video_director") ||
+      hasRole("production_manager")
+    );
     setCanSwitchCampusChat(hasRole("admin") || hasRole("campus_admin") || hasRole("campus_worship_pastor"));
   };
 

@@ -57,21 +57,35 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is a leader or admin
-    const { data: isLeader } = await userClient.rpc('has_role', { 
-      _user_id: user.id, 
-      _role: 'leader' 
-    });
+    const allowedRoles = [
+      'admin',
+      'campus_admin',
+      'campus_worship_pastor',
+      'student_worship_pastor',
+      'video_director',
+      'production_manager',
+      'network_worship_pastor',
+      'network_worship_leader',
+      'leader',
+    ];
 
-    const { data: isAdmin } = await userClient.rpc('has_role', { 
-      _user_id: user.id, 
-      _role: 'admin' 
-    });
+    let isAllowed = false;
+    for (const role of allowedRoles) {
+      const { data } = await userClient.rpc('has_role', {
+        _user_id: user.id,
+        _role: role,
+      });
 
-    if (!isLeader && !isAdmin) {
-      console.error('User is not a leader or admin:', user.id);
+      if (data) {
+        isAllowed = true;
+        break;
+      }
+    }
+
+    if (!isAllowed) {
+      console.error('User does not have import permissions:', user.id);
       return new Response(
-        JSON.stringify({ error: 'Only leaders and admins can import team members' }),
+        JSON.stringify({ error: 'Only team managers can import team members' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
