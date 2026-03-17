@@ -32,6 +32,7 @@ import { isAuditionCandidateRole } from "@/lib/access";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import worshipImage from "@/assets/worship-night.jpg";
 import emLogo from "@/assets/em-logo-transparent-new.png";
+import { CovenantCard } from "@/components/dashboard/CovenantCard";
 
 export default function Home() {
   const { user, signOut } = useAuth();
@@ -235,6 +236,12 @@ export default function Home() {
       {/* Main Content */}
       <section className="flex-1 px-6 py-16">
         <div className="mx-auto max-w-4xl text-center">
+          {user ? (
+            <div className="mb-10 text-left">
+              <CovenantCard />
+            </div>
+          ) : null}
+
           <p className="mb-3 text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Experience Music
           </p>

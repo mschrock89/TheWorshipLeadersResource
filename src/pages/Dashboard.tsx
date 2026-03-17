@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
+import { CovenantCard } from "@/components/dashboard/CovenantCard";
 export default function Dashboard() {
   const {
     user,
@@ -164,7 +165,7 @@ export default function Dashboard() {
     return canManageTeam;
   });
 
-  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"]]}>
+  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"], ["active-covenant", user?.id]]}>
       {/* Push Notification Banner */}
       <PushNotificationBanner />
 
@@ -193,6 +194,8 @@ export default function Dashboard() {
             </SelectContent>
           </Select>}
       </div>
+
+      <CovenantCard />
 
       {/* Volunteer view - show upcoming weekend and song set first */}
       {isVolunteer && <section className="mb-8">

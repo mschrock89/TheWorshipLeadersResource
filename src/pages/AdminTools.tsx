@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
+import { useActiveCovenant, useCovenantSignatureCount, useUploadCovenantDocument } from "@/hooks/useCovenant";
 
 function getInitials(name: string | null): string {
   if (!name) return "?";
@@ -404,13 +405,16 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
 export default function AdminTools() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
   const updateConfig = useUpdateCampusServiceConfig();
   const { data: customServiceDefinitions = [], isLoading: customServicesLoading } = useCustomServiceDefinitions();
   const createCustomService = useCreateCustomService();
   const deleteCustomService = useDeleteCustomService();
+  const { data: activeCovenant } = useActiveCovenant(user?.id);
+  const { data: covenantSignatureCount = 0 } = useCovenantSignatureCount(activeCovenant?.document.id);
+  const uploadCovenantDocument = useUploadCovenantDocument();
 
   // Consolidate leadership users
   const consolidatedUsers = (() => {
@@ -475,6 +479,11 @@ export default function AdminTools() {
   const [customServiceStartTime, setCustomServiceStartTime] = useState("");
   const [customServiceEndTime, setCustomServiceEndTime] = useState("");
   const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
+  const [covenantTitle, setCovenantTitle] = useState("Team Covenant");
+  const [covenantDescription, setCovenantDescription] = useState("Standards and expectations for every worship team member.");
+  const [covenantVersionLabel, setCovenantVersionLabel] = useState(() => new Date().toISOString().split("T")[0]);
+  const [covenantFile, setCovenantFile] = useState<File | null>(null);
+  const [isOpeningCovenantPdf, setIsOpeningCovenantPdf] = useState(false);
   const [teachingCampusId, setTeachingCampusId] = useState("");
   const [teachingMinistry, setTeachingMinistry] = useState<string>("weekend");
   const [teachingDate, setTeachingDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -1203,6 +1212,43 @@ export default function AdminTools() {
     setCustomServiceRepeatsWeekly(false);
   };
 
+  const handlePublishCovenant = async () => {
+    if (!user?.id) return;
+    if (!covenantFile) {
+      toast.error("Choose a Covenant PDF first.");
+      return;
+    }
+    if (covenantFile.type !== "application/pdf") {
+      toast.error("Only PDF files are supported.");
+      return;
+    }
+    if (!covenantTitle.trim() || !covenantVersionLabel.trim()) {
+      toast.error("Add a title and version label before publishing.");
+      return;
+    }
+
+    await uploadCovenantDocument.mutateAsync({
+      file: covenantFile,
+      title: covenantTitle,
+      description: covenantDescription,
+      versionLabel: covenantVersionLabel,
+      userId: user.id,
+    });
+
+    setCovenantFile(null);
+    setCovenantVersionLabel(new Date().toISOString().split("T")[0]);
+  };
+
+  const handleOpenCovenantPdf = async () => {
+    if (!activeCovenant?.signedUrl) return;
+    setIsOpeningCovenantPdf(true);
+    try {
+      window.open(activeCovenant.signedUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setIsOpeningCovenantPdf(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="container max-w-4xl py-8">
@@ -1373,6 +1419,123 @@ export default function AdminTools() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xl font-semibold flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Covenant Manager
+          </CardTitle>
+          <CardDescription>
+            Publish the current team Covenant PDF and require signatures from every user on their dashboard.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="covenant-title">Title</Label>
+              <Input
+                id="covenant-title"
+                value={covenantTitle}
+                onChange={(event) => setCovenantTitle(event.target.value)}
+                placeholder="Team Covenant"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="covenant-version">Version Label</Label>
+              <Input
+                id="covenant-version"
+                value={covenantVersionLabel}
+                onChange={(event) => setCovenantVersionLabel(event.target.value)}
+                placeholder="2026-03"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="covenant-description">Description</Label>
+              <Textarea
+                id="covenant-description"
+                value={covenantDescription}
+                onChange={(event) => setCovenantDescription(event.target.value)}
+                placeholder="Shared standards and expectations for every team member."
+                className="min-h-24"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Upload PDF</p>
+              <p className="text-xs text-muted-foreground">
+                Publishing a new Covenant makes it the active version shown on every user dashboard.
+              </p>
+            </div>
+            <input
+              id="covenant-pdf"
+              type="file"
+              accept="application/pdf"
+              className="block w-full cursor-pointer rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-accent/90"
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] || null;
+                setCovenantFile(nextFile);
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              {covenantFile?.name || "No file selected"}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={handlePublishCovenant}
+                disabled={!covenantFile || uploadCovenantDocument.isPending}
+                className="gap-2"
+              >
+                {uploadCovenantDocument.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Publishing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Publish Covenant
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleOpenCovenantPdf}
+                disabled={!activeCovenant?.signedUrl || isOpeningCovenantPdf}
+                className="gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                {isOpeningCovenantPdf ? "Opening..." : "Open Active PDF"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border p-4">
+            {activeCovenant?.document ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium">{activeCovenant.document.title}</p>
+                  <Badge variant="secondary">{activeCovenant.document.version_label}</Badge>
+                  <Badge variant="outline">{covenantSignatureCount} signed</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Published {new Date(activeCovenant.document.created_at).toLocaleString()}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {activeCovenant.document.description || "This is the currently active Covenant shown to the team."}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No active Covenant has been published yet.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
