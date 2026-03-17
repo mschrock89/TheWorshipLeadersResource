@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Music, KeyRound } from "lucide-react";
+import { Loader2, Music, KeyRound, MailCheck, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -28,7 +28,6 @@ const loginSchema = z.object({
 const signupSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 const changePasswordSchema = z.object({
@@ -58,7 +57,7 @@ export default function Auth() {
   // Signup form state
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
+  const [signupEmailSentTo, setSignupEmailSentTo] = useState("");
 
   // Change password form state
   const [newPassword, setNewPassword] = useState("");
@@ -69,10 +68,12 @@ export default function Auth() {
     const handleAuthCallback = async () => {
       // Check if there's an access_token or error in the URL hash (magic link flow)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const searchParams = new URLSearchParams(window.location.search);
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
       const error = hashParams.get('error');
       const errorDescription = hashParams.get('error_description');
+      const mode = searchParams.get("mode");
 
       if (error) {
         toast({
@@ -100,8 +101,11 @@ export default function Auth() {
           });
         } else {
           toast({
-            title: "Welcome!",
-            description: "You've been signed in. Please set your password.",
+            title: "Email confirmed",
+            description:
+              mode === "confirm-signup"
+                ? "Your email is confirmed and you're signed in. Add a password from your profile whenever you're ready."
+                : "You've been signed in successfully.",
           });
         }
 
@@ -273,14 +277,12 @@ export default function Auth() {
     setMustChangePassword(false);
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const validation = signupSchema.safeParse({ 
-      fullName: signupName, 
-      email: signupEmail, 
-      password: signupPassword 
+  const submitSignup = async () => {
+    const validation = signupSchema.safeParse({
+      fullName: signupName,
+      email: signupEmail,
     });
+
     if (!validation.success) {
       toast({
         title: "Validation error",
@@ -291,14 +293,14 @@ export default function Auth() {
     }
 
     setIsLoading(true);
-    const { error } = await signUp(signupEmail, signupPassword, signupName);
+    const { error } = await signUp(signupEmail, signupName);
     setIsLoading(false);
 
     if (error) {
       if (error.message.includes("already registered")) {
         toast({
           title: "Account exists",
-          description: "An account with this email already exists. Please sign in instead.",
+          description: "An account with this email already exists. Please sign in or reset your password instead.",
           variant: "destructive",
         });
       } else {
@@ -308,12 +310,19 @@ export default function Auth() {
           variant: "destructive",
         });
       }
-    } else {
-      toast({
-        title: "Welcome!",
-        description: "Your account has been created. You are now signed in.",
-      });
+      return;
     }
+
+    setSignupEmailSentTo(signupEmail.trim());
+    toast({
+      title: "Check your email",
+      description: "We sent a confirmation link to finish setting up your account.",
+    });
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitSignup();
   };
 
   if (authLoading) {
@@ -486,47 +495,85 @@ export default function Auth() {
               <TabsContent value="signup" className="mt-0">
                 <CardTitle className="mb-1 text-xl">Join the team</CardTitle>
                 <CardDescription className="mb-6">
-                  Create an account to get started
+                  Start with your name and email, then confirm your address to finish joining
                 </CardDescription>
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      type="text"
-                      placeholder="John Smith"
-                      value={signupName}
-                      onChange={(e) => setSignupName(e.target.value)}
-                      required
-                    />
+                {signupEmailSentTo ? (
+                  <div className="space-y-5 rounded-2xl border border-border/70 bg-muted/30 p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary shadow-worship">
+                        <MailCheck className="h-5 w-5 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-base font-semibold text-foreground">Confirm your email address</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          We sent a confirmation email to <span className="font-medium text-foreground">{signupEmailSentTo}</span>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-xl border border-border/60 bg-background/70 p-4">
+                      <p className="text-sm font-medium text-foreground">Next steps</p>
+                      <ol className="space-y-2 text-sm text-muted-foreground">
+                        <li>1. Open the email from Supabase Auth and click the confirmation button.</li>
+                        <li>2. Return to this app. We&apos;ll sign you in automatically after your email is confirmed.</li>
+                        <li>3. After you&apos;re in, you can add a password later from your profile if you want.</li>
+                      </ol>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button type="button" className="w-full sm:flex-1" onClick={() => void submitSignup()} disabled={isLoading}>
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Resend confirmation email
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:flex-1"
+                        onClick={() => {
+                          setSignupEmailSentTo("");
+                        }}
+                      >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Use a different email
+                      </Button>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="you@church.org"
-                      value={signupEmail}
-                      onChange={(e) => setSignupEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      placeholder="••••••••"
-                      value={signupPassword}
-                      onChange={(e) => setSignupPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Create Account
-                  </Button>
-                </form>
+                ) : (
+                  <form onSubmit={handleSignup} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-name">Full Name</Label>
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder="John Smith"
+                        value={signupName}
+                        onChange={(e) => setSignupName(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="you@church.org"
+                        value={signupEmail}
+                        onChange={(e) => setSignupEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="rounded-xl border border-border/60 bg-muted/40 p-4">
+                      <p className="text-sm font-medium text-foreground">No password needed right now</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        We&apos;ll email you a confirmation link so you can verify your address first.
+                      </p>
+                    </div>
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Continue with Email
+                    </Button>
+                  </form>
+                )}
               </TabsContent>
             </CardContent>
           </Tabs>

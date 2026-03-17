@@ -13,7 +13,7 @@ interface AuthContextType {
   canManageTeam: boolean;
   canSwitchCampusChat: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -95,11 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
+  const signUp = async (email: string, fullName: string) => {
+    const redirectUrl = `${window.location.origin}/auth?mode=confirm-signup`;
+    const tempPassword = `${crypto.randomUUID()}!Wlr`;
     const { error } = await supabase.auth.signUp({
       email,
-      password,
+      password: tempPassword,
       options: {
         emailRedirectTo: redirectUrl,
         data: { full_name: fullName },
