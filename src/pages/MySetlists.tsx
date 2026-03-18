@@ -45,6 +45,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -61,7 +62,13 @@ function getSetlistDisplayDate(planDate: string, ministryType: string) {
   return format(date, "EEEE, MMMM d, yyyy");
 }
 
-function YouTubeButton({ href }: { href: string | null | undefined }) {
+function YouTubeButton({
+  href,
+  compact = false,
+}: {
+  href: string | null | undefined;
+  compact?: boolean;
+}) {
   if (!href) return null;
 
   return (
@@ -70,11 +77,14 @@ function YouTubeButton({ href }: { href: string | null | undefined }) {
       type="button"
       variant="outline"
       size="sm"
-      className="h-6 gap-1 rounded-full border-red-500/50 bg-red-500/10 px-2 text-[11px] font-medium text-red-400 hover:bg-red-500/20 hover:text-red-300 shrink-0"
+      className={`shrink-0 rounded-full border-red-500/50 bg-red-500/10 font-medium text-red-400 hover:bg-red-500/20 hover:text-red-300 ${
+        compact ? "h-6 w-6 p-0 text-red-300" : "h-6 gap-1 px-2 text-[11px]"
+      }`}
     >
       <a href={href} target="_blank" rel="noopener noreferrer">
         <Youtube className="h-3 w-3" />
-        YouTube
+        <span className="sr-only">Open YouTube link</span>
+        {!compact && "YouTube"}
       </a>
     </Button>
   );
@@ -148,6 +158,7 @@ function StandardMySetlists() {
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
+  const isMobile = useIsMobile();
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -447,16 +458,16 @@ function StandardMySetlists() {
                       {setlist.songs.map((item, index) => (
                         <div
                           key={item.id}
-                          className="flex items-center gap-3 p-2 rounded-lg bg-muted/50"
+                          className="flex items-start gap-2 p-2 rounded-lg bg-muted/50 md:items-center md:gap-3"
                         >
                           <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-medium flex items-center justify-center shrink-0">
                             {index + 1}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="min-w-0">
                               <button
                                 type="button"
-                                className="truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                                className="block w-full truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
                                 disabled={!item.song_id}
                                 onClick={() => {
                                   if (!item.song_id) return;
@@ -471,12 +482,14 @@ function StandardMySetlists() {
                               >
                                 {item.song?.title || "Unknown Song"}
                               </button>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
                               {item.isFirstUse && (
                                 <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
                                   NEW
                                 </Badge>
                               )}
-                              <YouTubeButton href={item.youtube_url} />
+                              <YouTubeButton href={item.youtube_url} compact={isMobile} />
                             </div>
                             {item.song?.author && (
                               <p className="text-xs text-muted-foreground truncate">
@@ -484,32 +497,33 @@ function StandardMySetlists() {
                               </p>
                             )}
                           </div>
-                          {item.song_key && (
-                            <Badge variant="outline" className="text-xs font-medium shrink-0">
-                              {item.song_key}
-                            </Badge>
-                          )}
-                          {item.song_id && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-xs shrink-0"
-                              onClick={() =>
-                                setChartSong({
-                                  id: item.song_id,
-                                  title: item.song?.title || "Unknown Song",
-                                  author: item.song?.author || null,
-                                  draftSetSongId: item.id,
-                                  originalKey: item.song_key || null,
-                                })
-                              }
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                              Chart
-                            </Button>
-                          )}
-                          {(() => {
+                          <div className="flex shrink-0 items-center gap-1.5 self-center md:gap-2">
+                            {item.song_key && (
+                              <Badge variant="outline" className="text-xs font-medium shrink-0">
+                                {item.song_key}
+                              </Badge>
+                            )}
+                            {item.song_id && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={`shrink-0 text-xs ${isMobile ? "h-7 px-2" : "h-7 gap-1 px-2"}`}
+                                onClick={() =>
+                                  setChartSong({
+                                    id: item.song_id,
+                                    title: item.song?.title || "Unknown Song",
+                                    author: item.song?.author || null,
+                                    draftSetSongId: item.id,
+                                    originalKey: item.song_key || null,
+                                  })
+                                }
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                {!isMobile && "Chart"}
+                              </Button>
+                            )}
+                            {(() => {
                             const displayVocalists = (item.vocalists && item.vocalists.length > 0)
                               ? item.vocalists
                               : (item.vocalist ? [item.vocalist] : []);
@@ -543,7 +557,8 @@ function StandardMySetlists() {
                               </TooltipContent>
                             </Tooltip>
                             );
-                          })()}
+                            })()}
+                          </div>
                         </div>
                       ))}
                     </TooltipProvider>
