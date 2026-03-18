@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen } from "lucide-react";
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import { cn } from "@/lib/utils";
-import { MINISTRY_SLOT_CATEGORIES } from "@/lib/constants";
+import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
 import { BreakRequestDialog } from "./BreakRequestDialog";
 import { BreakRequestsList } from "./BreakRequestsList";
 import { useMyBreakRequests } from "@/hooks/useBreakRequests";
@@ -65,12 +65,9 @@ function CondensedTeamCard({
   // Only show Video when explicitly in the allowed categories (not when viewing Production)
   const showVideo = allowedCategories.includes("Video");
 
-  const visibleMembers =
-    ministryFilter === "all"
-      ? members
-      : ministryFilter === "weekend_team"
-        ? members.filter(m => m.ministry_types?.some(mt => ['weekend', 'production', 'video'].includes(mt)))
-        : members.filter(m => m.ministry_types?.includes(ministryFilter));
+  const visibleMembers = members.filter((member) =>
+    memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
+  );
 
   const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
@@ -250,12 +247,9 @@ function FullTeamCard({
   // Only show Video when explicitly in the allowed categories (not when viewing Production)
   const showVideo = allowedCategories.includes("Video");
 
-  const visibleMembers =
-    ministryFilter === "all"
-      ? members
-      : ministryFilter === "weekend_team"
-        ? members.filter(m => m.ministry_types?.some(mt => ['weekend', 'production', 'video'].includes(mt)))
-        : members.filter(m => m.ministry_types?.includes(ministryFilter));
+  const visibleMembers = members.filter((member) =>
+    memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
+  );
 
   const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");

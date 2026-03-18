@@ -7,7 +7,7 @@ import {
   TeamMemberAssignment,
   AvailableMember,
 } from "@/hooks/useTeamBuilder";
-import { MINISTRY_SLOT_CATEGORIES } from "@/lib/constants";
+import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
 
 const TEAM_ICONS: Record<string, React.ReactNode> = {
   star: <Star className="h-5 w-5" />,
@@ -68,9 +68,9 @@ export function TeamCard({
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
 
   // Filter members by ministry type when a specific ministry is selected
-  const filteredMembers = ministryFilter === "all" 
-    ? members 
-    : members.filter(m => m.ministry_types?.includes(ministryFilter));
+  const filteredMembers = members.filter((member) =>
+    memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
+  );
 
   const getMemberForSlot = (slot: string) => {
     return filteredMembers.find(m => m.position_slot === slot);

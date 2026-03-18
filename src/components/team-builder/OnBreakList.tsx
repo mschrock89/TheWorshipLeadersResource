@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AvailableMember, TeamMemberAssignment } from "@/hooks/useTeamBuilder";
+import { memberMatchesMinistryFilter } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface OnBreakListProps {
@@ -84,7 +85,9 @@ export function OnBreakList({
     // Filter assigned members by ministry type BEFORE building the set
     // This ensures members assigned to other ministries (e.g., EON) appear in "On Break" when viewing Weekend
     const ministryFilteredAssignedMembers = ministryFilter && ministryFilter !== "all"
-      ? assignedMembers.filter(m => m.ministry_types?.includes(ministryFilter))
+      ? assignedMembers.filter((member) =>
+          memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
+        )
       : assignedMembers;
     const assignedUserIds = new Set(ministryFilteredAssignedMembers.map(m => m.user_id).filter(Boolean));
     const previousAssignedUserIds = new Set(previousPeriodMembers.map(m => m.user_id).filter(Boolean));
@@ -123,13 +126,13 @@ export function OnBreakList({
         // Only flag as consecutive break if we have previous period data AND it's not the first historical period
         wasOnBreakBefore: hasPreviousPeriodData && !isFirstHistoricalPeriod && !previousAssignedUserIds.has(m.id),
       }));
-  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, campusId, userCampusMap, periodName]);
+  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, campusId, userCampusMap, periodName, ministryFilter]);
 
   // Filter by ministry type for display (after computing who is on break)
   const filteredOnBreakMembers = useMemo(() => {
     if (!ministryFilter || ministryFilter === "all") return onBreakMembers;
-    return onBreakMembers.filter(m => 
-      m.ministry_types?.includes(ministryFilter)
+    return onBreakMembers.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
     );
   }, [onBreakMembers, ministryFilter]);
 

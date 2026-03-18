@@ -214,3 +214,47 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   all: null, // null means show all teams
 };
+
+const TEAM_NUMBER_PATTERN = /\b(?:team\s*|t)([1-9]\d*)\b/i;
+
+export function getTeamRotationNumber(teamName: string): number | null {
+  const match = teamName.match(TEAM_NUMBER_PATTERN);
+  if (!match) return null;
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+export function isTeamVisibleForMinistry(teamName: string, ministryType: string): boolean {
+  const allowedTeams = MINISTRY_TEAM_FILTER[ministryType];
+  if (!allowedTeams) return true;
+  if (allowedTeams.length === 0) return false;
+
+  if (allowedTeams.includes(teamName)) {
+    return true;
+  }
+
+  const teamNumber = getTeamRotationNumber(teamName);
+  if (teamNumber == null) {
+    return false;
+  }
+
+  return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);
+}
+
+const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
+
+export function memberMatchesMinistryFilter(
+  ministryTypes: string[] | null | undefined,
+  ministryFilter: string,
+): boolean {
+  if (ministryFilter === "all") {
+    return true;
+  }
+
+  if (ministryFilter === "weekend_team") {
+    return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type));
+  }
+
+  return !!ministryTypes?.includes(ministryFilter);
+}

@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AvailableMember, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
-import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
+import { POSITION_LABELS, MINISTRY_TYPES, memberMatchesMinistryFilter } from "@/lib/constants";
 
 interface AssignMemberDialogProps {
   open: boolean;
@@ -90,8 +90,8 @@ export function AssignMemberDialog({
       })
       .map(m => {
         // Check if member has the ministry type
-        const hasMinistry = ministryFilter 
-          ? m.ministry_types?.includes(ministryFilter) 
+        const hasMinistry = ministryFilter
+          ? memberMatchesMinistryFilter(m.ministry_types, ministryFilter)
           : true;
         return { ...m, hasMinistry };
       })

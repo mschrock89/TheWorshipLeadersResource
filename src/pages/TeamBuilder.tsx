@@ -46,7 +46,7 @@ import {
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesWithCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TEAM_FILTER } from "@/lib/constants";
+import { isTeamVisibleForMinistry, memberMatchesMinistryFilter } from "@/lib/constants";
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
@@ -133,25 +133,21 @@ export default function TeamBuilder() {
 
   // Filter members by ministry type
   const filteredMembers = useMemo(() => {
-    if (selectedMinistryType === "all") return members;
-    return members.filter(m => 
-      m.ministry_types?.includes(selectedMinistryType)
+    return members.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
     );
   }, [members, selectedMinistryType]);
 
   // Filter available members by ministry type for OnBreakList
   const filteredAvailableMembers = useMemo(() => {
-    if (selectedMinistryType === "all") return availableMembers;
-    return availableMembers.filter(m => 
-      m.ministry_types?.includes(selectedMinistryType)
+    return availableMembers.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
     );
   }, [availableMembers, selectedMinistryType]);
 
   // Filter teams by selected ministry type
   const filteredTeams = useMemo(() => {
-    const allowedTeams = MINISTRY_TEAM_FILTER[selectedMinistryType];
-    if (!allowedTeams) return teams; // null means show all
-    return teams.filter(team => allowedTeams.includes(team.name));
+    return teams.filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
   }, [teams, selectedMinistryType]);
 
   // Get members by team (uses all members, not filtered - filtering is done via slot visibility)

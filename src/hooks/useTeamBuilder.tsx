@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { POSITION_SLOTS } from "@/lib/constants";
+import { POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface TeamPeriodLock {
@@ -625,7 +625,9 @@ export function useAutoBuildTeams() {
       // 1. Filter members by ministry type
       const eligibleMembers = ministryType === "all" 
         ? members 
-        : members.filter(m => m.ministry_types?.includes(ministryType));
+        : members.filter((member) =>
+            memberMatchesMinistryFilter(member.ministry_types, ministryType)
+          );
 
       // 2. Exclude members with approved break requests
       const availablePool = eligibleMembers.filter(
@@ -635,7 +637,9 @@ export function useAutoBuildTeams() {
       // 3. Build previous period tracking (filter by ministry if applicable)
       const prevPeriodFiltered = ministryType === "all"
         ? previousPeriodMembers
-        : previousPeriodMembers.filter(m => m.ministry_types?.includes(ministryType));
+        : previousPeriodMembers.filter((member) =>
+            memberMatchesMinistryFilter(member.ministry_types, ministryType)
+          );
       
       const previouslyAssignedIds = new Set(prevPeriodFiltered.map(m => m.user_id).filter(Boolean));
       const previousTeamMap = new Map<string, string>(); // userId -> teamId
@@ -661,7 +665,9 @@ export function useAutoBuildTeams() {
           .eq("rotation_period_id", rotationPeriodId);
         
         const idsToDelete = (existingMembers || [])
-          .filter(m => m.ministry_types?.includes(ministryType))
+          .filter((member) =>
+            memberMatchesMinistryFilter(member.ministry_types, ministryType)
+          )
           .map(m => m.id);
         
         if (idsToDelete.length > 0) {

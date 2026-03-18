@@ -19,7 +19,7 @@ import {
   AvailableMember,
   TeamMemberAssignment,
 } from "@/hooks/useTeamBuilder";
-import { MINISTRY_TYPES, POSITION_SLOTS } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
 
 interface AutoBuilderDialogProps {
   open: boolean;
@@ -112,7 +112,9 @@ export function AutoBuilderDialog({
   // Filter members by ministry
   const eligibleMembers = useMemo(() => {
     if (ministryType === "all") return members;
-    return members.filter(m => m.ministry_types?.includes(ministryType));
+    return members.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, ministryType)
+    );
   }, [members, ministryType]);
 
   // Exclude approved breaks
@@ -123,7 +125,9 @@ export function AutoBuilderDialog({
   // Track previous period assignments
   const prevPeriodFiltered = useMemo(() => {
     if (ministryType === "all") return previousPeriodMembers;
-    return previousPeriodMembers.filter(m => m.ministry_types?.includes(ministryType));
+    return previousPeriodMembers.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, ministryType)
+    );
   }, [previousPeriodMembers, ministryType]);
 
   const previouslyAssignedIds = useMemo(() => {
