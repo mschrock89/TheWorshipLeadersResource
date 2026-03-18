@@ -1363,6 +1363,35 @@ export function useUpdateSongBpm() {
   });
 }
 
+export function useUpdateSongAuthor() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ songId, author }: { songId: string; author: string | null }) => {
+      const { data, error } = await supabase
+        .from("songs")
+        .update({ author, updated_at: new Date().toISOString() })
+        .eq("id", songId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Song;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["songs"] });
+      queryClient.invalidateQueries({ queryKey: ["songs-with-stats"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error updating author",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useDeleteSong() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

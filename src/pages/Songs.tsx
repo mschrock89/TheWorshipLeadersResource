@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { useSongsWithStats, useServicePlans, useServicePlansPaged, usePlanSongs, useAllSyncProgress, useDeleteSong, useCreateSong, useMergeSongs } from "@/hooks/useSongs";
 import { AddSongDialog } from "@/components/songs/AddSongDialog";
+import { EditableAuthorCell } from "@/components/songs/EditableAuthorCell";
 import { EditableBpmCell } from "@/components/songs/EditableBpmCell";
 import { MergeSongDialog } from "@/components/songs/MergeSongDialog";
 import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
@@ -801,8 +802,8 @@ export default function Songs() {
                                     </span>
                                   )}
                                   <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <p className="font-medium truncate">{song.title}</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="min-w-0 flex-1 truncate font-medium">{song.title}</p>
                                       {(() => {
                                         const scheduledCount = (song as any).scheduledCount ?? 0;
                                         const lastScheduledAt = (song as any).lastScheduledAt ? new Date((song as any).lastScheduledAt) : null;
@@ -818,9 +819,12 @@ export default function Songs() {
                                         ) : null;
                                       })()}
                                     </div>
-                                    <p className="text-sm text-muted-foreground truncate">
-                                      {song.author || "Unknown"}
-                                    </p>
+                                    <EditableAuthorCell
+                                      songId={song.id}
+                                      currentAuthor={song.author}
+                                      canEdit={canManageSongs}
+                                      className="max-w-full truncate"
+                                    />
                                   </div>
                                 </div>
                                 <div className="ml-2 flex shrink-0 items-center gap-2">
@@ -919,8 +923,8 @@ export default function Songs() {
                           {filteredSongs?.map((song) => (
                             <TableRow key={song.id}>
                               <TableCell className="font-medium">
-                                <div className="flex items-center gap-2">
-                                  <span>{song.title}</span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="min-w-0 flex-1 truncate">{song.title}</span>
                                   {(() => {
                                     const usage = songCampusUsage.get(song.id);
                                     const scheduledCount = (usage?.count ?? 0) + (usage?.upcomingCount ?? 0);
@@ -938,11 +942,21 @@ export default function Songs() {
                                   })()}
                                 </div>
                                 <div className="text-sm text-muted-foreground md:hidden">
-                                  {song.author || "Unknown"}
+                                  <EditableAuthorCell
+                                    songId={song.id}
+                                    currentAuthor={song.author}
+                                    canEdit={canManageSongs}
+                                    className="max-w-full truncate px-0 py-0 hover:bg-transparent"
+                                  />
                                 </div>
                               </TableCell>
                               <TableCell className="hidden md:table-cell text-muted-foreground">
-                                {song.author || "Unknown"}
+                                <EditableAuthorCell
+                                  songId={song.id}
+                                  currentAuthor={song.author}
+                                  canEdit={canManageSongs}
+                                  className="max-w-full truncate"
+                                />
                               </TableCell>
                               <TableCell className="text-center hidden sm:table-cell">
                                 <EditableBpmCell

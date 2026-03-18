@@ -465,37 +465,39 @@ function StandardMySetlists() {
                           </span>
                           <div className="flex-1 min-w-0 space-y-1">
                             <div className="min-w-0">
-                              <button
-                                type="button"
-                                className="block w-full truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
-                                disabled={!item.song_id}
-                                onClick={() => {
-                                  if (!item.song_id) return;
-                                  setChartSong({
-                                    id: item.song_id,
-                                    title: item.song?.title || "Unknown Song",
-                                    author: item.song?.author || null,
-                                    draftSetSongId: item.id,
-                                    originalKey: item.song_key || null,
-                                  });
-                                }}
-                              >
-                                {item.song?.title || "Unknown Song"}
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {item.isFirstUse && (
-                                <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
-                                  NEW
-                                </Badge>
-                              )}
-                              <YouTubeButton href={item.youtube_url} compact={isMobile} />
+                              <div className="flex min-w-0 items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="min-w-0 truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                                  disabled={!item.song_id}
+                                  onClick={() => {
+                                    if (!item.song_id) return;
+                                    setChartSong({
+                                      id: item.song_id,
+                                      title: item.song?.title || "Unknown Song",
+                                      author: item.song?.author || null,
+                                      draftSetSongId: item.id,
+                                      originalKey: item.song_key || null,
+                                    });
+                                  }}
+                                >
+                                  {item.song?.title || "Unknown Song"}
+                                </button>
+                                {item.isFirstUse && (
+                                  <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
+                                    NEW
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             {item.song?.author && (
                               <p className="text-xs text-muted-foreground truncate">
                                 {item.song.author}
                               </p>
                             )}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <YouTubeButton href={item.youtube_url} compact={isMobile} />
+                            </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5 self-center md:gap-2">
                             {item.song_key && (
