@@ -535,6 +535,24 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
     if (error) throw error;
   };
 
+  const createInitialVersion = async () => {
+    if (!song?.id) throw new Error("No song selected.");
+
+    const { data, error } = await supabase
+      .from("song_versions")
+      .insert({
+        song_id: song.id,
+        version_name: "Default",
+        is_primary: true,
+        chord_chart_text: "",
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data.id as string;
+  };
+
   const invalidateChartQueries = async () => {
     if (song?.id) {
       await queryClient.invalidateQueries({ queryKey: ["song-versions", song.id] });
@@ -589,6 +607,28 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
     },
   });
 
+  const createManualChart = useMutation({
+    mutationFn: createInitialVersion,
+    onSuccess: async (versionId) => {
+      await invalidateChartQueries();
+      setSelectedVersionId(versionId);
+      setDisplayMode("raw");
+      setIsEditingRaw(true);
+      setRawChartDraft("");
+      toast({
+        title: "Chart ready",
+        description: "You can paste or type the chord chart now.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Unable to create chart",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const transposeSemitones = useMemo(
     () => getSignedSemitoneDelta(originalKeyIndex, targetKeyIndex),
     [originalKeyIndex, targetKeyIndex],
@@ -623,9 +663,17 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
           <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6 text-center text-muted-foreground">
             <FileText className="h-10 w-10 opacity-50" />
             <div className="space-y-1">
-              <p className="font-medium text-foreground">No chord chart synced yet</p>
-              <p className="text-sm">Run a Planning Center sync with chord charts enabled for this song.</p>
+              <p className="font-medium text-foreground">No chord chart yet</p>
+              <p className="text-sm">You can create one manually here, or sync chord charts from Planning Center.</p>
             </div>
+            <Button
+              type="button"
+              onClick={() => createManualChart.mutate()}
+              disabled={createManualChart.isPending}
+            >
+              {createManualChart.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Create Chart
+            </Button>
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col space-y-4 px-6 pb-6">
