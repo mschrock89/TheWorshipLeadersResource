@@ -48,6 +48,15 @@ import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
+  "admin",
+  "campus_admin",
+  "campus_worship_pastor",
+  "student_worship_pastor",
+  "network_worship_pastor",
+  "network_worship_leader",
+  "campus_pastor",
+]);
 
 function getSetlistDisplayDate(planDate: string, ministryType: string) {
   const date = parseLocalDate(planDate);
@@ -133,11 +142,16 @@ function StandardMySetlists() {
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
+  const { data: userRoles = [] } = useUserRoles(user?.id);
   const { data: isApprover = false } = useIsApprover();
   
   // Use global campus selection context if available
   const campusContext = useCampusSelectionOptional();
   const [localCampusId, setLocalCampusId] = useState<string>("");
+  const canViewCampusWideSetlists = useMemo(
+    () => userRoles.some(({ role }) => CROSS_CAMPUS_SETLIST_VIEWER_ROLES.has(role)),
+    [userRoles],
+  );
 
   const assignedCampusIds = useMemo(
     () => new Set(userCampuses.map((uc) => uc.campus_id)),
@@ -147,6 +161,10 @@ function StandardMySetlists() {
     if (!campuses) return [];
     return campuses.filter((campus) => assignedCampusIds.has(campus.id));
   }, [campuses, assignedCampusIds]);
+  const selectableCampuses = useMemo(() => {
+    if (isAdmin || isApprover || canViewCampusWideSetlists) return campuses || [];
+    return assignedCampuses;
+  }, [isAdmin, isApprover, canViewCampusWideSetlists, campuses, assignedCampuses]);
   
   // Sync with global context - use context value if set, otherwise use local state
   const selectedCampusId = campusContext?.selectedCampusId || localCampusId;
@@ -159,19 +177,12 @@ function StandardMySetlists() {
   };
 
   const normalizedCampusId = useMemo(() => {
-    if (isApprover) {
-      const allCampuses = campuses || [];
-      if (selectedCampusId && allCampuses.some((campus) => campus.id === selectedCampusId)) {
-        return selectedCampusId;
-      }
-      if (allCampuses.length > 0) return allCampuses[0].id;
-      return "__none__";
+    if (selectedCampusId && selectableCampuses.some((campus) => campus.id === selectedCampusId)) {
+      return selectedCampusId;
     }
-
-    if (selectedCampusId && assignedCampusIds.has(selectedCampusId)) return selectedCampusId;
-    if (assignedCampuses.length > 0) return assignedCampuses[0].id;
+    if (selectableCampuses.length > 0) return selectableCampuses[0].id;
     return "__none__";
-  }, [selectedCampusId, assignedCampusIds, assignedCampuses, isApprover, campuses]);
+  }, [selectedCampusId, selectableCampuses]);
 
   useEffect(() => {
     if (normalizedCampusId === "__none__") return;
@@ -217,14 +228,14 @@ function StandardMySetlists() {
   }, [pastSetlists, upcomingSetlists, today]);
 
   const visibleGroupedSetlists = useMemo(() => {
-    if (isAdmin) return allGroupedSetlists;
+    if (isAdmin || isApprover || canViewCampusWideSetlists) return allGroupedSetlists;
     return allGroupedSetlists
       .map((group) => ({
         ...group,
         items: group.items.filter((setlist) => setlist.amIOnRoster === true),
       }))
       .filter((group) => group.items.length > 0);
-  }, [allGroupedSetlists, isAdmin]);
+  }, [allGroupedSetlists, isAdmin, isApprover, canViewCampusWideSetlists]);
 
   // Find the index of the first upcoming/current setlist to start there
   const initialIndex = useMemo(() => {
@@ -364,12 +375,12 @@ function StandardMySetlists() {
         {/* Campus Filter */}
         <div className="flex items-center gap-2 shrink-0">
           <MapPin className="h-4 w-4 text-muted-foreground" />
-          <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={assignedCampuses.length === 0}>
+          <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={selectableCampuses.length === 0}>
             <SelectTrigger className="w-auto min-w-[160px]">
               <SelectValue placeholder="Select Campus" />
             </SelectTrigger>
             <SelectContent>
-              {assignedCampuses.map((campus) => (
+              {selectableCampuses.map((campus) => (
                 <SelectItem key={campus.id} value={campus.id}>
                   {campus.name}
                 </SelectItem>
