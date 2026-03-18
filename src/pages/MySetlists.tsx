@@ -90,6 +90,43 @@ function YouTubeButton({
   );
 }
 
+function SetlistYoutubeLinks({
+  songs,
+  compact = false,
+}: {
+  songs: Array<{
+    id: string;
+    youtube_url?: string | null;
+    song?: {
+      title?: string | null;
+    } | null;
+  }>;
+  compact?: boolean;
+}) {
+  const songsWithYoutube = songs.filter((song) => song.youtube_url);
+
+  if (songsWithYoutube.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-ecc-blue/40 bg-card/50 p-3">
+      <div className="flex items-center gap-2">
+        <Youtube className="h-4 w-4 text-ecc-blue" />
+        <span className="text-sm font-medium text-foreground">YouTube Links</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {songsWithYoutube.map((song) => (
+          <div key={song.id} className="flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-2 py-1">
+            <span className="max-w-[140px] truncate text-xs text-muted-foreground sm:max-w-[220px]">
+              {song.song?.title || "Song"}
+            </span>
+            <YouTubeButton href={song.youtube_url} compact={compact} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StandardMySetlists() {
   const { isAdmin, user } = useAuth();
   const [searchParams] = useSearchParams();
@@ -495,9 +532,6 @@ function StandardMySetlists() {
                                 {item.song.author}
                               </p>
                             )}
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <YouTubeButton href={item.youtube_url} compact={isMobile} />
-                            </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-1.5 self-center md:gap-2">
                             {item.song_key && (
@@ -613,6 +647,7 @@ function StandardMySetlists() {
                         <Headphones className="h-4 w-4 text-primary" />
                         <span className="text-sm font-medium">Practice Playlist</span>
                       </div>
+                      <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
                       {setlistPlaylists.map((playlist) => (
                         <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
                       ))}
@@ -1774,7 +1809,6 @@ function AuditionCandidateSetlists() {
                             Chart
                           </Button>
                         )}
-                        <YouTubeButton href={item.youtube_url} />
                       </div>
                       {item.song?.author && (
                         <p className="text-xs text-muted-foreground mt-1">{item.song.author}</p>
@@ -1815,6 +1849,7 @@ function AuditionCandidateSetlists() {
                       <Headphones className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium">Practice Playlist</span>
                     </div>
+                    <SetlistYoutubeLinks songs={setlist.songs} compact />
                     {setlistPlaylists.map((playlist) => (
                       <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
                     ))}
