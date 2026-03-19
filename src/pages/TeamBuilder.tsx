@@ -150,14 +150,10 @@ export default function TeamBuilder() {
     return teams.filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
   }, [teams, selectedMinistryType]);
 
-  // Get members by team (uses all members, not filtered - filtering is done via slot visibility)
+  // Get members by team. Rotation periods are already campus-scoped, so keep
+  // cross-campus fill-ins visible here so admins can edit/remove them.
   const getMembersForTeam = (teamId: string) => {
-    return members.filter((m) => {
-      if (m.team_id !== teamId) return false;
-      if (!selectedCampusId || !m.user_id) return true;
-      const memberCampuses = userCampusMap?.[m.user_id]?.ids || [];
-      return memberCampuses.includes(selectedCampusId);
-    });
+    return members.filter((member) => member.team_id === teamId);
   };
 
   const isTeamLocked = (teamId: string) => {
