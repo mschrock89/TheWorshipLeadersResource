@@ -40,6 +40,34 @@ import { Users, Upload, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } fro
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+const normalizePositionFilterValue = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+const POSITION_FILTER_ALIASES: Record<string, string[]> = {
+  acoustic_1: ["acoustic_1", "acoustic_guitar", "acoustic", "ag_1"],
+  acoustic_2: ["acoustic_2", "acoustic_guitar", "acoustic", "ag_2"],
+  electric_1: ["electric_1", "electric_guitar", "electric", "eg_1"],
+  electric_2: ["electric_2", "electric_guitar", "electric", "eg_2"],
+  drums: ["drums", "drummer", "drum_tech"],
+  keys: ["keys", "piano", "keyboard", "keyboards"],
+};
+
+const matchesPositionFilter = (positions: TeamPosition[] | undefined, positionFilter: string) => {
+  if (positionFilter === "all") return true;
+  if (!positions || positions.length === 0) return false;
+
+  const normalizedFilter = normalizePositionFilterValue(positionFilter);
+  const allowedValues = new Set([
+    normalizedFilter,
+    ...(POSITION_FILTER_ALIASES[normalizedFilter] || []),
+  ]);
+
+  return positions.some((position) => allowedValues.has(normalizePositionFilterValue(position)));
+};
+
 export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
@@ -82,9 +110,7 @@ export default function Team() {
           email.includes(searchLower);
 
         // Position filter
-        const matchesPosition =
-          positionFilter === "all" ||
-          profile.positions?.includes(positionFilter as TeamPosition);
+        const matchesPosition = matchesPositionFilter(profile.positions, positionFilter);
 
         // Campus filter
         const userCampusData = userCampusMap[profile.id];

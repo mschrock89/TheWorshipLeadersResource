@@ -99,7 +99,34 @@ export function useProfiles() {
       const { data, error } = await supabase.rpc("get_profiles_for_campus");
       
       if (error) throw error;
-      return data as Profile[];
+
+      const { data: positionAssignments, error: positionsError } = await supabase
+        .from("user_campus_ministry_positions")
+        .select("user_id, position");
+
+      if (positionsError) throw positionsError;
+
+      const positionMap = new Map<string, Set<TeamPosition>>();
+
+      (positionAssignments || []).forEach(({ user_id, position }) => {
+        if (!positionMap.has(user_id)) {
+          positionMap.set(user_id, new Set<TeamPosition>());
+        }
+        positionMap.get(user_id)?.add(position as TeamPosition);
+      });
+
+      return (data as Profile[]).map((profile) => {
+        const mergedPositions = new Set<TeamPosition>(profile.positions || []);
+
+        positionMap.get(profile.id)?.forEach((position) => {
+          mergedPositions.add(position);
+        });
+
+        return {
+          ...profile,
+          positions: Array.from(mergedPositions),
+        };
+      });
     },
     enabled: !!user && !isLoading,
   });
