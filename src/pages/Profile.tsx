@@ -32,6 +32,7 @@ import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BA
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
+import { areHapticsEnabled, HAPTICS_CHANGE_EVENT, isHapticsSupported, setHapticsEnabled } from "@/lib/haptics";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -88,6 +89,7 @@ export default function Profile() {
   const [ministryTypes, setMinistryTypes] = useState<string[]>(["weekend"]);
   const [selectedCampuses, setSelectedCampuses] = useState<string[]>([]);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [hapticsEnabled, setHapticsEnabledState] = useState(() => areHapticsEnabled());
   const [shareContactWithPastors, setShareContactWithPastors] = useState(false);
   const [shareContactWithCampus, setShareContactWithCampus] = useState(false);
   const [gender, setGender] = useState<string | null>(null);
@@ -153,6 +155,20 @@ export default function Profile() {
       setSelectedCampuses(userCampuses.map(uc => uc.campus_id));
     }
   }, [userCampuses]);
+
+  useEffect(() => {
+    const syncHapticsPreference = () => {
+      setHapticsEnabledState(areHapticsEnabled());
+    };
+
+    window.addEventListener("storage", syncHapticsPreference);
+    window.addEventListener(HAPTICS_CHANGE_EVENT, syncHapticsPreference as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", syncHapticsPreference);
+      window.removeEventListener(HAPTICS_CHANGE_EVENT, syncHapticsPreference as EventListener);
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1194,6 +1210,36 @@ export default function Profile() {
               </div>
 
               {/* Privacy Settings - only for own profile */}
+              {isOwnProfile && (
+                <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
+                  <Label className="text-sm font-medium">Haptic Feedback</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Use touch feedback for supported controls like games, chat actions, and pull-to-refresh gestures.
+                  </p>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="haptics-enabled" className="text-sm font-medium">
+                        Enable haptic feedback
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {isHapticsSupported()
+                          ? "Supported devices will vibrate on compatible interactions."
+                          : "This browser or device does not expose web vibration, so haptics may still not fire here."}
+                      </p>
+                    </div>
+                    <Switch
+                      id="haptics-enabled"
+                      checked={hapticsEnabled}
+                      onCheckedChange={(checked) => {
+                        setHapticsEnabledState(checked);
+                        setHapticsEnabled(checked);
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {isOwnProfile && (
                 <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
                   <Label className="flex items-center gap-2">

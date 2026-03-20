@@ -1,6 +1,7 @@
 import { useState, useRef, ReactNode, useCallback, useImperativeHandle, forwardRef, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
@@ -20,20 +21,12 @@ function isIOS(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-// Trigger haptic feedback if supported
-const triggerHaptic = (style: "light" | "medium" | "heavy" = "medium") => {
-  if ("vibrate" in navigator) {
-    const duration = style === "light" ? 10 : style === "medium" ? 20 : 30;
-    navigator.vibrate(duration);
-  }
-};
-
 // Dismiss keyboard by blurring active element
 const dismissKeyboard = () => {
   const activeElement = document.activeElement as HTMLElement;
   if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
     activeElement.blur();
-    triggerHaptic("light");
+    haptic("light");
   }
 };
 
@@ -90,7 +83,7 @@ export const PullToRefresh = forwardRef<PullToRefreshRef, PullToRefreshProps>(
         setPullDistance(newDistance);
 
         if (newDistance >= threshold && !hasTriggeredHaptic) {
-          triggerHaptic("medium");
+          haptic("medium");
           setHasTriggeredHaptic(true);
         }
         return;
@@ -111,7 +104,7 @@ export const PullToRefresh = forwardRef<PullToRefreshRef, PullToRefreshProps>(
       if (pullDistance >= threshold && !isRefreshing) {
         setIsRefreshing(true);
         setPullDistance(threshold / 2);
-        triggerHaptic("light");
+        haptic("light");
         try {
           await onRefresh();
         } finally {

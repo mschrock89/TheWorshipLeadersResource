@@ -2,6 +2,7 @@ import { useState, useRef, ReactNode, useCallback, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { haptic } from "@/lib/haptics";
 
 interface RefreshableContainerProps {
   children: ReactNode;
@@ -9,14 +10,6 @@ interface RefreshableContainerProps {
   queryKeys?: string[][];
   onRefresh?: () => Promise<void>;
 }
-
-// Trigger haptic feedback if supported
-const triggerHaptic = (style: "light" | "medium" | "heavy" = "medium") => {
-  if ("vibrate" in navigator) {
-    const duration = style === "light" ? 10 : style === "medium" ? 20 : 30;
-    navigator.vibrate(duration);
-  }
-};
 
 export function RefreshableContainer({
   children,
@@ -36,7 +29,7 @@ export function RefreshableContainer({
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setPullDistance(threshold / 2);
-    triggerHaptic("light");
+    haptic("light");
 
     try {
       // Invalidate all provided query keys
@@ -83,7 +76,7 @@ export function RefreshableContainer({
 
       // Trigger haptic when crossing threshold
       if (newDistance >= threshold && !hasTriggeredHaptic) {
-        triggerHaptic("medium");
+        haptic("medium");
         setHasTriggeredHaptic(true);
       }
     }

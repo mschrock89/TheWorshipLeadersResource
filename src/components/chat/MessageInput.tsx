@@ -8,19 +8,13 @@ import { ChatGifPicker } from "./GifPicker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { haptic } from "@/lib/haptics";
 
 // Detect if we're on iOS
 function isIOS(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-// Trigger haptic feedback on iOS
-function triggerHaptic() {
-  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    navigator.vibrate(10);
-  }
 }
 
 const MAX_FILE_SIZE_MB = 10;
@@ -76,7 +70,7 @@ export function MessageInput({
     setIsKeyboardOpen(true);
     // Avoid forced center scrolling on iOS. It creates a large blank gap
     // above the keyboard in sticky chat composers.
-  }, [isIOSDevice]);
+  }, []);
 
   // Handle blur - keyboard closing
   const handleBlur = useCallback(() => {
@@ -207,10 +201,7 @@ export function MessageInput({
 
       onSendMessage(message, attachmentUrls.length > 0 ? attachmentUrls : undefined);
       
-      // Trigger haptic feedback on iOS when message is sent
-      if (isIOSDevice) {
-        triggerHaptic();
-      }
+      haptic("light");
       
       setMessage("");
       setMentionSearch(null);

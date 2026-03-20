@@ -1,21 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-
-// Detect if we're on iOS
-function isIOS(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-// Trigger haptic feedback on iOS
-function triggerHaptic() {
-  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    navigator.vibrate(10);
-  }
-}
+import { haptic } from "@/lib/haptics";
 
 interface Profile {
   id: string;
@@ -28,6 +15,23 @@ interface Reaction {
   user_id: string;
   reaction: string;
   profiles: Profile;
+}
+
+interface MessageReactionRow {
+  id: string;
+  user_id: string;
+  reaction: string;
+}
+
+interface MessageRow {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  campus_id: string | null;
+  ministry_type: string | null;
+  attachments: string[] | null;
+  message_reactions: MessageReactionRow[] | null;
 }
 
 export interface ChatMessage {
@@ -47,10 +51,8 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
-  const isIOSDevice = useMemo(() => isIOS(), []);
-  const previousMessageCountRef = useRef<number>(0);
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     if (!campusId || !ministryType) {
       setMessages([]);
       setIsLoading(false);
@@ -58,7 +60,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
     }
 
     // Fetch messages without profile join (profiles may be blocked by RLS for volunteers)
-    let query = supabase
+    const query = supabase
       .from("chat_messages")
       .select(`
         *,
@@ -92,11 +94,11 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       (allProfiles || []).map((p: Profile) => [p.id, p])
     );
 
-    const normalized = (data || []).map((m: any) => ({
+    const normalized = ((data || []) as MessageRow[]).map((m) => ({
       ...m,
       profiles: profileMap.get(m.user_id) ?? { id: m.user_id, full_name: null, avatar_url: null },
       message_reactions: Array.isArray(m.message_reactions) 
-        ? m.message_reactions.map((r: any) => ({
+        ? m.message_reactions.map((r) => ({
             ...r,
             profiles: profileMap.get(r.user_id) ?? { id: r.user_id, full_name: null, avatar_url: null },
           }))
@@ -105,16 +107,13 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     setMessages(normalized as unknown as ChatMessage[]);
     setIsLoading(false);
-  };
+  }, [campusId, ministryType, toast]);
 
   const sendMessage = async (content: string, attachments?: string[]) => {
     if (!user || !campusId || !ministryType) return;
     if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
-    // Trigger haptic feedback on iOS when sending
-    if (isIOSDevice) {
-      triggerHaptic();
-    }
+    haptic("light");
 
     const { error } = await supabase.from("chat_messages").insert({
       user_id: user.id,
@@ -268,9 +267,8 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
           const newMsg = payload.new as { ministry_type?: string; user_id?: string };
           if (newMsg.ministry_type !== ministryType) return;
           
-          // Trigger haptic feedback on iOS for new messages from other users
-          if (isIOSDevice && newMsg.user_id !== user?.id) {
-            triggerHaptic();
+          if (newMsg.user_id !== user?.id) {
+            haptic("light");
           }
           fetchMessages();
         }
@@ -314,7 +312,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
     return () => {
       supabase.removeChannel(messagesChannel);
     };
-  }, [campusId, ministryType, isIOSDevice, user?.id]);
+  }, [campusId, fetchMessages, ministryType, user?.id]);
 
   return {
     messages,
