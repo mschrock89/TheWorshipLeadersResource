@@ -381,7 +381,7 @@ function RenderedChordChart({
 
   return (
     <div
-      className="rounded-md border bg-background p-4 text-[20px] leading-[1.45] sm:text-[22px]"
+      className="overflow-auto overscroll-contain rounded-md border bg-background p-4 text-[20px] leading-[1.45] touch-pan-x touch-pan-y sm:text-[22px]"
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY }}
     >
       <div className="mb-5 border-b pb-3">
@@ -389,7 +389,7 @@ function RenderedChordChart({
         {author ? <p className="text-sm text-muted-foreground">{author}</p> : null}
       </div>
 
-      <div className="space-y-0.5">
+      <div className="min-w-max space-y-0.5 pr-2">
         {renderedLines.map((line, index) => {
           if (line.kind === "empty") {
             return <div key={index} className="h-4" />;

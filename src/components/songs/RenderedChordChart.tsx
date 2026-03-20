@@ -39,7 +39,7 @@ export function RenderedChordChart({
   return (
     <div
       ref={containerRef}
-      className={`overflow-hidden rounded-md border bg-background p-3 sm:p-4 ${scaleClassName} ${className || ""}`.trim()}
+      className={`overflow-auto overscroll-contain rounded-md border bg-background p-3 touch-pan-x touch-pan-y sm:p-4 ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY, ...style }}
     >
       {showHeader ? (
@@ -62,7 +62,7 @@ export function RenderedChartLines({
   lineOffset?: number;
 }) {
   return (
-    <div className="h-full max-w-full space-y-0.5 overflow-hidden pr-1">
+    <div className="h-full min-w-max space-y-0.5 pr-2">
       {lines.map((line, index) => {
         const lineIndex = lineOffset + index;
 
@@ -72,7 +72,7 @@ export function RenderedChartLines({
 
         if (line.kind === "section") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="mt-2 max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">
+            <pre key={index} data-line-index={lineIndex} className="mt-2 whitespace-pre font-bold">
               {line.text}
             </pre>
           );
@@ -80,7 +80,7 @@ export function RenderedChartLines({
 
         if (line.kind === "chords") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">
+            <pre key={index} data-line-index={lineIndex} className="whitespace-pre font-bold">
               {line.text}
             </pre>
           );
@@ -88,19 +88,19 @@ export function RenderedChartLines({
 
         if (line.kind === "lyricWithChords") {
           return (
-            <div key={index} data-line-index={lineIndex} className="max-w-full space-y-0 overflow-hidden">
+            <div key={index} data-line-index={lineIndex} className="space-y-0">
               {line.chords.trim().length > 0 ? (
-                <pre className="max-w-full whitespace-pre-wrap break-words font-bold [overflow-wrap:anywhere]">{line.chords}</pre>
+                <pre className="whitespace-pre font-bold">{line.chords}</pre>
               ) : (
                 <div className="h-[1.45em]" />
               )}
-              <pre className="max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{line.lyric}</pre>
+              <pre className="whitespace-pre">{line.lyric}</pre>
             </div>
           );
         }
 
         return (
-          <pre key={index} data-line-index={lineIndex} className="max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          <pre key={index} data-line-index={lineIndex} className="whitespace-pre">
             {line.text}
           </pre>
         );
