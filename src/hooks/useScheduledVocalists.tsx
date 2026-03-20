@@ -3,6 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 
+const WEEKEND_VOCAL_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+
+const ministryMatchesScheduledFilter = (memberMinistries: string[] | null | undefined, ministryType: string) => {
+  if (!ministryType) return true;
+  if (!memberMinistries || memberMinistries.length === 0) return true;
+
+  if (WEEKEND_VOCAL_MINISTRY_ALIASES.includes(ministryType)) {
+    return memberMinistries.some((mt) => WEEKEND_VOCAL_MINISTRY_ALIASES.includes(mt));
+  }
+
+  return memberMinistries.includes(ministryType);
+};
+
 export interface ScheduledVocalist {
   userId: string;
   name: string;
@@ -84,11 +97,7 @@ export function useScheduledVocalists(
         if (!m.rotation_period_id) return false;
         if (!rotationPeriodIds.includes(m.rotation_period_id)) return false;
 
-        if (ministryType && m.ministry_types && m.ministry_types.length > 0) {
-          return m.ministry_types.includes(ministryType);
-        }
-
-        return true;
+        return ministryMatchesScheduledFilter(m.ministry_types, ministryType);
       });
 
       // Build the list of dates to check for swaps.

@@ -5,6 +5,23 @@ import { useUserCampuses } from "@/hooks/useCampuses";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+
+const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefined, ministryType?: string) => {
+  if (!ministryType) return true;
+  if (!memberMinistries || memberMinistries.length === 0) return true;
+
+  if (ministryType === "weekend_team") {
+    const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am"];
+    return memberMinistries.some((mt) => weekendTeamMinistries.includes(mt));
+  }
+
+  if (WEEKEND_ROSTER_MINISTRY_ALIASES.includes(ministryType)) {
+    return memberMinistries.some((mt) => WEEKEND_ROSTER_MINISTRY_ALIASES.includes(mt));
+  }
+
+  return memberMinistries.includes(ministryType);
+};
 
 const normalizeRosterName = (name?: string | null) =>
   (name || "")
@@ -135,16 +152,7 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
         if (!validRotationPeriodIdSet.has(m.rotation_period_id)) return false;
         
         // If ministryType is specified, filter by ministry_types array
-        if (ministryType && m.ministry_types) {
-          // Special handling for "weekend_team" - includes weekend, production, and video
-          if (ministryType === 'weekend_team') {
-            const weekendTeamMinistries = ['weekend', 'production', 'video'];
-            return m.ministry_types.some(mt => weekendTeamMinistries.includes(mt));
-          }
-          return m.ministry_types.includes(ministryType);
-        }
-        
-        return true;
+        return ministryMatchesRosterFilter(m.ministry_types, ministryType);
       });
 
       // Get user IDs to fetch their profiles

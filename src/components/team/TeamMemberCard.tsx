@@ -29,6 +29,8 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
   const anniversaryDate = member.anniversary ? parseLocalDate(member.anniversary) : null;
   const hasValidBirthday = Boolean(birthdayDate && isValid(birthdayDate));
   const hasValidAnniversary = Boolean(anniversaryDate && isValid(anniversaryDate));
+  const welcomeEmailDate = member.welcome_email_sent_at ? new Date(member.welcome_email_sent_at) : null;
+  const hasValidWelcomeEmailDate = Boolean(welcomeEmailDate && isValid(welcomeEmailDate));
   
   const initials = member.full_name
     ?.split(" ")
@@ -123,7 +125,9 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="z-50">
                         <p>{member.welcome_email_sent_at 
-                          ? `Emailed ${format(new Date(member.welcome_email_sent_at), "MMM d, yyyy")} - Click to resend`
+                          ? hasValidWelcomeEmailDate && welcomeEmailDate
+                            ? `Emailed ${format(welcomeEmailDate, "MMM d, yyyy")} - Click to resend`
+                            : "Welcome email already sent - Click to resend"
                           : "Send welcome email with login instructions"}</p>
                       </TooltipContent>
                     </Tooltip>
