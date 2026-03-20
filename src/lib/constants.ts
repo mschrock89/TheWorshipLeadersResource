@@ -283,3 +283,22 @@ export function memberMatchesMinistryFilter(
 
   return !!ministryTypes?.includes(ministryFilter);
 }
+
+export function breakRequestMatchesMinistryFilter(
+  requestMinistryType: string | null | undefined,
+  ministryFilter: string,
+): boolean {
+  if (ministryFilter === "all") {
+    return true;
+  }
+
+  if (!requestMinistryType) {
+    return true;
+  }
+
+  if (ministryFilter === "weekend_team") {
+    return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType);
+  }
+
+  return requestMinistryType === ministryFilter;
+}

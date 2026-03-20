@@ -71,6 +71,11 @@ interface AvailableMemberProfileRow {
   ministry_types?: string[] | null;
 }
 
+export interface ApprovedBreakSummary {
+  user_id: string;
+  ministry_type: string | null;
+}
+
 // Re-export POSITION_SLOTS for backwards compatibility
 export { POSITION_SLOTS } from "@/lib/constants";
 
@@ -173,7 +178,7 @@ export function usePreviousPeriodMembers(
   });
 }
 
-// Get approved break user IDs from the previous period
+// Get approved breaks from the previous period
 export function usePreviousPeriodApprovedBreaks(periods: RotationPeriod[], currentPeriodId: string | null) {
   const previousPeriodId = useMemo(() => {
     return getPreviousPeriodId(periods, currentPeriodId);
@@ -185,12 +190,12 @@ export function usePreviousPeriodApprovedBreaks(periods: RotationPeriod[], curre
     queryFn: async () => {
       const { data, error } = await supabase
         .from("break_requests")
-        .select("user_id")
+        .select("user_id, ministry_type")
         .eq("rotation_period_id", previousPeriodId)
         .eq("status", "approved");
 
       if (error) throw error;
-      return (data || []).map(r => r.user_id) as string[];
+      return (data || []) as ApprovedBreakSummary[];
     },
   });
 }

@@ -50,6 +50,7 @@ import {
   isTeamVisibleForMinistry,
   memberMatchesMinistryFilter,
   resolveTeamBuilderSlotMinistryType,
+  breakRequestMatchesMinistryFilter,
 } from "@/lib/constants";
 
 export default function TeamBuilder() {
@@ -88,7 +89,7 @@ export default function TeamBuilder() {
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds();
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
-  const { data: previousPeriodApprovedBreakUserIds = [] } = usePreviousPeriodApprovedBreaks(periods, selectedPeriodId);
+  const { data: previousPeriodApprovedBreaks = [] } = usePreviousPeriodApprovedBreaks(periods, selectedPeriodId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
   const { data: userCampusMap } = useProfilesWithCampuses();
 
@@ -155,6 +156,24 @@ export default function TeamBuilder() {
       memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
     );
   }, [availableMembers, selectedMinistryType]);
+
+  const approvedBreakUserIds = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status === "approved" &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [breakRequests, selectedMinistryType]);
+
+  const previousPeriodApprovedBreakUserIds = useMemo(() => {
+    const matchingBreaks = previousPeriodApprovedBreaks.filter((request) =>
+      breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [previousPeriodApprovedBreaks, selectedMinistryType]);
 
   // Filter teams by selected ministry type
   const filteredTeams = useMemo(() => {
@@ -444,7 +463,7 @@ export default function TeamBuilder() {
           members={availableMembers}
           ministryType={selectedMinistryType}
           previousPeriodMembers={previousPeriodMembers}
-          approvedBreakUserIds={breakRequests.filter(r => r.status === "approved").map(r => r.user_id)}
+          approvedBreakUserIds={approvedBreakUserIds}
           previousPeriodApprovedBreakUserIds={previousPeriodApprovedBreakUserIds}
         />
       )}
