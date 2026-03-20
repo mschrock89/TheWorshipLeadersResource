@@ -3,7 +3,6 @@ import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
 import { useAuth } from "@/hooks/useAuth";
-import emLogo from "@/assets/em-logo-print.png";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
 
@@ -26,7 +25,7 @@ export default function ServiceFlow() {
     const date = new Date(initialDate + "T00:00:00");
     // Get Saturday and Sunday of the weekend
     const dayOfWeek = date.getDay();
-    let saturday = new Date(date);
+    const saturday = new Date(date);
     if (dayOfWeek === 0) {
       // If Sunday, go back to Saturday
       saturday.setDate(date.getDate() - 1);
@@ -112,11 +111,6 @@ export default function ServiceFlow() {
     <div className="service-flow-page service-flow-print-fit space-y-6 p-4 md:p-6">
       {/* Print-only header - hidden on screen, uses print-specific colors in CSS */}
       <div className="print-header hidden print:flex mb-8 pb-4 border-b-2">
-        <img 
-          src={emLogo} 
-          alt="Experience Music" 
-          className="print-header-logo h-20 w-auto object-contain"
-        />
         <div className="print-header-copy">
           <h1 className="text-3xl font-bold print-title">Service Flow</h1>
           <p className="text-2xl font-semibold print-date mt-1">

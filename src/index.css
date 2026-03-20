@@ -253,27 +253,31 @@ html.service-flow-export-mode .screen-header {
 
 html.service-flow-export-mode main,
 html.service-flow-export-mode .service-flow-page {
-  padding: 0 !important;
+  padding: 6px !important;
   margin: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
   position: relative !important;
+  box-sizing: border-box !important;
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
   zoom: 0.85 !important;
+  width: calc(100% - 12px) !important;
+  margin: 0 auto !important;
+  border: 2px solid #111 !important;
 }
 
 @supports not (zoom: 1) {
   html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
     transform: scale(0.85) !important;
     transform-origin: top left !important;
-    width: 118% !important;
+    width: calc(118% - 12px) !important;
   }
 }
 
 html.service-flow-export-mode .service-flow-page.space-y-6 {
-  gap: 2px !important;
+  gap: 1px !important;
 }
 
 html.service-flow-export-mode .print-header {
@@ -281,34 +285,28 @@ html.service-flow-export-mode .print-header {
   position: relative !important;
   align-items: flex-start !important;
   justify-content: center !important;
-  border-color: #333 !important;
-  margin-bottom: 1px !important;
-  padding-bottom: 1px !important;
-  min-height: 34px !important;
-}
-
-html.service-flow-export-mode .print-header .print-header-logo {
-  position: absolute !important;
-  left: 0 !important;
-  top: 0 !important;
-  height: 38px !important;
-  width: auto !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  min-height: 42px !important;
+  border-bottom: none !important;
 }
 
 html.service-flow-export-mode .print-header .print-header-copy {
   width: 100% !important;
   text-align: center !important;
-  padding: 0 72px !important;
+  padding: 0 !important;
 }
 
 html.service-flow-export-mode .print-header h1 {
-  font-size: 14pt !important;
+  font-size: 16pt !important;
   margin: 0 !important;
+  line-height: 1.05 !important;
 }
 
 html.service-flow-export-mode .print-header p {
-  font-size: 11pt !important;
+  font-size: 12pt !important;
   margin-top: 1px !important;
+  line-height: 1.05 !important;
 }
 
 html.service-flow-export-mode .print-title {
@@ -325,9 +323,9 @@ html.service-flow-export-mode .service-flow-page .flex.flex-wrap.gap-3 {
 
 html.service-flow-export-mode .service-flow-page .border-b {
   border-bottom: 1px solid #333 !important;
-  margin-bottom: 1px !important;
+  margin-bottom: 0 !important;
   padding-bottom: 1px !important;
-  font-size: 10pt !important;
+  font-size: 10.5pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .space-y-2 {
@@ -343,7 +341,7 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   background: white !important;
   border: 1px solid #ddd !important;
   margin-bottom: -1px !important;
-  padding: 1px 3px !important;
+  padding: 1px 2px !important;
   border-radius: 1px !important;
 }
 
@@ -356,7 +354,7 @@ html.service-flow-export-mode .service-flow-page .service-flow-header {
   background: white !important;
   color: #1a1a1a !important;
   font-weight: 600 !important;
-  min-height: 24px !important;
+  min-height: 22px !important;
   padding: 0 5px !important;
   border: 1px solid #35B0E5 !important;
 }
@@ -378,20 +376,20 @@ html.service-flow-export-mode .service-flow-page select {
 }
 
 html.service-flow-export-mode .service-flow-page input {
-  height: 1.35rem !important;
-  min-height: 1.35rem !important;
+  height: 1.25rem !important;
+  min-height: 1.25rem !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
-  font-size: 10pt !important;
+  font-size: 10.5pt !important;
   line-height: 1 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
   position: static !important;
   border: none !important;
-  margin-top: 4px !important;
+  margin-top: 2px !important;
   padding-top: 0 !important;
-  font-size: 11pt !important;
+  font-size: 11.5pt !important;
   font-weight: 600 !important;
   display: flex !important;
   justify-content: flex-end !important;
@@ -426,6 +424,16 @@ html.service-flow-export-mode .service-flow-page .service-flow-song-bpm {
   margin-right: 2px !important;
 }
 
+html.service-flow-export-mode .service-flow-page .service-flow-song-key {
+  flex-shrink: 0 !important;
+  background: white !important;
+  color: #111 !important;
+  border: 1px solid #111 !important;
+  min-width: 38px !important;
+  justify-content: center !important;
+  font-weight: 700 !important;
+}
+
 html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
   max-width: none !important;
   overflow: visible !important;
@@ -442,21 +450,21 @@ html.service-flow-export-mode .service-flow-page .bg-black {
   color: white !important;
   padding: 0 3px !important;
   border-radius: 2px !important;
-  font-size: 10pt !important;
+  font-size: 10.25pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-sm {
-  font-size: 10.5pt !important;
+  font-size: 11.5pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-xs {
-  font-size: 9pt !important;
+  font-size: 9.75pt !important;
 }
 
 @media print {
   /* Reset page margins - tight for one-page fit */
   @page {
-    margin: 0.1in;
+    margin: 0.05in;
     size: letter;
   }
 
@@ -477,7 +485,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   html, body {
     background: white !important;
     color: black !important;
-    font-size: 13pt !important;
+    font-size: 13.5pt !important;
     line-height: 1.15 !important;
   }
 
@@ -504,49 +512,51 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   /* Make main content full width */
   main,
   .service-flow-page {
-    padding: 0 !important;
+    padding: 6px !important;
     margin: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     position: relative !important;
+    box-sizing: border-box !important;
   }
 
   .service-flow-page.service-flow-print-fit {
     zoom: 0.85 !important;
+    width: calc(100% - 12px) !important;
+    margin: 0 auto !important;
+    border: 2px solid #111 !important;
   }
 
   @supports not (zoom: 1) {
     .service-flow-page.service-flow-print-fit {
       transform: scale(0.85) !important;
       transform-origin: top left !important;
-      width: 118% !important;
+      width: calc(118% - 12px) !important;
     }
   }
 
   /* Reduce spacing in the page */
   .service-flow-page.space-y-6 {
-    gap: 2px !important;
+    gap: 1px !important;
   }
 
   /* Show print header - compact to free vertical space for one-page fit */
   .print-header {
     display: flex !important;
-    border-color: #333 !important;
-    margin-bottom: 1px !important;
-    padding-bottom: 1px !important;
-  }
-
-  .print-header img {
-    height: 28px !important;
-    width: auto !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+    min-height: 42px !important;
+    border-bottom: none !important;
   }
 
   .print-header h1 {
-    font-size: 14pt !important;
+    font-size: 16pt !important;
+    line-height: 1.05 !important;
   }
 
   .print-header p {
-    font-size: 11pt !important;
+    font-size: 12pt !important;
+    line-height: 1.05 !important;
   }
 
   .print-title {
@@ -565,9 +575,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   /* Column headers - compact */
   .service-flow-page .border-b {
     border-bottom: 1px solid #333 !important;
-    margin-bottom: 1px !important;
+    margin-bottom: 0 !important;
     padding-bottom: 1px !important;
-    font-size: 10pt !important;
+    font-size: 10.5pt !important;
   }
 
   /* Reduce space between items */
@@ -585,7 +595,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     background: white !important;
     border: 1px solid #ddd !important;
     margin-bottom: -1px !important;
-    padding: 1px 3px !important;
+    padding: 1px 2px !important;
     border-radius: 1px !important;
   }
 
@@ -594,7 +604,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     background: white !important;
     color: #1a1a1a !important;
     font-weight: 600 !important;
-    min-height: 24px !important;
+    min-height: 22px !important;
     padding: 0 5px !important;
     border: 1px solid #35B0E5 !important;
   }
@@ -612,9 +622,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .border-t {
     position: static !important;
     border: none !important;
-    margin-top: 4px !important;
+    margin-top: 2px !important;
     padding-top: 0 !important;
-    font-size: 11pt !important;
+    font-size: 11.5pt !important;
     font-weight: 600 !important;
     display: flex !important;
     justify-content: flex-end !important;
@@ -661,6 +671,12 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 
   .service-flow-page .service-flow-song-key {
     flex-shrink: 0 !important;
+    background: #111 !important;
+    color: #fff !important;
+    border: 1px solid #111 !important;
+    min-width: 38px !important;
+    justify-content: center !important;
+    font-weight: 700 !important;
   }
 
   .service-flow-page .service-flow-song-vocalist {
@@ -680,24 +696,24 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     color: white !important;
     padding: 0 3px !important;
     border-radius: 2px !important;
-    font-size: 10pt !important;
+    font-size: 10.25pt !important;
   }
 
   /* Compact item text */
   .service-flow-page .text-sm {
-    font-size: 10.5pt !important;
+    font-size: 11.5pt !important;
   }
 
   .service-flow-page .text-xs {
-    font-size: 9pt !important;
+    font-size: 9.75pt !important;
   }
 
   .service-flow-page input {
-    height: 1.35rem !important;
-    min-height: 1.35rem !important;
+    height: 1.25rem !important;
+    min-height: 1.25rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    font-size: 10pt !important;
+    font-size: 10.5pt !important;
     line-height: 1 !important;
   }
 }
