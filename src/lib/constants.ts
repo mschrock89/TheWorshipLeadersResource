@@ -244,6 +244,31 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
 
 const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
 
+export function resolveTeamBuilderSlotMinistryType(
+  ministryFilter: string | null | undefined,
+  slot: string | null | undefined,
+): string | undefined {
+  if (!ministryFilter || ministryFilter === "all") {
+    return undefined;
+  }
+
+  if (ministryFilter !== "weekend_team") {
+    return ministryFilter;
+  }
+
+  const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
+
+  if (slotConfig?.category === "Production") {
+    return "production";
+  }
+
+  if (slotConfig?.category === "Video") {
+    return "video";
+  }
+
+  return "weekend";
+}
+
 export function memberMatchesMinistryFilter(
   ministryTypes: string[] | null | undefined,
   ministryFilter: string,

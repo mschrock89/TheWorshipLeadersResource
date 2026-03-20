@@ -46,7 +46,11 @@ import {
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesWithCampuses } from "@/hooks/useCampuses";
-import { isTeamVisibleForMinistry, memberMatchesMinistryFilter } from "@/lib/constants";
+import {
+  isTeamVisibleForMinistry,
+  memberMatchesMinistryFilter,
+  resolveTeamBuilderSlotMinistryType,
+} from "@/lib/constants";
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
@@ -67,13 +71,20 @@ export default function TeamBuilder() {
     slot: string;
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
+  const assigningMinistryType = resolveTeamBuilderSlotMinistryType(
+    selectedMinistryType,
+    assigningSlot?.slot,
+  );
 
   const { data: campuses = [], isLoading: campusesLoading } = useAllCampuses();
   const { data: adminCampusInfo, isLoading: adminCampusLoading } = useAdminCampusId();
   const { data: periods = [], isLoading: periodsLoading } = useRotationPeriodsForCampus(selectedCampusId);
   const { data: teams = [], isLoading: teamsLoading } = useWorshipTeams();
   const { data: members = [], isLoading: membersLoading } = useTeamMembersForPeriod(selectedPeriodId);
-  const { data: availableMembers = [] } = useAvailableMembers(selectedCampusId, selectedMinistryType);
+  const { data: availableMembers = [] } = useAvailableMembers(
+    selectedCampusId,
+    assigningSlot ? assigningMinistryType : selectedMinistryType,
+  );
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds();
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);

@@ -14,7 +14,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AvailableMember, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
-import { POSITION_LABELS, MINISTRY_TYPES, memberMatchesMinistryFilter } from "@/lib/constants";
+import {
+  POSITION_LABELS,
+  MINISTRY_TYPES,
+  memberMatchesMinistryFilter,
+  resolveTeamBuilderSlotMinistryType,
+} from "@/lib/constants";
 
 interface AssignMemberDialogProps {
   open: boolean;
@@ -41,6 +46,7 @@ export function AssignMemberDialog({
 
   const slotConfig = POSITION_SLOTS.find(s => s.slot === slot);
   const slotLabel = slotConfig?.label || slot;
+  const effectiveMinistryFilter = resolveTeamBuilderSlotMinistryType(ministryFilter, slot);
 
   // Check if a member's positions match the slot
   const matchesPosition = (positions: string[], slotType: string): boolean => {
@@ -90,8 +96,8 @@ export function AssignMemberDialog({
       })
       .map(m => {
         // Check if member has the ministry type
-        const hasMinistry = ministryFilter
-          ? memberMatchesMinistryFilter(m.ministry_types, ministryFilter)
+        const hasMinistry = effectiveMinistryFilter
+          ? memberMatchesMinistryFilter(m.ministry_types, effectiveMinistryFilter)
           : true;
         return { ...m, hasMinistry };
       })
@@ -101,7 +107,7 @@ export function AssignMemberDialog({
         if (!a.hasMinistry && b.hasMinistry) return 1;
         return a.full_name.localeCompare(b.full_name);
       });
-  }, [members, search, slot, ministryFilter]);
+  }, [members, search, slot, effectiveMinistryFilter]);
 
   const matchingMinistryCount = relevantMembers.filter(m => m.hasMinistry).length;
   const otherCount = relevantMembers.length - matchingMinistryCount;
@@ -110,8 +116,8 @@ export function AssignMemberDialog({
     setSelectedMember(member);
     // Pre-select the current ministry filter, and any ministries the member already has
     const initialMinistries = new Set<string>();
-    if (ministryFilter) {
-      initialMinistries.add(ministryFilter);
+    if (effectiveMinistryFilter) {
+      initialMinistries.add(effectiveMinistryFilter);
     }
     member.ministry_types?.forEach(mt => initialMinistries.add(mt));
     setSelectedMinistries(Array.from(initialMinistries));
@@ -149,10 +155,10 @@ export function AssignMemberDialog({
     );
   };
 
-  const ministryLabel = ministryFilter === 'weekend' || ministryFilter === 'weekend_team' ? 'Weekend Worship' 
-    : ministryFilter === 'eon' ? 'EON'
-    : ministryFilter === 'encounter' ? 'Encounter'
-    : ministryFilter || 'All';
+  const ministryLabel = effectiveMinistryFilter === 'weekend' ? 'Weekend Worship'
+    : effectiveMinistryFilter === 'eon' ? 'EON'
+    : effectiveMinistryFilter === 'encounter' ? 'Encounter'
+    : effectiveMinistryFilter || 'All';
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -178,7 +184,7 @@ export function AssignMemberDialog({
               />
             </div>
 
-            {ministryFilter && (
+            {effectiveMinistryFilter && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="h-4 w-4" />
                 <span>{matchingMinistryCount} {ministryLabel} members</span>
@@ -192,7 +198,7 @@ export function AssignMemberDialog({
               <div className="space-y-1 pr-4">
                 {relevantMembers.map((member, index) => {
                   // Add separator before "other" members
-                  const showSeparator = ministryFilter && 
+                  const showSeparator = effectiveMinistryFilter &&
                     index > 0 && 
                     relevantMembers[index - 1].hasMinistry && 
                     !member.hasMinistry;
@@ -224,7 +230,7 @@ export function AssignMemberDialog({
                         <div className="flex-1 text-left">
                           <div className="flex items-center gap-2">
                             <p className="font-medium">{member.full_name}</p>
-                            {ministryFilter && member.hasMinistry && (
+                            {effectiveMinistryFilter && member.hasMinistry && (
                               <Badge variant="default" className="text-xs">
                                 {ministryLabel}
                               </Badge>
