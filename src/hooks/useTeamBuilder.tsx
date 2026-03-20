@@ -57,6 +57,20 @@ export interface Campus {
   name: string;
 }
 
+interface CampusMinistryPositionAssignment {
+  user_id: string;
+  ministry_type: string;
+  position: string;
+}
+
+interface AvailableMemberProfileRow {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+  positions?: string[] | null;
+  ministry_types?: string[] | null;
+}
+
 // Re-export POSITION_SLOTS for backwards compatibility
 export { POSITION_SLOTS } from "@/lib/constants";
 
@@ -231,26 +245,31 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
 
       // If we have a campusId, fetch campus-specific ministry+position assignments
       // This determines which members are assigned to serve at this campus with which positions
-      let memberDataMap: Record<string, { ministry_types: string[]; positions: string[] }> = {};
+      const memberDataMap: Record<string, { ministry_types: string[]; positions: string[] }> = {};
       
       if (campusId) {
         // Query the new user_campus_ministry_positions table for positions
-        let positionsQuery = supabase
+        const positionsQuery = supabase
           .from("user_campus_ministry_positions")
           .select("user_id, ministry_type, position")
           .eq("campus_id", campusId);
-        
-        // Filter by ministry type if provided
-        if (ministryType && ministryType !== "all") {
-          positionsQuery = positionsQuery.eq("ministry_type", ministryType);
-        }
-        
+
         const { data: positionAssignments, error: positionsError } = await positionsQuery;
-        
+
         if (positionsError) throw positionsError;
-        
+
+        const filteredAssignments =
+          ministryType && ministryType !== "all"
+            ? ((positionAssignments || []) as CampusMinistryPositionAssignment[]).filter((assignment) =>
+                memberMatchesMinistryFilter(
+                  [assignment.ministry_type || "weekend"],
+                  ministryType,
+                ),
+              )
+            : ((positionAssignments || []) as CampusMinistryPositionAssignment[]);
+
         // Build a map of user_id -> { ministry_types, positions } for this campus
-        (positionAssignments || []).forEach((a: any) => {
+        filteredAssignments.forEach((a) => {
           if (!memberDataMap[a.user_id]) {
             memberDataMap[a.user_id] = { ministry_types: [], positions: [] };
           }
@@ -266,9 +285,9 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
       // Filter profiles to only include members with position assignments for this campus+ministry
       const assignedUserIds = new Set(Object.keys(memberDataMap));
 
-      return (profiles || [])
-        .filter((p: any) => !campusId || assignedUserIds.has(p.id))
-        .map((p: any) => ({
+      return ((profiles || []) as AvailableMemberProfileRow[])
+        .filter((p) => !campusId || assignedUserIds.has(p.id))
+        .map((p) => ({
           id: p.id,
           full_name: p.full_name,
           avatar_url: p.avatar_url || null,

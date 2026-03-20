@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { TeamMemberCard } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
-import { TeamImportDialog } from "@/components/team/TeamImportDialog";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
 import { CreateTeamMemberDialog } from "@/components/team/CreateTeamMemberDialog";
 import { WelcomeEmailDialog } from "@/components/team/WelcomeEmailDialog";
@@ -36,7 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Upload, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
+import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -79,7 +78,6 @@ export default function Team() {
   const [positionFilter, setPositionFilter] = useState("all");
   const [campusFilter, setCampusFilter] = useState("all");
   const [genderFilter, setGenderFilter] = useState("all");
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [createMemberDialogOpen, setCreateMemberDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -132,10 +130,6 @@ export default function Team() {
         return nameA.localeCompare(nameB);
       });
   }, [profiles, search, positionFilter, campusFilter, genderFilter, userCampusMap]);
-
-  const handleImportComplete = () => {
-    queryClient.invalidateQueries({ queryKey: ['profiles'] });
-  };
 
   const handleEmailSent = () => {
     refetch();
@@ -308,10 +302,6 @@ export default function Team() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button className="w-full" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import Team
-            </Button>
           </div>
         )}
       </div>
@@ -362,13 +352,6 @@ export default function Team() {
           ))}
         </div>
       )}
-
-      {/* Import Dialog */}
-      <TeamImportDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onImportComplete={handleImportComplete}
-      />
 
       <CreateAuditionCandidateDialog
         open={candidateDialogOpen}

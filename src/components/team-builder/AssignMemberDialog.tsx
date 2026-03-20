@@ -149,7 +149,7 @@ export function AssignMemberDialog({
     );
   };
 
-  const ministryLabel = ministryFilter === 'weekend' ? 'Weekend Worship' 
+  const ministryLabel = ministryFilter === 'weekend' || ministryFilter === 'weekend_team' ? 'Weekend Worship' 
     : ministryFilter === 'eon' ? 'EON'
     : ministryFilter === 'encounter' ? 'Encounter'
     : ministryFilter || 'All';
