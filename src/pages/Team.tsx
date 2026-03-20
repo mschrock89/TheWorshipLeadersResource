@@ -74,10 +74,12 @@ export default function Team() {
       .filter((profile) => {
         // Search filter
         const searchLower = search.toLowerCase();
+        const fullName = profile.full_name?.toLowerCase() ?? "";
+        const email = profile.email?.toLowerCase() ?? "";
         const matchesSearch =
           !search ||
-          profile.full_name?.toLowerCase().includes(searchLower) ||
-          profile.email.toLowerCase().includes(searchLower);
+          fullName.includes(searchLower) ||
+          email.includes(searchLower);
 
         // Position filter
         const matchesPosition =
@@ -99,8 +101,8 @@ export default function Team() {
         return matchesSearch && matchesPosition && matchesCampus && matchesGender;
       })
       .sort((a, b) => {
-        const nameA = (a.full_name || a.email).toLowerCase();
-        const nameB = (b.full_name || b.email).toLowerCase();
+        const nameA = (a.full_name || a.email || "").toLowerCase();
+        const nameB = (b.full_name || b.email || "").toLowerCase();
         return nameA.localeCompare(nameB);
       });
   }, [profiles, search, positionFilter, campusFilter, genderFilter, userCampusMap]);
@@ -150,10 +152,11 @@ export default function Team() {
         title: "Password Reset", 
         description: `Password for ${resetPasswordMember.full_name || resetPasswordMember.email} has been reset to 123456` 
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to reset password";
       toast({ 
         title: "Error", 
-        description: error.message || "Failed to reset password", 
+        description: errorMessage, 
         variant: "destructive" 
       });
     } finally {

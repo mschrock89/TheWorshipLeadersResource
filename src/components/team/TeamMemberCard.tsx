@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { Phone, Cake, Heart, MapPin, Mail, CheckCircle, MessageCircle, KeyRound, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { parseLocalDate } from "@/lib/utils";
 import {
   Tooltip,
@@ -25,12 +25,16 @@ interface TeamMemberCardProps {
 
 export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetPassword, onDelete }: TeamMemberCardProps) {
   const navigate = useNavigate();
+  const birthdayDate = member.birthday ? parseLocalDate(member.birthday) : null;
+  const anniversaryDate = member.anniversary ? parseLocalDate(member.anniversary) : null;
+  const hasValidBirthday = Boolean(birthdayDate && isValid(birthdayDate));
+  const hasValidAnniversary = Boolean(anniversaryDate && isValid(anniversaryDate));
   
   const initials = member.full_name
     ?.split(" ")
     .map((n) => n[0])
     .join("")
-    .toUpperCase() || member.email.substring(0, 2).toUpperCase();
+    .toUpperCase() || (member.email ?? "").substring(0, 2).toUpperCase() || "TM";
 
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -282,18 +286,18 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
             </div>
 
             {/* Special dates */}
-            {(member.birthday || member.anniversary) && (
+            {(hasValidBirthday || hasValidAnniversary) && (
               <div className="mt-4 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                {member.birthday && (
+                {hasValidBirthday && birthdayDate && (
                   <div className="flex items-center gap-1">
                     <Cake className="h-3.5 w-3.5 text-pink-500" />
-                    <span>{format(parseLocalDate(member.birthday), "MMM d")}</span>
+                    <span>{format(birthdayDate, "MMM d")}</span>
                   </div>
                 )}
-                {member.anniversary && (
+                {hasValidAnniversary && anniversaryDate && (
                   <div className="flex items-center gap-1">
                     <Heart className="h-3.5 w-3.5 text-red-500" />
-                    <span>{format(parseLocalDate(member.anniversary), "MMM d")}</span>
+                    <span>{format(anniversaryDate, "MMM d")}</span>
                   </div>
                 )}
               </div>
