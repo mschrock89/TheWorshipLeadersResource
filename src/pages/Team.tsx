@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useProfiles, TeamPosition, Profile } from "@/hooks/useProfiles";
 import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
@@ -72,12 +72,11 @@ export default function Team() {
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
   const { data: campuses = [] } = useCampuses();
   const { canManageTeam, isAdmin } = useAuth();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
-  const [positionFilter, setPositionFilter] = useState("all");
-  const [campusFilter, setCampusFilter] = useState("all");
-  const [genderFilter, setGenderFilter] = useState("all");
+  const hasRestoredScrollRef = useRef(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [createMemberDialogOpen, setCreateMemberDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -88,12 +87,70 @@ export default function Team() {
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Always start at top when opening Team Directory.
-  useEffect(() => {
-    if (!isLoading) {
-      window.scrollTo(0, 0);
+  const search = searchParams.get("search") ?? "";
+  const positionFilter = searchParams.get("position") ?? "all";
+  const campusFilter = searchParams.get("campus") ?? "all";
+  const genderFilter = searchParams.get("gender") ?? "all";
+  const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
+
+  const updateDirectoryParam = (key: string, value: string, fallback = "all") => {
+    const nextParams = new URLSearchParams(searchParams);
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue || trimmedValue === fallback) {
+      nextParams.delete(key);
+    } else {
+      nextParams.set(key, trimmedValue);
     }
-  }, [isLoading]);
+
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  useEffect(() => {
+    hasRestoredScrollRef.current = false;
+  }, [scrollStorageKey]);
+
+  useEffect(() => {
+    return () => {
+      sessionStorage.setItem(scrollStorageKey, String(window.scrollY));
+    };
+  }, [scrollStorageKey]);
+
+  useEffect(() => {
+    if (!isLoading && !hasRestoredScrollRef.current) {
+      const savedScroll = sessionStorage.getItem(scrollStorageKey);
+      const targetScrollY = savedScroll ? Number(savedScroll) : 0;
+      const scrollY = Number.isFinite(targetScrollY) ? targetScrollY : 0;
+      let attempts = 0;
+      let timeoutId: number | undefined;
+
+      const restoreScroll = () => {
+        window.scrollTo(0, scrollY);
+        attempts += 1;
+
+        const maxScrollY = Math.max(
+          document.documentElement.scrollHeight - window.innerHeight,
+          0
+        );
+        const reachedTarget = Math.abs(window.scrollY - Math.min(scrollY, maxScrollY)) < 2;
+
+        if (reachedTarget || attempts >= 6) {
+          hasRestoredScrollRef.current = true;
+          return;
+        }
+
+        timeoutId = window.setTimeout(restoreScroll, 50);
+      };
+
+      restoreScroll();
+
+      return () => {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+      };
+    }
+  }, [isLoading, scrollStorageKey]);
 
   const filteredProfiles = useMemo(() => {
     return profiles
@@ -310,13 +367,13 @@ export default function Team() {
       <div className="mb-6">
         <TeamFilters
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={(value) => updateDirectoryParam("search", value, "")}
           positionFilter={positionFilter}
-          onPositionFilterChange={setPositionFilter}
+          onPositionFilterChange={(value) => updateDirectoryParam("position", value)}
           campusFilter={campusFilter}
-          onCampusFilterChange={setCampusFilter}
+          onCampusFilterChange={(value) => updateDirectoryParam("campus", value)}
           genderFilter={genderFilter}
-          onGenderFilterChange={setGenderFilter}
+          onGenderFilterChange={(value) => updateDirectoryParam("gender", value)}
           showGenderFilter={true}
         />
       </div>
@@ -333,7 +390,7 @@ export default function Team() {
           <Users className="h-16 w-16 text-muted-foreground/30" />
           <h2 className="mt-4 text-lg font-semibold text-foreground">No team members found</h2>
           <p className="mt-2 text-muted-foreground">
-            {search || positionFilter !== "all" || campusFilter !== "all"
+            {search || positionFilter !== "all" || campusFilter !== "all" || genderFilter !== "all"
               ? "Try adjusting your filters"
               : "Team members will appear here once they sign up"}
           </p>

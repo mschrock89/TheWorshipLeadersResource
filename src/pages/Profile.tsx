@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile, useUpdateProfile, TeamPosition } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses, useUpdateUserCampuses } from "@/hooks/useCampuses";
@@ -39,6 +39,7 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isLeader, isAdmin, canManageTeam } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -423,7 +424,7 @@ export default function Profile() {
     .toUpperCase() || profile.email.substring(0, 2).toUpperCase();
 
   const handleBackToDirectory = () => {
-    navigate('/team');
+    navigate(`/team${location.search}`);
   };
 
   return (
@@ -457,7 +458,7 @@ export default function Profile() {
             <>
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <Link to="/team">Team Directory</Link>
+                  <Link to={`/team${location.search}`}>Team Directory</Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />

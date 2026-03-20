@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Profile } from "@/hooks/useProfiles";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,6 +25,8 @@ interface TeamMemberCardProps {
 
 export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetPassword, onDelete }: TeamMemberCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
   const birthdayDate = member.birthday ? parseLocalDate(member.birthday) : null;
   const anniversaryDate = member.anniversary ? parseLocalDate(member.anniversary) : null;
   const hasValidBirthday = Boolean(birthdayDate && isValid(birthdayDate));
@@ -40,7 +42,8 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
 
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    navigate(`/team/${member.id}`);
+    sessionStorage.setItem(scrollStorageKey, String(window.scrollY));
+    navigate(`/team/${member.id}${location.search}`);
   };
 
   const handleEmailClick = (e: React.MouseEvent) => {
