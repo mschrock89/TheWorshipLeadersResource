@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { parseLocalDate } from "@/lib/utils";
 
+const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
+
 export type NotificationType = 
   | "swap_request" 
   | "swap_accepted" 
@@ -79,58 +81,22 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      // Fetch all notification sources in PARALLEL
-      const [memberResult, incomingResult, resolvedResult, newSetsResult, newEventsResult, userCampusesResult, approvalStatusResult, userDraftSetsResult] = await Promise.all([
-        // Get user's positions
-        supabase
-          .from("team_members")
-          .select("position, team_id")
-          .eq("user_id", user.id),
-        // Incoming swap requests
-        supabase
-          .from("swap_requests")
-          .select(`
-            id,
-            original_date,
-            status,
-            created_at,
-            position,
-            target_user_id,
-            requester:profiles!swap_requests_requester_id_fkey(full_name)
-          `)
-          .eq("status", "pending")
-          .neq("requester_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(10),
-        // Resolved requests (user's own)
-        supabase
-          .from("swap_requests")
-          .select(`
-            id,
-            original_date,
-            status,
-            resolved_at,
-            position,
-            accepted_by:profiles!swap_requests_accepted_by_id_fkey(full_name)
-          `)
-          .eq("requester_id", user.id)
-          .in("status", ["accepted", "declined"])
-          .order("resolved_at", { ascending: false })
-          .limit(10),
+      const [newSetsResult, newEventsResult, userCampusesResult] = await Promise.all([
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
           .select(`
             id,
             plan_date,
-            updated_at,
+            published_at,
             ministry_type,
             campus_id,
             campuses:campuses(name)
           `)
           .eq("status", "published")
-          .gte("updated_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-          .order("updated_at", { ascending: false })
+          .not("published_at", "is", null)
+          .gte("published_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order("published_at", { ascending: false })
           .limit(10),
         // New calendar events (created in last 7 days, for upcoming dates)
         supabase
@@ -156,97 +122,46 @@ export function useNotifications() {
           .from("user_campuses")
           .select("campus_id")
           .eq("user_id", user.id),
-        // Approval status changes for user's submitted setlists
-        supabase
-          .from("setlist_approvals")
-          .select(`
-            id,
-            status,
-            reviewed_at,
-            notes,
-            draft_set_id
-          `)
-          .eq("submitted_by", user.id)
-          .in("status", ["approved", "rejected"])
-          .gte("reviewed_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-          .order("reviewed_at", { ascending: false })
-          .limit(10),
-        // Draft sets created by this user (to find their confirmations)
-        supabase
-          .from("draft_sets")
-          .select("id, plan_date, campus_id, ministry_type, campuses:campuses(name)")
-          .eq("created_by", user.id)
-          .eq("status", "published")
-          .gte("plan_date", new Date().toISOString().split("T")[0])
       ]);
 
-      const positions = memberResult.data?.map((m) => m.position) || [];
       const userCampusIds = userCampusesResult.data?.map((uc) => uc.campus_id) || [];
-      const incomingRequests = incomingResult.data || [];
-      const resolvedRequests = resolvedResult.data || [];
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
-      const approvalStatuses = approvalStatusResult.data || [];
-      const userDraftSets = userDraftSetsResult.data || [];
 
       const notifs: Notification[] = [];
 
-      // Process incoming swap requests
-      incomingRequests.forEach((req) => {
-        const isTargetedAtMe = req.target_user_id === user.id;
-        const isOpenForMyPosition = !req.target_user_id && positions.includes(req.position);
-        
-        if (isTargetedAtMe || isOpenForMyPosition) {
-          const requesterName = req.requester?.full_name || "Someone";
-          const notifId = `incoming-${req.id}`;
-          notifs.push({
-            id: notifId,
-            type: "swap_request",
-            title: "Swap Request",
-            message: isTargetedAtMe
-              ? `${requesterName} wants to swap dates with you`
-              : `${requesterName} needs coverage on ${parseLocalDate(req.original_date).toLocaleDateString()}`,
-            timestamp: req.created_at,
-            read: currentReadIds.has(notifId),
-            link: "/swaps",
-            swapRequestId: req.id,
+      const rosterChecks = await Promise.all(
+        newSets.map(async (set) => {
+          const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
+            p_draft_set_id: set.id,
+            p_user_id: user.id,
           });
-        }
-      });
 
-      // Process resolved requests
-      resolvedRequests.forEach((req) => {
-        const accepterName = req.accepted_by?.full_name || "Someone";
-        const notifId = `resolved-${req.id}`;
+          if (error) {
+            console.error("Error checking notification roster eligibility:", error);
+            return null;
+          }
+
+          return data ? set.id : null;
+        }),
+      );
+
+      const rosteredSetIds = new Set(rosterChecks.filter(Boolean) as string[]);
+
+      newSets.forEach((set) => {
+        if (!rosteredSetIds.has(set.id)) return;
+
+        const campusName = (set.campuses as { name: string } | null)?.name || "";
+        const notifId = `set-${set.id}`;
         notifs.push({
           id: notifId,
-          type: req.status === "accepted" ? "swap_accepted" : "swap_declined",
-          title: req.status === "accepted" ? "Swap Accepted" : "Swap Declined",
-          message: req.status === "accepted"
-            ? `${accepterName} will cover your date on ${parseLocalDate(req.original_date).toLocaleDateString()}`
-            : `Your swap request for ${parseLocalDate(req.original_date).toLocaleDateString()} was declined`,
-          timestamp: req.resolved_at || req.original_date,
+          type: "new_set",
+          title: "New Set Published",
+          message: `${campusName ? campusName + " - " : ""}${set.ministry_type} set for ${parseLocalDate(set.plan_date).toLocaleDateString()}`,
+          timestamp: set.published_at || new Date().toISOString(),
           read: currentReadIds.has(notifId),
-          link: "/swaps",
-          swapRequestId: req.id,
+          link: `/my-setlists?setId=${set.id}`,
         });
-      });
-
-      // Process new sets - filter by user's campuses
-      newSets.forEach((set) => {
-        if (userCampusIds.includes(set.campus_id)) {
-          const campusName = (set.campuses as { name: string } | null)?.name || "";
-          const notifId = `set-${set.id}`;
-          notifs.push({
-            id: notifId,
-            type: "new_set",
-            title: "New Set Published",
-            message: `${campusName ? campusName + " - " : ""}${set.ministry_type} set for ${parseLocalDate(set.plan_date).toLocaleDateString()}`,
-            timestamp: set.updated_at,
-            read: currentReadIds.has(notifId),
-            link: `/my-setlists?setId=${set.id}`,
-          });
-        }
       });
 
       const newEventIds = newEvents.map((event) => event.id);
@@ -263,102 +178,36 @@ export function useNotifications() {
         comingEventIds = new Set((eventRsvps || []).map((rsvp) => rsvp.event_id));
       }
 
-      // Process new events - filter by user's campuses
+      // Process new team-wide events only.
       newEvents.forEach((event) => {
-        if (!event.campus_id || userCampusIds.includes(event.campus_id)) {
-          const campusName = (event.campuses as { name: string } | null)?.name || "";
-          const notifId = `event-${event.id}`;
-          notifs.push({
-            id: notifId,
-            type: "new_event",
-            title: "New Event",
-            message: `${event.title}${campusName ? ` - ${campusName}` : ""} on ${parseLocalDate(event.event_date).toLocaleDateString()}`,
-            timestamp: event.created_at || new Date().toISOString(),
-            read: currentReadIds.has(notifId),
-            link: "/calendar",
-            eventDetails: {
-              eventId: event.id,
-              title: event.title,
-              description: "description" in event ? (event.description as string | null) : null,
-              eventDate: event.event_date,
-              startTime: "start_time" in event ? (event.start_time as string | null) : null,
-              endTime: "end_time" in event ? (event.end_time as string | null) : null,
-              campusName,
-              audienceType: "audience_type" in event ? (event.audience_type as string | null) : null,
-              isComing: comingEventIds.has(event.id),
-            },
-          });
-        }
-      });
+        const audienceType = ("audience_type" in event ? (event.audience_type as string | null) : null) || "volunteers_only";
+        const isTeamWideEvent = TEAM_WIDE_EVENT_AUDIENCE_TYPES.has(audienceType);
+        const isRelevantCampusEvent = !event.campus_id || userCampusIds.includes(event.campus_id);
+        if (!isTeamWideEvent || !isRelevantCampusEvent) return;
 
-      // Pending approval indicator for approvers is shown on the bottom Setlists nav badge,
-      // not in the top notification bell.
-
-      // Process approval status updates (for submitters)
-      approvalStatuses.forEach((approval) => {
-        const notifId = `approval-status-${approval.id}`;
-        const isApprovedStatus = approval.status === "approved";
+        const campusName = (event.campuses as { name: string } | null)?.name || "";
+        const notifId = `event-${event.id}`;
         notifs.push({
           id: notifId,
-          type: "approval_status",
-          title: isApprovedStatus ? "Setlist Approved" : "Revision Needed",
-          message: isApprovedStatus 
-            ? "Your setlist has been approved and the team has been notified"
-            : approval.notes || "Your setlist needs revisions",
-          timestamp: approval.reviewed_at || new Date().toISOString(),
+          type: "new_event",
+          title: "New Event",
+          message: `${event.title}${campusName ? ` - ${campusName}` : ""} on ${parseLocalDate(event.event_date).toLocaleDateString()}`,
+          timestamp: event.created_at || new Date().toISOString(),
           read: currentReadIds.has(notifId),
-          link: isApprovedStatus ? "/my-setlists" : "/set-planner",
+          link: "/calendar",
+          eventDetails: {
+            eventId: event.id,
+            title: event.title,
+            description: "description" in event ? (event.description as string | null) : null,
+            eventDate: event.event_date,
+            startTime: "start_time" in event ? (event.start_time as string | null) : null,
+            endTime: "end_time" in event ? (event.end_time as string | null) : null,
+            campusName,
+            audienceType,
+            isComing: comingEventIds.has(event.id),
+          },
         });
       });
-
-      // Fetch setlist confirmations for user's created setlists
-      if (userDraftSets.length > 0) {
-        const draftSetIds = userDraftSets.map(ds => ds.id);
-        const { data: confirmations } = await supabase
-          .from("setlist_confirmations")
-          .select(`
-            id,
-            draft_set_id,
-            user_id,
-            confirmed_at
-          `)
-          .in("draft_set_id", draftSetIds)
-          .neq("user_id", user.id)
-          .gte("confirmed_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-          .order("confirmed_at", { ascending: false })
-          .limit(20);
-
-        if (confirmations && confirmations.length > 0) {
-          const confirmerIds = [...new Set(confirmations.map(c => c.user_id))];
-          const { data: confirmerProfiles } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", confirmerIds);
-
-          const profileMap = new Map((confirmerProfiles || []).map(p => [p.id, p.full_name]));
-          const draftSetMap = new Map(userDraftSets.map(ds => [ds.id, ds]));
-
-          confirmations.forEach((confirmation) => {
-            const confirmerName = profileMap.get(confirmation.user_id) || "A team member";
-            const draftSet = draftSetMap.get(confirmation.draft_set_id);
-            if (!draftSet) return;
-
-            const campusName = (draftSet.campuses as { name: string } | null)?.name || "";
-            const formattedDate = parseLocalDate(draftSet.plan_date).toLocaleDateString();
-            const notifId = `confirm-${confirmation.id}`;
-            
-            notifs.push({
-              id: notifId,
-              type: "setlist_confirmed",
-              title: "Setlist Confirmed",
-              message: `${confirmerName} reviewed the ${formattedDate}${campusName ? ` ${campusName}` : ""} setlist`,
-              timestamp: confirmation.confirmed_at,
-              read: currentReadIds.has(notifId),
-              link: `/my-setlists?setId=${confirmation.draft_set_id}`,
-            });
-          });
-        }
-      }
 
       // Sort by timestamp descending
       notifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -384,11 +233,6 @@ export function useNotifications() {
       .channel("notifications-all-changes")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "swap_requests" },
-        () => fetchNotifications()
-      )
-      .on(
-        "postgres_changes",
         { event: "*", schema: "public", table: "draft_sets" },
         () => fetchNotifications()
       )
@@ -397,22 +241,12 @@ export function useNotifications() {
         { event: "*", schema: "public", table: "events" },
         () => fetchNotifications()
       )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "setlist_approvals" },
-        () => fetchNotifications()
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "setlist_confirmations" },
-        () => fetchNotifications()
-      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, fetchNotifications]);
+  }, [user, readIdsLoaded, fetchNotifications]);
 
   const markAsRead = useCallback(async (notificationId: string) => {
     if (!user) return;
