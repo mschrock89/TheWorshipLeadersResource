@@ -222,7 +222,7 @@ export function ReferenceTrackUploadDialog({
       setProgress(100);
 
       toast({
-        title: "Reference track uploaded",
+        title: "Weekend track uploaded",
         description: `"${title.trim()}" added with ${dbMarkers.length} marker${dbMarkers.length !== 1 ? 's' : ''}`,
       });
 
@@ -237,7 +237,7 @@ export function ReferenceTrackUploadDialog({
       console.error("Upload error:", error);
       toast({
         title: "Upload failed",
-        description: error.message || "Failed to upload reference track.",
+        description: error.message || "Failed to upload weekend track.",
         variant: "destructive",
       });
     } finally {
@@ -254,10 +254,10 @@ export function ReferenceTrackUploadDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileAudio className="h-5 w-5 text-primary" />
-            Add Reference Track
+            Add Weekend Track
           </DialogTitle>
           <DialogDescription>
-            Upload an MP3 file (click track, band mix, etc.) for the {serviceDate} practice playlist
+            Upload an MP3 file (click track, band mix, etc.) for the {serviceDate} Our Versions playlist
           </DialogDescription>
         </DialogHeader>
 

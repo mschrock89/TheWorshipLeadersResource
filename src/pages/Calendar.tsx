@@ -1523,7 +1523,7 @@ function AuditionCandidateCalendar() {
                       ))
                     ) : (
                       <p className="text-sm text-muted-foreground">
-                        No practice playlist or reference tracks have been added yet.
+                        No Our Versions playlist or weekend tracks have been added yet.
                       </p>
                     )}
                   </div>

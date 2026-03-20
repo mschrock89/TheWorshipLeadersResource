@@ -621,7 +621,7 @@ export default function AuditionSetPlanner() {
 
       {playlistForThisSet.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Practice Playlist</h2>
+          <h2 className="text-lg font-semibold">Our Versions</h2>
           {playlistForThisSet.map((playlist) => (
             <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
           ))}

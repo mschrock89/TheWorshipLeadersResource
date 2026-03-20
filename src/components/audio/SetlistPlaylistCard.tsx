@@ -67,7 +67,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
     }));
   const hasAudioTracks = playlist.tracks.length > 0 || referenceTracks.length > 0;
 
-  // Combine setlist tracks and reference tracks for playback
+  // Combine setlist tracks and weekend tracks for playback
   const allTracks: Track[] = [...playlist.tracks, ...referenceTracks];
 
   // Check if this playlist is currently playing
@@ -164,7 +164,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               </div>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Headphones className="h-5 w-5 text-primary" />
-                {customServiceName ? `${customServiceName} Playlist` : "Practice Playlist"}
+                {customServiceName ? `${customServiceName} Playlist` : "Our Versions"}
               </CardTitle>
               <div className="flex items-center gap-2 mt-2">
                 <Badge variant="secondary" className="text-xs font-medium">
@@ -216,7 +216,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                   onClick={() => setUploadOpen(true)}
                 >
                   <Plus className="h-4 w-4" />
-                  Add Reference Track
+                  Add Weekend Track
                 </Button>
               )}
             </div>
@@ -225,7 +225,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               <p className="text-xs text-muted-foreground mb-3">
                 {playlist.songsWithAudio} of {playlist.totalSongs} songs have audio
                 {referenceTracks.length > 0 && (
-                  <> • {referenceTracks.length} reference track{referenceTracks.length !== 1 ? 's' : ''}</>
+                  <> • {referenceTracks.length} weekend track{referenceTracks.length !== 1 ? 's' : ''}</>
                 )}
               </p>
               
@@ -283,7 +283,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                 );
               })}
 
-              {/* Reference Tracks Section */}
+              {/* Weekend Tracks Section */}
               {referenceTracks.length > 0 && (
                 <div className="pt-4 mt-4 border-t-2 border-primary/30">
                   <div className="flex items-center gap-2 mb-3">
@@ -291,7 +291,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                       <FileAudio className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <p className="text-sm font-semibold text-primary">
-                      Reference Tracks
+                      Weekend Tracks
                     </p>
                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/15 text-primary border-0">
                       {referenceTracks.length}
@@ -444,7 +444,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Reference Track</AlertDialogTitle>
+                                  <AlertDialogTitle>Delete Weekend Track</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     Are you sure you want to delete "{track.title}"? This will permanently remove the file.
                                   </AlertDialogDescription>
@@ -492,7 +492,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                 </div>
               )}
 
-              {/* Admin Add Reference Track Button */}
+              {/* Admin Add Weekend Track Button */}
               {canUploadReferenceTrack && (
                 <Button
                   variant="outline"
@@ -501,7 +501,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                   onClick={() => setUploadOpen(true)}
                 >
                   <Plus className="h-4 w-4" />
-                  Add Reference Track
+                  Add Weekend Track
                 </Button>
               )}
             </div>

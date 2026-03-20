@@ -21,7 +21,7 @@ export function RenderedChordChart({
   chordChartText,
   lines,
   className,
-  scaleClassName = "text-[20px] leading-[1.45] sm:text-[22px]",
+  scaleClassName = "text-[15px] leading-[1.35] sm:text-[20px] sm:leading-[1.45] lg:text-[22px]",
   pageIndex = 0,
   pageSize,
   showHeader = true,
@@ -39,13 +39,13 @@ export function RenderedChordChart({
   return (
     <div
       ref={containerRef}
-      className={`rounded-md border bg-background p-4 overflow-hidden ${scaleClassName} ${className || ""}`.trim()}
+      className={`overflow-hidden rounded-md border bg-background p-3 sm:p-4 ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY, ...style }}
     >
       {showHeader ? (
-        <div className="mb-5 border-b pb-3">
-          <h3 className="text-xl font-bold">{title}</h3>
-          {author ? <p className="text-sm text-muted-foreground">{author}</p> : null}
+        <div className="mb-4 border-b pb-3 sm:mb-5">
+          <h3 className="text-2xl font-bold leading-tight sm:text-xl">{title}</h3>
+          {author ? <p className="text-base text-muted-foreground sm:text-sm">{author}</p> : null}
         </div>
       ) : null}
 

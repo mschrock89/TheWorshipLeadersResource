@@ -642,25 +642,25 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden p-0">
-        <div className="flex max-h-[92vh] flex-col">
-          <div className="px-6 pt-6">
+      <DialogContent className="left-0 top-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 p-0 sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[92vh] sm:w-full sm:max-w-6xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border">
+        <div className="flex h-full max-h-[100dvh] flex-col sm:max-h-[92vh]">
+          <div className="px-4 pt-5 sm:px-6 sm:pt-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-start gap-2 pr-12 text-[1.85rem] leading-tight sm:items-center sm:text-lg sm:leading-none">
             <Music className="h-5 w-5" />
             {song?.title || "Chord Chart"}
           </DialogTitle>
-          <DialogDescription>{song?.author || "Unknown author"}</DialogDescription>
+          <DialogDescription className="text-base sm:text-sm">{song?.author || "Unknown author"}</DialogDescription>
         </DialogHeader>
           </div>
 
         {isLoading ? (
-          <div className="flex min-h-[320px] items-center justify-center gap-3 px-6 pb-6 text-muted-foreground">
+          <div className="flex min-h-[320px] items-center justify-center gap-3 px-4 pb-5 text-muted-foreground sm:px-6 sm:pb-6">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Loading chord charts...</span>
           </div>
         ) : !versions?.length ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 pb-6 text-center text-muted-foreground">
+          <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-4 pb-5 text-center text-muted-foreground sm:px-6 sm:pb-6">
             <FileText className="h-10 w-10 opacity-50" />
             <div className="space-y-1">
               <p className="font-medium text-foreground">No chord chart yet</p>
@@ -676,9 +676,9 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
             </Button>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col space-y-4 px-6 pb-6">
+          <div className="flex min-h-0 flex-1 flex-col space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">
                   {versions.length} version{versions.length === 1 ? "" : "s"}
                 </Badge>
@@ -689,10 +689,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
               </div>
 
               <div className="w-full">
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-12">
-                  <div className="xl:col-span-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-12">
+                  <div className="sm:col-span-2 xl:col-span-3">
                     <Select value={selectedVersion?.id || ""} onValueChange={setSelectedVersionId}>
-                      <SelectTrigger className="h-12 text-base">
+                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Select version" />
                       </SelectTrigger>
                       <SelectContent>
@@ -715,7 +715,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       }}
                       disabled={isEditingRaw || saveOriginalKey.isPending}
                     >
-                      <SelectTrigger className="h-12 text-base">
+                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Original Key" />
                       </SelectTrigger>
                       <SelectContent>
@@ -733,7 +733,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       onValueChange={(value) => setTargetKeyIndex(Number(value))}
                       disabled={isEditingRaw}
                     >
-                      <SelectTrigger className="h-12 text-base">
+                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Target Key" />
                       </SelectTrigger>
                       <SelectContent>
@@ -751,7 +751,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       onValueChange={(value: "sharps" | "flats") => setAccidentalPreference(value)}
                       disabled={isEditingRaw}
                     >
-                      <SelectTrigger className="h-12 text-base">
+                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Accidentals" />
                       </SelectTrigger>
                       <SelectContent>
@@ -760,14 +760,14 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:col-span-3">
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 xl:col-span-3">
                     <Button
                       type="button"
                       variant={displayMode === "rendered" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setDisplayMode("rendered")}
                       disabled={isEditingRaw}
-                      className="h-12 w-full gap-1.5 text-base"
+                      className="h-11 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
                     >
                       <Eye className="h-4 w-4" />
                       Rendered
@@ -777,7 +777,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       variant={displayMode === "raw" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setDisplayMode("raw")}
-                      className="h-12 w-full gap-1.5 text-base"
+                      className="h-11 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
                     >
                       <Code2 className="h-4 w-4" />
                       Raw
@@ -788,13 +788,13 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
             </div>
 
             <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/20">
-              <div className="space-y-6 p-4">
+              <div className="space-y-5 p-3 sm:space-y-6 sm:p-4">
                 <section className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       Chord Chart
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {displayMode === "raw" && !isEditingRaw ? (
                         <Button
                           type="button"
@@ -863,10 +863,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <Textarea
                       value={rawChartDraft}
                       onChange={(event) => setRawChartDraft(event.target.value)}
-                      className="min-h-[420px] resize-y bg-background font-mono text-sm leading-6"
+                      className="min-h-[420px] resize-y bg-background font-mono text-sm leading-6 sm:text-sm"
                     />
                   ) : (
-                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-4 font-mono text-sm leading-6">
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 font-mono text-[13px] leading-5 sm:p-4 sm:text-sm sm:leading-6">
                       {rawChordChartText || "No raw chart text yet. Click Edit Raw to add one."}
                     </pre>
                   )}
@@ -877,7 +877,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       Lyrics
                     </h3>
-                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-4 font-mono text-sm leading-6">
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 font-mono text-[13px] leading-5 sm:p-4 sm:text-sm sm:leading-6">
                       {lyricsText}
                     </pre>
                   </section>
