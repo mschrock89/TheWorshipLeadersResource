@@ -25,6 +25,11 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
+import {
+  useDeleteServiceTimeOverride,
+  useServiceTimeOverrides,
+  useUpsertServiceTimeOverride,
+} from "@/hooks/useServiceTimeOverrides";
 import { SwapButton } from "@/components/calendar/SwapButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { SwapsSheet } from "@/components/calendar/SwapsSheet";
@@ -63,6 +68,30 @@ const teamIcons: Record<string, React.ElementType> = {
   zap: Zap,
   diamond: Diamond
 };
+
+const LEADER_SERVICE_OVERRIDE_ROLES = new Set([
+  "admin",
+  "campus_admin",
+  "campus_worship_pastor",
+  "student_worship_pastor",
+  "network_worship_pastor",
+  "network_worship_leader",
+]);
+
+const formatDateForStorage = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const parseLocalDate = (value: string) => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const addDays = (date: Date, amount: number) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + amount);
+  return nextDate;
+};
+
 type CalendarAudition = {
   id: string;
   candidate_id: string;
@@ -111,6 +140,12 @@ function StandardCalendar() {
   const [ministryFilter, setMinistryFilter] = useState<string>("weekend_team");
   const [newEvent, setNewEvent] = useState(defaultNewEventState);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [isServiceOverrideOpen, setIsServiceOverrideOpen] = useState(false);
+  const [serviceOverrideForm, setServiceOverrideForm] = useState({
+    campus_id: "",
+    service_date: "",
+    service_times: [""],
+  });
 
   // Scroll to top on mount
   useEffect(() => {
@@ -129,6 +164,11 @@ function StandardCalendar() {
   } = useCustomServiceOccurrences({
     campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
     ministryType: ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : undefined,
+    startDate: monthStart,
+    endDate: monthEnd,
+  });
+  const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
+    campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
     startDate: monthStart,
     endDate: monthEnd,
   });
@@ -193,6 +233,10 @@ function StandardCalendar() {
     },
   });
   const customAssignedDateSet = useMemo(() => new Set(customAssignedDates), [customAssignedDates]);
+  const serviceTimeOverrideDateSet = useMemo(
+    () => new Set(serviceTimeOverrides.map((override) => override.service_date)),
+    [serviceTimeOverrides],
+  );
   // Get team schedule filtered by selected campus and rotation period (aligns with Team Builder)
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
   // Use 15th of displayed month to determine which rotation period applies (matches Team Builder)
@@ -215,6 +259,8 @@ function StandardCalendar() {
   const updateEvent = useUpdateEvent();
   const createCustomService = useCreateCustomService();
   const deleteCustomService = useDeleteCustomService();
+  const upsertServiceTimeOverride = useUpsertServiceTimeOverride();
+  const deleteServiceTimeOverride = useDeleteServiceTimeOverride();
   const deleteEvent = useDeleteEvent();
   const toggleEventRsvp = useToggleEventRsvp();
   const {
@@ -244,6 +290,38 @@ function StandardCalendar() {
 
   // Check if user is a campus admin
   const isCampusAdmin = userRole === 'campus_admin' || userRole === 'admin';
+  const canManageWeekendOverrides = userRole ? LEADER_SERVICE_OVERRIDE_ROLES.has(userRole) : false;
+
+  const availableServiceTimeCampuses = useMemo(() => {
+    if (campusFilter && campusFilter !== "network-wide") {
+      return campuses.filter((campus) => campus.id === campusFilter);
+    }
+
+    if (isCampusAdmin) {
+      return campuses;
+    }
+
+    const uniqueCampuses = new Map<string, (typeof campuses)[number]>();
+    userCampuses.forEach((userCampus) => {
+      if (userCampus.campuses?.id) {
+        uniqueCampuses.set(userCampus.campuses.id, userCampus.campuses);
+      }
+    });
+    return Array.from(uniqueCampuses.values());
+  }, [campusFilter, campuses, isCampusAdmin, userCampuses]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    const defaultCampusId =
+      campusFilter && campusFilter !== "network-wide"
+        ? campusFilter
+        : availableServiceTimeCampuses[0]?.id || "";
+    setServiceOverrideForm((prev) => ({
+      campus_id: prev.campus_id || defaultCampusId,
+      service_date: prev.service_date || formatDateForStorage(selectedDate),
+      service_times: prev.service_times.length > 0 ? prev.service_times : [""],
+    }));
+  }, [selectedDate, campusFilter, availableServiceTimeCampuses]);
 
   // Set default campus filter only if context is not available
   useEffect(() => {
@@ -270,29 +348,65 @@ function StandardCalendar() {
 
   // Helper to get service times for a selected date
   const getServiceTimesForDate = (date: Date) => {
+    if (isCampusAdmin && campusFilter === "network-wide") {
+      return null;
+    }
+
+    const dateStr = formatDateForStorage(date);
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
-    if (!isSaturday && !isSunday) return null;
-
-    // Get campuses that have service on this day
-    let relevantCampuses = campuses.filter(c => {
-      if (isSaturday) return c.has_saturday_service;
-      if (isSunday) return c.has_sunday_service;
-      return false;
+    const relevantOverrides = serviceTimeOverrides.filter((override) => {
+      if (override.service_date !== dateStr) return false;
+      if (isCampusAdmin && campusFilter !== "network-wide") {
+        return override.campus_id === campusFilter;
+      }
+      if (campusFilter && campusFilter !== "network-wide") {
+        return override.campus_id === campusFilter;
+      }
+      return true;
     });
 
-    // Apply campus filter for campus admins - hide service times for network-wide view
-    if (isCampusAdmin && campusFilter === "network-wide") {
-      return null; // Don't show service times for network-wide events view
-    } else if (isCampusAdmin && campusFilter !== "network-wide") {
-      relevantCampuses = relevantCampuses.filter(c => c.id === campusFilter);
+    const serviceTimesByCampus = new Map<string, { campusName: string; times: string[] }>();
+
+    if (isSaturday || isSunday) {
+      let relevantCampuses = campuses.filter((campus) => {
+        if (isSaturday) return campus.has_saturday_service;
+        if (isSunday) return campus.has_sunday_service;
+        return false;
+      });
+
+      if (isCampusAdmin && campusFilter !== "network-wide") {
+        relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
+      } else if (campusFilter && campusFilter !== "network-wide") {
+        relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
+      }
+
+      relevantCampuses.forEach((campus) => {
+        const defaultTimes = isSaturday ? campus.saturday_service_time : campus.sunday_service_time;
+        serviceTimesByCampus.set(campus.id, {
+          campusName: campus.name,
+          times: defaultTimes ? [...defaultTimes] : [],
+        });
+      });
     }
-    if (relevantCampuses.length === 0) return null;
-    return relevantCampuses.map(c => ({
-      campusName: c.name,
-      times: isSaturday ? c.saturday_service_time : c.sunday_service_time
-    }));
+
+    relevantOverrides.forEach((override) => {
+      const campusName = campuses.find((campus) => campus.id === override.campus_id)?.name || "Campus";
+      const existing = serviceTimesByCampus.get(override.campus_id);
+      const mergedTimes = Array.from(
+        new Set([...(existing?.times || []), ...override.service_times]),
+      ).sort();
+
+      serviceTimesByCampus.set(override.campus_id, {
+        campusName: existing?.campusName || campusName,
+        times: mergedTimes,
+      });
+    });
+
+    const merged = Array.from(serviceTimesByCampus.values()).filter((entry) => entry.times.length > 0);
+    if (merged.length === 0) return null;
+    return merged.sort((a, b) => a.campusName.localeCompare(b.campusName));
   };
 
   // Format time helper for service times
@@ -333,14 +447,86 @@ function StandardCalendar() {
     }
     return byDate;
   }, [teachingWeeksForMonth, teachingMinistryFilter]);
-  const selectedDateStr = selectedDate
-    ? `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`
-    : null;
+  const selectedDateStr = selectedDate ? formatDateForStorage(selectedDate) : null;
+  const selectedDateOverrides = useMemo(() => {
+    if (!selectedDateStr) return [];
+    return serviceTimeOverrides.filter((override) => override.service_date === selectedDateStr);
+  }, [selectedDateStr, serviceTimeOverrides]);
   const { data: selectedTeachingWeek } = useTeachingWeekForDate(
     teachingCampusId,
     teachingMinistryFilter,
     selectedDateStr
   );
+
+  const openServiceOverrideDialog = () => {
+    if (!selectedDate) return;
+    const defaultCampusId =
+      campusFilter && campusFilter !== "network-wide"
+        ? campusFilter
+        : availableServiceTimeCampuses[0]?.id || "";
+    setServiceOverrideForm({
+      campus_id: defaultCampusId,
+      service_date: formatDateForStorage(selectedDate),
+      service_times: [""],
+    });
+    setIsServiceOverrideOpen(true);
+  };
+
+  const handleServiceOverrideTimeChange = (index: number, value: string) => {
+    setServiceOverrideForm((prev) => ({
+      ...prev,
+      service_times: prev.service_times.map((time, timeIndex) =>
+        timeIndex === index ? value : time,
+      ),
+    }));
+  };
+
+  const handleAddServiceOverrideTime = () => {
+    setServiceOverrideForm((prev) => ({
+      ...prev,
+      service_times: [...prev.service_times, ""],
+    }));
+  };
+
+  const handleRemoveServiceOverrideTime = (index: number) => {
+    setServiceOverrideForm((prev) => ({
+      ...prev,
+      service_times:
+        prev.service_times.length === 1
+          ? [""]
+          : prev.service_times.filter((_, timeIndex) => timeIndex !== index),
+    }));
+  };
+
+  const handleSaveServiceOverride = async () => {
+    const normalizedTimes = Array.from(
+      new Set(
+        serviceOverrideForm.service_times
+          .map((time) => time.trim().slice(0, 5))
+          .filter(Boolean),
+      ),
+    ).sort();
+
+    if (!serviceOverrideForm.campus_id || !serviceOverrideForm.service_date || normalizedTimes.length === 0) {
+      toast.error("Choose a campus, date, and at least one service time.");
+      return;
+    }
+
+    try {
+      await upsertServiceTimeOverride.mutateAsync({
+        campus_id: serviceOverrideForm.campus_id,
+        service_date: serviceOverrideForm.service_date,
+        service_times: normalizedTimes,
+      });
+
+      const nextSelectedDate = parseLocalDate(serviceOverrideForm.service_date);
+      setCurrentDate(nextSelectedDate);
+      setSelectedDate(nextSelectedDate);
+      setIsServiceOverrideOpen(false);
+    } catch {
+      // Toast handled in the mutation.
+    }
+  };
 
   // True when the currently-scoped campus context actually has a weekend service on this date.
   // Prevents false weekend highlights for campuses that only run Sunday services.
@@ -494,6 +680,7 @@ function StandardCalendar() {
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
     const isMidweek = dayOfWeek === 3; // Wednesday
+    const hasServiceOverride = serviceTimeOverrideDateSet.has(dateStr);
 
     // Check if selected campus has service on this day
     if (campusFilter && campusFilter !== "network-wide") {
@@ -506,17 +693,32 @@ function StandardCalendar() {
       }
     }
 
-    // There can be multiple schedule entries per date (different ministries)
-    let entries = teamSchedule.filter(s => s.schedule_date === dateStr);
+    const getScheduleEntriesForDate = (targetDateStr: string) => {
+      let entries = teamSchedule.filter(s => s.schedule_date === targetDateStr);
 
-    // Apply ministry filter when selected
-    if (ministryFilter && ministryFilter !== "all") {
-      // "weekend_team" combines weekend, production, and video
-      if (ministryFilter === "weekend_team") {
-        entries = entries.filter(s => ["weekend", "production", "video"].includes(s.ministry_type));
-      } else {
-        entries = entries.filter(s => s.ministry_type === ministryFilter);
+      if (ministryFilter && ministryFilter !== "all") {
+        if (ministryFilter === "weekend_team") {
+          entries = entries.filter(s => ["weekend", "production", "video"].includes(s.ministry_type));
+        } else {
+          entries = entries.filter(s => s.ministry_type === ministryFilter);
+        }
       }
+
+      return entries;
+    };
+
+    // There can be multiple schedule entries per date (different ministries)
+    let entries = getScheduleEntriesForDate(dateStr);
+
+    // A Resurrection Friday-style override should inherit the same weekend team if Friday
+    // doesn't have its own team schedule row.
+    if (entries.length === 0 && hasServiceOverride && dayOfWeek === 5) {
+      const saturdayDateStr = formatDateForStorage(addDays(dateForDay, 1));
+      const sundayDateStr = formatDateForStorage(addDays(dateForDay, 2));
+      entries = [
+        ...getScheduleEntriesForDate(saturdayDateStr),
+        ...getScheduleEntriesForDate(sundayDateStr),
+      ];
     }
 
     // Pick a single entry (Encounter/EON first when multiple exist)
@@ -537,7 +739,7 @@ function StandardCalendar() {
     // OR if it's a weekend rotation OR a midweek scheduled ministry (Encounter/EON/etc.)
     const userScheduleForDay = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
     const isWeekend = isSaturday || isSunday;
-    if (userScheduleForDay || isWeekend || isMidweek) {
+    if (userScheduleForDay || isWeekend || isMidweek || hasServiceOverride) {
       return teamEntry;
     }
     return null;
@@ -824,14 +1026,15 @@ function StandardCalendar() {
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
               const dayAuditions = getAuditionsForDay(day);
-              const hasEvents = dayEvents.length > 0 || dayServices.length > 0 || dayAuditions.length > 0;
+              const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const hasServiceTimeOverride = serviceTimeOverrideDateSet.has(dateStrForDay);
+              const hasEvents = dayEvents.length > 0 || dayServices.length > 0 || dayAuditions.length > 0 || hasServiceTimeOverride;
               const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
               const teamColor = teamEntry?.worship_teams?.color;
               const userSchedule = hideWeekends ? null : getUserScheduleForDay(day); // Don't show user schedule in network-wide view
 
               // Check swap status for this day
-              const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const hasCustomAssignment = customAssignedDateSet.has(dateStrForDay);
               const teachingWeek = teachingWeekByDate.get(dateStrForDay);
               const swapStatus = getSwapStatusForDate(dateStrForDay, allUserSwaps);
@@ -932,6 +1135,71 @@ function StandardCalendar() {
                             {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
                           </span>)}
                       </div>}
+                    {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={openServiceOverrideDialog}>
+                              <Plus className="h-3 w-3" />
+                              Add Service Time
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                              <DialogTitle>Add Weekend-Only Service Times</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-2">
+                              <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                  <Label htmlFor="override-campus">Campus</Label>
+                                  <Select value={serviceOverrideForm.campus_id} onValueChange={(value) => setServiceOverrideForm((prev) => ({
+                                ...prev,
+                                campus_id: value
+                              }))}>
+                                    <SelectTrigger id="override-campus">
+                                      <SelectValue placeholder="Choose a campus" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableServiceTimeCampuses.map((campus) => <SelectItem key={campus.id} value={campus.id}>
+                                          {campus.name}
+                                        </SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="override-date">Service Day</Label>
+                                  <Input id="override-date" type="date" value={serviceOverrideForm.service_date} onChange={(e) => setServiceOverrideForm((prev) => ({
+                                ...prev,
+                                service_date: e.target.value
+                              }))} />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Service Times</Label>
+                                <div className="space-y-2">
+                                  {serviceOverrideForm.service_times.map((time, index) => <div key={`${index}-${serviceOverrideForm.service_date}`} className="flex items-center gap-2">
+                                      <Input type="time" value={time} onChange={(e) => handleServiceOverrideTimeChange(index, e.target.value)} />
+                                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" onClick={() => handleRemoveServiceOverrideTime(index)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>)}
+                                </div>
+                                <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={handleAddServiceOverrideTime}>
+                                  <Plus className="mr-1 h-3 w-3" />
+                                  Add Another Time
+                                </Button>
+                              </div>
+                              <div className="flex justify-end">
+                                <Button onClick={handleSaveServiceOverride} disabled={upsertServiceTimeOverride.isPending}>
+                                  {upsertServiceTimeOverride.isPending ? "Saving..." : "Save Service Times"}
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                        <span className="text-xs text-muted-foreground">
+                          Add extra Friday, Saturday, or Sunday services for this specific weekend.
+                        </span>
+                      </div>}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button variant="outline" size="sm" className="gap-1.5 h-7 px-2 relative border-ecc-yellow hover:bg-ecc-yellow/10" onClick={() => setIsSwapsSheetOpen(true)}>
@@ -946,6 +1214,26 @@ function StandardCalendar() {
                     </Button>
                   </div>
                 </div>
+
+                {selectedDateOverrides.length > 0 && <div className="mb-3 rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Additional weekend services</p>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {selectedDateOverrides.map((override) => {
+                    const campusName = campuses.find((campus) => campus.id === override.campus_id)?.name || "Campus";
+                    return <div key={override.id} className="flex items-center justify-between gap-2 rounded-md bg-background/80 px-2 py-1.5">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">{campusName}</p>
+                              <p className="text-xs text-muted-foreground">{formatServiceTimes(override.service_times)}</p>
+                            </div>
+                            {canManageWeekendOverrides && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => deleteServiceTimeOverride.mutate(override.id)} disabled={deleteServiceTimeOverride.isPending}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>}
+                          </div>;
+                  })}
+                    </div>
+                  </div>}
 
                 {/* User Schedule Section - Show if playing (home team without swap out, OR swapped in) */}
                 {effectiveTeam && <div className="mb-3 sm:mb-4 rounded-lg p-2.5 sm:p-3" style={{
@@ -1081,9 +1369,9 @@ function StandardCalendar() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      {selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length === 0
+                      {selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length === 0
                         ? "No events"
-                        : `${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length} item${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length > 1 ? "s" : ""}`}
+                        : `${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length} item${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length > 1 ? "s" : ""}`}
                     </p>
                     {canManageTeam && <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
@@ -1351,7 +1639,7 @@ function StandardCalendar() {
                 </div>
 
             {/* Swap Dialog - Only available for home team (not when covering/swapped in) */}
-                {userSchedule && !hasSwappedOut && !hasSwappedIn && <SwapRequestDialog open={isSwapOpen} onOpenChange={setIsSwapOpen} originalDate={selectedDate} position={userSchedule.position || ""} teamId={userSchedule.teamId} teamName={userSchedule.teamName} campusId={userSchedule.campusId} />}
+                {userSchedule && !hasSwappedOut && !hasSwappedIn && <SwapRequestDialog open={isSwapOpen} onOpenChange={setIsSwapOpen} originalDate={selectedDate} position={userSchedule.position || ""} teamId={userSchedule.teamId} teamName={userSchedule.teamName} campusId={userSchedule.campusId} ministryType={userSchedule.ministryType} rotationPeriodId={userSchedule.rotationPeriodId} />}
               </div>;
         })()}
 

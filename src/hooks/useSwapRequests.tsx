@@ -948,12 +948,13 @@ export function useOpenRequestRecipients(
   requesterId: string | undefined,
   campusId?: string,
   ministryType?: string,
+  requesterGender?: string | null,
   includeLegacyUntagged: boolean = false,
   includeOnBreakCandidates: boolean = false,
   enabled: boolean = true
 ) {
   return useQuery({
-    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, includeLegacyUntagged, includeOnBreakCandidates],
+    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, requesterGender, includeLegacyUntagged, includeOnBreakCandidates],
     queryFn: async () => {
       if (!position || !requesterId) return [];
 
@@ -1089,13 +1090,22 @@ export function useOpenRequestRecipients(
       ];
       if (uniqueUserIds.length === 0) return [];
 
+      const normalizedRequesterGender = (requesterGender || "").trim().toLowerCase();
+
       // Fetch profiles for these users
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url")
+        .select("id, full_name, avatar_url, gender")
         .in("id", uniqueUserIds);
 
       if (profilesError) throw profilesError;
+
+      if (isVocalistPosition && normalizedRequesterGender) {
+        return (profiles || []).filter((profile: any) => {
+          const normalizedMemberGender = ((profile.gender as string | null) || "").trim().toLowerCase();
+          return normalizedMemberGender === normalizedRequesterGender;
+        });
+      }
 
       return profiles || [];
     },

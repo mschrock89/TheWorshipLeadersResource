@@ -86,6 +86,24 @@ serve(async (req: Request): Promise<Response> => {
       notificationMessage = `${requesterName} wants to swap ${swapRequest.position} with you on ${dateStr}`;
     } else {
       // Open swap request - notify team members with same position AND same campus as requester
+      const isVocalistPosition = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"].includes(swapRequest.position);
+
+      const { data: requesterProfile } = await supabase
+        .from("profiles")
+        .select("gender")
+        .eq("id", swapRequest.requester_id)
+        .maybeSingle();
+
+      let scheduleMinistryType: string | null = null;
+      const { data: matchingSchedule } = await supabase
+        .from("team_schedule")
+        .select("ministry_type")
+        .eq("team_id", swapRequest.team_id)
+        .eq("schedule_date", swapRequest.original_date)
+        .limit(1)
+        .maybeSingle();
+
+      scheduleMinistryType = matchingSchedule?.ministry_type || null;
       
       // First, get the requester's campuses
       const { data: requesterCampuses, error: campusError } = await supabase
@@ -131,18 +149,54 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // Get team members with the same position who are in the same campus
-      const { data: teamMembers, error: membersError } = await supabase
+      let teamMembersQuery = supabase
         .from("team_members")
-        .select("user_id")
-        .eq("position", swapRequest.position)
+        .select("user_id, ministry_types")
         .not("user_id", "is", null)
         .in("user_id", sameCampusUserIds);
+
+      if (isVocalistPosition) {
+        teamMembersQuery = teamMembersQuery.in("position", ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"]);
+      } else {
+        teamMembersQuery = teamMembersQuery.eq("position", swapRequest.position);
+      }
+
+      const { data: teamMembers, error: membersError } = await teamMembersQuery;
 
       if (membersError) {
         console.error("Error fetching team members:", membersError);
       }
 
-      userIdsToNotify = [...new Set(teamMembers?.map(m => m.user_id!).filter(Boolean) || [])];
+      let eligibleTeamMembers = teamMembers || [];
+
+      if (scheduleMinistryType) {
+        const weekendAliases = new Set(["weekend", "sunday_am", "weekend_team"]);
+        eligibleTeamMembers = eligibleTeamMembers.filter((member: any) => {
+          const ministryTypes = (member.ministry_types || []) as string[];
+          if (ministryTypes.length === 0) return false;
+          return ministryTypes.some((ministryType) => {
+            if (ministryType === scheduleMinistryType) return true;
+            if (weekendAliases.has(ministryType) && weekendAliases.has(scheduleMinistryType)) return true;
+            return false;
+          });
+        });
+      }
+
+      let eligibleUserIds = [...new Set(eligibleTeamMembers.map((member: any) => member.user_id).filter(Boolean))];
+
+      if (isVocalistPosition && requesterProfile?.gender && eligibleUserIds.length > 0) {
+        const { data: vocalistProfiles } = await supabase
+          .from("profiles")
+          .select("id, gender")
+          .in("id", eligibleUserIds);
+
+        const normalizedRequesterGender = requesterProfile.gender.trim().toLowerCase();
+        eligibleUserIds = (vocalistProfiles || [])
+          .filter((profile) => ((profile.gender || "").trim().toLowerCase() === normalizedRequesterGender))
+          .map((profile) => profile.id);
+      }
+
+      userIdsToNotify = eligibleUserIds;
       console.log(`Position members at same campus: ${userIdsToNotify.length}`);
       
       notificationTitle = "Open Swap Request";

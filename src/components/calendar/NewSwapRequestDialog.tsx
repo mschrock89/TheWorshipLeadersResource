@@ -123,6 +123,7 @@ export function NewSwapRequestDialog({
     user?.id,
     selectedSchedule?.campusId || undefined,
     selectedSchedule?.ministryType || undefined,
+    isVocalistSwap ? userGender : undefined,
     requestMode === "fill_in",
     requestMode === "fill_in",
     step === "type" || (step === "details" && swapType === "open")

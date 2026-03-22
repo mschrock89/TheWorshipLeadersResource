@@ -306,6 +306,51 @@ export type Database = {
         }
         Relationships: []
       }
+      service_time_overrides: {
+        Row: {
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          service_date: string
+          service_times: string[]
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          service_date: string
+          service_times: string[]
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          service_date?: string
+          service_times?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_time_overrides_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_time_overrides_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_services: {
         Row: {
           campus_id: string

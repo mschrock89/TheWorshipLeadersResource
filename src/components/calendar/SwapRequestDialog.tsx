@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +23,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Users, User, ArrowLeftRight, Loader2, UserPlus } from "lucide-react";
 import { format, addDays, subDays } from "date-fns";
 import { cn, parseLocalDate, isWeekend, getWeekendPairDate, formatDateForDB, formatPositionLabel } from "@/lib/utils";
-import { useCreateSwapRequest, usePositionMembers, usePositionMembersForCover, useUserScheduledDates } from "@/hooks/useSwapRequests";
+import { useCreateSwapRequest, usePositionMembersForDate, usePositionMembersForCover, useUserScheduledDates } from "@/hooks/useSwapRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
+import { useProfile } from "@/hooks/useProfiles";
 import { toast } from "sonner";
 
 interface SwapRequestDialogProps {
@@ -36,7 +37,11 @@ interface SwapRequestDialogProps {
   teamId: string;
   teamName: string;
   campusId?: string | null;
+  ministryType?: string | null;
+  rotationPeriodId?: string | null;
 }
+
+const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"];
 
 type RequestMode = "swap" | "fill_in";
 type SwapType = "open" | "direct";
@@ -50,8 +55,11 @@ export function SwapRequestDialog({
   teamId,
   teamName,
   campusId,
+  ministryType,
+  rotationPeriodId,
 }: SwapRequestDialogProps) {
   const { user } = useAuth();
+  const { data: userProfile } = useProfile(user?.id);
   const [step, setStep] = useState<Step>("mode");
   const [requestMode, setRequestMode] = useState<RequestMode>("swap");
   const [swapType, setSwapType] = useState<SwapType>("open");
@@ -60,6 +68,8 @@ export function SwapRequestDialog({
   const [message, setMessage] = useState("");
 
   const createSwapRequest = useCreateSwapRequest();
+  const userGender = (userProfile as { gender?: string | null } | null)?.gender || null;
+  const isVocalistSwap = VOCALIST_POSITIONS.includes(position);
   
   // Fetch user's campuses to check if they have Saturday service
   const { data: userCampuses } = useUserCampuses(user?.id);
@@ -68,22 +78,50 @@ export function SwapRequestDialog({
   const effectiveCampusId = campusId || userCampuses?.[0]?.campuses?.id;
   
   // For SWAP requests: use the original position members query
-  const { data: swapPositionMembers, isLoading: loadingSwapMembers } = usePositionMembers(
+  const swapToDateStr = swapDate ? format(swapDate, "yyyy-MM-dd") : undefined;
+
+  const { data: swapPositionMembers, isLoading: loadingSwapMembers } = usePositionMembersForDate(
     position,
+    swapToDateStr,
     user?.id,
-    effectiveCampusId
+    effectiveCampusId || undefined,
+    rotationPeriodId || undefined,
+    ministryType || undefined,
+    isVocalistSwap ? userGender : undefined
   );
   
   // For COVER/FILL-IN requests: use campus-based query (no swap date needed)
   const { data: coverPositionMembers, isLoading: loadingCoverMembers } = usePositionMembersForCover(
     position,
     user?.id,
-    effectiveCampusId
+    effectiveCampusId || undefined,
+    rotationPeriodId || undefined,
+    ministryType || undefined,
+    isVocalistSwap ? userGender : undefined
   );
   
   // Use the correct members list based on request mode
   const positionMembers = requestMode === "fill_in" ? coverPositionMembers : swapPositionMembers;
   const loadingMembers = requestMode === "fill_in" ? loadingCoverMembers : loadingSwapMembers;
+  const sortedPositionMembers = useMemo(() => {
+    const deduped = (positionMembers || [])
+      .filter((member) => member.user_id)
+      .filter((member, index, members) => members.findIndex((entry) => entry.user_id === member.user_id) === index);
+
+    const normalizeGender = (value?: string | null) => (value || "").trim().toLowerCase();
+    const requesterGender = normalizeGender(userGender);
+
+    return deduped.sort((a, b) => {
+      if (isVocalistSwap) {
+        const aGender = normalizeGender(a.gender);
+        const bGender = normalizeGender(b.gender);
+        const aRank = aGender && aGender === requesterGender ? 0 : aGender ? 1 : 2;
+        const bRank = bGender && bGender === requesterGender ? 0 : bGender ? 1 : 2;
+        if (aRank !== bRank) return aRank - bRank;
+      }
+      return a.member_name.localeCompare(b.member_name);
+    });
+  }, [positionMembers, isVocalistSwap, userGender]);
   
   // Fetch ALL scheduled dates for the target user (across all their teams)
   const { data: targetScheduledDates } = useUserScheduledDates(
@@ -329,6 +367,11 @@ export function SwapRequestDialog({
 
             <div className="space-y-2">
               <Label>{requestMode === "fill_in" ? "Who do you want to ask for coverage?" : "Who do you want to swap with?"}</Label>
+              {isVocalistSwap && (
+                <p className="text-xs text-muted-foreground">
+                  Only same-campus, same-ministry female vocalists should appear for Kris.
+                </p>
+              )}
               {loadingMembers ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -340,11 +383,7 @@ export function SwapRequestDialog({
                     <SelectValue placeholder="Select a person" />
                   </SelectTrigger>
                   <SelectContent>
-                    {positionMembers
-                      ?.filter(m => m.user_id)
-                      .filter((m, i, arr) => arr.findIndex(x => x.user_id === m.user_id) === i)
-                      .sort((a, b) => a.member_name.localeCompare(b.member_name))
-                      .map((member) => (
+                    {sortedPositionMembers.map((member) => (
                         <SelectItem key={member.user_id!} value={member.user_id!}>
                           <span className="flex items-center gap-2">
                             {member.member_name}
