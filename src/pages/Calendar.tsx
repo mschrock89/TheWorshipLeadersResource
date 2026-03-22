@@ -1068,12 +1068,16 @@ function StandardCalendar() {
               // Team presence alone should not highlight dates for users who are not assigned.
               const showTeamHighlight = hasServiceForDayInScope && isUserEffectivelyScheduled && !isSelected(day) && effectiveTeamColor;
               const showCustomAssignmentHighlight = hasCustomAssignment && !isSelected(day) && !showTeamHighlight;
+              const showServiceOverrideHighlight = hasServiceTimeOverride && !isSelected(day) && !showTeamHighlight && !showCustomAssignmentHighlight;
               return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
                 boxShadow: "inset 0 0 0 2px #0ea5e9",
                 backgroundColor: "rgba(14, 165, 233, 0.12)"
+              } : showServiceOverrideHighlight ? {
+                boxShadow: "inset 0 0 0 2px #fbbf24",
+                backgroundColor: "rgba(251, 191, 36, 0.12)"
               } : isMidweekService && !isSelected(day) ? {
                 backgroundColor: `${teamColor}10`
               } : undefined}>
