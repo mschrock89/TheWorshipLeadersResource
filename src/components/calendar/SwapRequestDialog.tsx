@@ -41,7 +41,7 @@ interface SwapRequestDialogProps {
   rotationPeriodId?: string | null;
 }
 
-const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"];
+const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals", "vocals", "vocalist 1", "vocalist"];
 
 type RequestMode = "swap" | "fill_in";
 type SwapType = "open" | "direct";
@@ -68,8 +68,13 @@ export function SwapRequestDialog({
   const [message, setMessage] = useState("");
 
   const createSwapRequest = useCreateSwapRequest();
+  const normalizedPosition = position.trim().toLowerCase();
+  const normalizedSwapPosition =
+    VOCALIST_POSITIONS.includes(normalizedPosition) || normalizedPosition.includes("vocal")
+      ? "vocalist"
+      : position;
   const userGender = (userProfile as { gender?: string | null } | null)?.gender || null;
-  const isVocalistSwap = VOCALIST_POSITIONS.includes(position);
+  const isVocalistSwap = normalizedSwapPosition === "vocalist";
   
   // Fetch user's campuses to check if they have Saturday service
   const { data: userCampuses } = useUserCampuses(user?.id);
@@ -81,7 +86,7 @@ export function SwapRequestDialog({
   const swapToDateStr = swapDate ? format(swapDate, "yyyy-MM-dd") : undefined;
 
   const { data: swapPositionMembers, isLoading: loadingSwapMembers } = usePositionMembersForDate(
-    position,
+    normalizedSwapPosition,
     swapToDateStr,
     user?.id,
     effectiveCampusId || undefined,
@@ -92,7 +97,7 @@ export function SwapRequestDialog({
   
   // For COVER/FILL-IN requests: use campus-based query (no swap date needed)
   const { data: coverPositionMembers, isLoading: loadingCoverMembers } = usePositionMembersForCover(
-    position,
+    normalizedSwapPosition,
     user?.id,
     effectiveCampusId || undefined,
     rotationPeriodId || undefined,
@@ -101,7 +106,12 @@ export function SwapRequestDialog({
   );
   
   // Use the correct members list based on request mode
-  const positionMembers = requestMode === "fill_in" ? coverPositionMembers : swapPositionMembers;
+  const positionMembers =
+    requestMode === "fill_in"
+      ? coverPositionMembers
+      : swapDate
+        ? swapPositionMembers
+        : [];
   const loadingMembers = requestMode === "fill_in" ? loadingCoverMembers : loadingSwapMembers;
   const sortedPositionMembers = useMemo(() => {
     const deduped = (positionMembers || [])
@@ -365,41 +375,6 @@ export function SwapRequestDialog({
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label>{requestMode === "fill_in" ? "Who do you want to ask for coverage?" : "Who do you want to swap with?"}</Label>
-              {isVocalistSwap && (
-                <p className="text-xs text-muted-foreground">
-                  Only same-campus, same-ministry female vocalists should appear for Kris.
-                </p>
-              )}
-              {loadingMembers ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading...
-                </div>
-              ) : (
-                <Select value={targetUserId} onValueChange={setTargetUserId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a person" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortedPositionMembers.map((member) => (
-                        <SelectItem key={member.user_id!} value={member.user_id!}>
-                          <span className="flex items-center gap-2">
-                            {member.member_name}
-                            {member.isOnBreak && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                                On Break
-                              </span>
-                            )}
-                          </span>
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
             {/* Only show date picker for swap requests, not cover requests */}
             {requestMode === "swap" && <div className="space-y-2">
               <Label>Date you can play instead</Label>
@@ -489,6 +464,45 @@ export function SwapRequestDialog({
                 </PopoverContent>
               </Popover>
             </div>}
+
+            <div className="space-y-2">
+              <Label>{requestMode === "fill_in" ? "Who do you want to ask for coverage?" : "Who do you want to swap with?"}</Label>
+              {isVocalistSwap && (
+                <p className="text-xs text-muted-foreground">
+                  Only same-campus, same-ministry vocalist matches should appear here.
+                </p>
+              )}
+              {requestMode === "swap" && !swapDate ? (
+                <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  Pick the weekend you can play first to see eligible swap matches.
+                </div>
+              ) : loadingMembers ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading...
+                </div>
+              ) : (
+                <Select value={targetUserId} onValueChange={setTargetUserId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a person" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortedPositionMembers.map((member) => (
+                        <SelectItem key={member.user_id!} value={member.user_id!}>
+                          <span className="flex items-center gap-2">
+                            {member.member_name}
+                            {member.isOnBreak && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                On Break
+                              </span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="message-direct">Message (optional)</Label>
