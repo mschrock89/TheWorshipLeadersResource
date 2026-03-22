@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { getWeekendPairDate } from "@/lib/utils";
+import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 
 interface SwapInfo {
   id: string;
@@ -48,10 +48,7 @@ export function useUserSwapsForDate(date: Date | null) {
         return { swappedOut: false, swappedIn: false, swapInDetails: null };
       }
 
-      // Get weekend pair date for checking swaps that cover the whole weekend
-      const weekendDates = [dateStr];
-      const pairDate = getWeekendPairDate(dateStr);
-      if (pairDate) weekendDates.push(pairDate);
+      const relatedServiceDates = await getRelatedWeekendServiceDates(dateStr);
 
       // Check if user has SWAPPED OUT (they are requester of an accepted swap for this date or weekend)
       const { data: swapsOut, error: outError } = await supabase
@@ -59,7 +56,7 @@ export function useUserSwapsForDate(date: Date | null) {
         .select("id, original_date, swap_date, requester_id, accepted_by_id, position, team_id")
         .eq("requester_id", user.id)
         .eq("status", "accepted")
-        .in("original_date", weekendDates);
+        .in("original_date", relatedServiceDates);
 
       if (outError) throw outError;
 
@@ -78,7 +75,7 @@ export function useUserSwapsForDate(date: Date | null) {
         `)
         .eq("accepted_by_id", user.id)
         .eq("status", "accepted")
-        .in("original_date", weekendDates);
+        .in("original_date", relatedServiceDates);
 
       if (inError) throw inError;
 

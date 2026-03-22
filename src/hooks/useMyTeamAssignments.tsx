@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { parseLocalDate } from "@/lib/utils";
+import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -167,24 +168,6 @@ export function useMyTeamAssignments() {
 
       if (error) throw error;
 
-      // Helper to get the paired weekend day (Sat <-> Sun)
-      const getWeekendPair = (dateStr: string): string | null => {
-        const date = parseLocalDate(dateStr);
-        const dayOfWeek = date.getDay();
-        if (dayOfWeek === 6) {
-          // Saturday -> get Sunday
-          const sunday = new Date(date);
-          sunday.setDate(sunday.getDate() + 1);
-          return sunday.toISOString().split("T")[0];
-        } else if (dayOfWeek === 0) {
-          // Sunday -> get Saturday
-          const saturday = new Date(date);
-          saturday.setDate(saturday.getDate() - 1);
-          return saturday.toISOString().split("T")[0];
-        }
-        return null; // Not a weekend day
-      };
-
       const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
         const dayOfWeek = parseLocalDate(dateStr).getDay();
         if (dayOfWeek === 6) return "saturday";
@@ -218,35 +201,47 @@ export function useMyTeamAssignments() {
         const isDirectSwap = Boolean(swap.swap_date) || swap.request_type === "swap";
         if (swap.requester_id === user.id) {
           // User gave away their original_date
-          swappedOutDates.add(swap.original_date);
-          // For full-weekend assignments, also add the paired day.
+          (await getRelatedWeekendServiceDates(swap.original_date)).forEach((relatedDate) => {
+            swappedOutDates.add(relatedDate);
+          });
+          // For full-weekend assignments, also add the paired days.
           if (shouldExpandSwapToWeekendPair(swap)) {
-            const originalPair = getWeekendPair(swap.original_date);
-            if (originalPair) swappedOutDates.add(originalPair);
+            (await getRelatedWeekendServiceDates(swap.original_date)).forEach((relatedDate) => {
+              swappedOutDates.add(relatedDate);
+            });
           }
           
           // For a "swap" request_type, they also receive swap_date in return
           if (isDirectSwap && swap.swap_date) {
-            swappedInDates.set(swap.swap_date, swap);
+            (await getRelatedWeekendServiceDates(swap.swap_date)).forEach((relatedDate) => {
+              swappedInDates.set(relatedDate, swap);
+            });
             if (shouldExpandSwapToWeekendPair(swap)) {
-              const swapPair = getWeekendPair(swap.swap_date);
-              if (swapPair) swappedInDates.set(swapPair, swap);
+              (await getRelatedWeekendServiceDates(swap.swap_date)).forEach((relatedDate) => {
+                swappedInDates.set(relatedDate, swap);
+              });
             }
           }
         } else if (swap.accepted_by_id === user.id) {
           // User accepted someone else's original_date
-          swappedInDates.set(swap.original_date, swap);
+          (await getRelatedWeekendServiceDates(swap.original_date)).forEach((relatedDate) => {
+            swappedInDates.set(relatedDate, swap);
+          });
           if (shouldExpandSwapToWeekendPair(swap)) {
-            const originalPair = getWeekendPair(swap.original_date);
-            if (originalPair) swappedInDates.set(originalPair, swap);
+            (await getRelatedWeekendServiceDates(swap.original_date)).forEach((relatedDate) => {
+              swappedInDates.set(relatedDate, swap);
+            });
           }
           
           if (isDirectSwap && swap.swap_date) {
             // User gave away swap_date in return
-            swappedOutDates.add(swap.swap_date);
+            (await getRelatedWeekendServiceDates(swap.swap_date)).forEach((relatedDate) => {
+              swappedOutDates.add(relatedDate);
+            });
             if (shouldExpandSwapToWeekendPair(swap)) {
-              const swapPair = getWeekendPair(swap.swap_date);
-              if (swapPair) swappedOutDates.add(swapPair);
+              (await getRelatedWeekendServiceDates(swap.swap_date)).forEach((relatedDate) => {
+                swappedOutDates.add(relatedDate);
+              });
             }
           }
         }

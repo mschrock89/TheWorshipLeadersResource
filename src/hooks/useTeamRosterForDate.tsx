@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
+import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
@@ -328,15 +329,9 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
 
       const profileMap = new Map((allAvatarProfiles || []).map(p => [p.id, p.avatar_url]));
 
-      // Build the list of dates to check for swaps
-      // For weekends, check both Saturday and Sunday since a swap covers the full weekend
-      const datesToCheck = [dateStr];
-      if (isWeekend(dateStr)) {
-        const pairDate = getWeekendPairDate(dateStr);
-        if (pairDate) {
-          datesToCheck.push(pairDate);
-        }
-      }
+      // Build the list of dates to check for swaps. Friday override services should
+      // behave as part of the same weekend cluster as Saturday/Sunday.
+      const datesToCheck = await getRelatedWeekendServiceDates(dateStr, campusId);
 
       // Fetch accepted swaps where someone is covering FOR this date (original_date matches)
       const { data: swapsForDate, error: swapsForDateError } = await supabase

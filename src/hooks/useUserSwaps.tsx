@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { getWeekendPairDate } from "@/lib/utils";
+import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 
 interface SwapInfo {
   id: string;
@@ -79,10 +79,8 @@ export function useUserSwaps() {
       // Build set of dates user has swapped OUT of (including weekend pair dates)
       const swappedOutDates = new Set<string>();
       for (const swap of swapsAsRequester || []) {
-        swappedOutDates.add(swap.original_date);
-        // Also add the weekend pair date
-        const pairDate = getWeekendPairDate(swap.original_date);
-        if (pairDate) swappedOutDates.add(pairDate);
+        const relatedDates = await getRelatedWeekendServiceDates(swap.original_date);
+        relatedDates.forEach((relatedDate) => swappedOutDates.add(relatedDate));
       }
 
       // Build map of dates user has swapped IN to (including weekend pair dates)
@@ -92,19 +90,16 @@ export function useUserSwaps() {
       for (const swap of swapsAsRequester || []) {
         if (swap.swap_date) {
           const swapInfo = swap as SwapInfo;
-          swappedInDates.set(swap.swap_date, swapInfo);
-          const pairDate = getWeekendPairDate(swap.swap_date);
-          if (pairDate) swappedInDates.set(pairDate, swapInfo);
+          const relatedDates = await getRelatedWeekendServiceDates(swap.swap_date);
+          relatedDates.forEach((relatedDate) => swappedInDates.set(relatedDate, swapInfo));
         }
       }
       
       // As accepter: user is swapped IN to the original_date
       for (const swap of swapsAsAccepter || []) {
         const swapInfo = swap as SwapInfo;
-        swappedInDates.set(swap.original_date, swapInfo);
-        // Also add the weekend pair date
-        const pairDate = getWeekendPairDate(swap.original_date);
-        if (pairDate) swappedInDates.set(pairDate, swapInfo);
+        const relatedDates = await getRelatedWeekendServiceDates(swap.original_date);
+        relatedDates.forEach((relatedDate) => swappedInDates.set(relatedDate, swapInfo));
       }
 
       return {
