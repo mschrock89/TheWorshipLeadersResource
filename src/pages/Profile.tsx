@@ -36,6 +36,20 @@ import { areHapticsEnabled, HAPTICS_CHANGE_EVENT, isHapticsSupported, setHaptics
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
+const PROFILE_MINISTRY_ORDER = [
+  "weekend_team",
+  "production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "evident",
+  "er",
+  "audition",
+  "speaker",
+  "prayer_night",
+] as const;
+
 export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -918,7 +932,7 @@ export default function Profile() {
 
               {/* Dates */}
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor="birthday">Birthday</Label>
                   <Input
                     id="birthday"
@@ -926,10 +940,10 @@ export default function Profile() {
                     value={birthday}
                     onChange={(e) => setBirthday(e.target.value)}
                     disabled={!canEdit}
-                    className="text-left h-10 min-h-[2.5rem] [&::-webkit-date-and-time-value]:text-left"
+                    className="h-10 min-h-[2.5rem] min-w-0 text-left [&::-webkit-date-and-time-value]:text-left"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor="anniversary">Team Anniversary</Label>
                   <Input
                     id="anniversary"
@@ -937,7 +951,7 @@ export default function Profile() {
                     value={anniversary}
                     onChange={(e) => setAnniversary(e.target.value)}
                     disabled={!canEdit}
-                    className="text-left h-10 min-h-[2.5rem] [&::-webkit-date-and-time-value]:text-left"
+                    className="h-10 min-h-[2.5rem] min-w-0 text-left [&::-webkit-date-and-time-value]:text-left"
                   />
                 </div>
               </div>
@@ -1041,7 +1055,9 @@ export default function Profile() {
                           {/* Ministry Types */}
                           {canManageAssignments ? (
                             <div className="flex flex-wrap gap-3">
-                              {MINISTRY_TYPES.filter(m => m.value !== 'weekend_team').map((ministry) => {
+                              {PROFILE_MINISTRY_ORDER.map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
+                                .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry) && !("hidden" in ministry && ministry.hidden))
+                                .map((ministry) => {
                                 const isActive = campusMinistries.includes(ministry.value);
                                 return (
                                   <label
@@ -1096,8 +1112,8 @@ export default function Profile() {
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                 Positions by Ministry
                               </p>
-                              {campusMinistries
-                                .filter((ministryType) => MINISTRY_TYPES.some((m) => m.value === ministryType))
+                              {PROFILE_MINISTRY_ORDER
+                                .filter((ministryType) => campusMinistries.includes(ministryType))
                                 .map((ministryType) => {
                                 const ministry = MINISTRY_TYPES.find(m => m.value === ministryType);
                                 const ministryPositions = campusMinistryPositions
