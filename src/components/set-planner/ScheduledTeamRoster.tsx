@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -147,47 +148,81 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   );
   const isLoading = teamLoading || rosterLoading;
 
+  const rosterForDisplay = useMemo(() => {
+    const deduped = new Map<string, NonNullable<typeof roster>[number]>();
+
+    for (const member of roster || []) {
+      const normalizedMinistries = [...(member.ministryTypes || [])]
+        .map((type) => (type === "weekend" || type === "sunday_am" ? "weekend_team" : type))
+        .sort()
+        .join("|");
+      const normalizedPositions = [...member.positions]
+        .map((position) => position.toLowerCase())
+        .sort()
+        .join("|");
+      const baseKey = member.memberName.toLowerCase();
+      const key = `${baseKey}__${normalizedMinistries}__${normalizedPositions}`;
+
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, {
+          ...member,
+          positions: [...member.positions],
+        });
+        continue;
+      }
+
+      existing.positions = Array.from(new Set([...existing.positions, ...member.positions]));
+      existing.isSwapped = existing.isSwapped || member.isSwapped;
+      existing.originalMemberName = existing.originalMemberName || member.originalMemberName;
+      existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
+      existing.phone = existing.phone || member.phone;
+    }
+
+    return Array.from(deduped.values());
+  }, [roster]);
+
   // Filter members and positions by category
-  const vocalists = roster?.filter(member => 
+  const vocalists = rosterForDisplay.filter(member => 
     member.positions.some(pos => isVocalPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVocalPosition(pos))
-  })) || [];
+  }));
 
-  const bandMembers = roster?.filter(member => 
+  const bandMembers = rosterForDisplay.filter(member => 
     member.positions.some(pos => isBandPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isBandPosition(pos))
-  })) || [];
+  }));
 
-  const videoMembers = roster?.filter(member => 
+  const videoMembers = rosterForDisplay.filter(member => 
     member.positions.some(pos => isVideoPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVideoPosition(pos))
-  })) || [];
+  }));
 
-  const productionMembers = roster?.filter(member => 
+  const productionMembers = rosterForDisplay.filter(member => 
     member.positions.some(pos => isProductionPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isProductionPosition(pos))
-  })) || [];
+  }));
 
-  const speakerMembers = roster?.filter(member =>
+  const speakerMembers = rosterForDisplay.filter(member =>
     member.positions.some(pos => isSpeakerPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isSpeakerPosition(pos))
-  })) || [];
+  }));
 
   const groupTextMembers = !isAdmin && isProductionManager && !isVideoDirector
     ? productionMembers
     : !isAdmin && isVideoDirector && !isProductionManager
       ? videoMembers
-      : (roster || []);
+      : rosterForDisplay;
 
   if (isLoading) {
     return (
