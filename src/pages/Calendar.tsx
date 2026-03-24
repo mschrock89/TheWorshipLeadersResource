@@ -16,7 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, useUpdateEvent, Event } from "@/hooks/useEvents";
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
-import { useTeamSchedule, useRotationPeriodForDate } from "@/hooks/useTeamSchedule";
+import { useTeamSchedule } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -62,6 +62,19 @@ const EVENT_AUDIENCE_OPTIONS = [{
   label: "Volunteer and Spouse"
 }] as const;
 const WEEKEND_EVENT_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+const CALENDAR_MINISTRY_FILTER_ORDER = [
+  "weekend_team",
+  "production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "evident",
+  "er",
+  "audition",
+  "speaker",
+  "prayer_night",
+] as const;
 const teamIcons: Record<string, React.ElementType> = {
   star: Star,
   heart: Heart,
@@ -237,20 +250,29 @@ function StandardCalendar() {
     () => new Set(serviceTimeOverrides.map((override) => override.service_date)),
     [serviceTimeOverrides],
   );
-  // Get team schedule filtered by selected campus and rotation period (aligns with Team Builder)
+  // Get campus schedule entries for the selected month. Calendar resolves the
+  // active team per day, so pulling campus rows directly avoids missing dates
+  // when a month spans multiple rotation periods.
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
-  // Use 15th of displayed month to determine which rotation period applies (matches Team Builder)
-  const referenceDateForPeriod = useMemo(
-    () => (effectiveCampusId ? new Date(year, month, 15) : null),
-    [effectiveCampusId, year, month]
-  );
-  const { data: rotationPeriodName } = useRotationPeriodForDate(
-    effectiveCampusId,
-    referenceDateForPeriod
-  );
+  const { data: activeRotationPeriodName } = useQuery({
+    queryKey: ["calendar-active-rotation-period", effectiveCampusId],
+    enabled: !!effectiveCampusId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rotation_periods")
+        .select("name")
+        .eq("campus_id", effectiveCampusId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data?.name ?? null;
+    },
+  });
   const {
     data: teamSchedule = []
-  } = useTeamSchedule(rotationPeriodName ?? undefined, effectiveCampusId);
+  } = useTeamSchedule(undefined, effectiveCampusId);
   const {
     scheduledDates,
     uniqueTeams
@@ -291,6 +313,15 @@ function StandardCalendar() {
   // Check if user is a campus admin
   const isCampusAdmin = userRole === 'campus_admin' || userRole === 'admin';
   const canManageWeekendOverrides = userRole ? LEADER_SERVICE_OVERRIDE_ROLES.has(userRole) : false;
+  const userCampusIds = useMemo(
+    () => userCampuses.map((entry) => entry.campus_id).filter(Boolean),
+    [userCampuses],
+  );
+  const isCrossCampusReadOnly =
+    userRole === "campus_admin" &&
+    !!campusFilter &&
+    campusFilter !== "network-wide" &&
+    !userCampusIds.includes(campusFilter);
 
   const availableServiceTimeCampuses = useMemo(() => {
     if (campusFilter && campusFilter !== "network-wide") {
@@ -696,9 +727,18 @@ function StandardCalendar() {
     const getScheduleEntriesForDate = (targetDateStr: string) => {
       let entries = teamSchedule.filter(s => s.schedule_date === targetDateStr);
 
+      if (activeRotationPeriodName) {
+        const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
+        if (activeEntries.length > 0) {
+          entries = activeEntries;
+        }
+      }
+
       if (ministryFilter && ministryFilter !== "all") {
         if (ministryFilter === "weekend_team") {
-          entries = entries.filter(s => ["weekend", "production", "video"].includes(s.ministry_type));
+          entries = entries.filter(s => ["weekend", "sunday_am", "production", "video"].includes(s.ministry_type));
+        } else if (ministryFilter === "production" || ministryFilter === "video") {
+          entries = entries.filter(s => ["weekend", "sunday_am"].includes(s.ministry_type));
         } else {
           entries = entries.filter(s => s.ministry_type === ministryFilter);
         }
@@ -977,7 +1017,9 @@ function StandardCalendar() {
                   <SelectValue placeholder="Ministry" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && !['production', 'video'].includes(m.value)).map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
+                  {CALENDAR_MINISTRY_FILTER_ORDER.map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
+                    .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry) && !('hidden' in ministry && ministry.hidden))
+                    .map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
                       {ministry.label}
                     </SelectItem>)}
                 </SelectContent>
@@ -1334,6 +1376,7 @@ function StandardCalendar() {
                           campusId={service.campus_id}
                           ministryType={service.ministry_type}
                           serviceName={service.service_name}
+                          readOnly={isCrossCampusReadOnly}
                         />
                         <CustomServiceRoster
                           customServiceId={service.id}
@@ -1346,7 +1389,12 @@ function StandardCalendar() {
                 ) : (() => {
                   return (
                     <>
-                      <SongsPreview date={selectedDate} campusId={campusFilter !== "network-wide" ? campusFilter : undefined} ministryFilter={ministryFilter} />
+                      <SongsPreview
+                        date={selectedDate}
+                        campusId={campusFilter !== "network-wide" ? campusFilter : undefined}
+                        ministryFilter={ministryFilter}
+                        readOnly={isCrossCampusReadOnly}
+                      />
                       <div className="flex items-center justify-between mb-2 gap-2">
                         <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
                       </div>
@@ -1355,6 +1403,7 @@ function StandardCalendar() {
                         teamId={selectedDayTeam?.team_id}
                         showAudioVideo={canManageTeam}
                         ministryFilter={ministryFilter}
+                        rotationPeriodName={selectedDayTeam?.rotation_period || null}
                         scheduledMinistries={(() => {
                           const dateStr = selectedDate.toISOString().split("T")[0];
                           let scheduleEntries = teamSchedule.filter(s => s.schedule_date === dateStr);
@@ -1850,7 +1899,8 @@ function BandRoster({
   showAudioVideo = true,
   campusId,
   ministryFilter,
-  scheduledMinistries = []
+  scheduledMinistries = [],
+  rotationPeriodName,
 }: {
   date: Date;
   teamId?: string;
@@ -1858,6 +1908,7 @@ function BandRoster({
   campusId?: string;
   ministryFilter?: string;
   scheduledMinistries?: string[];
+  rotationPeriodName?: string | null;
 }) {
   const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
   // Pass ministry filter to hook - 'all' or undefined means fetch all (we'll constrain by scheduledMinistries below)
@@ -1868,7 +1919,7 @@ function BandRoster({
   const {
     data: rosterRaw = [],
     isLoading
-  } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId);
+  } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId, rotationPeriodName);
   const serviceLabel = useMemo(() => {
     if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
       return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;
@@ -1881,10 +1932,41 @@ function BandRoster({
 
   // If we're in "All" mode or "weekend_team" mode, constrain to appropriate ministries
   const roster = useMemo(() => {
-    // For "weekend_team" filter, include weekend, production, and video ministries
+    // For "weekend_team" filter, include weekend aliases plus production/video.
     if (isWeekendTeamFilter) {
-      const weekendTeamMinistries = new Set(["weekend", "production", "video"]);
-      return rosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
+      const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
+      const filteredRoster = rosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
+      const mergedRoster = new Map<string, typeof filteredRoster[number]>();
+
+      for (const member of filteredRoster) {
+        const normalizedMinistryTypes = member.ministryTypes.map((type) =>
+          type === "weekend" || type === "sunday_am" ? "weekend_team" : type
+        );
+        const nonWeekendMinistries = normalizedMinistryTypes.filter((type) => type !== "weekend_team");
+        const groupingKey = `${member.userId || member.memberName}__${nonWeekendMinistries.sort().join("|")}`;
+        const existing = mergedRoster.get(groupingKey);
+
+        if (!existing) {
+          mergedRoster.set(groupingKey, {
+            ...member,
+            ministryTypes: Array.from(new Set(normalizedMinistryTypes)),
+            positions: [...member.positions],
+            positionSlots: [...member.positionSlots],
+          });
+          continue;
+        }
+
+        existing.positions = Array.from(new Set([...existing.positions, ...member.positions]));
+        existing.positionSlots = Array.from(new Set([...(existing.positionSlots || []), ...(member.positionSlots || [])]));
+        existing.ministryTypes = Array.from(new Set([...existing.ministryTypes, ...normalizedMinistryTypes]));
+        existing.isSwapped = existing.isSwapped || member.isSwapped;
+        existing.hasPendingSwap = existing.hasPendingSwap || member.hasPendingSwap;
+        existing.originalMemberName = existing.originalMemberName || member.originalMemberName;
+        existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
+        existing.phone = existing.phone || member.phone;
+      }
+
+      return Array.from(mergedRoster.values());
     }
     if (effectiveMinistryFilter) return rosterRaw;
     if (!scheduledMinistries || scheduledMinistries.length === 0) return rosterRaw;
@@ -1908,7 +1990,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -1924,6 +2006,10 @@ function BandRoster({
   }> = {
     weekend: {
       label: "Weekend",
+      order: 0
+    },
+    weekend_team: {
+      label: "Weekend Worship",
       order: 0
     },
     eon_weekend: {
@@ -2297,11 +2383,13 @@ function BandRoster({
 function SongsPreview({
   date,
   campusId,
-  ministryFilter
+  ministryFilter,
+  readOnly = false,
 }: {
   date: Date;
   campusId?: string;
   ministryFilter?: string;
+  readOnly?: boolean;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -2328,14 +2416,19 @@ function SongsPreview({
           Songs
         </h3>
         <div className="flex items-center gap-2">
-          <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-            </span>
-            LIVE
-          </Link>
-          
+          {readOnly ? (
+            <Badge variant="outline" className="text-xs">
+              View only
+            </Badge>
+          ) : (
+            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+              </span>
+              LIVE
+            </Link>
+          )}
         </div>
       </div>
       <div className="space-y-1.5">
@@ -2376,12 +2469,14 @@ function CustomServiceSongsPreview({
   campusId,
   ministryType,
   serviceName,
+  readOnly = false,
 }: {
   customServiceId: string;
   planDate: string;
   campusId: string;
   ministryType: string;
   serviceName: string;
+  readOnly?: boolean;
 }) {
   const effectiveMinistryType = useMemo(() => {
     if (ministryType === "prayer_night") return "prayer_night";
@@ -2404,13 +2499,19 @@ function CustomServiceSongsPreview({
   if (!existingSet || draftSongs.length === 0) {
     return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
         <div className="mb-2 flex items-center justify-end">
-          <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-            </span>
-            LIVE
-          </Link>
+          {readOnly ? (
+            <Badge variant="outline" className="text-xs">
+              View only
+            </Badge>
+          ) : (
+            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+              </span>
+              LIVE
+            </Link>
+          )}
         </div>
         No setlist has been saved for this custom service yet.
       </div>;
@@ -2424,13 +2525,19 @@ function CustomServiceSongsPreview({
         </h3>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
-          <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-            </span>
-            LIVE
-          </Link>
+          {readOnly ? (
+            <Badge variant="outline" className="text-xs">
+              View only
+            </Badge>
+          ) : (
+            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+              </span>
+              LIVE
+            </Link>
+          )}
         </div>
       </div>
       <div className="space-y-1.5">
@@ -2442,13 +2549,15 @@ function CustomServiceSongsPreview({
             {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
           </div>)}
       </div>
-      <CustomServiceFlowTitleEditor
-        campusId={campusId}
-        ministryType={effectiveMinistryType}
-        planDate={planDate}
-        customServiceId={customServiceId}
-        draftSetId={existingSet?.id || null}
-      />
+      {!readOnly ? (
+        <CustomServiceFlowTitleEditor
+          campusId={campusId}
+          ministryType={effectiveMinistryType}
+          planDate={planDate}
+          customServiceId={customServiceId}
+          draftSetId={existingSet?.id || null}
+        />
+      ) : null}
     </div>;
 }
 

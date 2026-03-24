@@ -824,8 +824,9 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
-      // Fetch user's campus assignments and profile (ministry types) in parallel
-      const [campusResult, profileResult] = await Promise.all([
+      // Fetch the user's campus assignments, profile, and roles together so
+      // calendar previews can support role-based cross-campus visibility.
+      const [campusResult, profileResult, rolesResult] = await Promise.all([
         supabase
           .from("user_campuses")
           .select("campus_id")
@@ -834,13 +835,20 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
           .from("profiles")
           .select("ministry_types")
           .eq("id", user.id)
-          .single()
+          .single(),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id),
       ]);
 
       if (campusResult.error) throw campusResult.error;
+      if (rolesResult.error) throw rolesResult.error;
       
       const userCampusIds = (campusResult.data || []).map(uc => uc.campus_id);
       const userMinistryTypes = profileResult.data?.ministry_types || ['weekend'];
+      const userRoles = (rolesResult.data || []).map((row) => row.role);
+      const canViewCrossCampusCalendarSets = userRoles.includes("admin") || userRoles.includes("campus_admin");
       
       // If ministryFilter is specified (and not "all"), use only that ministry type
       // Otherwise, use the user's profile ministry types
@@ -863,8 +871,11 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       if (campusId && userCampusIds.includes(campusId)) {
         filterCampusIds = [campusId];
       } else if (campusId && !userCampusIds.includes(campusId)) {
-        // If campus filter doesn't match user's campuses, return empty (no access)
-        return [];
+        if (!canViewCrossCampusCalendarSets) {
+          // If campus filter doesn't match user's campuses, return empty (no access)
+          return [];
+        }
+        filterCampusIds = [campusId];
       } else {
         filterCampusIds = userCampusIds;
       }
