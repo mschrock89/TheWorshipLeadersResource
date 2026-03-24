@@ -1933,6 +1933,50 @@ function BandRoster({
     return "this service";
   }, [ministryFilter]);
 
+  const dedupeMembersForDisplay = useCallback((members: typeof rosterRaw) => {
+    const deduped = new Map<string, (typeof members)[number]>();
+
+    for (const member of members) {
+      const normalizedMinistries = [...(member.ministryTypes || [])]
+        .map((type) => (type === "weekend" || type === "sunday_am" ? "weekend_team" : type))
+        .sort()
+        .join("|");
+      const normalizedPositions = [...member.positions]
+        .map((position) => position.toLowerCase())
+        .sort()
+        .join("|");
+      const normalizedSlots = [...(member.positionSlots || [])]
+        .map((slot) => slot.toLowerCase())
+        .sort()
+        .join("|");
+      const baseKey = (member.userId || member.memberName).toLowerCase();
+      const key = `${baseKey}__${normalizedMinistries}__${normalizedPositions}__${normalizedSlots}__${member.serviceDay || ""}`;
+
+      const existing = deduped.get(key);
+      if (!existing) {
+        deduped.set(key, {
+          ...member,
+          positions: [...member.positions],
+          positionSlots: [...(member.positionSlots || [])],
+          ministryTypes: [...(member.ministryTypes || [])],
+        });
+        continue;
+      }
+
+      existing.positions = Array.from(new Set([...existing.positions, ...member.positions]));
+      existing.positionSlots = Array.from(new Set([...(existing.positionSlots || []), ...(member.positionSlots || [])]));
+      existing.ministryTypes = Array.from(new Set([...(existing.ministryTypes || []), ...(member.ministryTypes || [])]));
+      existing.isSwapped = existing.isSwapped || member.isSwapped;
+      existing.hasPendingSwap = existing.hasPendingSwap || member.hasPendingSwap;
+      existing.originalMemberName = existing.originalMemberName || member.originalMemberName;
+      existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
+      existing.phone = existing.phone || member.phone;
+      existing.userId = existing.userId || member.userId;
+    }
+
+    return Array.from(deduped.values());
+  }, []);
+
   // If we're in "All" mode or "weekend_team" mode, constrain to appropriate ministries
   const roster = useMemo(() => {
     // For "weekend_team" filter, include weekend aliases plus production/video.
@@ -1969,15 +2013,17 @@ function BandRoster({
         existing.phone = existing.phone || member.phone;
       }
 
-      return Array.from(mergedRoster.values());
+      return dedupeMembersForDisplay(Array.from(mergedRoster.values()));
     }
-    if (effectiveMinistryFilter) return rosterRaw;
-    if (!scheduledMinistries || scheduledMinistries.length === 0) return rosterRaw;
+    if (effectiveMinistryFilter) return dedupeMembersForDisplay(rosterRaw);
+    if (!scheduledMinistries || scheduledMinistries.length === 0) return dedupeMembersForDisplay(rosterRaw);
     const allowed = new Set(scheduledMinistries);
     // Always keep production/video members visible (they serve across ministries)
     const crossMinistry = new Set(["production", "video"]);
-    return rosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)));
-  }, [rosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter]);
+    return dedupeMembersForDisplay(
+      rosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)))
+    );
+  }, [rosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
   if (!teamId) return null;
   if (isLoading) {
     return <div className="mb-4">
