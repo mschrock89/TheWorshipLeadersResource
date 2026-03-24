@@ -1120,12 +1120,13 @@ export default function Profile() {
                                   .filter(p => p.campus_id === campus.id && p.ministry_type === ministryType)
                                   .map(p => p.position);
                                 
-                                // Determine which position categories to show based on ministry type
-                                // weekend_team shows all position categories (worship + production + video)
+                                // Determine which position categories to show based on ministry type.
+                                // Weekend Worship should only show worship positions here; Production
+                                // and Video are managed through their own ministry assignments.
                                 const showMusicPositions = ['weekend', 'weekend_team', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
-                                const showProductionPositions = ministryType === 'production' || ministryType === 'weekend_team';
-                                const showVideoPositions = ministryType === 'video' || ministryType === 'weekend_team';
+                                const showProductionPositions = ministryType === 'production';
+                                const showVideoPositions = ministryType === 'video';
                                 
                                 return (
                                   <div key={ministryType} className="space-y-2 rounded-md bg-muted/30 p-3">
