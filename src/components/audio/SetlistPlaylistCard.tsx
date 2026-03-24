@@ -12,11 +12,12 @@ import { parseLocalDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import { useUserCampuses } from "@/hooks/useCampuses";
 import { ReferenceTrackUploadDialog } from "./ReferenceTrackUploadDialog";
 import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDialog";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
 import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
-import { isAuditionCandidateRole } from "@/lib/access";
+import { canManageReferenceTracks, isAuditionCandidateRole } from "@/lib/access";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,14 +38,24 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
   const { setPlaylist, currentTrack, isPlaying, togglePlay, playlist: currentPlaylist, seekTo, play } = useAudioPlayer();
   const { isAdmin, user } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
+  const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editMarkersOpen, setEditMarkersOpen] = useState(false);
   const [selectedRefTrack, setSelectedRefTrack] = useState<ReferenceTrack | null>(null);
   const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
   const deleteRefTrack = useDeleteReferenceTrack();
   const autoReorderCharts = useAutoReorderChartsFromReferenceTrack();
-  const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
-  const canUploadReferenceTrack = isAdmin || (playlist.ministry_type === "audition" && isAuditionCandidate);
+  const roleNames = roles.map((role) => role.role);
+  const userCampusIds = userCampuses.map((campus) => campus.campus_id);
+  const isAuditionCandidate = isAuditionCandidateRole(roleNames);
+  const canManageTracks = canManageReferenceTracks({
+    isAdmin,
+    roleNames,
+    playlistCampusId: playlist.campus_id,
+    userCampusIds,
+  });
+  const canUploadReferenceTrack =
+    canManageTracks || (playlist.ministry_type === "audition" && isAuditionCandidate);
 
   const getMinistryLabel = (type: string) => {
     return MINISTRY_TYPES.find((m) => m.value === type)?.label || type;
@@ -393,8 +404,8 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             <Download className="h-3.5 w-3.5" />
                           </Button>
 
-                          {/* Admin Edit Markers Button */}
-                          {isAdmin && (
+                          {/* Reference Track Edit Markers Button */}
+                          {canManageTracks && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -429,8 +440,8 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             </Button>
                           )}
 
-                          {/* Admin Delete Button */}
-                          {isAdmin && (
+                          {/* Reference Track Delete Button */}
+                          {canManageTracks && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button
@@ -492,7 +503,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                 </div>
               )}
 
-              {/* Admin Add Weekend Track Button */}
+              {/* Reference Track Add Weekend Track Button */}
               {canUploadReferenceTrack && (
                 <Button
                   variant="outline"
