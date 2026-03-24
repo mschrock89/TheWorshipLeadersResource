@@ -310,8 +310,11 @@ function StandardCalendar() {
     data: userRole
   } = useUserRole(user?.id);
 
-  // Check if user is a campus admin
-  const isCampusAdmin = userRole === 'campus_admin' || userRole === 'admin';
+  // Users with cross-campus calendar oversight should be able to switch campuses here.
+  const isCampusAdmin =
+    userRole === 'campus_admin' ||
+    userRole === 'campus_worship_pastor' ||
+    userRole === 'admin';
   const canManageWeekendOverrides = userRole ? LEADER_SERVICE_OVERRIDE_ROLES.has(userRole) : false;
   const userCampusIds = useMemo(
     () => userCampuses.map((entry) => entry.campus_id).filter(Boolean),
