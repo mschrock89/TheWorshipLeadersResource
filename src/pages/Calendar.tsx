@@ -38,7 +38,7 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
-import { isAuditionCandidateRole } from "@/lib/access";
+import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
@@ -1918,7 +1918,9 @@ function BandRoster({
   scheduledMinistries?: string[];
   rotationPeriodName?: string | null;
 }) {
-  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
   // Pass ministry filter to hook - 'all' or undefined means fetch all (we'll constrain by scheduledMinistries below)
   // Special handling for "weekend_team" - it's a combined view, so we fetch without ministry filter
   // and filter the results client-side
@@ -2040,6 +2042,14 @@ function BandRoster({
       normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)))
     );
   }, [normalizedRosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
+  const groupTextMembers = useMemo(
+    () =>
+      filterGroupTextRecipients(roster, {
+        isAdmin,
+        roleNames,
+      }),
+    [isAdmin, roleNames, roster],
+  );
   if (!teamId) return null;
   if (isLoading) {
     return <div className="mb-4">
@@ -2377,12 +2387,6 @@ function BandRoster({
         </div>
       </div>;
   };
-
-  const groupTextMembers = !isAdmin && isProductionManager && !isVideoDirector
-    ? productionVideoMembers.filter((member) => isAudio(member.positions))
-    : !isAdmin && isVideoDirector && !isProductionManager
-      ? productionVideoMembers.filter((member) => isBroadcast(member.positions))
-      : roster;
 
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {

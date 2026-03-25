@@ -6,9 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen } from "lucide-react";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
+import { filterGroupTextRecipients } from "@/lib/access";
 
 interface ScheduledTeamRosterProps {
   targetDate: Date;
@@ -131,7 +133,9 @@ function MemberSection({
 }
 
 export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: ScheduledTeamRosterProps) {
-  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const { data: roles = [] } = useUserRoles(user?.id);
+  const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
   const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(targetDate, campusId);
   
   // For "weekend_team", we want all weekend/production/video members
@@ -218,11 +222,14 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     positions: member.positions.filter(pos => isSpeakerPosition(pos))
   }));
 
-  const groupTextMembers = !isAdmin && isProductionManager && !isVideoDirector
-    ? productionMembers
-    : !isAdmin && isVideoDirector && !isProductionManager
-      ? videoMembers
-      : rosterForDisplay;
+  const groupTextMembers = useMemo(
+    () =>
+      filterGroupTextRecipients(rosterForDisplay, {
+        isAdmin,
+        roleNames,
+      }),
+    [isAdmin, roleNames, rosterForDisplay],
+  );
 
   if (isLoading) {
     return (
