@@ -12,6 +12,8 @@ export interface MyTeamAssignment {
   position: string;
   serviceDay: string | null;
   displayOrder: number;
+  assignmentStartDate?: string | null;
+  assignmentEndDate?: string | null;
 }
 
 export interface MyScheduledDate {
@@ -74,6 +76,8 @@ export function useMyTeamAssignments() {
           ),
           rotation_periods (
             campus_id,
+            start_date,
+            end_date,
             campuses (
               name
             )
@@ -100,6 +104,8 @@ export function useMyTeamAssignments() {
         campusName: member.rotation_periods?.campuses?.name || fallbackCampusName,
         rotationPeriodId: member.rotation_period_id,
         ministryTypes: member.ministry_types || [],
+        assignmentStartDate: member.rotation_periods?.start_date || null,
+        assignmentEndDate: member.rotation_periods?.end_date || null,
       })) as (MyTeamAssignment & { campusId: string | null; campusName: string | null; rotationPeriodId: string | null; ministryTypes: string[] })[];
     },
     enabled: !!user?.id,
@@ -141,7 +147,7 @@ export function useMyTeamAssignments() {
 
   const { data: scheduledDates = [], isLoading: datesLoading } = useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["my-scheduled-dates", "local-date-v1", user?.id, assignments, acceptedSwaps],
+    queryKey: ["my-scheduled-dates", "local-date-v2", user?.id, assignments, acceptedSwaps],
     queryFn: async () => {
       if (!user?.id || assignments.length === 0) return [];
 
@@ -182,6 +188,16 @@ export function useMyTeamAssignments() {
         const dateServiceDay = getServiceDayForDate(dateStr);
         if (!dateServiceDay) return true;
         return serviceDay === dateServiceDay;
+      };
+
+      const assignmentMatchesRotationPeriod = (
+        assignment: { assignmentStartDate?: string | null; assignmentEndDate?: string | null; rotationPeriodId?: string | null },
+        dateStr: string,
+      ) => {
+        if (!assignment.rotationPeriodId) return true;
+        if (assignment.assignmentStartDate && dateStr < assignment.assignmentStartDate) return false;
+        if (assignment.assignmentEndDate && dateStr > assignment.assignmentEndDate) return false;
+        return true;
       };
 
       const shouldExpandSwapToWeekendPair = (swap: (typeof acceptedSwaps)[number]) => {
@@ -265,6 +281,7 @@ export function useMyTeamAssignments() {
         const teamAssignments = assignments.filter((a) => {
           if (a.teamId !== entry.worship_teams.id) return false;
           if (!assignmentMatchesServiceDay(a, entry.schedule_date)) return false;
+          if (!assignmentMatchesRotationPeriod(a, entry.schedule_date)) return false;
 
           const assignmentCampusId = (a as any)?.campusId || null;
           if (scheduleCampusId) {
