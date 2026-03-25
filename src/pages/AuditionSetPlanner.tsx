@@ -306,6 +306,14 @@ export default function AuditionSetPlanner() {
         }
       }
 
+      const notificationResponse = await supabase.functions.invoke("notify-setlist-published", {
+        body: { draftSetId },
+      });
+
+      if (notificationResponse.error) {
+        console.error("Failed to notify published audition setlist roster:", notificationResponse.error);
+      }
+
       if (candidateAudition?.id) {
         const { error: auditionUpdateError } = await supabase
           .from("auditions")
