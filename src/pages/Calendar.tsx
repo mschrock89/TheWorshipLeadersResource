@@ -1923,6 +1923,17 @@ function BandRoster({
     data: rosterRaw = [],
     isLoading
   } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId, rotationPeriodName);
+  const normalizedRosterRaw = useMemo(
+    () =>
+      rosterRaw.map((member) => ({
+        ...member,
+        memberName: member.memberName || "Team Member",
+        positions: Array.isArray(member.positions) ? member.positions : [],
+        positionSlots: Array.isArray(member.positionSlots) ? member.positionSlots : [],
+        ministryTypes: Array.isArray(member.ministryTypes) ? member.ministryTypes : [],
+      })),
+    [rosterRaw]
+  );
   const serviceLabel = useMemo(() => {
     if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
       return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;
@@ -1933,7 +1944,7 @@ function BandRoster({
     return "this service";
   }, [ministryFilter]);
 
-  const dedupeMembersForDisplay = useCallback((members: typeof rosterRaw) => {
+  const dedupeMembersForDisplay = useCallback((members: typeof normalizedRosterRaw) => {
     const deduped = new Map<string, (typeof members)[number]>();
 
     for (const member of members) {
@@ -1982,7 +1993,7 @@ function BandRoster({
     // For "weekend_team" filter, include weekend aliases plus production/video.
     if (isWeekendTeamFilter) {
       const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
-      const filteredRoster = rosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
+      const filteredRoster = normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
       const mergedRoster = new Map<string, typeof filteredRoster[number]>();
 
       for (const member of filteredRoster) {
@@ -1998,7 +2009,7 @@ function BandRoster({
             ...member,
             ministryTypes: Array.from(new Set(normalizedMinistryTypes)),
             positions: [...member.positions],
-            positionSlots: [...member.positionSlots],
+            positionSlots: [...(member.positionSlots || [])],
           });
           continue;
         }
@@ -2015,15 +2026,15 @@ function BandRoster({
 
       return dedupeMembersForDisplay(Array.from(mergedRoster.values()));
     }
-    if (effectiveMinistryFilter) return dedupeMembersForDisplay(rosterRaw);
-    if (!scheduledMinistries || scheduledMinistries.length === 0) return dedupeMembersForDisplay(rosterRaw);
+    if (effectiveMinistryFilter) return dedupeMembersForDisplay(normalizedRosterRaw);
+    if (!scheduledMinistries || scheduledMinistries.length === 0) return dedupeMembersForDisplay(normalizedRosterRaw);
     const allowed = new Set(scheduledMinistries);
     // Always keep production/video members visible (they serve across ministries)
     const crossMinistry = new Set(["production", "video"]);
     return dedupeMembersForDisplay(
-      rosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)))
+      normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)))
     );
-  }, [rosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
+  }, [normalizedRosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
   if (!teamId) return null;
   if (isLoading) {
     return <div className="mb-4">
