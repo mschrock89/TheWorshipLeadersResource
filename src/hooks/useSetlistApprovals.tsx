@@ -334,16 +334,38 @@ export function useSubmitForApproval() {
 
       if (approvalError) throw approvalError;
 
+      const approverRecipientIds = new Set<string>([APPROVER_USER_ID]);
+      const { data: kyleProfiles, error: kyleProfilesError } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("full_name", "Kyle Elkins");
+
+      if (kyleProfilesError) {
+        console.error("Failed to resolve Kyle Elkins profile IDs:", kyleProfilesError);
+      } else {
+        (kyleProfiles || []).forEach((profile) => {
+          if (profile.id) {
+            approverRecipientIds.add(profile.id);
+          }
+        });
+      }
+
       // Send push notification to Kyle
       try {
-        await supabase.functions.invoke("send-push-notification", {
+        const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", {
           body: {
             title: "Setlist Pending Approval",
             message: `A setlist for ${thisSet.plan_date} needs your approval`,
             url: "/approvals",
-            userIds: [APPROVER_USER_ID],
+            userIds: Array.from(approverRecipientIds),
           },
         });
+
+        if (pushError) {
+          console.error("Failed to send approval notification:", pushError);
+        } else if (!pushResult?.sent) {
+          console.warn("Approval push notification did not reach any subscribed Kyle Elkins accounts.", pushResult);
+        }
       } catch (e) {
         console.error("Failed to send approval notification:", e);
       }
