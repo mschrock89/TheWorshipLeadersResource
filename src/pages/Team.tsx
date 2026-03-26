@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useProfiles, TeamPosition, Profile } from "@/hooks/useProfiles";
 import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
+import { useAllCampusMinistryPositions } from "@/hooks/useCampusMinistryPositions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { TeamMemberCard } from "@/components/team/TeamMemberCard";
@@ -70,6 +71,7 @@ const matchesPositionFilter = (positions: TeamPosition[] | undefined, positionFi
 export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
+  const { data: campusMinistryPositions = [] } = useAllCampusMinistryPositions();
   const { data: campuses = [] } = useCampuses();
   const { canManageTeam, isAdmin } = useAuth();
   const location = useLocation();
@@ -153,6 +155,19 @@ export default function Team() {
   }, [isLoading, scrollStorageKey]);
 
   const filteredProfiles = useMemo(() => {
+    const campusScopedPositionMap = new Map<string, TeamPosition[]>();
+
+    if (campusFilter !== "all") {
+      campusMinistryPositions.forEach(({ user_id, campus_id, position }) => {
+        if (campus_id !== campusFilter) return;
+
+        const existing = campusScopedPositionMap.get(user_id) || [];
+        if (!existing.includes(position as TeamPosition)) {
+          campusScopedPositionMap.set(user_id, [...existing, position as TeamPosition]);
+        }
+      });
+    }
+
     return profiles
       .filter((profile) => {
         // Search filter
@@ -164,14 +179,19 @@ export default function Team() {
           fullName.includes(searchLower) ||
           email.includes(searchLower);
 
-        // Position filter
-        const matchesPosition = matchesPositionFilter(profile.positions, positionFilter);
-
         // Campus filter
         const userCampusData = userCampusMap[profile.id];
         const matchesCampus =
           campusFilter === "all" ||
           (userCampusData?.ids?.includes(campusFilter) ?? false);
+
+        const positionsForFilter =
+          campusFilter === "all"
+            ? profile.positions
+            : campusScopedPositionMap.get(profile.id) || [];
+
+        // Position filter
+        const matchesPosition = matchesPositionFilter(positionsForFilter, positionFilter);
 
         // Gender filter
         const matchesGender =
@@ -186,7 +206,7 @@ export default function Team() {
         const nameB = (b.full_name || b.email || "").toLowerCase();
         return nameA.localeCompare(nameB);
       });
-  }, [profiles, search, positionFilter, campusFilter, genderFilter, userCampusMap]);
+  }, [profiles, search, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions]);
 
   const handleEmailSent = () => {
     refetch();

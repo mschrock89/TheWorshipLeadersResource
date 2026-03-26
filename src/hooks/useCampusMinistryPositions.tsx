@@ -10,6 +10,20 @@ export interface CampusMinistryPosition {
   created_at: string;
 }
 
+export function useAllCampusMinistryPositions() {
+  return useQuery({
+    queryKey: ["all-campus-ministry-positions"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_campus_ministry_positions")
+        .select("*");
+
+      if (error) throw error;
+      return data as CampusMinistryPosition[];
+    },
+  });
+}
+
 // Fetch all positions for a user grouped by campus and ministry
 export function useUserCampusMinistryPositions(userId: string | undefined) {
   return useQuery({
