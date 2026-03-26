@@ -154,7 +154,6 @@ serve(async (req) => {
       .update({
         full_name: fullName,
         phone,
-        must_change_password: true,
         default_campus_id: campusId,
       })
       .eq("id", userId);

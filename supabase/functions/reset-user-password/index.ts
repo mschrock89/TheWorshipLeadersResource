@@ -203,12 +203,6 @@ serve(async (req) => {
       );
     }
 
-    // Set must_change_password flag
-    await adminClient
-      .from('profiles')
-      .update({ must_change_password: true })
-      .eq('id', targetUser.id);
-
     console.log(`Password reset successful for ${email}`);
 
     return new Response(

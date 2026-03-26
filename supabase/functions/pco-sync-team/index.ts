@@ -399,7 +399,7 @@ serve(async (req) => {
     console.log(`Creating ${usersToCreate.length} new users...`);
     for (const member of usersToCreate) {
       try {
-        const defaultPassword = "1234";
+        const defaultPassword = "123456";
 
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
           email: member.email,
@@ -416,7 +416,6 @@ serve(async (req) => {
 
         const profileUpdate: any = {
           full_name: member.fullName,
-          must_change_password: true,
         };
 
         if (connection.sync_positions && member.position) {

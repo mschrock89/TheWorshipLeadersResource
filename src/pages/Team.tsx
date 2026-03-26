@@ -447,7 +447,7 @@ export default function Team() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset Password</AlertDialogTitle>
             <AlertDialogDescription>
-              This will reset the password for <strong>{resetPasswordMember?.full_name || resetPasswordMember?.email}</strong> to the temporary password <strong>123456</strong>. They will be prompted to change it on next login.
+              This will reset the password for <strong>{resetPasswordMember?.full_name || resetPasswordMember?.email}</strong> to <strong>123456</strong>. They can keep it or change it later from their profile.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

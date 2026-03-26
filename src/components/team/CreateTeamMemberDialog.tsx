@@ -200,7 +200,7 @@ export function CreateTeamMemberDialog({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            The account password is set to <strong>123456</strong> and they will be required to change it on first login.
+            The account password is set to <strong>123456</strong>. They can keep it or change it later from their profile.
           </p>
         </div>
 

@@ -121,7 +121,6 @@ serve(async (req) => {
       .update({
         full_name: fullName,
         phone,
-        must_change_password: true,
       })
       .eq("id", candidateId);
 

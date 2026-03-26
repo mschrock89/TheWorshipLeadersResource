@@ -131,7 +131,7 @@ serve(async (req) => {
           continue;
         }
 
-        // Use default password "123456" - user will be required to change it on first login
+        // Use default password "123456"
         const defaultPassword = "123456";
 
         // Create the user without sending email
@@ -150,11 +150,9 @@ serve(async (req) => {
 
         console.log(`Created user: ${email} (${newUser.user.id})`);
 
-        // Update profile with additional fields and mark for password change
+        // Update profile with additional fields
         if (newUser.user) {
-          const profileUpdate: Record<string, unknown> = {
-            must_change_password: true, // Require password change on first login
-          };
+          const profileUpdate: Record<string, unknown> = {};
           
           if (member.phone) {
             profileUpdate.phone = member.phone.trim();

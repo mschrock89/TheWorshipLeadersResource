@@ -98,12 +98,6 @@ serve(async (req) => {
           continue;
         }
 
-        // Set must_change_password flag
-        await adminClient
-          .from('profiles')
-          .update({ must_change_password: true })
-          .eq('id', authUser.id);
-
         results.push({ email: authUser.email || 'unknown', success: true });
         successCount++;
       } catch (err) {

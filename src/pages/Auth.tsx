@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Music, KeyRound, MailCheck, ArrowLeft } from "lucide-react";
+import { Loader2, Music, MailCheck, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -44,9 +44,7 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [hasResolvedMustChangePassword, setHasResolvedMustChangePassword] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -118,28 +116,7 @@ export default function Auth() {
     handleAuthCallback();
   }, [toast]);
 
-  // Check if user must change password after login
-  useEffect(() => {
-    if (user && !authLoading) {
-      setHasResolvedMustChangePassword(false);
-      supabase
-        .from("profiles")
-        .select("must_change_password")
-        .eq("id", user.id)
-        .single()
-        .then(({ data }) => {
-          setMustChangePassword(Boolean(data?.must_change_password));
-          setHasResolvedMustChangePassword(true);
-        });
-      return;
-    }
-
-    setMustChangePassword(false);
-    setHasResolvedMustChangePassword(!authLoading);
-  }, [user, authLoading]);
-
-  // Redirect if logged in and doesn't need to change password
-  if (user && !authLoading && hasResolvedMustChangePassword && !mustChangePassword) {
+  if (user && !authLoading) {
     return <Navigate to="/" replace />;
   }
 
@@ -334,64 +311,6 @@ export default function Auth() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Show change password screen if required
-  if (mustChangePassword && user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-warm px-4 py-8">
-        <div className="w-full max-w-md">
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-worship">
-              <KeyRound className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <h1 className="font-display text-3xl font-bold text-foreground">Change Password</h1>
-            <p className="mt-2 text-muted-foreground">Please set a new password to continue</p>
-          </div>
-
-          <Card className="shadow-worship">
-            <CardHeader>
-              <CardTitle>Set Your Password</CardTitle>
-              <CardDescription>
-                Your account was created with a temporary password. Please choose a new secure password.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">New Password</Label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirm Password</Label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={isChangingPassword}>
-                  {isChangingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Update Password
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     );
   }
