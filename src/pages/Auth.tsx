@@ -46,6 +46,7 @@ export default function Auth() {
   const [isResetting, setIsResetting] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [hasResolvedMustChangePassword, setHasResolvedMustChangePassword] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -120,21 +121,25 @@ export default function Auth() {
   // Check if user must change password after login
   useEffect(() => {
     if (user && !authLoading) {
+      setHasResolvedMustChangePassword(false);
       supabase
         .from("profiles")
         .select("must_change_password")
         .eq("id", user.id)
         .single()
         .then(({ data }) => {
-          if (data?.must_change_password) {
-            setMustChangePassword(true);
-          }
+          setMustChangePassword(Boolean(data?.must_change_password));
+          setHasResolvedMustChangePassword(true);
         });
+      return;
     }
+
+    setMustChangePassword(false);
+    setHasResolvedMustChangePassword(!authLoading);
   }, [user, authLoading]);
 
   // Redirect if logged in and doesn't need to change password
-  if (user && !authLoading && !mustChangePassword) {
+  if (user && !authLoading && hasResolvedMustChangePassword && !mustChangePassword) {
     return <Navigate to="/" replace />;
   }
 
