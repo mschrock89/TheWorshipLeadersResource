@@ -58,7 +58,8 @@ const TRIMESTERS = [
 ];
 
 const MINISTRY_LABELS: Record<string, string> = {
-  weekend: "Weekend",
+  weekend: "Weekend Worship",
+  weekend_team: "Weekend Worship",
   student: "Student",
   encounter: "Encounter",
   eon: "EON",
@@ -93,11 +94,15 @@ export function DashboardBreakRequestDialog({
   // Get unique ministries for selected campus
   const availableMinistries = useMemo(() => {
     if (!campusId) return [];
-    const ministries = new Set<string>();
+    const normalizedMinistries = new Set<string>();
     ministryPositions
       .filter((p) => p.campus_id === campusId)
-      .forEach((p) => ministries.add(p.ministry_type));
-    return Array.from(ministries);
+      .forEach((p) => {
+        const normalizedMinistry =
+          p.ministry_type === "weekend" ? "weekend_team" : p.ministry_type;
+        normalizedMinistries.add(normalizedMinistry);
+      });
+    return Array.from(normalizedMinistries);
   }, [ministryPositions, campusId]);
 
   const { data: rotationPeriods = [], isLoading: periodsLoading } =
@@ -422,6 +427,14 @@ export function DashboardBreakRequestDialog({
               </div>
               <div className="rounded-lg border">
                 <Calendar
+                  className="mx-auto w-fit"
+                  classNames={{
+                    months: "flex justify-center",
+                    month: "space-y-4",
+                    table: "mx-auto border-collapse",
+                    head_row: "grid grid-cols-7 gap-1",
+                    row: "mt-2 grid grid-cols-7 gap-1",
+                  }}
                   mode="multiple"
                   selected={blackoutDates}
                   onSelect={handleBlackoutSelect}
