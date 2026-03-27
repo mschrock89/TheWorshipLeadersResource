@@ -9,6 +9,7 @@ import { DashboardBreakRequestDialog } from "./DashboardBreakRequestDialog";
 
 export function BreakRequestWidget() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"break" | "blackout">("break");
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { data: myRequests = [], isLoading } = useMyBreakRequests();
   const cancelBreakRequest = useCancelBreakRequest();
@@ -102,20 +103,36 @@ export function BreakRequestWidget() {
             </div>
           ) : null}
 
-          <Button
-            onClick={() => setDialogOpen(true)}
-            variant="outline"
-            className="w-full"
-          >
-            <Coffee className="mr-2 h-4 w-4" />
-            Request Break
-          </Button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              onClick={() => {
+                setDialogMode("break");
+                setDialogOpen(true);
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              <Coffee className="mr-2 h-4 w-4" />
+              Request Break
+            </Button>
+            <Button
+              onClick={() => {
+                setDialogMode("blackout");
+                setDialogOpen(true);
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              Blackout Dates
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       <DashboardBreakRequestDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        initialMode={dialogMode}
       />
     </>
   );

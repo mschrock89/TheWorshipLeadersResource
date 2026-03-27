@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -25,11 +25,12 @@ import { useUserCampuses } from "@/hooks/useCampuses";
 import { useUserCampusMinistryPositions } from "@/hooks/useCampusMinistryPositions";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { format, getDay, isAfter, isBefore, startOfDay } from "date-fns";
+import { addDays, format, getDay, isAfter, isBefore, startOfDay, subDays } from "date-fns";
 
 interface DashboardBreakRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialMode?: "break" | "blackout";
 }
 
 const REQUEST_TYPES = [
@@ -66,6 +67,7 @@ const MINISTRY_LABELS: Record<string, string> = {
 export function DashboardBreakRequestDialog({
   open,
   onOpenChange,
+  initialMode = "break",
 }: DashboardBreakRequestDialogProps) {
   const { user } = useAuth();
   const currentYear = new Date().getFullYear();
@@ -76,7 +78,9 @@ export function DashboardBreakRequestDialog({
   const [ministryType, setMinistryType] = useState<string>("");
   const [trimester, setTrimester] = useState<string>("");
   const [year, setYear] = useState<string>(currentYear.toString());
-  const [requestScope, setRequestScope] = useState<string>("full_trimester");
+  const [requestScope, setRequestScope] = useState<string>(
+    initialMode === "blackout" ? "blackout_dates" : "full_trimester"
+  );
   const [blackoutDates, setBlackoutDates] = useState<Date[]>([]);
   const [reason, setReason] = useState("");
 
@@ -100,6 +104,15 @@ export function DashboardBreakRequestDialog({
     useRotationPeriodsForUser();
 
   const createBreakRequest = useCreateBreakRequest();
+
+  useEffect(() => {
+    if (!open) return;
+
+    setRequestType("need_break");
+    setRequestScope(initialMode === "blackout" ? "blackout_dates" : "full_trimester");
+    setBlackoutDates([]);
+    setReason("");
+  }, [initialMode, open]);
 
   // Find matching rotation period based on selected campus, trimester, and year
   const matchingPeriod = useMemo(() => {
@@ -128,6 +141,8 @@ export function DashboardBreakRequestDialog({
   const periodStart = matchingPeriod ? startOfDay(new Date(matchingPeriod.start_date)) : null;
   const periodEnd = matchingPeriod ? startOfDay(new Date(matchingPeriod.end_date)) : null;
 
+  const getDateKey = (date: Date) => format(startOfDay(date), "yyyy-MM-dd");
+
   const disabledBlackoutDay = (date: Date) => {
     const day = startOfDay(date);
     const isWeekendDay = [0, 6].includes(getDay(day));
@@ -138,6 +153,66 @@ export function DashboardBreakRequestDialog({
 
     return isBefore(day, periodStart) || isAfter(day, periodEnd);
   };
+
+  const getWeekendDates = (date: Date) => {
+    const day = startOfDay(date);
+    const saturday = getDay(day) === 6 ? day : subDays(day, 1);
+    const sunday = addDays(saturday, 1);
+
+    return [saturday, sunday].filter((weekendDate) => !disabledBlackoutDay(weekendDate));
+  };
+
+  const handleBlackoutSelect = (_dates: Date[] | undefined, selectedDay: Date) => {
+    const weekendDates = getWeekendDates(selectedDay);
+    if (!weekendDates.length) return;
+
+    setBlackoutDates((currentDates) => {
+      const currentKeys = new Set(currentDates.map(getDateKey));
+      const weekendKeys = weekendDates.map(getDateKey);
+      const allSelected = weekendKeys.every((key) => currentKeys.has(key));
+
+      if (allSelected) {
+        return currentDates.filter((date) => !weekendKeys.includes(getDateKey(date)));
+      }
+
+      const mergedDates = [...currentDates];
+      weekendDates.forEach((weekendDate) => {
+        if (!currentKeys.has(getDateKey(weekendDate))) {
+          mergedDates.push(weekendDate);
+        }
+      });
+
+      return mergedDates
+        .slice()
+        .sort((a, b) => a.getTime() - b.getTime());
+    });
+  };
+
+  const groupedBlackoutWeekends = blackoutDates
+    .slice()
+    .sort((a, b) => a.getTime() - b.getTime())
+    .reduce<Array<{ key: string; saturday: Date | null; sunday: Date | null }>>((groups, date) => {
+      const day = startOfDay(date);
+      const saturday = getDay(day) === 6 ? day : subDays(day, 1);
+      const key = getDateKey(saturday);
+      const existingGroup = groups.find((group) => group.key === key);
+
+      if (existingGroup) {
+        if (getDay(day) === 6) {
+          existingGroup.saturday = day;
+        } else {
+          existingGroup.sunday = day;
+        }
+        return groups;
+      }
+
+      groups.push({
+        key,
+        saturday: getDay(day) === 6 ? day : null,
+        sunday: getDay(day) === 0 ? day : null,
+      });
+      return groups;
+    }, []);
 
   const handleSubmit = async () => {
     if (!matchingPeriod) return;
@@ -182,60 +257,74 @@ export function DashboardBreakRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Request a Break</DialogTitle>
+          <DialogTitle>
+            {initialMode === "blackout" ? "Add Blackout Dates" : "Request a Break"}
+          </DialogTitle>
           <DialogDescription>
-            Let your team know if you need time off or are willing to step back
-            if needed.
+            {initialMode === "blackout"
+              ? "Add one or more dates when you already know you cannot serve."
+              : "Let your team know if you need time off or are willing to step back if needed."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* Request Type */}
-          <div className="space-y-2">
-            <Label htmlFor="request-type">Request Type</Label>
-            <Select value={requestType} onValueChange={setRequestType}>
-              <SelectTrigger id="request-type">
-                <SelectValue placeholder="Select request type" />
-              </SelectTrigger>
-              <SelectContent>
-                {REQUEST_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {requestType === "need_break" && (
+          {initialMode === "blackout" ? (
             <div className="space-y-3">
-              <Label>Break Type</Label>
-              <RadioGroup
-                value={requestScope}
-                onValueChange={handleRequestScopeChange}
-                className="grid gap-3"
-              >
-                {REQUEST_SCOPES.map((scope) => (
-                  <label
-                    key={scope.value}
-                    htmlFor={`request-scope-${scope.value}`}
-                    className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
-                  >
-                    <RadioGroupItem
-                      id={`request-scope-${scope.value}`}
-                      value={scope.value}
-                      className="mt-0.5"
-                    />
-                    <div className="space-y-1">
-                      <div className="font-medium">{scope.label}</div>
-                      <p className="text-sm text-muted-foreground">
-                        {scope.description}
-                      </p>
-                    </div>
-                  </label>
-                ))}
-              </RadioGroup>
+              <Label>Request Type</Label>
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium">
+                Blackout
+              </div>
             </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="request-type">Request Type</Label>
+                <Select value={requestType} onValueChange={setRequestType}>
+                  <SelectTrigger id="request-type">
+                    <SelectValue placeholder="Select request type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUEST_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {requestType === "need_break" && (
+                <div className="space-y-3">
+                  <Label>Break Type</Label>
+                  <RadioGroup
+                    value={requestScope}
+                    onValueChange={handleRequestScopeChange}
+                    className="grid gap-3"
+                  >
+                    {REQUEST_SCOPES.map((scope) => (
+                      <label
+                        key={scope.value}
+                        htmlFor={`request-scope-${scope.value}`}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+                      >
+                        <RadioGroupItem
+                          id={`request-scope-${scope.value}`}
+                          value={scope.value}
+                          className="mt-0.5"
+                        />
+                        <div className="space-y-1">
+                          <div className="font-medium">{scope.label}</div>
+                          <p className="text-sm text-muted-foreground">
+                            {scope.description}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
+              )}
+            </>
           )}
 
           {/* Campus */}
@@ -335,7 +424,7 @@ export function DashboardBreakRequestDialog({
                 <Calendar
                   mode="multiple"
                   selected={blackoutDates}
-                  onSelect={(dates) => setBlackoutDates(dates || [])}
+                  onSelect={handleBlackoutSelect}
                   disabled={disabledBlackoutDay}
                   defaultMonth={periodStart ?? undefined}
                   numberOfMonths={1}
@@ -343,14 +432,13 @@ export function DashboardBreakRequestDialog({
               </div>
               {blackoutDates.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {blackoutDates
-                    .slice()
-                    .sort((a, b) => a.getTime() - b.getTime())
-                    .map((date) => (
-                      <Badge key={date.toISOString()} variant="secondary">
-                        {format(date, "EEE, MMM d")}
-                      </Badge>
-                    ))}
+                  {groupedBlackoutWeekends.map((weekend) => (
+                    <Badge key={weekend.key} variant="secondary">
+                      {weekend.saturday && weekend.sunday
+                        ? `${format(weekend.saturday, "MMM d")} - ${format(weekend.sunday, "MMM d")}`
+                        : format(weekend.saturday || weekend.sunday!, "EEE, MMM d")}
+                    </Badge>
+                  ))}
                 </div>
               )}
             </div>
