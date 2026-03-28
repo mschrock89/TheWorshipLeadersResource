@@ -467,15 +467,7 @@ function StandardMySetlists() {
                 <CardHeader className="pb-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <CardTitle className="text-base leading-snug sm:text-lg">
-                        <Link 
-                          to={`/calendar?date=${setlist.scheduleDate}`}
-                          className="block hover:text-primary hover:underline transition-colors"
-                        >
-                          {getCompactSetlistDisplayDate(setlist.scheduleDate, setlist.ministry_type)}
-                        </Link>
-                      </CardTitle>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant="secondary" className="text-xs font-medium">
                           {getMinistryLabel(setlist.ministry_type)}
                         </Badge>
@@ -486,20 +478,26 @@ function StandardMySetlists() {
                         )}
                       </div>
                     </div>
-                    {isConfirmed ? (
+                    <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
                       <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-green-600 px-3 py-1 text-center text-xs text-white">
                         <Check className="h-3 w-3" />
-                        Confirmed
+                        Published
                       </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
-                      >
-                        <Clock className="h-3 w-3" />
-                        Needs Review
-                      </Badge>
-                    )}
+                      {isConfirmed ? (
+                        <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-emerald-700 px-3 py-1 text-center text-xs text-white">
+                          <Check className="h-3 w-3" />
+                          Reviewed
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
+                        >
+                          <Clock className="h-3 w-3" />
+                          Needs Review
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
