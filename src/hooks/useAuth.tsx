@@ -76,7 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hasRole = (role: typeof roles[number]) => roles.includes(role);
     
     setIsAdmin(hasRole("admin"));
-    setIsLeader(hasRole("admin") || hasRole("campus_admin"));
+    setIsLeader(
+      hasRole("admin") ||
+      hasRole("campus_admin") ||
+      hasRole("campus_worship_pastor") ||
+      hasRole("student_worship_pastor") ||
+      hasRole("network_worship_pastor") ||
+      hasRole("network_worship_leader")
+    );
     setIsVideoDirector(hasRole("admin") || hasRole("video_director"));
     setIsProductionManager(hasRole("admin") || hasRole("production_manager"));
     setCanManageTeam(
@@ -84,10 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
       hasRole("student_worship_pastor") ||
+      hasRole("network_worship_pastor") ||
+      hasRole("network_worship_leader") ||
       hasRole("video_director") ||
       hasRole("production_manager")
     );
-    setCanSwitchCampusChat(hasRole("admin") || hasRole("campus_admin") || hasRole("campus_worship_pastor"));
+    setCanSwitchCampusChat(
+      hasRole("admin") ||
+      hasRole("campus_admin") ||
+      hasRole("campus_worship_pastor") ||
+      hasRole("network_worship_pastor") ||
+      hasRole("network_worship_leader")
+    );
   };
 
   const signIn = async (email: string, password: string) => {

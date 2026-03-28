@@ -155,7 +155,7 @@ function SetlistYoutubeLinks({
 }
 
 function StandardMySetlists() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, canManageTeam, user } = useAuth();
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
@@ -397,7 +397,7 @@ function StandardMySetlists() {
       </div>
 
       {/* Admin Setlist Confirmation Widget */}
-      {isAdmin && (
+      {canManageTeam && (
         <SetlistConfirmationWidget selectedCampusId={normalizedCampusId} />
       )}
 
