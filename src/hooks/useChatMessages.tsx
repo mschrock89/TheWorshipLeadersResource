@@ -115,13 +115,17 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     haptic("light");
 
-    const { error } = await supabase.from("chat_messages").insert({
-      user_id: user.id,
-      content: content.trim() || (attachments?.length ? "" : ""),
-      campus_id: campusId,
-      ministry_type: ministryType,
-      attachments: attachments && attachments.length > 0 ? attachments : null,
-    });
+    const { data: insertedMessage, error } = await supabase
+      .from("chat_messages")
+      .insert({
+        user_id: user.id,
+        content: content.trim() || (attachments?.length ? "" : ""),
+        campus_id: campusId,
+        ministry_type: ministryType,
+        attachments: attachments && attachments.length > 0 ? attachments : null,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       console.error("Error sending message:", error);
@@ -133,33 +137,15 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       return;
     }
 
-    // Check for @mentions and send push notifications
-    if (content.includes("@")) {
+    if (insertedMessage?.id) {
       try {
-        // Get sender's name for the notification
-        const { data: senderProfile } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", user.id)
-          .single();
-        
-        // Get campus name
-        const { data: campus } = await supabase
-          .from("campuses")
-          .select("name")
-          .eq("id", campusId)
-          .single();
-
-        await supabase.functions.invoke("notify-chat-mention", {
+        await supabase.functions.invoke("notify-chat-message", {
           body: {
-            messageContent: content,
-            senderName: senderProfile?.full_name || "Someone",
-            senderId: user.id,
-            campusName: campus?.name || "the group",
+            messageId: insertedMessage.id,
           },
         });
-      } catch (mentionError) {
-        console.error("Failed to send mention notification:", mentionError);
+      } catch (notificationError) {
+        console.error("Failed to send chat notification:", notificationError);
         // Don't show error to user - notification is secondary
       }
     }
