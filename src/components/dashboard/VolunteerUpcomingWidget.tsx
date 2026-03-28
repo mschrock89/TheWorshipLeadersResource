@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, Music, Clock, MapPin, ChevronRight } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { POSITION_LABELS } from "@/lib/constants";
+import { getWeekendKey, getWeekendPairDate, isWeekend } from "@/lib/utils";
 
 export function VolunteerUpcomingWidget() {
   const { user } = useAuth();
@@ -35,8 +36,11 @@ export function VolunteerUpcomingWidget() {
 
   // Use the same roster-gated published-set source as My Setlists so volunteers
   // only ever see set content they are actually eligible to review.
+  const upcomingCampusId = nextWeekend?.campusId || primaryCampusId;
+  const upcomingCampusName = nextWeekend?.campusName || primaryCampus?.name;
+
   const { data: publishedSetlists = [], isLoading: setsLoading } = usePublishedSetlists(
-    primaryCampusId || undefined,
+    upcomingCampusId || undefined,
     undefined,
     false,
   );
@@ -46,7 +50,17 @@ export function VolunteerUpcomingWidget() {
     if (!nextWeekend || !publishedSetlists.length) return null;
 
     const targetDate = format(nextWeekend.date, "yyyy-MM-dd");
-    return publishedSetlists.find((set) => set.plan_date === targetDate) || null;
+    const weekendDates = new Set([targetDate]);
+
+    if (isWeekend(targetDate)) {
+      weekendDates.add(getWeekendKey(targetDate));
+      const pairDate = getWeekendPairDate(targetDate);
+      if (pairDate) weekendDates.add(pairDate);
+    }
+
+    return (
+      publishedSetlists.find((set) => weekendDates.has(set.plan_date)) || null
+    );
   }, [publishedSetlists, nextWeekend]);
 
   // Fetch songs for the upcoming set
@@ -134,10 +148,10 @@ export function VolunteerUpcomingWidget() {
                   {getPositionLabel(nextWeekend.position)}
                 </Badge>
               </div>
-              {primaryCampus && (
+              {upcomingCampusName && (
                 <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5" />
-                  {primaryCampus.name}
+                  {upcomingCampusName}
                 </p>
               )}
             </div>
