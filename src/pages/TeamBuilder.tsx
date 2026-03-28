@@ -161,6 +161,7 @@ export default function TeamBuilder() {
     const matchingBreaks = breakRequests.filter(
       (request) =>
         request.status === "approved" &&
+        request.request_scope === "full_trimester" &&
         breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
     );
 
