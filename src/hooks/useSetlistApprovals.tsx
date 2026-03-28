@@ -43,6 +43,122 @@ export interface PendingApproval extends SetlistApproval {
   }[];
 }
 
+async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
+  // Get all pending approvals
+  const { data: approvals, error } = await supabase
+    .from("setlist_approvals")
+    .select(`
+      id,
+      draft_set_id,
+      submitted_by,
+      submitted_at,
+      approver_id,
+      status,
+      notes,
+      reviewed_at,
+      created_at
+    `)
+    .eq("status", "pending")
+    .order("submitted_at", { ascending: false });
+
+  if (error) throw error;
+  if (!approvals?.length) return [];
+
+  // Get draft set details
+  const draftSetIds = approvals.map((a) => a.draft_set_id);
+  const { data: draftSets } = await supabase
+    .from("draft_sets")
+    .select(`
+      id,
+      campus_id,
+      plan_date,
+      ministry_type,
+      custom_service_id,
+      status,
+      notes,
+      campuses(name),
+      custom_services(service_name)
+    `)
+    .in("id", draftSetIds);
+
+  // Get submitter profiles
+  const submitterIds = [...new Set(approvals.map((a) => a.submitted_by))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url")
+    .in("id", submitterIds);
+
+  // Get songs for each draft set with vocalist info
+  const { data: allSongs } = await supabase
+    .from("draft_set_songs")
+    .select(`
+      id,
+      draft_set_id,
+      song_id,
+      sequence_order,
+      song_key,
+      vocalist_id,
+      songs(title, author),
+      profiles:vocalist_id(full_name)
+    `)
+    .in("draft_set_id", draftSetIds)
+    .order("sequence_order");
+
+  const draftSetMap = new Map((draftSets || []).map((ds) => [ds.id, ds]));
+  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+  const normalized = approvals.map((approval) => ({
+    ...approval,
+    status: approval.status as "pending" | "approved" | "rejected",
+    draft_set: draftSetMap.get(approval.draft_set_id) || {
+      id: approval.draft_set_id,
+      campus_id: "",
+      plan_date: "",
+      ministry_type: "",
+      custom_service_id: null,
+      status: "",
+      notes: null,
+      campuses: null,
+      custom_services: null,
+    },
+    submitter: profileMap.get(approval.submitted_by) || null,
+    songs: (allSongs || [])
+      .filter((s) => s.draft_set_id === approval.draft_set_id)
+      .map((s) => ({
+        id: s.id,
+        song_id: s.song_id,
+        sequence_order: s.sequence_order,
+        song_key: s.song_key,
+        vocalist_id: s.vocalist_id,
+        song: s.songs as { title: string; author: string | null } | null,
+        vocalist: s.profiles as { full_name: string | null } | null,
+      })),
+  }));
+
+  // Keep only valid pending draft-set records and hide stale duplicates.
+  // If multiple pending records exist for the same campus/date/ministry/service context,
+  // keep the most recently submitted one.
+  const deduped = new Map<string, PendingApproval>();
+  for (const item of normalized) {
+    if (!item.draft_set?.id) continue;
+    if (item.draft_set.status !== "pending_approval") continue;
+    const key = [
+      item.draft_set.campus_id,
+      item.draft_set.plan_date,
+      item.draft_set.ministry_type,
+      item.draft_set.custom_service_id || "none",
+    ].join("|");
+    const existing = deduped.get(key);
+    if (!existing || new Date(item.submitted_at).getTime() > new Date(existing.submitted_at).getTime()) {
+      deduped.set(key, item as PendingApproval);
+    }
+  }
+
+  return Array.from(deduped.values()).sort(
+    (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime(),
+  );
+}
+
 // Check if the current user is an approver (Kyle Elkins only)
 export function useIsApprover() {
   const { user } = useAuth();
@@ -68,120 +184,7 @@ export function usePendingApprovals() {
     queryKey: ["pending-approvals"],
     queryFn: async (): Promise<PendingApproval[]> => {
       if (!user?.id) return [];
-
-      // Get all pending approvals
-      const { data: approvals, error } = await supabase
-        .from("setlist_approvals")
-        .select(`
-          id,
-          draft_set_id,
-          submitted_by,
-          submitted_at,
-          approver_id,
-          status,
-          notes,
-          reviewed_at,
-          created_at
-        `)
-        .eq("status", "pending")
-        .order("submitted_at", { ascending: false });
-
-      if (error) throw error;
-      if (!approvals?.length) return [];
-
-      // Get draft set details
-      const draftSetIds = approvals.map(a => a.draft_set_id);
-      const { data: draftSets } = await supabase
-        .from("draft_sets")
-        .select(`
-          id,
-          campus_id,
-          plan_date,
-          ministry_type,
-          custom_service_id,
-          status,
-          notes,
-          campuses(name),
-          custom_services(service_name)
-        `)
-        .in("id", draftSetIds);
-
-      // Get submitter profiles
-      const submitterIds = [...new Set(approvals.map(a => a.submitted_by))];
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", submitterIds);
-
-      // Get songs for each draft set with vocalist info
-      const { data: allSongs } = await supabase
-        .from("draft_set_songs")
-        .select(`
-          id,
-          draft_set_id,
-          song_id,
-          sequence_order,
-          song_key,
-          vocalist_id,
-          songs(title, author),
-          profiles:vocalist_id(full_name)
-        `)
-        .in("draft_set_id", draftSetIds)
-        .order("sequence_order");
-
-      const draftSetMap = new Map((draftSets || []).map(ds => [ds.id, ds]));
-      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
-
-      const normalized = approvals.map(approval => ({
-        ...approval,
-        status: approval.status as "pending" | "approved" | "rejected",
-        draft_set: draftSetMap.get(approval.draft_set_id) || {
-          id: approval.draft_set_id,
-          campus_id: "",
-          plan_date: "",
-          ministry_type: "",
-          custom_service_id: null,
-          status: "",
-          notes: null,
-          campuses: null,
-          custom_services: null,
-        },
-        submitter: profileMap.get(approval.submitted_by) || null,
-        songs: (allSongs || [])
-          .filter(s => s.draft_set_id === approval.draft_set_id)
-          .map(s => ({
-            id: s.id,
-            song_id: s.song_id,
-            sequence_order: s.sequence_order,
-            song_key: s.song_key,
-            vocalist_id: s.vocalist_id,
-            song: s.songs as { title: string; author: string | null } | null,
-            vocalist: s.profiles as { full_name: string | null } | null,
-          })),
-      }));
-
-      // Keep only valid pending draft-set records and hide stale duplicates.
-      // If multiple pending records exist for the same campus/date/ministry/service context,
-      // keep the most recently submitted one.
-      const deduped = new Map<string, PendingApproval>();
-      for (const item of normalized) {
-        if (!item.draft_set?.id) continue;
-        if (item.draft_set.status !== "pending_approval") continue;
-        const key = [
-          item.draft_set.campus_id,
-          item.draft_set.plan_date,
-          item.draft_set.ministry_type,
-          item.draft_set.custom_service_id || "none",
-        ].join("|");
-        const existing = deduped.get(key);
-        if (!existing || new Date(item.submitted_at).getTime() > new Date(existing.submitted_at).getTime()) {
-          deduped.set(key, item as PendingApproval);
-        }
-      }
-
-      return Array.from(deduped.values()).sort(
-        (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime(),
-      );
+      return fetchVisiblePendingApprovals();
     },
     enabled: !!user?.id && isApprover === true,
   });
@@ -194,13 +197,8 @@ export function usePendingApprovalCount() {
   return useQuery({
     queryKey: ["pending-approval-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from("setlist_approvals")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending");
-
-      if (error) throw error;
-      return count || 0;
+      const approvals = await fetchVisiblePendingApprovals();
+      return approvals.length;
     },
     enabled: isApprover === true,
     refetchInterval: 30000, // Refetch every 30 seconds
@@ -433,7 +431,8 @@ export function useApproveSetlist() {
           approver_id: user.id,
           reviewed_at: new Date().toISOString(),
         })
-        .eq("id", approvalId);
+        .eq("draft_set_id", draftSetId)
+        .eq("status", "pending");
 
       if (approvalError) throw approvalError;
 
@@ -442,6 +441,7 @@ export function useApproveSetlist() {
         .from("draft_sets")
         .update({
           status: "published",
+          submitted_for_approval_at: null,
           published_at: new Date().toISOString(),
           approved_by: user.id,
           approved_at: new Date().toISOString(),
@@ -537,7 +537,8 @@ export function useRejectSetlist() {
           reviewed_at: new Date().toISOString(),
           notes: notes || null,
         })
-        .eq("id", approvalId);
+        .eq("draft_set_id", draftSetId)
+        .eq("status", "pending");
 
       if (approvalError) throw approvalError;
 

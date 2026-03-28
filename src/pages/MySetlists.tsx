@@ -70,6 +70,25 @@ function getSetlistDisplayDate(planDate: string, ministryType: string) {
   return format(date, "EEEE, MMMM d, yyyy");
 }
 
+function getCompactSetlistDisplayDate(planDate: string, ministryType: string) {
+  const date = parseLocalDate(planDate);
+  const day = getDay(date);
+
+  if (WEEKEND_MINISTRY_TYPES.has(ministryType)) {
+    const saturday = day === 0 ? subDays(date, 1) : date;
+    const sunday = addDays(saturday, 1);
+    const sameMonth = format(saturday, "MMM") === format(sunday, "MMM");
+
+    if (sameMonth) {
+      return `${format(saturday, "MMM d")}-${format(sunday, "d, yyyy")}`;
+    }
+
+    return `${format(saturday, "MMM d")} - ${format(sunday, "MMM d, yyyy")}`;
+  }
+
+  return format(date, "MMM d, yyyy");
+}
+
 function YouTubeButton({
   href,
   compact = false,
@@ -446,17 +465,17 @@ function StandardMySetlists() {
                 className={`transition-all duration-300 ${isConfirmed ? "border-green-500/30" : ""}`}
               >
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="text-base leading-snug sm:text-lg">
                         <Link 
                           to={`/calendar?date=${setlist.scheduleDate}`}
-                          className="hover:text-primary hover:underline transition-colors"
+                          className="block hover:text-primary hover:underline transition-colors"
                         >
-                          {getSetlistDisplayDate(setlist.scheduleDate, setlist.ministry_type)}
+                          {getCompactSetlistDisplayDate(setlist.scheduleDate, setlist.ministry_type)}
                         </Link>
                       </CardTitle>
-                      <div className="flex items-center gap-1.5 mt-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <Badge variant="secondary" className="text-xs font-medium">
                           {getMinistryLabel(setlist.ministry_type)}
                         </Badge>
@@ -468,12 +487,15 @@ function StandardMySetlists() {
                       </div>
                     </div>
                     {isConfirmed ? (
-                      <Badge className="bg-green-600 text-white gap-1">
+                      <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-green-600 px-3 py-1 text-center text-xs text-white">
                         <Check className="h-3 w-3" />
                         Confirmed
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="gap-1 text-amber-600 border-amber-500">
+                      <Badge
+                        variant="outline"
+                        className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
+                      >
                         <Clock className="h-3 w-3" />
                         Needs Review
                       </Badge>
