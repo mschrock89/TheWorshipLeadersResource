@@ -137,8 +137,19 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       return;
     }
 
-    // Chat push notifications are dispatched server-side on insert so they
-    // still fire even if the client closes or the edge invoke fails locally.
+    if (insertedMessage?.id) {
+      try {
+        // Invoke the chat notifier immediately from the sender's client.
+        // The server-side trigger remains as a fallback if this call fails.
+        await supabase.functions.invoke("notify-chat-message", {
+          body: {
+            messageId: insertedMessage.id,
+          },
+        });
+      } catch (notificationError) {
+        console.error("Failed to send chat notification:", notificationError);
+      }
+    }
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
@@ -165,6 +176,11 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
   const deleteMessage = async (messageId: string) => {
     if (!user) return false;
 
+    const previousMessages = messages;
+    setMessages((currentMessages) =>
+      currentMessages.filter((message) => message.id !== messageId)
+    );
+
     const { error } = await supabase
       .from("chat_messages")
       .delete()
@@ -172,6 +188,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       .eq("user_id", user.id);
 
     if (error) {
+      setMessages(previousMessages);
       console.error("Error deleting message:", error);
       toast({
         title: "Error",
