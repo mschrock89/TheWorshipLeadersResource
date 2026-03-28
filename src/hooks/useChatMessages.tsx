@@ -137,18 +137,8 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       return;
     }
 
-    if (insertedMessage?.id) {
-      try {
-        await supabase.functions.invoke("notify-chat-message", {
-          body: {
-            messageId: insertedMessage.id,
-          },
-        });
-      } catch (notificationError) {
-        console.error("Failed to send chat notification:", notificationError);
-        // Don't show error to user - notification is secondary
-      }
-    }
+    // Chat push notifications are dispatched server-side on insert so they
+    // still fire even if the client closes or the edge invoke fails locally.
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
