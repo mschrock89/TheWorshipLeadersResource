@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Coffee, X, Loader2 } from "lucide-react";
+import { CalendarDays, Coffee, X, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +123,7 @@ export function BreakRequestWidget() {
               variant="outline"
               className="w-full"
             >
+              <CalendarDays className="mr-2 h-4 w-4" />
               Blackout Dates
             </Button>
           </div>

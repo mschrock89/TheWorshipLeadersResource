@@ -88,6 +88,7 @@ function ChatContent() {
     currentUserId,
   } = useChatMessages(selectedCampusId, selectedMinistryType);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const lastReadRef = useRef<HTMLDivElement>(null);
   const pullToRefreshRef = useRef<PullToRefreshRef>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -217,7 +218,22 @@ function ChatContent() {
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
     pullToRefreshRef.current?.scrollToBottom(behavior);
-    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  const ensureLastMessageFullyVisible = useCallback((behavior: ScrollBehavior) => {
+    const scrollElement = document.querySelector('[data-pull-to-refresh-container]') as HTMLDivElement | null;
+    const lastMessageElement = lastMessageRef.current;
+
+    if (!scrollElement || !lastMessageElement) return;
+
+    const bottomPadding = 16;
+    const messageBottom = lastMessageElement.offsetTop + lastMessageElement.offsetHeight;
+    const targetTop = Math.max(0, messageBottom - scrollElement.clientHeight + bottomPadding);
+
+    scrollElement.scrollTo({
+      top: targetTop,
+      behavior,
+    });
   }, []);
 
   const scrollToLastRead = useCallback(() => {
@@ -239,7 +255,10 @@ function ChatContent() {
     const retryTimers: number[] = [];
 
     if (isFirstScroll) {
-      const attemptScroll = () => scrollToBottom("auto");
+      const attemptScroll = () => {
+        scrollToBottom("auto");
+        ensureLastMessageFullyVisible("auto");
+      };
 
       const scheduleRetries = () => {
         requestAnimationFrame(() => {
@@ -268,7 +287,7 @@ function ChatContent() {
     if (isAtBottomRef.current) {
       scrollToBottom("smooth");
     }
-  }, [messages, isLoading, scrollToBottom, isScrolledToBottom]);
+  }, [messages, isLoading, scrollToBottom, isScrolledToBottom, ensureLastMessageFullyVisible]);
 
   // Track scroll position
   const handleScrollChange = useCallback((isAtBottom: boolean) => {
@@ -382,7 +401,10 @@ function ChatContent() {
           ) : (
             <div className="pb-4">
               {messages.map((message, index) => (
-                <div key={message.id}>
+                <div
+                  key={message.id}
+                  ref={index === messages.length - 1 ? lastMessageRef : null}
+                >
                   {shouldShowDateSeparator(index) && (
                     <DateSeparator date={message.created_at} />
                   )}
