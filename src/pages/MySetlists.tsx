@@ -169,6 +169,7 @@ function StandardMySetlists() {
     () => userRoles.some(({ role }) => CROSS_CAMPUS_SETLIST_VIEWER_ROLES.has(role)),
     [userRoles],
   );
+  const canViewSetlistConfirmationStatus = isAdmin || canManageTeam || canViewCampusWideSetlists;
 
   const assignedCampusIds = useMemo(
     () => new Set(userCampuses.map((uc) => uc.campus_id)),
@@ -397,7 +398,7 @@ function StandardMySetlists() {
       </div>
 
       {/* Admin Setlist Confirmation Widget */}
-      {canManageTeam && (
+      {canViewSetlistConfirmationStatus && (
         <SetlistConfirmationWidget selectedCampusId={normalizedCampusId} />
       )}
 
