@@ -20,7 +20,7 @@ export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 's
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
   teacher: "Teacher",
-  announcement: "Announcement",
+  announcement: "Announcements",
   closing_prayer: "Closing Prayer",
   acoustic_guitar: "AG 1",
   acoustic_1: "AG 1",
@@ -119,7 +119,7 @@ export const POSITION_SLOTS: {
   { slot: "vocalist_3", label: "Vocalist 3", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_4", label: "Vocalist 4", category: "Vocalists", position: "vocalist" },
   { slot: "teacher", label: "Teacher", category: "Speaker", position: "teacher" },
-  { slot: "announcement", label: "Announcement", category: "Speaker", position: "announcement" },
+  { slot: "announcement", label: "Announcements", category: "Speaker", position: "announcement" },
   { slot: "closing_prayer", label: "Closing Prayer", category: "Speaker", position: "closing_prayer" },
   { slot: "drums", label: "Drums", category: "Band", position: "drums" },
   { slot: "bass", label: "Bass", category: "Band", position: "bass" },
@@ -184,7 +184,7 @@ export const SERVICE_FLOW_ITEM_TYPES = {
 // Which slot categories are available for each ministry type
 // Production and Video only show when those specific ministries are selected
 export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
-  weekend_team: ["Vocalists", "Band", "Production", "Video"],
+  weekend_team: ["Vocalists", "Band"],
   weekend: ["Vocalists", "Band"],
   prayer_night: [],
   encounter: ["Vocalists", "Band"],
@@ -242,7 +242,7 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
   return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);
 }
 
-const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
+const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 export function resolveTeamBuilderSlotMinistryType(
   ministryFilter: string | null | undefined,
@@ -277,7 +277,7 @@ export function memberMatchesMinistryFilter(
     return true;
   }
 
-  if (ministryFilter === "weekend_team") {
+  if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
     return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type));
   }
 
