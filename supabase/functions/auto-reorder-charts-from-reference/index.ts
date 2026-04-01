@@ -11,6 +11,14 @@ interface AutoReorderRequest {
   dry_run?: boolean;
 }
 
+type SongVersionRow = {
+  id: string;
+  chord_chart_text: string | null;
+  lyrics: string | null;
+  version_name: string;
+  is_primary: boolean | null;
+};
+
 type TranscriptSegment = {
   start: number;
   end: number;
@@ -322,6 +330,25 @@ function buildDraftChartFromSections(
   return chunks.join("\n").trim();
 }
 
+function getWeekendAnchorDate(planDate: string): Date {
+  const [year, month, day] = planDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  if (date.getUTCDay() === 0) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+  return date;
+}
+
+function buildWeekendArrangementName(planDate: string): string {
+  const weekendDate = getWeekendAnchorDate(planDate);
+  return `Weekend of ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(weekendDate)}`;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req.headers.get("origin"));
 
@@ -371,6 +398,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    const { data: draftSet, error: draftSetError } = await adminClient
+      .from("draft_sets")
+      .select("id, plan_date")
+      .eq("id", draftSetId)
+      .maybeSingle();
+
+    if (draftSetError || !draftSet?.plan_date) {
+      return new Response(JSON.stringify({ error: "draft_set_plan_date_not_found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const arrangementVersionName = buildWeekendArrangementName(draftSet.plan_date);
+
     const { data: markers, error: markersError } = await adminClient
       .from("reference_track_markers")
       .select("id, title, timestamp_seconds, sequence_order")
@@ -414,7 +456,7 @@ Deno.serve(async (req) => {
     const songIds = setSongs.map((row) => row.song_id);
     const { data: versions, error: versionsError } = await adminClient
       .from("song_versions")
-      .select("id, song_id, version_name, chord_chart_text, is_primary")
+      .select("id, song_id, version_name, chord_chart_text, lyrics, is_primary")
       .in("song_id", songIds)
       .order("is_primary", { ascending: false })
       .order("updated_at", { ascending: false });
@@ -426,16 +468,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    const versionsBySongId = new Map<
-      string,
-      Array<{ id: string; chord_chart_text: string | null; version_name: string; is_primary: boolean | null }>
-    >();
+    const versionsBySongId = new Map<string, SongVersionRow[]>();
     for (const version of versions || []) {
       if (!version.song_id) continue;
       const existing = versionsBySongId.get(version.song_id) || [];
       existing.push({
         id: version.id,
         chord_chart_text: version.chord_chart_text,
+        lyrics: version.lyrics,
         version_name: version.version_name,
         is_primary: version.is_primary,
       });
@@ -508,12 +548,32 @@ Deno.serve(async (req) => {
         }
 
         if (!body.dry_run) {
+          const { data: arrangementRow, error: arrangementError } = await adminClient
+            .from("song_versions")
+            .upsert({
+              song_id: song.song_id,
+              version_name: arrangementVersionName,
+              chord_chart_text: reorderedChart,
+              lyrics: version?.lyrics || null,
+              is_primary: false,
+              created_by: user.id,
+            }, {
+              onConflict: "song_id,version_name",
+            })
+            .select("id")
+            .single();
+
+          if (arrangementError || !arrangementRow?.id) {
+            skipped.push({ song: songTitle, reason: `arrangement_upsert_failed:${arrangementError?.message || "missing_id"}` });
+            continue;
+          }
+
           const { error: updateError } = await adminClient
             .from("draft_set_song_charts")
             .upsert({
               draft_set_song_id: song.id,
-              source_song_version_id: version!.id,
-              version_name: `${version!.version_name} (Setlist Override)`,
+              source_song_version_id: arrangementRow.id,
+              version_name: arrangementVersionName,
               chord_chart_text: reorderedChart,
               created_by: user.id,
             }, {
@@ -550,12 +610,32 @@ Deno.serve(async (req) => {
       const draftChartText = buildDraftChartFromSections(draft.sections, songKey, draft.confidence);
 
       if (!body.dry_run) {
+        const { data: arrangementRow, error: arrangementError } = await adminClient
+          .from("song_versions")
+          .upsert({
+            song_id: song.song_id,
+            version_name: arrangementVersionName,
+            chord_chart_text: draftChartText,
+            lyrics: version?.lyrics || null,
+            is_primary: false,
+            created_by: user.id,
+          }, {
+            onConflict: "song_id,version_name",
+          })
+          .select("id")
+          .single();
+
+        if (arrangementError || !arrangementRow?.id) {
+          skipped.push({ song: songTitle, reason: `arrangement_insert_failed:${arrangementError?.message || "missing_id"}` });
+          continue;
+        }
+
         const { error: insertError } = await adminClient
           .from("draft_set_song_charts")
           .upsert({
             draft_set_song_id: song.id,
-            source_song_version_id: version?.id || null,
-            version_name: "AI Draft (Reference Guide)",
+            source_song_version_id: arrangementRow.id,
+            version_name: arrangementVersionName,
             chord_chart_text: draftChartText,
             created_by: user.id,
           }, {
@@ -580,6 +660,7 @@ Deno.serve(async (req) => {
         songs_considered: markerSongPairs.length,
         updated_songs: updatedSongs,
         built_songs: builtSongs,
+        arrangement_version_name: arrangementVersionName,
         skipped,
         dry_run: Boolean(body.dry_run),
       }),

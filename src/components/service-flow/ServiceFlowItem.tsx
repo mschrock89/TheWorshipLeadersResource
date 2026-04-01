@@ -142,7 +142,7 @@ export function ServiceFlowItem({
           {item.song_key && (
             <Badge
               variant="outline"
-              className="service-flow-song-key text-xs font-medium"
+              className="service-flow-song-key min-w-[2rem] justify-center border-foreground bg-background px-2 text-xs font-semibold leading-none text-foreground"
             >
               {item.song_key}
             </Badge>

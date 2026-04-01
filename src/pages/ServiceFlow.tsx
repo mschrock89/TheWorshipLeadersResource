@@ -108,9 +108,9 @@ export default function ServiceFlow() {
   };
 
   return (
-    <div className="service-flow-page service-flow-print-fit space-y-6 p-4 md:p-6">
-      {/* Print-only header - hidden on screen, uses print-specific colors in CSS */}
-      <div className="print-header hidden print:flex mb-8 pb-4 border-b-2">
+    <div className="service-flow-page service-flow-print-fit service-flow-half-sheet space-y-6 p-4 md:p-6">
+      {/* Legacy print header kept for non-dual layouts; hidden for current half-sheet print mode */}
+      <div className="print-header hidden mb-8 pb-4 border-b-2">
         <div className="print-header-copy">
           <h1 className="text-3xl font-bold print-title">Service Flow</h1>
           <p className="text-2xl font-semibold print-date mt-1">

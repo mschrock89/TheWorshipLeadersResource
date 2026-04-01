@@ -6,6 +6,7 @@ import { BreakRequest, useReviewBreakRequest } from "@/hooks/useBreakRequests";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { breakRequestMatchesMinistryFilter, getMinistryLabel } from "@/lib/constants";
 
 interface BreakRequestsWidgetProps {
   requests: BreakRequest[];
@@ -27,7 +28,7 @@ export function BreakRequestsWidget({
 
   // Filter by ministry if specified
   const filteredRequests = ministryFilter && ministryFilter !== "all"
-    ? requests.filter(r => !r.ministry_type || r.ministry_type === ministryFilter)
+    ? requests.filter((r) => breakRequestMatchesMinistryFilter(r.ministry_type, ministryFilter))
     : requests;
 
   const pendingRequests = filteredRequests.filter(r => r.status === "pending");
@@ -163,7 +164,7 @@ function RequestCard({ request, onApprove, onDeny, isLoading }: RequestCardProps
           </Badge>
           {request.ministry_type && (
             <Badge variant="secondary" className="text-xs capitalize">
-              {request.ministry_type}
+              {getMinistryLabel(request.ministry_type)}
             </Badge>
           )}
           {request.request_scope === "blackout_dates" && (

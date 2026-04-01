@@ -1,4 +1,4 @@
-import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PositionSlot } from "./PositionSlot";
@@ -8,6 +8,7 @@ import {
   AvailableMember,
 } from "@/hooks/useTeamBuilder";
 import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
+import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 
 const TEAM_ICONS: Record<string, React.ReactNode> = {
   star: <Star className="h-5 w-5" />,
@@ -35,6 +36,7 @@ interface TeamCardProps {
   canEditBroadcast?: boolean;
   canEditAudio?: boolean;
   ministryFilter?: string;
+  onEditTemplate?: () => void;
 }
 
 export function TeamCard({
@@ -50,6 +52,7 @@ export function TeamCard({
   canEditBroadcast = false,
   canEditAudio = false,
   ministryFilter = "all",
+  onEditTemplate,
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -61,9 +64,10 @@ export function TeamCard({
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
 
-  const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
+  const bandSlots = templateSlots.bandSlots;
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
 
@@ -75,6 +79,34 @@ export function TeamCard({
   const getMemberForSlot = (slot: string) => {
     return filteredMembers.find(m => m.position_slot === slot);
   };
+
+  const renderPositionSlot = ({
+    key,
+    slotConfig,
+    member,
+    slotReadOnly,
+    allowMinistryEdit,
+  }: {
+    key: string;
+    slotConfig: (typeof POSITION_SLOTS)[number];
+    member?: TeamMemberAssignment;
+    slotReadOnly: boolean;
+    allowMinistryEdit: boolean;
+  }) => (
+    <PositionSlot
+      key={key}
+      label={slotConfig.label}
+      memberName={member?.member_name}
+      avatarUrl={null}
+      isEmpty={!member}
+      onRemove={() => onRemove(slotConfig.slot)}
+      onAdd={() => onAssign(slotConfig.slot)}
+      readOnly={slotReadOnly}
+      ministryTypes={member?.ministry_types}
+      onEditMinistry={member && onEditMinistry && allowMinistryEdit ? () => onEditMinistry(member) : undefined}
+      showMinistryBadges={false}
+    />
+  );
 
   // If locked, treat as read-only
   const effectiveReadOnly = readOnly || isLocked;
@@ -108,25 +140,38 @@ export function TeamCard({
           </span>
           <span>{team.name}</span>
           
-          {/* Lock indicator/button */}
-          {canLock && onToggleLock && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-8 w-8"
-              onClick={onToggleLock}
-              title={isLocked ? "Unlock team" : "Lock team"}
-            >
-              {isLocked ? (
-                <Lock className="h-4 w-4 text-primary" />
-              ) : (
-                <Unlock className="h-4 w-4 text-muted-foreground" />
-              )}
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            {onEditTemplate && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onEditTemplate}
+                title="Edit team template"
+              >
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            )}
+
+            {canLock && onToggleLock && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onToggleLock}
+                title={isLocked ? "Unlock team" : "Lock team"}
+              >
+                {isLocked ? (
+                  <Lock className="h-4 w-4 text-primary" />
+                ) : (
+                  <Unlock className="h-4 w-4 text-muted-foreground" />
+                )}
+              </Button>
+            )}
+          </div>
           
           {!canLock && (
-            <span className="ml-auto text-sm font-normal text-muted-foreground">
+            <span className="text-sm font-normal text-muted-foreground">
               {filledCount}/{totalSlots} filled
             </span>
           )}
@@ -151,21 +196,13 @@ export function TeamCard({
             <div className="grid gap-2">
               {vocalSlots.map(slotConfig => {
                 const member = getMemberForSlot(slotConfig.slot);
-                return (
-                  <PositionSlot
-                    key={slotConfig.slot}
-                    label={slotConfig.label}
-                    memberName={member?.member_name}
-                    avatarUrl={null}
-                    isEmpty={!member}
-                    onRemove={() => onRemove(slotConfig.slot)}
-                    onAdd={() => onAssign(slotConfig.slot)}
-                    readOnly={effectiveReadOnly}
-                    ministryTypes={member?.ministry_types}
-                    onEditMinistry={member && onEditMinistry ? () => onEditMinistry(member) : undefined}
-                    showMinistryBadges={false}
-                  />
-                );
+                return renderPositionSlot({
+                  key: slotConfig.slot,
+                  slotConfig,
+                  member,
+                  slotReadOnly: effectiveReadOnly,
+                  allowMinistryEdit: true,
+                });
               })}
             </div>
           </div>
@@ -181,21 +218,13 @@ export function TeamCard({
             <div className="grid gap-2">
               {speakerSlots.map(slotConfig => {
                 const member = getMemberForSlot(slotConfig.slot);
-                return (
-                  <PositionSlot
-                    key={slotConfig.slot}
-                    label={slotConfig.label}
-                    memberName={member?.member_name}
-                    avatarUrl={null}
-                    isEmpty={!member}
-                    onRemove={() => onRemove(slotConfig.slot)}
-                    onAdd={() => onAssign(slotConfig.slot)}
-                    readOnly={effectiveReadOnly}
-                    ministryTypes={member?.ministry_types}
-                    onEditMinistry={member && onEditMinistry ? () => onEditMinistry(member) : undefined}
-                    showMinistryBadges={false}
-                  />
-                );
+                return renderPositionSlot({
+                  key: slotConfig.slot,
+                  slotConfig,
+                  member,
+                  slotReadOnly: effectiveReadOnly,
+                  allowMinistryEdit: true,
+                });
               })}
             </div>
           </div>
@@ -211,21 +240,13 @@ export function TeamCard({
             <div className="grid gap-2">
               {bandSlots.map(slotConfig => {
                 const member = getMemberForSlot(slotConfig.slot);
-                return (
-                  <PositionSlot
-                    key={slotConfig.slot}
-                    label={slotConfig.label}
-                    memberName={member?.member_name}
-                    avatarUrl={null}
-                    isEmpty={!member}
-                    onRemove={() => onRemove(slotConfig.slot)}
-                    onAdd={() => onAssign(slotConfig.slot)}
-                    readOnly={effectiveReadOnly}
-                    ministryTypes={member?.ministry_types}
-                    onEditMinistry={member && onEditMinistry ? () => onEditMinistry(member) : undefined}
-                    showMinistryBadges={false}
-                  />
-                );
+                return renderPositionSlot({
+                  key: slotConfig.slot,
+                  slotConfig,
+                  member,
+                  slotReadOnly: effectiveReadOnly,
+                  allowMinistryEdit: true,
+                });
               })}
             </div>
           </div>
@@ -244,21 +265,13 @@ export function TeamCard({
             <div className="grid gap-2">
               {productionSlots.map(slotConfig => {
                 const member = getMemberForSlot(slotConfig.slot);
-                return (
-                  <PositionSlot
-                    key={slotConfig.slot}
-                    label={slotConfig.label}
-                    memberName={member?.member_name}
-                    avatarUrl={null}
-                    isEmpty={!member}
-                    onRemove={() => onRemove(slotConfig.slot)}
-                    onAdd={() => onAssign(slotConfig.slot)}
-                    readOnly={productionReadOnly}
-                    ministryTypes={member?.ministry_types}
-                    onEditMinistry={member && onEditMinistry && canEditAudio ? () => onEditMinistry(member) : undefined}
-                    showMinistryBadges={false}
-                  />
-                );
+                return renderPositionSlot({
+                  key: slotConfig.slot,
+                  slotConfig,
+                  member,
+                  slotReadOnly: productionReadOnly,
+                  allowMinistryEdit: canEditAudio,
+                });
               })}
             </div>
           </div>
@@ -291,21 +304,13 @@ export function TeamCard({
                       <div className="grid gap-2">
                         {videoSlots.map(slotConfig => {
                           const member = saturdayMembers.find(m => m.position_slot === slotConfig.slot);
-                          return (
-                            <PositionSlot
-                              key={`sat-${slotConfig.slot}`}
-                              label={slotConfig.label}
-                              memberName={member?.member_name}
-                              avatarUrl={null}
-                              isEmpty={!member}
-                              onRemove={() => onRemove(slotConfig.slot)}
-                              onAdd={() => onAssign(slotConfig.slot)}
-                              readOnly={broadcastReadOnly}
-                              ministryTypes={member?.ministry_types}
-                              onEditMinistry={member && onEditMinistry && canEditBroadcast ? () => onEditMinistry(member) : undefined}
-                              showMinistryBadges={false}
-                            />
-                          );
+                          return renderPositionSlot({
+                            key: `sat-${slotConfig.slot}`,
+                            slotConfig,
+                            member,
+                            slotReadOnly: broadcastReadOnly,
+                            allowMinistryEdit: canEditBroadcast,
+                          });
                         })}
                       </div>
                     </div>
@@ -316,21 +321,13 @@ export function TeamCard({
                       <div className="grid gap-2">
                         {videoSlots.map(slotConfig => {
                           const member = sundayMembers.find(m => m.position_slot === slotConfig.slot);
-                          return (
-                            <PositionSlot
-                              key={`sun-${slotConfig.slot}`}
-                              label={slotConfig.label}
-                              memberName={member?.member_name}
-                              avatarUrl={null}
-                              isEmpty={!member}
-                              onRemove={() => onRemove(slotConfig.slot)}
-                              onAdd={() => onAssign(slotConfig.slot)}
-                              readOnly={broadcastReadOnly}
-                              ministryTypes={member?.ministry_types}
-                              onEditMinistry={member && onEditMinistry && canEditBroadcast ? () => onEditMinistry(member) : undefined}
-                              showMinistryBadges={false}
-                            />
-                          );
+                          return renderPositionSlot({
+                            key: `sun-${slotConfig.slot}`,
+                            slotConfig,
+                            member,
+                            slotReadOnly: broadcastReadOnly,
+                            allowMinistryEdit: canEditBroadcast,
+                          });
                         })}
                       </div>
                     </div>
@@ -343,21 +340,13 @@ export function TeamCard({
                 <div className="grid gap-2">
                   {videoSlots.map(slotConfig => {
                     const member = getMemberForSlot(slotConfig.slot);
-                    return (
-                      <PositionSlot
-                        key={slotConfig.slot}
-                        label={slotConfig.label}
-                        memberName={member?.member_name}
-                        avatarUrl={null}
-                        isEmpty={!member}
-                        onRemove={() => onRemove(slotConfig.slot)}
-                        onAdd={() => onAssign(slotConfig.slot)}
-                        readOnly={broadcastReadOnly}
-                        ministryTypes={member?.ministry_types}
-                        onEditMinistry={member && onEditMinistry && canEditBroadcast ? () => onEditMinistry(member) : undefined}
-                        showMinistryBadges={false}
-                      />
-                    );
+                    return renderPositionSlot({
+                      key: slotConfig.slot,
+                      slotConfig,
+                      member,
+                      slotReadOnly: broadcastReadOnly,
+                      allowMinistryEdit: canEditBroadcast,
+                    });
                   })}
                 </div>
               );

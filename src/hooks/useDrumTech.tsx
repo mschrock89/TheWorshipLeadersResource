@@ -399,7 +399,7 @@ export function useDrumTechAccess(campusId?: string | null) {
 
       const { data, error } = await supabase
         .from("user_campus_ministry_positions")
-        .select("campus_id, position")
+        .select("campus_id, ministry_type, position")
         .eq("user_id", user.id);
 
       if (error) throw error;
@@ -407,9 +407,14 @@ export function useDrumTechAccess(campusId?: string | null) {
       const rows = data || [];
       const normalizedRows = rows.map((row) => ({
         campus_id: row.campus_id,
+        ministry_type: String(row.ministry_type || "").trim().toLowerCase(),
         position: String(row.position || "").trim().toLowerCase().replace(/\s+/g, "_"),
       }));
-      const relevantRows = normalizedRows.filter((row) => row.position === "drums" || row.position === "drum_tech");
+      const relevantRows = normalizedRows.filter(
+        (row) =>
+          row.ministry_type.length > 0 &&
+          (row.position === "drums" || row.position === "drum_tech"),
+      );
 
       return {
         viewCampusIds: Array.from(new Set(relevantRows.map((row) => row.campus_id))),

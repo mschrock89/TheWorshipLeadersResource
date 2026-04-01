@@ -1294,6 +1294,33 @@ BEGIN
 END;
 $function$;
 
+-- Normalize Weekend Worship break requests to the canonical `weekend` ministry.
+-- This removes the legacy `weekend_team` alias from break request storage.
+
+UPDATE public.break_requests
+SET ministry_type = 'weekend'
+WHERE ministry_type IN ('weekend_team', 'sunday_am');
+
+CREATE OR REPLACE FUNCTION public.normalize_break_request_ministry_type()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF NEW.ministry_type IN ('weekend_team', 'sunday_am') THEN
+    NEW.ministry_type := 'weekend';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS normalize_break_request_ministry_type ON public.break_requests;
+
+CREATE TRIGGER normalize_break_request_ministry_type
+BEFORE INSERT OR UPDATE ON public.break_requests
+FOR EACH ROW
+EXECUTE FUNCTION public.normalize_break_request_ministry_type();
+
 -- Update get_basic_profiles to check for admin role
 CREATE OR REPLACE FUNCTION public.get_basic_profiles()
 RETURNS TABLE(id uuid, full_name text, avatar_url text)
@@ -7662,3 +7689,159 @@ $$;
 -- Grant to authenticated users
 GRANT EXECUTE ON FUNCTION public.get_prior_song_uses(uuid[], date, uuid[], text[]) TO authenticated;
 
+-- === 20260331140000_add_team_template_config_to_worship_teams.sql ===
+ALTER TABLE public.worship_teams
+ADD COLUMN IF NOT EXISTS template_config jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- === 20260401121000_fix_break_request_visibility_and_notifications.sql ===
+CREATE OR REPLACE FUNCTION public.can_view_break_request(_request_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    has_role(auth.uid(), 'admin'::app_role)
+    OR has_role(auth.uid(), 'network_worship_pastor'::app_role)
+    OR has_role(auth.uid(), 'network_worship_leader'::app_role)
+    OR (
+      has_role(auth.uid(), 'campus_worship_pastor'::app_role)
+      AND shares_campus_with(auth.uid(), _request_user_id)
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.user_roles ur
+      JOIN public.user_campuses uc
+        ON uc.user_id = _request_user_id
+      WHERE ur.user_id = auth.uid()
+        AND ur.role = 'campus_admin'::app_role
+        AND ur.admin_campus_id = uc.campus_id
+    )
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_review_break_request(_request_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    has_role(auth.uid(), 'admin'::app_role)
+    OR has_role(auth.uid(), 'network_worship_pastor'::app_role)
+    OR has_role(auth.uid(), 'network_worship_leader'::app_role)
+    OR (
+      has_role(auth.uid(), 'campus_worship_pastor'::app_role)
+      AND shares_campus_with(auth.uid(), _request_user_id)
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.user_roles ur
+      JOIN public.user_campuses uc
+        ON uc.user_id = _request_user_id
+      WHERE ur.user_id = auth.uid()
+        AND ur.role = 'campus_admin'::app_role
+        AND ur.admin_campus_id = uc.campus_id
+    )
+$$;
+
+DROP POLICY IF EXISTS "Global admins can view all break requests" ON public.break_requests;
+DROP POLICY IF EXISTS "Campus Worship Pastors can view campus break requests" ON public.break_requests;
+DROP POLICY IF EXISTS "Global admins can update break requests" ON public.break_requests;
+DROP POLICY IF EXISTS "Campus Worship Pastors can update campus break requests" ON public.break_requests;
+
+CREATE POLICY "Leadership can view break requests"
+ON public.break_requests
+FOR SELECT
+USING (public.can_view_break_request(user_id));
+
+CREATE POLICY "Leadership can update break requests"
+ON public.break_requests
+FOR UPDATE
+USING (public.can_review_break_request(user_id));
+
+CREATE OR REPLACE FUNCTION public.notify_break_request_created()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  requester_name TEXT;
+  period_name TEXT;
+  request_type_label TEXT;
+  recipient_user_ids JSONB;
+  supabase_url TEXT;
+  service_key TEXT;
+BEGIN
+  SELECT full_name INTO requester_name FROM profiles WHERE id = NEW.user_id;
+  SELECT name INTO period_name FROM rotation_periods WHERE id = NEW.rotation_period_id;
+
+  request_type_label := CASE
+    WHEN NEW.request_type = 'willing_break' THEN 'is willing to take a break'
+    ELSE 'needs a break'
+  END;
+
+  SELECT jsonb_agg(DISTINCT recipient_id)
+  INTO recipient_user_ids
+  FROM (
+    SELECT ur.user_id::text AS recipient_id
+    FROM public.user_roles ur
+    WHERE ur.role IN ('admin', 'network_worship_pastor', 'network_worship_leader')
+
+    UNION
+
+    SELECT ur.user_id::text AS recipient_id
+    FROM public.user_roles ur
+    WHERE ur.role = 'campus_worship_pastor'
+      AND shares_campus_with(ur.user_id, NEW.user_id)
+
+    UNION
+
+    SELECT ur.user_id::text AS recipient_id
+    FROM public.user_roles ur
+    JOIN public.user_campuses uc
+      ON uc.user_id = NEW.user_id
+    WHERE ur.role = 'campus_admin'
+      AND ur.admin_campus_id = uc.campus_id
+  ) recipients;
+
+  BEGIN
+    SELECT decrypted_secret INTO supabase_url
+    FROM vault.decrypted_secrets
+    WHERE name = 'supabase_url'
+    LIMIT 1;
+
+    SELECT decrypted_secret INTO service_key
+    FROM vault.decrypted_secrets
+    WHERE name = 'service_role_key'
+    LIMIT 1;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN NEW;
+  END;
+
+  IF recipient_user_ids IS NOT NULL AND jsonb_array_length(recipient_user_ids) > 0
+     AND supabase_url IS NOT NULL AND service_key IS NOT NULL THEN
+    PERFORM net.http_post(
+      url := supabase_url || '/functions/v1/send-push-notification',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || service_key
+      ),
+      body := jsonb_build_object(
+        'title', 'Break Request',
+        'message', COALESCE(requester_name, 'Someone') || ' ' || request_type_label || ' for ' || COALESCE(period_name, 'a rotation period'),
+        'url', '/team-builder',
+        'tag', 'break-request-' || NEW.id::text,
+        'userIds', recipient_user_ids
+      )
+    );
+  END IF;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'notify_break_request_created failed: %', SQLERRM;
+  RETURN NEW;
+END;
+$function$;

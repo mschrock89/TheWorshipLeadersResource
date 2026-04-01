@@ -45,6 +45,9 @@ verify_jwt = false
 [functions.notify-chat-mention]
 verify_jwt = false
 
+[functions.notify-chat-message]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = false
 
@@ -108,6 +111,12 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/google-calendar-resync/deno.json"
 entrypoint = "./functions/google-calendar-resync/index.ts"
+
+[functions.google-calendar-disconnect]
+enabled = true
+verify_jwt = false
+import_map = "./functions/google-calendar-disconnect/deno.json"
+entrypoint = "./functions/google-calendar-disconnect/index.ts"
 
 [functions.bible-chapter]
 enabled = true

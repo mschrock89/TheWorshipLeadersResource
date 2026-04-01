@@ -14,6 +14,24 @@ import { Label } from "@/components/ui/label";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
+const MINISTRY_EDIT_ORDER = [
+  "weekend",
+  "production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "evident",
+  "er",
+  "audition",
+  "speaker",
+  "prayer_night",
+] as const;
+
+function getMinistryEditOption(value: (typeof MINISTRY_EDIT_ORDER)[number]) {
+  return MINISTRY_TYPES.find((ministry) => ministry.value === value);
+}
+
 interface MinistryEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,7 +87,9 @@ export function MinistryEditDialog({
         </DialogHeader>
 
         <div className="grid gap-3 py-4">
-          {MINISTRY_TYPES.map(ministry => (
+          {MINISTRY_EDIT_ORDER.map((value) => getMinistryEditOption(value))
+            .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry))
+            .map(ministry => (
             <div
               key={ministry.value}
               className={cn(

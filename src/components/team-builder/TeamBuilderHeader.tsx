@@ -19,6 +19,24 @@ import {
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
 
+const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
+  "weekend",
+  "production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "evident",
+  "er",
+  "audition",
+  "speaker",
+  "prayer_night",
+] as const;
+
+function getTeamBuilderMinistryOption(value: (typeof TEAM_BUILDER_MINISTRY_FILTER_ORDER)[number]) {
+  return MINISTRY_TYPES.find((ministry) => ministry.value === value);
+}
+
 interface TeamBuilderHeaderProps {
   isAdminUser: boolean;
   canEditCampus: boolean;
@@ -122,7 +140,9 @@ export function TeamBuilderHeader({
             <SelectValue placeholder="Select ministry" />
           </SelectTrigger>
           <SelectContent>
-            {MINISTRY_TYPES.filter((ministry) => !("hidden" in ministry && ministry.hidden)).map(ministry => (
+            {TEAM_BUILDER_MINISTRY_FILTER_ORDER.map((value) => getTeamBuilderMinistryOption(value))
+              .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry))
+              .map(ministry => (
               <SelectItem key={ministry.value} value={ministry.value}>
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${ministry.color}`} />

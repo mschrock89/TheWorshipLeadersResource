@@ -1,0 +1,256 @@
+WORSHIP LEADER'S RESOURCE
+Portable Visual Style Guide
+Generated from the current app theme and styling sources.
+
+IMPORTANT
+- The live app is styled as a dark theme, even though some comments mention "light branding."
+- If you want another app to visually match this one, follow the dark theme tokens below.
+
+BRAND DIRECTION
+- Modern church/team operations UI
+- Dark, calm, slightly muted foundation
+- Bright blue primary actions
+- Deep blue secondary surfaces
+- Warm yellow accent used sparingly
+- Rounded, friendly components with soft glow accents
+- Mobile-first/PWA-friendly layout
+
+TYPOGRAPHY
+- Body font: Nunito Sans
+- Display/headings font: Montserrat
+- Brand note: Nunito Sans is being used as the web fallback for Avenir-style body copy
+
+FONT IMPORT
+- Google Fonts:
+  https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&family=Montserrat:wght@400;500;600;700;800;900&display=swap
+
+TYPOGRAPHY RULES
+- Body/default text: Nunito Sans, system-ui, sans-serif
+- Headings/display text: Montserrat, Nunito Sans, sans-serif
+- Headline feel: bold or semibold with tight tracking
+- Common headline pattern:
+  font-family: Montserrat, Nunito Sans, sans-serif;
+  font-weight: 600-800;
+  letter-spacing: -0.02em to -0.04em;
+- Body copy feel:
+  font-family: Nunito Sans, system-ui, sans-serif;
+  font-weight: 400-600;
+  line-height: comfortable, clean, app-like
+
+CORE COLOR TOKENS
+- Background: hsl(210 10% 8%)
+- Foreground: hsl(0 0% 100%)
+- Card: hsl(210 8% 12%)
+- Card Foreground: hsl(0 0% 100%)
+- Popover: hsl(210 8% 12%)
+- Popover Foreground: hsl(0 0% 100%)
+- Primary: hsl(197 76% 55%)
+- Primary Foreground: hsl(0 0% 100%)
+- Secondary: hsl(200 60% 38%)
+- Secondary Foreground: hsl(0 0% 100%)
+- Muted: hsl(210 8% 18%)
+- Muted Foreground: hsl(0 0% 75%)
+- Accent: hsl(38 100% 61%)
+- Accent Foreground: hsl(0 0% 5%)
+- Destructive: hsl(0 72% 50%)
+- Destructive Foreground: hsl(0 0% 100%)
+- Border: hsl(0 0% 20%)
+- Input: hsl(0 0% 20%)
+- Ring: hsl(197 76% 55%)
+
+ECC BRAND COLORS
+- ECC Blue: hsl(197 76% 55%)
+- ECC Dark Blue: hsl(200 60% 38%)
+- ECC Bright Blue: hsl(197 79% 60%)
+- ECC Teal: hsl(193 100% 35%)
+- ECC Yellow: hsl(38 100% 61%)
+- ECC Gray: hsl(228 2% 59%)
+- ECC Mid Gray: hsl(225 2% 73%)
+- ECC Light Gray: hsl(60 14% 96%)
+
+READY-TO-PASTE CSS VARIABLES
+:root {
+  --background: 210 10% 8%;
+  --foreground: 0 0% 100%;
+
+  --card: 210 8% 12%;
+  --card-foreground: 0 0% 100%;
+
+  --popover: 210 8% 12%;
+  --popover-foreground: 0 0% 100%;
+
+  --primary: 197 76% 55%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 200 60% 38%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 210 8% 18%;
+  --muted-foreground: 0 0% 75%;
+
+  --accent: 38 100% 61%;
+  --accent-foreground: 0 0% 5%;
+
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 20%;
+  --input: 0 0% 20%;
+  --ring: 197 76% 55%;
+
+  --radius: 0.5rem;
+
+  --sidebar-background: 200 60% 20%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-primary: 197 76% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 200 55% 28%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 200 50% 25%;
+  --sidebar-ring: 197 76% 55%;
+
+  --ecc-blue: 197 76% 55%;
+  --ecc-blue-dark: 200 60% 38%;
+  --ecc-blue-bright: 197 79% 60%;
+  --ecc-teal: 193 100% 35%;
+  --ecc-yellow: 38 100% 61%;
+  --ecc-gray: 228 2% 59%;
+  --ecc-gray-mid: 225 2% 73%;
+  --ecc-gray-light: 60 14% 96%;
+}
+
+GRADIENTS
+- Primary gradient:
+  linear-gradient(135deg, hsl(197 76% 55%), hsl(200 60% 38%))
+- Teal gradient:
+  linear-gradient(135deg, hsl(193 100% 35%), hsl(197 76% 55%))
+- Warm light gradient:
+  linear-gradient(180deg, hsl(60 14% 96%), hsl(0 0% 100%))
+- Animated blue text gradient:
+  linear-gradient(90deg, hsl(197 76% 55%) 0%, hsl(200 60% 38%) 50%, hsl(197 76% 65%) 100%)
+
+SHADOWS
+- Soft shadow:
+  0 4px 20px -4px hsl(200 60% 38% / 0.15)
+- Blue glow:
+  0 0 30px hsl(197 76% 55% / 0.3)
+
+BORDER RADIUS
+- Base radius token: 0.5rem
+- Small UI controls: 0.25rem to 0.375rem
+- Standard buttons/inputs/cards: 0.5rem
+- Larger cards/panels: 1rem to 1.5rem
+- Hero/feature surfaces: 1.5rem to 2rem
+- Pills/badges: fully rounded
+
+LAYOUT SYSTEM
+- Centered container
+- Horizontal padding: 2rem
+- Max width at largest size: 1400px
+- Background generally stays dark across screens
+- Cards and sections float slightly above the page using darker-but-lifted surfaces
+
+SURFACE STYLING
+- App background: very dark blue-gray
+- Main cards: slightly lighter than page background
+- Borders: subtle, low-contrast, never harsh white
+- Use translucent muted fills for secondary sections
+- Use primary blue glow only for emphasis, not everywhere
+
+BUTTON STYLE
+- Primary buttons:
+  bright ECC blue fill, white text, rounded corners
+- Secondary buttons:
+  dark blue or outline style using border token
+- Quiet/ghost buttons:
+  transparent background, hover tint only
+- Destructive:
+  red fill or red outline depending importance
+
+INPUT STYLE
+- Dark input surfaces
+- Border color matches border token
+- Focus ring uses primary blue
+- Rounded corners, medium padding
+- Placeholder text uses muted foreground
+
+CARD STYLE
+- Background: card token
+- Border: border token
+- Radius: 0.5rem to 1rem for normal cards, larger for feature modules
+- Shadow: soft shadow, occasionally glow on highlighted cards
+- Inner sections often use muted/20 to muted/30 style overlays
+
+ICONOGRAPHY
+- Icons usually inherit text color
+- Primary actions/icons use primary blue
+- Muted supporting icons use muted foreground
+- Warning states shift to amber/yellow
+- Errors shift to red/rose
+
+MOTION
+- Keep animation subtle and useful
+- Common motion patterns:
+  fade-in: 0.4s ease-out
+  slide-in: 0.3s ease-out
+  scale-in: 0.3s ease-out
+  accordion open/close: 0.2s ease-out
+  shimmer: 3s to 6s ease-in-out infinite
+- Avoid flashy motion; favor soft entrance and hover feedback
+
+TEXT TREATMENT
+- Page titles often use display font, semibold/bold, tight tracking
+- Supporting text uses muted foreground
+- Use gradient text selectively for hero moments
+- High contrast on primary dark surfaces
+
+VISUAL PATTERNS TO REUSE
+- Rounded dashboard cards with subtle borders
+- Blue-tinted focus and action states
+- Dark glassy overlays for onboarding/modal experiences
+- Gradient hero sections blending blue, teal, and deep slate
+- Pill badges with light transparency
+- Muted panels inside cards for grouped settings/data
+
+MOBILE/PWA NOTES
+- Respect safe-area insets
+- Use overscroll prevention for immersive/mobile views
+- Account for bottom nav spacing with extra bottom padding
+- iOS/PWA install state matters for notification experiences
+- Full-screen/immersive screens should minimize chrome
+
+IMPLEMENTATION NOTES FOR ANOTHER APP
+- Set body background to hsl(var(--background))
+- Set body text color to hsl(var(--foreground))
+- Use Nunito Sans as default font
+- Use Montserrat for major headings and hero labels
+- Keep border colors subtle
+- Use the primary blue for active states, links, toggles, and focus
+- Use yellow only as an accent, not as the base palette
+- Favor rounded rectangles over sharp corners
+- Keep the UI dark, clean, and slightly glowy rather than flat
+
+TAILWIND MAPPING IF NEEDED
+- font-sans = Nunito Sans
+- font-display = Montserrat
+- bg-background = hsl(var(--background))
+- text-foreground = hsl(var(--foreground))
+- bg-card = hsl(var(--card))
+- text-muted-foreground = hsl(var(--muted-foreground))
+- border-border = hsl(var(--border))
+- bg-primary = hsl(var(--primary))
+- text-primary-foreground = hsl(var(--primary-foreground))
+- bg-secondary = hsl(var(--secondary))
+- bg-accent = hsl(var(--accent))
+
+QUICK STYLE SUMMARY
+- Dark base
+- Bright blue actions
+- Deep blue secondary surfaces
+- Warm yellow accent
+- Nunito Sans body
+- Montserrat headings
+- Medium rounding
+- Soft borders
+- Occasional glow and gradients
+- Clean dashboard/PWA feel

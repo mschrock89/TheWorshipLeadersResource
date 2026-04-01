@@ -95,7 +95,33 @@ interface IntermediateRosterEntry {
   serviceDay: string | null;
 }
 
-export function useTeamRosterForDate(date: Date | null, teamId?: string, ministryType?: string, campusId?: string) {
+interface TeamMemberRow {
+  id: string;
+  member_name: string;
+  position: string;
+  position_slot: string | null;
+  user_id: string | null;
+  rotation_period_id: string | null;
+  ministry_types: string[] | null;
+  service_day: string | null;
+}
+
+interface TeamMemberWithPeriodRow extends TeamMemberRow {
+  rotation_periods?: {
+    campus_id?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    is_active?: boolean | null;
+  } | null;
+}
+
+export function useTeamRosterForDate(
+  date: Date | null,
+  teamId?: string,
+  ministryType?: string,
+  campusId?: string,
+  rotationPeriodName?: string | null,
+) {
   const { user } = useAuth();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   
@@ -104,9 +130,6 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
   // to ensure we can see the full roster even if campus filter is set differently
   const userCampusIds = userCampuses.map(uc => uc.campus_id);
   
-  // For rotation period filtering, use campusId if provided, otherwise all user campuses
-  const rotationCampusIds = campusId ? [campusId] : userCampusIds;
-  
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
@@ -114,47 +137,159 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
-      // If no campuses to filter by, return empty
-      if (userCampusIds.length === 0) return [];
-
-      // First, find the rotation period that covers this date
-      // Use rotationCampusIds (filtered by campusId if provided, otherwise all user campuses)
       const campusIdsToFilter = campusId ? [campusId] : userCampusIds;
+      if (campusIdsToFilter.length === 0) return [];
       
-      const { data: rotationPeriods, error: rotationError } = await supabase
-        .from("rotation_periods")
-        .select("id, campus_id")
-        .lte("start_date", dateStr)
-        .gte("end_date", dateStr)
-        .in("campus_id", campusIdsToFilter);
+      let activePeriodIds: string[] = [];
+      if (campusId && rotationPeriodName) {
+        const { data: namedPeriods, error: namedPeriodError } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("campus_id", campusId)
+          .eq("name", rotationPeriodName);
 
-      if (rotationError) throw rotationError;
+        if (namedPeriodError) throw namedPeriodError;
+        activePeriodIds = (namedPeriods || []).map((period) => period.id);
+      }
 
-      // Get rotation period IDs that apply (only from the filtered campus)
-      const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
+      if (campusId && activePeriodIds.length === 0) {
+        const { data: activePeriods, error: activePeriodError } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("campus_id", campusId)
+          .eq("is_active", true);
+
+        if (activePeriodError) throw activePeriodError;
+        activePeriodIds = (activePeriods || []).map((period) => period.id);
+      }
+
+      let rotationPeriodIds = activePeriodIds;
+      if (rotationPeriodIds.length === 0) {
+        const { data: rotationPeriods, error: rotationError } = await supabase
+          .from("rotation_periods")
+          .select("id, campus_id")
+          .lte("start_date", dateStr)
+          .gte("end_date", dateStr)
+          .in("campus_id", campusIdsToFilter);
+
+        if (rotationError) throw rotationError;
+        rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
+      }
       
       // Create a set of valid rotation period IDs for quick lookup
       const validRotationPeriodIdSet = new Set(rotationPeriodIds);
 
       // Fetch team members for this team
-      const { data: members, error: membersError } = await supabase
+      let membersQuery = supabase
         .from("team_members")
         .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, service_day")
         .eq("team_id", teamId)
         .order("display_order");
 
+      if (rotationPeriodIds.length > 0) {
+        membersQuery = membersQuery.in("rotation_period_id", rotationPeriodIds);
+      }
+
+      const { data: members, error: membersError } = await membersQuery;
+
       if (membersError) throw membersError;
 
       // Filter members by rotation period (must be in the campus-filtered rotation periods)
       // and optionally by ministry type
-      const filteredMembers = (members || []).filter(m => {
-        // Must have a rotation period that matches our campus-filtered periods
-        if (!m.rotation_period_id) return false;
-        if (!validRotationPeriodIdSet.has(m.rotation_period_id)) return false;
+      let filteredMembers = ((members || []) as TeamMemberRow[]).filter(m => {
+        if (validRotationPeriodIdSet.size > 0) {
+          if (!m.rotation_period_id) return false;
+          if (!validRotationPeriodIdSet.has(m.rotation_period_id)) return false;
+        }
         
         // If ministryType is specified, filter by ministry_types array
         return ministryMatchesRosterFilter(m.ministry_types, ministryType);
       });
+
+      // Some campuses can have a scheduled team row without a rotation period that
+      // exactly covers the selected date yet. Fall back to the best campus-matching
+      // team membership instead of showing an empty roster.
+      if (filteredMembers.length === 0) {
+        const { data: fallbackMembers, error: fallbackMembersError } = await supabase
+          .from("team_members")
+          .select(`
+            id,
+            member_name,
+            position,
+            position_slot,
+            user_id,
+            rotation_period_id,
+            ministry_types,
+            service_day,
+            rotation_periods (
+              campus_id,
+              start_date,
+              end_date,
+              is_active
+            )
+          `)
+          .eq("team_id", teamId)
+          .order("display_order");
+
+        if (fallbackMembersError) throw fallbackMembersError;
+
+        const fallbackCandidates = ((fallbackMembers || []) as TeamMemberWithPeriodRow[])
+          .filter((member) => {
+            if (!ministryMatchesRosterFilter(member.ministry_types, ministryType)) {
+              return false;
+            }
+
+            if (!campusId) return true;
+            const periodCampusId = member.rotation_periods?.campus_id ?? null;
+            return !periodCampusId || periodCampusId === campusId;
+          });
+
+        const datedFallbackCandidates = fallbackCandidates.filter(
+          (member) => member.rotation_period_id && member.rotation_periods?.start_date
+        );
+
+        if (datedFallbackCandidates.length > 0) {
+          const targetDate = new Date(`${dateStr}T00:00:00`);
+          const byPeriod = new Map<string, TeamMemberWithPeriodRow[]>();
+
+          for (const member of datedFallbackCandidates) {
+            const periodId = member.rotation_period_id;
+            if (!periodId) continue;
+            if (!byPeriod.has(periodId)) {
+              byPeriod.set(periodId, []);
+            }
+            byPeriod.get(periodId)!.push(member);
+          }
+
+          const rankedPeriods = Array.from(byPeriod.entries())
+            .map(([periodId, rows]) => {
+              const period = rows[0]?.rotation_periods;
+              const start = period?.start_date ? new Date(`${period.start_date}T00:00:00`) : null;
+              const end = period?.end_date ? new Date(`${period.end_date}T23:59:59`) : null;
+              const containsDate = !!start && !!end && targetDate >= start && targetDate <= end;
+              const distance = start ? Math.abs(targetDate.getTime() - start.getTime()) : Number.MAX_SAFE_INTEGER;
+
+              return {
+                periodId,
+                rows,
+                isActive: Boolean(period?.is_active),
+                containsDate,
+                distance,
+                startTime: start?.getTime() ?? 0,
+              };
+            })
+            .sort((a, b) => {
+              if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+              if (a.containsDate !== b.containsDate) return a.containsDate ? -1 : 1;
+              if (a.distance !== b.distance) return a.distance - b.distance;
+              return b.startTime - a.startTime;
+            });
+
+          filteredMembers = (rankedPeriods[0]?.rows || []) as TeamMemberRow[];
+        } else {
+          filteredMembers = fallbackCandidates as TeamMemberRow[];
+        }
+      }
 
       // Get user IDs to fetch their profiles
       const userIds = filteredMembers.filter(m => m.user_id).map(m => m.user_id!);
@@ -725,6 +860,6 @@ export function useTeamRosterForDate(date: Date | null, teamId?: string, ministr
 
       return result;
     },
-    enabled: !!dateStr && !!teamId && userCampusIds.length > 0,
+    enabled: !!dateStr && !!teamId && (!!campusId || userCampusIds.length > 0),
   });
 }

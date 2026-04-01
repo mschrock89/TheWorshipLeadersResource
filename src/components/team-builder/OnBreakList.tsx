@@ -64,6 +64,21 @@ const POSITION_GROUPS = [
   },
 ];
 
+function isWeekendRosterBreakLogicMinistry(ministryType: string | undefined) {
+  return ministryType === "weekend" || ministryType === "weekend_team";
+}
+
+function countsAsTrimesterRosterAssignment(
+  member: Pick<TeamMemberAssignment, "service_day">,
+  ministryType: string | undefined,
+) {
+  if (isWeekendRosterBreakLogicMinistry(ministryType) && member.service_day) {
+    return false;
+  }
+
+  return true;
+}
+
 export function OnBreakList({
   allMembers,
   assignedMembers,
@@ -89,8 +104,23 @@ export function OnBreakList({
           memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
         )
       : assignedMembers;
-    const assignedUserIds = new Set(ministryFilteredAssignedMembers.map(m => m.user_id).filter(Boolean));
-    const previousAssignedUserIds = new Set(previousPeriodMembers.map(m => m.user_id).filter(Boolean));
+    const ministryFilteredPreviousMembers = ministryFilter && ministryFilter !== "all"
+      ? previousPeriodMembers.filter((member) =>
+          memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
+        )
+      : previousPeriodMembers;
+    const assignedUserIds = new Set(
+      ministryFilteredAssignedMembers
+        .filter((member) => countsAsTrimesterRosterAssignment(member, ministryFilter))
+        .map(m => m.user_id)
+        .filter(Boolean)
+    );
+    const previousAssignedUserIds = new Set(
+      ministryFilteredPreviousMembers
+        .filter((member) => countsAsTrimesterRosterAssignment(member, ministryFilter))
+        .map(m => m.user_id)
+        .filter(Boolean)
+    );
     
     // Check if this is T1 2026 (the start of history) - no consecutive breaks before this
     const isFirstHistoricalPeriod = periodName?.includes("T1 2026");

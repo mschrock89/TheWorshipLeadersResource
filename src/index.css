@@ -247,7 +247,9 @@ html.service-flow-export-mode .sidebar,
 html.service-flow-export-mode .bottom-nav,
 html.service-flow-export-mode [data-radix-popper-content-wrapper],
 html.service-flow-export-mode .toaster,
-html.service-flow-export-mode .screen-header {
+html.service-flow-export-mode .screen-header,
+html.service-flow-export-mode .service-flow-screen-layout,
+html.service-flow-export-mode .print-header {
   display: none !important;
 }
 
@@ -262,7 +264,7 @@ html.service-flow-export-mode .service-flow-page {
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-  zoom: 0.85 !important;
+  zoom: 1 !important;
   width: calc(100% - 12px) !important;
   margin: 0 auto !important;
   border: 2px solid #111 !important;
@@ -270,10 +272,18 @@ html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
 
 @supports not (zoom: 1) {
   html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
-    transform: scale(0.85) !important;
+    transform: scale(1) !important;
     transform-origin: top left !important;
-    width: calc(118% - 12px) !important;
+    width: calc(100% - 12px) !important;
   }
+}
+
+html.service-flow-export-mode .service-flow-page.service-flow-half-sheet {
+  width: 100% !important;
+  min-height: auto !important;
+  padding: 0.06in !important;
+  display: block !important;
+  border: none !important;
 }
 
 html.service-flow-export-mode .service-flow-page.space-y-6 {
@@ -281,13 +291,13 @@ html.service-flow-export-mode .service-flow-page.space-y-6 {
 }
 
 html.service-flow-export-mode .print-header {
-  display: flex !important;
+  display: none !important;
   position: relative !important;
   align-items: flex-start !important;
   justify-content: center !important;
   margin-bottom: 0 !important;
-  padding-bottom: 0 !important;
-  min-height: 42px !important;
+  padding-bottom: 0.04in !important;
+  min-height: auto !important;
   border-bottom: none !important;
 }
 
@@ -298,13 +308,13 @@ html.service-flow-export-mode .print-header .print-header-copy {
 }
 
 html.service-flow-export-mode .print-header h1 {
-  font-size: 16pt !important;
+  font-size: 13pt !important;
   margin: 0 !important;
   line-height: 1.05 !important;
 }
 
 html.service-flow-export-mode .print-header p {
-  font-size: 12pt !important;
+  font-size: 10pt !important;
   margin-top: 1px !important;
   line-height: 1.05 !important;
 }
@@ -325,7 +335,7 @@ html.service-flow-export-mode .service-flow-page .border-b {
   border-bottom: 1px solid #333 !important;
   margin-bottom: 0 !important;
   padding-bottom: 1px !important;
-  font-size: 10.5pt !important;
+  font-size: 9pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .space-y-2 {
@@ -341,7 +351,7 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   background: white !important;
   border: 1px solid #ddd !important;
   margin-bottom: -1px !important;
-  padding: 1px 2px !important;
+  padding: 0 !important;
   border-radius: 1px !important;
 }
 
@@ -351,16 +361,16 @@ html.service-flow-export-mode .service-flow-page * {
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-header {
-  background: white !important;
-  color: #1a1a1a !important;
+  background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
+  color: #0f4160 !important;
   font-weight: 600 !important;
-  min-height: 22px !important;
-  padding: 0 5px !important;
+  min-height: 14px !important;
+  padding: 0 3px !important;
   border: 1px solid #35B0E5 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-header * {
-  color: #1a1a1a !important;
+  color: #0f4160 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .bg-card {
@@ -376,20 +386,20 @@ html.service-flow-export-mode .service-flow-page select {
 }
 
 html.service-flow-export-mode .service-flow-page input {
-  height: 1.25rem !important;
-  min-height: 1.25rem !important;
+  height: 0.9rem !important;
+  min-height: 0.9rem !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
-  font-size: 10.5pt !important;
+  font-size: 8pt !important;
   line-height: 1 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
   position: static !important;
   border: none !important;
-  margin-top: 2px !important;
+  margin-top: 1px !important;
   padding-top: 0 !important;
-  font-size: 11.5pt !important;
+  font-size: 8pt !important;
   font-weight: 600 !important;
   display: flex !important;
   justify-content: flex-end !important;
@@ -416,12 +426,13 @@ html.service-flow-export-mode .service-flow-page .space-y-2 * {
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-title {
-  flex: 0 1 58% !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-bpm {
-  margin-left: 4px !important;
-  margin-right: 2px !important;
+  margin-left: 3px !important;
+  margin-right: 1px !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-key {
@@ -429,7 +440,7 @@ html.service-flow-export-mode .service-flow-page .service-flow-song-key {
   background: white !important;
   color: #111 !important;
   border: 1px solid #111 !important;
-  min-width: 38px !important;
+  min-width: 30px !important;
   justify-content: center !important;
   font-weight: 700 !important;
 }
@@ -448,24 +459,96 @@ html.service-flow-export-mode .service-flow-page [class*="Badge"],
 html.service-flow-export-mode .service-flow-page .bg-black {
   background: #333 !important;
   color: white !important;
-  padding: 0 3px !important;
+  padding: 0 2px !important;
   border-radius: 2px !important;
-  font-size: 10.25pt !important;
+  font-size: 8pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-sm {
-  font-size: 11.5pt !important;
+  font-size: 7.5pt !important;
 }
 
 html.service-flow-export-mode .service-flow-page .text-xs {
-  font-size: 9.75pt !important;
+  font-size: 6.5pt !important;
+}
+
+html.service-flow-export-mode .service-flow-print-dual {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 0.08in !important;
+  align-items: stretch !important;
+  zoom: 0.92 !important;
+  width: 100% !important;
+  transform-origin: top left !important;
+}
+
+@supports not (zoom: 1) {
+  html.service-flow-export-mode .service-flow-print-dual {
+    transform: scale(0.92) !important;
+    width: 108.7% !important;
+    transform-origin: top left !important;
+  }
+}
+
+html.service-flow-export-mode .service-flow-print-sheet {
+  min-height: 0 !important;
+  border: 2px solid #111 !important;
+  padding: 0.07in !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: white !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-header {
+  text-align: center !important;
+  padding-bottom: 0.03in !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-title {
+  color: #35B0E5 !important;
+  font-size: 11pt !important;
+  font-weight: 700 !important;
+  line-height: 1.05 !important;
+  margin: 0 !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-date {
+  color: #444 !important;
+  font-size: 8pt !important;
+  line-height: 1.05 !important;
+  margin: 1px 0 0 !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-teaching {
+  margin-bottom: 0.03in !important;
+}
+
+html.service-flow-export-mode .service-flow-print-items {
+  flex: 1 1 auto !important;
+}
+
+html.service-flow-export-mode .service-flow-print-total {
+  margin-top: auto !important;
+  padding-top: 0.02in !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-song-meta {
+  gap: 2px !important;
+  max-width: 46% !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
+  font-size: 6.25pt !important;
+}
+
+html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-dual) {
+  display: none !important;
 }
 
 @media print {
-  /* Reset page margins - tight for one-page fit */
   @page {
-    margin: 0.05in;
-    size: letter;
+    margin: 0.1in;
+    size: letter landscape;
   }
 
   /* Hide navigation, header, sidebar, footer */
@@ -478,6 +561,15 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   [data-radix-popper-content-wrapper],
   .toaster,
   .screen-header {
+    display: none !important;
+  }
+
+  .service-flow-screen-layout,
+  .print-header {
+    display: none !important;
+  }
+
+  .service-flow-editor > :not(.service-flow-print-dual) {
     display: none !important;
   }
 
@@ -521,7 +613,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .service-flow-page.service-flow-print-fit {
-    zoom: 0.85 !important;
+    zoom: 1 !important;
     width: calc(100% - 12px) !important;
     margin: 0 auto !important;
     border: 2px solid #111 !important;
@@ -529,10 +621,18 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 
   @supports not (zoom: 1) {
     .service-flow-page.service-flow-print-fit {
-      transform: scale(0.85) !important;
+      transform: scale(1) !important;
       transform-origin: top left !important;
-      width: calc(118% - 12px) !important;
+      width: calc(100% - 12px) !important;
     }
+  }
+
+  .service-flow-page.service-flow-half-sheet {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0.06in !important;
+    display: block !important;
+    border: none !important;
   }
 
   /* Reduce spacing in the page */
@@ -542,20 +642,20 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 
   /* Show print header - compact to free vertical space for one-page fit */
   .print-header {
-    display: flex !important;
+    display: none !important;
     margin-bottom: 0 !important;
-    padding-bottom: 0 !important;
-    min-height: 42px !important;
+    padding-bottom: 0.04in !important;
+    min-height: auto !important;
     border-bottom: none !important;
   }
 
   .print-header h1 {
-    font-size: 16pt !important;
+    font-size: 13pt !important;
     line-height: 1.05 !important;
   }
 
   .print-header p {
-    font-size: 12pt !important;
+    font-size: 10pt !important;
     line-height: 1.05 !important;
   }
 
@@ -577,7 +677,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     border-bottom: 1px solid #333 !important;
     margin-bottom: 0 !important;
     padding-bottom: 1px !important;
-    font-size: 10.5pt !important;
+    font-size: 9pt !important;
   }
 
   /* Reduce space between items */
@@ -595,22 +695,22 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     background: white !important;
     border: 1px solid #ddd !important;
     margin-bottom: -1px !important;
-    padding: 1px 2px !important;
+    padding: 0 !important;
     border-radius: 1px !important;
   }
 
   /* ECC Blue (#35B0E5) outline/border around header sections */
   .service-flow-page .service-flow-header {
-    background: white !important;
-    color: #1a1a1a !important;
+    background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
+    color: #0f4160 !important;
     font-weight: 600 !important;
-    min-height: 22px !important;
-    padding: 0 5px !important;
+    min-height: 14px !important;
+    padding: 0 3px !important;
     border: 1px solid #35B0E5 !important;
   }
 
   .service-flow-page .service-flow-header * {
-    color: #1a1a1a !important;
+    color: #0f4160 !important;
   }
 
   /* Song items */
@@ -622,9 +722,9 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .border-t {
     position: static !important;
     border: none !important;
-    margin-top: 2px !important;
+    margin-top: 1px !important;
     padding-top: 0 !important;
-    font-size: 11.5pt !important;
+    font-size: 8pt !important;
     font-weight: 600 !important;
     display: flex !important;
     justify-content: flex-end !important;
@@ -654,7 +754,8 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .service-flow-page .service-flow-song-title {
-    flex: 0 1 58% !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
   }
 
   .service-flow-page .service-flow-song-meta {
@@ -665,8 +766,8 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   }
 
   .service-flow-page .service-flow-song-bpm {
-    margin-left: 4px !important;
-    margin-right: 2px !important;
+    margin-left: 3px !important;
+    margin-right: 1px !important;
   }
 
   .service-flow-page .service-flow-song-key {
@@ -674,7 +775,7 @@ html.service-flow-export-mode .service-flow-page .text-xs {
     background: #111 !important;
     color: #fff !important;
     border: 1px solid #111 !important;
-    min-width: 38px !important;
+    min-width: 30px !important;
     justify-content: center !important;
     font-weight: 700 !important;
   }
@@ -694,26 +795,97 @@ html.service-flow-export-mode .service-flow-page .text-xs {
   .service-flow-page .bg-black {
     background: #333 !important;
     color: white !important;
-    padding: 0 3px !important;
+    padding: 0 2px !important;
     border-radius: 2px !important;
-    font-size: 10.25pt !important;
+    font-size: 8pt !important;
   }
 
   /* Compact item text */
   .service-flow-page .text-sm {
-    font-size: 11.5pt !important;
+    font-size: 7.5pt !important;
   }
 
   .service-flow-page .text-xs {
-    font-size: 9.75pt !important;
+    font-size: 6.5pt !important;
   }
 
   .service-flow-page input {
-    height: 1.25rem !important;
-    min-height: 1.25rem !important;
+    height: 0.9rem !important;
+    min-height: 0.9rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    font-size: 10.5pt !important;
+    font-size: 8pt !important;
     line-height: 1 !important;
+  }
+
+  .service-flow-page .service-flow-song-meta {
+    gap: 2px !important;
+    max-width: 46% !important;
+  }
+
+  .service-flow-page .service-flow-song-vocalist {
+    font-size: 6.25pt !important;
+  }
+
+  .service-flow-print-dual {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.08in !important;
+    align-items: stretch !important;
+    zoom: 0.92 !important;
+    width: 100% !important;
+    transform-origin: top left !important;
+  }
+
+  @supports not (zoom: 1) {
+    .service-flow-print-dual {
+      transform: scale(0.92) !important;
+      width: 108.7% !important;
+      transform-origin: top left !important;
+    }
+  }
+
+  .service-flow-print-sheet {
+    min-height: 0 !important;
+    border: 2px solid #111 !important;
+    padding: 0.07in !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: white !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .service-flow-copy-header {
+    text-align: center !important;
+    padding-bottom: 0.03in !important;
+  }
+
+  .service-flow-copy-title {
+    color: #35B0E5 !important;
+    font-size: 11pt !important;
+    font-weight: 700 !important;
+    line-height: 1.05 !important;
+    margin: 0 !important;
+  }
+
+  .service-flow-copy-date {
+    color: #444 !important;
+    font-size: 8pt !important;
+    line-height: 1.05 !important;
+    margin: 1px 0 0 !important;
+  }
+
+  .service-flow-copy-teaching {
+    margin-bottom: 0.03in !important;
+  }
+
+  .service-flow-print-items {
+    flex: 1 1 auto !important;
+  }
+
+  .service-flow-print-total {
+    margin-top: auto !important;
+    padding-top: 0.02in !important;
   }
 }

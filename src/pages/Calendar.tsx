@@ -61,7 +61,6 @@ const EVENT_AUDIENCE_OPTIONS = [{
   value: "volunteer_and_spouse",
   label: "Volunteer and Spouse"
 }] as const;
-const WEEKEND_EVENT_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
   "production",
@@ -131,7 +130,6 @@ const defaultNewEventState = {
   campus_id: "",
   campus_ids: [] as string[],
   repeats_weekly: false,
-  send_invite: true,
 };
 function StandardCalendar() {
   const {
@@ -850,7 +848,7 @@ function StandardCalendar() {
         return;
       }
 
-      const createdEvent = await createEvent.mutateAsync({
+      await createEvent.mutateAsync({
         title: newEvent.title,
         description: newEvent.description || undefined,
         event_date: dateStr,
@@ -862,71 +860,6 @@ function StandardCalendar() {
         ministry_types: selectedMinistryTypes,
         audience_type: newEvent.audience_type,
       });
-
-      let inviteUserIds: string[] = [];
-      if (newEvent.send_invite) {
-        try {
-          const weekendAliases = ["weekend", "weekend_team", "sunday_am"];
-          let recipientsQuery = supabase
-            .from("user_campus_ministry_positions")
-            .select("user_id")
-            .in("campus_id", selectedCampusIds);
-
-          const recipientMinistryTypes = selectedMinistryTypes.some((type) => WEEKEND_EVENT_MINISTRY_ALIASES.includes(type))
-            ? Array.from(new Set([...selectedMinistryTypes, ...weekendAliases]))
-            : selectedMinistryTypes;
-
-          recipientsQuery = recipientsQuery.in("ministry_type", recipientMinistryTypes);
-
-          const { data: recipients, error: recipientsError } = await recipientsQuery;
-          if (recipientsError) throw recipientsError;
-
-          inviteUserIds = Array.from(
-            new Set(
-              (recipients || [])
-                .map((row) => row.user_id)
-                .filter((id): id is string => Boolean(id && id !== user?.id))
-            )
-          );
-
-          if (inviteUserIds.length > 0) {
-            const campusLabel = selectedCampusIds.length === 1
-              ? campuses.find((c) => c.id === selectedCampusIds[0])?.name || "Campus"
-              : `${selectedCampusIds.length} campuses`;
-            const ministryLabel = selectedMinistryTypes.length === 1
-              ? MINISTRY_TYPES.find((m) => m.value === selectedMinistryTypes[0])?.label || "Ministry"
-              : `${selectedMinistryTypes.length} ministries`;
-            const timeLabel = newEvent.start_time
-              ? ` at ${formatTime(newEvent.start_time)}`
-              : "";
-
-            await supabase.functions.invoke("send-push-notification", {
-              body: {
-                title: "Event Invite",
-                message: `${newEvent.title} • ${campusLabel} • ${ministryLabel} on ${new Date(`${dateStr}T00:00:00`).toLocaleDateString()}${timeLabel}`,
-                url: "/calendar",
-                tag: `event-invite-${dateStr}-${selectedCampusIds.join("-")}-${selectedMinistryTypes.join("-")}`,
-                userIds: inviteUserIds,
-                contextType: "event_invite",
-                contextId: createdEvent.id,
-                createdBy: user?.id,
-                metadata: {
-                  eventId: createdEvent.id,
-                  campusIds: selectedCampusIds,
-                  ministryTypes: selectedMinistryTypes,
-                  eventDate: dateStr,
-                },
-              },
-            });
-            toast.success(`Invite sent to ${inviteUserIds.length} team member${inviteUserIds.length === 1 ? "" : "s"}.`);
-          } else {
-            toast.info("No matching team members found for this campus + ministry.");
-          }
-        } catch (inviteError) {
-          console.error("Failed to send event invite:", inviteError);
-          toast.error("Event created, but invite notification failed.");
-        }
-      }
 
     }
     setNewEvent(defaultNewEventState);
@@ -955,7 +888,6 @@ function StandardCalendar() {
           ? [event.campus_id]
           : [],
       repeats_weekly: false,
-      send_invite: false,
     });
     setEditingEventId(event.id);
     setIsAddOpen(true);
@@ -1532,13 +1464,9 @@ function StandardCalendar() {
                                     </SelectContent>
                                   </Select>
                                 </div>
-                                {!editingEventId && <div className="flex items-center gap-2">
-                                  <Checkbox id="send-invite" checked={newEvent.send_invite} onCheckedChange={checked => setNewEvent({
-                            ...newEvent,
-                            send_invite: Boolean(checked)
-                          })} />
-                                  <Label htmlFor="send-invite" className="font-normal">Send invite notification</Label>
-                                </div>}
+                                {!editingEventId && <p className="text-sm text-muted-foreground">
+                                  Team members who match this event&apos;s campus and ministry filters will get a push notification automatically.
+                                </p>}
                               </>}
                             {newEvent.event_type === "service" && <>
                                 <div>

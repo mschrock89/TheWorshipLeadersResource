@@ -44,11 +44,14 @@ interface SyncSummary {
   eventCount: number;
   setlistCount: number;
   scheduleCount: number;
+  customServiceCount: number;
+  customServiceAssignmentCount: number;
   created: number;
   updated: number;
   removed: number;
   failed: number;
   syncedAt: string | null;
+  failures: Array<{ sourceType: string; sourceId: string; reason: string }>;
 }
 
 const getFunctionAuthHeaders = async () => {
@@ -98,6 +101,7 @@ export default function PlanningCenter() {
 
   const [googleLoading, setGoogleLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [googleDisconnectLoading, setGoogleDisconnectLoading] = useState(false);
   const [googleStatusLoading, setGoogleStatusLoading] = useState(true);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [googleConnectedAt, setGoogleConnectedAt] = useState<string | null>(null);
@@ -209,11 +213,14 @@ export default function PlanningCenter() {
         eventCount: data?.totals?.event_count ?? 0,
         setlistCount: data?.totals?.setlist_count ?? 0,
         scheduleCount: data?.totals?.schedule_count ?? 0,
+        customServiceCount: data?.totals?.custom_service_count ?? 0,
+        customServiceAssignmentCount: data?.totals?.custom_service_assignment_count ?? 0,
         created: data?.results?.created ?? 0,
         updated: data?.results?.updated ?? 0,
         removed: data?.results?.removed ?? 0,
         failed: data?.results?.failed ?? 0,
         syncedAt: data?.synced_at ?? null,
+        failures: Array.isArray(data?.failures) ? data.failures : [],
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to sync Google Calendar";
@@ -245,6 +252,7 @@ export default function PlanningCenter() {
 
   const handleConnectGoogleCalendar = async () => {
     setGoogleLoading(true);
+    setGoogleStatusError(null);
     setSyncError(null);
     try {
       const headers = await getFunctionAuthHeaders();
@@ -266,6 +274,34 @@ export default function PlanningCenter() {
       setGoogleStatusError(message);
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleDisconnectGoogleCalendar = async () => {
+    setGoogleDisconnectLoading(true);
+    setGoogleStatusError(null);
+    setSyncError(null);
+    try {
+      const headers = await getFunctionAuthHeaders();
+      const { error } = await supabase.functions.invoke("google-calendar-disconnect", {
+        headers,
+        body: {},
+      });
+
+      if (error) {
+        throw new Error(await extractFunctionErrorMessage(error));
+      }
+
+      setIsGoogleConnected(false);
+      setGoogleConnectedAt(null);
+      setSyncSummary(null);
+      clearGoogleQueryParams();
+      await loadGoogleConnectionStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to disconnect Google Calendar";
+      setGoogleStatusError(message);
+    } finally {
+      setGoogleDisconnectLoading(false);
     }
   };
 
@@ -615,7 +651,9 @@ export default function PlanningCenter() {
             <div className="rounded border border-border bg-muted/20 p-3 text-sm space-y-1">
               <div>
                 Synced {syncSummary.sourceCount} item(s): {syncSummary.eventCount} team event(s),{" "}
-                {syncSummary.setlistCount} setlist(s), {syncSummary.scheduleCount} scheduled date(s)
+                {syncSummary.setlistCount} setlist(s), {syncSummary.scheduleCount} scheduled date(s),{" "}
+                {syncSummary.customServiceCount} custom service(s),{" "}
+                {syncSummary.customServiceAssignmentCount} assignment(s)
               </div>
               <div>
                 Created {syncSummary.created}, updated {syncSummary.updated}, removed {syncSummary.removed}, failed{" "}
@@ -623,6 +661,15 @@ export default function PlanningCenter() {
               </div>
               {syncSummary.syncedAt && (
                 <div className="text-muted-foreground">Last sync: {new Date(syncSummary.syncedAt).toLocaleString()}</div>
+              )}
+              {syncSummary.failures.length > 0 && (
+                <div className="pt-1 text-amber-300">
+                  Recent issues:{" "}
+                  {syncSummary.failures
+                    .slice(0, 3)
+                    .map((failure) => `${failure.sourceType} ${failure.sourceId}: ${failure.reason}`)
+                    .join(" • ")}
+                </div>
               )}
             </div>
           )}
@@ -634,6 +681,14 @@ export default function PlanningCenter() {
 
             <Button onClick={handleGoogleResync} disabled={syncLoading || !isGoogleConnected} variant="secondary">
               {syncLoading ? "Syncing..." : "Sync Upcoming Dates Now"}
+            </Button>
+
+            <Button
+              onClick={handleDisconnectGoogleCalendar}
+              disabled={googleDisconnectLoading || !isGoogleConnected}
+              variant="outline"
+            >
+              {googleDisconnectLoading ? "Disconnecting..." : "Disconnect Google Calendar"}
             </Button>
 
             {(googleConnected || googleError) && (

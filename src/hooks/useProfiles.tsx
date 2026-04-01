@@ -33,6 +33,49 @@ export interface Profile {
   share_contact_with_campus: boolean;
   gender: string | null;
   default_campus_id: string | null;
+  following_jesus: boolean;
+  serves_somewhere_else: boolean;
+  attended_six_months: boolean;
+}
+
+export type ServingRequirementKey =
+  | "following_jesus"
+  | "serves_somewhere_else"
+  | "attended_six_months";
+
+type ServingRequirementsRow = {
+  user_id: string;
+  following_jesus: boolean;
+  serves_somewhere_else: boolean;
+  attended_six_months: boolean;
+};
+
+function isMissingServingRequirementsTable(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "42P01" ||
+    error.message?.toLowerCase().includes("user_serving_requirements") ||
+    error.message?.toLowerCase().includes("relation") && error.message?.toLowerCase().includes("does not exist")
+  );
+}
+
+function mergeServingRequirements<T extends { id: string }>(
+  items: T[],
+  requirements: ServingRequirementsRow[] | null,
+) {
+  const requirementsByUserId = new Map(
+    (requirements || []).map((row) => [row.user_id, row]),
+  );
+
+  return items.map((item) => {
+    const row = requirementsByUserId.get(item.id);
+    return {
+      ...item,
+      following_jesus: row?.following_jesus ?? false,
+      serves_somewhere_else: row?.serves_somewhere_else ?? false,
+      attended_six_months: row?.attended_six_months ?? false,
+    };
+  });
 }
 
 export interface BasicProfile {
@@ -100,6 +143,23 @@ export function useProfiles() {
       
       if (error) throw error;
 
+      const profileIds = ((data || []) as Profile[]).map((profile) => profile.id);
+      let requirements: ServingRequirementsRow[] | null = [];
+      if (profileIds.length > 0) {
+        const { data: requirementRows, error: requirementsError } = await supabase
+          .from("user_serving_requirements")
+          .select("user_id, following_jesus, serves_somewhere_else, attended_six_months")
+          .in("user_id", profileIds);
+
+        if (requirementsError) {
+          if (!isMissingServingRequirementsTable(requirementsError)) {
+            throw requirementsError;
+          }
+        } else {
+          requirements = requirementRows;
+        }
+      }
+
       const { data: positionAssignments, error: positionsError } = await supabase
         .from("user_campus_ministry_positions")
         .select("user_id, position");
@@ -115,7 +175,7 @@ export function useProfiles() {
         positionMap.get(user_id)?.add(position as TeamPosition);
       });
 
-      return (data as Profile[]).map((profile) => {
+      return mergeServingRequirements(data as Profile[], requirements).map((profile) => {
         const mergedPositions = new Set<TeamPosition>(profile.positions || []);
 
         positionMap.get(profile.id)?.forEach((position) => {
@@ -167,7 +227,24 @@ export function useProfile(id: string | undefined) {
       
       // The function returns an array, get the first item
       const profile = Array.isArray(data) ? data[0] : data;
-      return profile as Profile | null;
+      if (!profile) return null;
+
+      const { data: requirements, error: requirementsError } = await supabase
+        .from("user_serving_requirements")
+        .select("user_id, following_jesus, serves_somewhere_else, attended_six_months")
+        .eq("user_id", id)
+        .maybeSingle();
+
+      if (requirementsError && !isMissingServingRequirementsTable(requirementsError)) {
+        throw requirementsError;
+      }
+
+      return {
+        ...(profile as Profile),
+        following_jesus: requirements?.following_jesus ?? false,
+        serves_somewhere_else: requirements?.serves_somewhere_else ?? false,
+        attended_six_months: requirements?.attended_six_months ?? false,
+      } as Profile;
     },
     enabled: !!id && !!user && !isLoading,
   });
@@ -197,6 +274,43 @@ export function useUpdateProfile() {
         title: "Error", 
         description: error.message, 
         variant: "destructive" 
+      });
+    },
+  });
+}
+
+export function useUpdateServingRequirements() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      updates,
+    }: {
+      userId: string;
+      updates: Partial<Pick<Profile, ServingRequirementKey>>;
+    }) => {
+      const { error } = await supabase
+        .from("user_serving_requirements")
+        .upsert({ user_id: userId, ...updates }, { onConflict: "user_id" });
+
+      if (error && isMissingServingRequirementsTable(error)) {
+        throw new Error("Serving requirements aren't available yet. The new database migration still needs to be applied.");
+      }
+
+      if (error) throw error;
+    },
+    onSuccess: (_, { userId }) => {
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+      toast({ title: "Serving requirements updated", description: "Changes saved successfully." });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });

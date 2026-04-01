@@ -23,7 +23,13 @@ interface TeamMemberCardProps {
   onDelete?: (member: Profile) => void;
 }
 
-export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetPassword, onDelete }: TeamMemberCardProps) {
+export function TeamMemberCard({
+  member,
+  campusNames = [],
+  onSendEmail,
+  onResetPassword,
+  onDelete,
+}: TeamMemberCardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
@@ -88,7 +94,6 @@ export function TeamMemberCard({ member, campusNames = [], onSendEmail, onResetP
 
   // Get primary position (first one)
   const primaryPosition = member.positions?.[0];
-
   return (
     <div onClick={handleCardClick} className="cursor-pointer">
       <Card className="group h-full transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 animate-fade-in border-0 shadow-lg bg-card">

@@ -1,6 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
+
+function getNormalizedMinistryType(ministryType: string) {
+  return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
+    ? "weekend_team"
+    : ministryType;
+}
+
+function getEquivalentMinistryTypes(ministryType: string) {
+  return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
+    ? [...WEEKEND_MINISTRY_ALIASES]
+    : [ministryType];
+}
+
 export interface CampusMinistryPosition {
   id: string;
   user_id: string;
@@ -61,6 +75,9 @@ export function useToggleCampusMinistryPosition() {
       position: string;
       isActive: boolean;
     }) => {
+      const equivalentMinistryTypes = getEquivalentMinistryTypes(ministryType);
+      const normalizedMinistryType = getNormalizedMinistryType(ministryType);
+
       if (isActive) {
         // Remove the position
         const { error } = await supabase
@@ -68,18 +85,28 @@ export function useToggleCampusMinistryPosition() {
           .delete()
           .eq("user_id", userId)
           .eq("campus_id", campusId)
-          .eq("ministry_type", ministryType)
+          .in("ministry_type", equivalentMinistryTypes)
           .eq("position", position);
         
         if (error) throw error;
       } else {
+        const { error: cleanupError } = await supabase
+          .from("user_campus_ministry_positions")
+          .delete()
+          .eq("user_id", userId)
+          .eq("campus_id", campusId)
+          .in("ministry_type", equivalentMinistryTypes)
+          .eq("position", position);
+
+        if (cleanupError) throw cleanupError;
+
         // Add the position
         const { error } = await supabase
           .from("user_campus_ministry_positions")
           .insert({
             user_id: userId,
             campus_id: campusId,
-            ministry_type: ministryType,
+            ministry_type: normalizedMinistryType,
             position: position,
           });
         
@@ -90,11 +117,17 @@ export function useToggleCampusMinistryPosition() {
       queryClient.invalidateQueries({ 
         queryKey: ["user-campus-ministry-positions", variables.userId] 
       });
+      queryClient.invalidateQueries({
+        queryKey: ["all-campus-ministry-positions"]
+      });
       queryClient.invalidateQueries({ 
         queryKey: ["available-members"] 
       });
       queryClient.invalidateQueries({ 
         queryKey: ["available-members-campus-ministry"] 
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["available-members-with-positions"]
       });
     },
   });

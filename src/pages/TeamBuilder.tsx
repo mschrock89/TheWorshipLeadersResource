@@ -22,6 +22,7 @@ import { AssignMemberDialog } from "@/components/team-builder/AssignMemberDialog
 import { MinistryEditDialog } from "@/components/team-builder/MinistryEditDialog";
 import { BreakRequestsWidget } from "@/components/team-builder/BreakRequestsWidget";
 import { TeamScheduleWidget } from "@/components/team-builder/TeamScheduleWidget";
+import { TeamTemplateDialog } from "@/components/team-builder/TeamTemplateDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import {
   useRotationPeriodsForCampus,
@@ -38,20 +39,23 @@ import {
   useTeamLocksForPeriod,
   useToggleTeamLock,
   useUpdateMinistryTypes,
+  useUpdateTeamTemplate,
   usePreviousPeriodMembers,
-  usePreviousPeriodApprovedBreaks,
+  getPreviousPeriodId,
+  useCampusWorshipPastors,
   AvailableMember,
   TeamMemberAssignment,
+  WorshipTeam,
 } from "@/hooks/useTeamBuilder";
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesWithCampuses } from "@/hooks/useCampuses";
 import {
   isTeamVisibleForMinistry,
-  memberMatchesMinistryFilter,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
 } from "@/lib/constants";
+import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
@@ -63,15 +67,17 @@ export default function TeamBuilder() {
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
-  const [selectedMinistryType, setSelectedMinistryType] = useState<string>("weekend_team");
+  const [selectedMinistryType, setSelectedMinistryType] = useState<string>("weekend");
   const [showAutoBuilder, setShowAutoBuilder] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [assigningSlot, setAssigningSlot] = useState<{
     teamId: string;
     teamName: string;
     slot: string;
+    requiredGender: "male" | "female" | null;
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
+  const [editingTemplateTeam, setEditingTemplateTeam] = useState<WorshipTeam | null>(null);
   const assigningMinistryType = resolveTeamBuilderSlotMinistryType(
     selectedMinistryType,
     assigningSlot?.slot,
@@ -89,9 +95,13 @@ export default function TeamBuilder() {
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds();
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
-  const { data: previousPeriodApprovedBreaks = [] } = usePreviousPeriodApprovedBreaks(periods, selectedPeriodId);
+  const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
   const { data: userCampusMap } = useProfilesWithCampuses();
+  const previousPeriodId = useMemo(() => {
+    return getPreviousPeriodId(periods, selectedPeriodId);
+  }, [periods, selectedPeriodId]);
+  const { data: previousBreakRequests = [] } = useBreakRequestsForPeriod(previousPeriodId);
 
   const assignMember = useAssignMember();
   const removeMember = useRemoveMember();
@@ -99,6 +109,7 @@ export default function TeamBuilder() {
   const copyFromPrevious = useCopyFromPreviousPeriod();
   const toggleLock = useToggleTeamLock();
   const updateMinistryTypes = useUpdateMinistryTypes();
+  const updateTeamTemplate = useUpdateTeamTemplate();
 
   // Determine if user can edit the selected campus
   const canEditCampus = useMemo(() => {
@@ -133,29 +144,15 @@ export default function TeamBuilder() {
     }
   }, [periods]);
 
-  // Normalize legacy weekend filter to the combined Weekend Worship view used by Team Builder.
+  // Normalize legacy weekend aliases to the Weekend Worship value used by Team Builder.
   useEffect(() => {
-    if (selectedMinistryType === "weekend") {
-      setSelectedMinistryType("weekend_team");
+    if (selectedMinistryType === "weekend_team") {
+      setSelectedMinistryType("weekend");
     }
   }, [selectedMinistryType]);
 
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
   const selectedCampus = campuses.find(c => c.id === selectedCampusId);
-
-  // Filter members by ministry type
-  const filteredMembers = useMemo(() => {
-    return members.filter((member) =>
-      memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
-    );
-  }, [members, selectedMinistryType]);
-
-  // Filter available members by ministry type for OnBreakList
-  const filteredAvailableMembers = useMemo(() => {
-    return availableMembers.filter((member) =>
-      memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
-    );
-  }, [availableMembers, selectedMinistryType]);
 
   const approvedBreakUserIds = useMemo(() => {
     const matchingBreaks = breakRequests.filter(
@@ -168,13 +165,16 @@ export default function TeamBuilder() {
     return [...new Set(matchingBreaks.map((request) => request.user_id))];
   }, [breakRequests, selectedMinistryType]);
 
-  const previousPeriodApprovedBreakUserIds = useMemo(() => {
-    const matchingBreaks = previousPeriodApprovedBreaks.filter((request) =>
-      breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+  const previousApprovedBreakUserIds = useMemo(() => {
+    const matchingBreaks = previousBreakRequests.filter(
+      (request) =>
+        request.status === "approved" &&
+        request.request_scope === "full_trimester" &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
     );
 
     return [...new Set(matchingBreaks.map((request) => request.user_id))];
-  }, [previousPeriodApprovedBreaks, selectedMinistryType]);
+  }, [previousBreakRequests, selectedMinistryType]);
 
   // Filter teams by selected ministry type
   const filteredTeams = useMemo(() => {
@@ -200,9 +200,14 @@ export default function TeamBuilder() {
     });
   };
 
-  const handleAssign = (teamId: string, teamName: string, slot: string) => {
-    if (!canEditCampus || isTeamLocked(teamId)) return;
-    setAssigningSlot({ teamId, teamName, slot });
+  const handleAssign = (team: WorshipTeam, slot: string) => {
+    if (!canEditCampus || isTeamLocked(team.id)) return;
+    setAssigningSlot({
+      teamId: team.id,
+      teamName: team.name,
+      slot,
+      requiredGender: getRequiredGenderForSlot(team.template_config, slot),
+    });
   };
 
   const handleRemove = (teamId: string, slot: string) => {
@@ -248,12 +253,20 @@ export default function TeamBuilder() {
 
   const handleCopyFromPrevious = () => {
     if (!selectedPeriodId) return;
-    const currentIndex = periods.findIndex(p => p.id === selectedPeriodId);
-    const previousPeriod = periods[currentIndex + 1];
     copyFromPrevious.mutate({
-      fromPeriodId: previousPeriod?.id || null,
+      fromPeriodId: getPreviousPeriodId(periods, selectedPeriodId),
       toPeriodId: selectedPeriodId,
     });
+  };
+
+  const handleSaveTemplate = async (templateConfig: TeamTemplateConfig) => {
+    if (!editingTemplateTeam) return;
+
+    await updateTeamTemplate.mutateAsync({
+      teamId: editingTemplateTeam.id,
+      templateConfig,
+    });
+    setEditingTemplateTeam(null);
   };
 
   const isLoading = periodsLoading || teamsLoading || membersLoading || authLoading || campusesLoading || adminCampusLoading;
@@ -380,9 +393,10 @@ export default function TeamBuilder() {
                       team={team}
                       members={getMembersForTeam(team.id)}
                       availableMembers={availableMembers}
-                      onAssign={slot => handleAssign(team.id, team.name, slot)}
+                      onAssign={slot => handleAssign(team, slot)}
                       onRemove={slot => handleRemove(team.id, slot)}
                       onEditMinistry={handleEditMinistry}
+                      onEditTemplate={canEditCampus ? () => setEditingTemplateTeam(team) : undefined}
                       readOnly={!canEditCampus}
                       isLocked={isTeamLocked(team.id)}
                       onToggleLock={() => handleToggleLock(team.id)}
@@ -460,12 +474,14 @@ export default function TeamBuilder() {
           open={showAutoBuilder}
           onOpenChange={setShowAutoBuilder}
           rotationPeriodId={selectedPeriodId}
+          campusName={selectedCampus?.name}
+          campusWorshipPastorIds={campusWorshipPastors.map((pastor) => pastor.id)}
           teams={filteredTeams}
           members={availableMembers}
           ministryType={selectedMinistryType}
           previousPeriodMembers={previousPeriodMembers}
           approvedBreakUserIds={approvedBreakUserIds}
-          previousPeriodApprovedBreakUserIds={previousPeriodApprovedBreakUserIds}
+          previousApprovedBreakUserIds={previousApprovedBreakUserIds}
         />
       )}
 
@@ -479,6 +495,18 @@ export default function TeamBuilder() {
           members={availableMembers}
           onSelect={handleSelectMember}
           ministryFilter={selectedMinistryType !== "all" ? selectedMinistryType : undefined}
+          requiredGender={assigningSlot.requiredGender}
+        />
+      )}
+
+      {editingTemplateTeam && (
+        <TeamTemplateDialog
+          open={!!editingTemplateTeam}
+          onOpenChange={(open) => !open && setEditingTemplateTeam(null)}
+          teamName={editingTemplateTeam.name}
+          initialConfig={editingTemplateTeam.template_config}
+          onSave={handleSaveTemplate}
+          isSaving={updateTeamTemplate.isPending}
         />
       )}
 

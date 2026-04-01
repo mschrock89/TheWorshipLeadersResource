@@ -8,7 +8,12 @@ const corsHeaders = (origin: string) => ({
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 });
 
-type SyncSourceType = "event" | "setlist" | "schedule";
+type SyncSourceType =
+  | "event"
+  | "setlist"
+  | "schedule"
+  | "custom_service"
+  | "custom_service_assignment";
 
 interface SyncSource {
   sourceType: SyncSourceType;
@@ -16,6 +21,7 @@ interface SyncSource {
   summary: string;
   description?: string;
   location?: string;
+  recurrence?: string[];
   start: { date?: string; dateTime?: string; timeZone?: string };
   end: { date?: string; dateTime?: string; timeZone?: string };
 }
@@ -36,6 +42,8 @@ interface UserSyncSummary {
     event_count: number;
     setlist_count: number;
     schedule_count: number;
+    custom_service_count: number;
+    custom_service_assignment_count: number;
   };
   results: {
     created: number;
@@ -106,11 +114,26 @@ const createTimedRange = (date: string, startTime: string, endTime?: string | nu
   };
 };
 
+const formatRole = (value: string | null | undefined): string => {
+  if (!value) return "Team Member";
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const buildWeeklyRecurrence = (untilDate: string | null | undefined) => {
+  if (!untilDate) return ["RRULE:FREQ=WEEKLY"];
+  const until = `${untilDate.replaceAll("-", "")}T235959Z`;
+  return [`RRULE:FREQ=WEEKLY;UNTIL=${until}`];
+};
+
 const buildGoogleEventPayload = (source: SyncSource, userId: string) => {
   const payload: Record<string, unknown> = {
     summary: source.summary,
     description: source.description,
     location: source.location,
+    recurrence: source.recurrence,
     start: source.start,
     end: source.end,
     extendedProperties: {
@@ -220,8 +243,10 @@ const syncSingleUser = async (
   }
 
   const todayDate = formatDate(new Date());
-  let fromDate = fallbackFromDate;
-  let toDate = fallbackToDate;
+  const syncFromDate = fallbackFromDate;
+  const syncToDate = fallbackToDate;
+  let scheduleFromDate = fallbackFromDate;
+  let scheduleToDate = fallbackToDate;
 
   let periodsQuery = service
     .from("rotation_periods")
@@ -252,8 +277,8 @@ const syncSingleUser = async (
   if (periodStarts.length > 0 && periodEnds.length > 0) {
     periodStarts.sort();
     periodEnds.sort();
-    fromDate = periodStarts[0];
-    toDate = periodEnds[periodEnds.length - 1];
+    scheduleFromDate = periodStarts[0];
+    scheduleToDate = periodEnds[periodEnds.length - 1];
   }
 
   const eventSources: SyncSource[] = [];
@@ -293,8 +318,8 @@ const syncSingleUser = async (
       .from("events")
       .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
       .in("campus_id", campusIds)
-      .gte("event_date", fromDate)
-      .lte("event_date", toDate)
+      .gte("event_date", syncFromDate)
+      .lte("event_date", syncToDate)
       .order("event_date", { ascending: true });
 
     if (campusEventsError) {
@@ -308,8 +333,8 @@ const syncSingleUser = async (
     .from("events")
     .select("id,title,description,event_date,start_time,end_time,campus_id,campuses(name)")
     .is("campus_id", null)
-    .gte("event_date", fromDate)
-    .lte("event_date", toDate)
+    .gte("event_date", syncFromDate)
+    .lte("event_date", syncToDate)
     .order("event_date", { ascending: true });
 
   if (globalEventsError) {
@@ -324,8 +349,8 @@ const syncSingleUser = async (
       "id,plan_date,ministry_type,campus_id,custom_service_id,campuses(name),custom_services(service_name,start_time,end_time),draft_set_songs(sequence_order,song_key,songs(title))"
     )
     .eq("status", "published")
-    .gte("plan_date", fromDate)
-    .lte("plan_date", toDate)
+    .gte("plan_date", syncFromDate)
+    .lte("plan_date", syncToDate)
     .order("plan_date", { ascending: true });
 
   if (campusIds.length > 0) {
@@ -340,6 +365,7 @@ const syncSingleUser = async (
 
   const setlistSources: SyncSource[] = [];
   const publishedSetKeys = new Set<string>();
+  const rosteredPublishedCustomServiceDates = new Set<string>();
 
   for (const set of (publishedSets as any[]) ?? []) {
     const { data: isOnRoster, error: rosterError } = await service.rpc("is_user_on_setlist_roster", {
@@ -356,6 +382,9 @@ const syncSingleUser = async (
     const ministryType = set.ministry_type ?? "weekend";
     const campusId = set.campus_id ?? "";
     publishedSetKeys.add(`${set.plan_date}|${campusId}|${ministryType}`);
+    if (set.custom_service_id) {
+      rosteredPublishedCustomServiceDates.add(`${set.custom_service_id}|${set.plan_date}`);
+    }
 
     const campusName = set.campuses?.name ?? "Campus";
     const customServiceName = set.custom_services?.service_name ?? null;
@@ -394,12 +423,134 @@ const syncSingleUser = async (
     });
   }
 
+  const customServiceSources: SyncSource[] = [];
+  let customServicesQuery = service
+    .from("custom_services")
+    .select("id,service_name,service_date,start_time,end_time,repeat_until,repeats_weekly,ministry_type,campus_id,campuses(name)")
+    .eq("is_active", true)
+    .lte("service_date", syncToDate)
+    .order("service_date", { ascending: true });
+
+  if (campusIds.length > 0) {
+    customServicesQuery = customServicesQuery.in("campus_id", campusIds);
+  }
+
+  const { data: customServices, error: customServicesError } = await customServicesQuery;
+  if (customServicesError) {
+    throw new Error(
+      `custom_services_lookup_failed_${customServicesError.code ?? "unknown"}:${customServicesError.message}`
+    );
+  }
+
+  for (const serviceRow of (customServices as any[]) ?? []) {
+    if (!serviceRow?.id || !serviceRow?.service_date) continue;
+
+    const effectiveEndDate = serviceRow.repeats_weekly
+      ? (serviceRow.repeat_until || syncToDate)
+      : serviceRow.service_date;
+
+    if (effectiveEndDate < syncFromDate) continue;
+
+    const occurrenceKey = `${serviceRow.id}|${serviceRow.service_date}`;
+    if (rosteredPublishedCustomServiceDates.has(occurrenceKey)) {
+      continue;
+    }
+
+    const campusName = serviceRow.campuses?.name ?? "Campus";
+    const ministryLabel = formatMinistry(serviceRow.ministry_type);
+    const descriptionLines = [`${ministryLabel} team-wide date`];
+
+    let range: { start: SyncSource["start"]; end: SyncSource["end"] };
+    if (serviceRow.start_time) {
+      range = createTimedRange(serviceRow.service_date, serviceRow.start_time, serviceRow.end_time);
+    } else {
+      range = createAllDayRange(serviceRow.service_date);
+    }
+
+    customServiceSources.push({
+      sourceType: "custom_service",
+      sourceId: serviceRow.id,
+      summary: `${campusName} • ${serviceRow.service_name}`,
+      description: descriptionLines.join("\n"),
+      location: campusName,
+      recurrence: serviceRow.repeats_weekly ? buildWeeklyRecurrence(serviceRow.repeat_until) : undefined,
+      start: range.start,
+      end: range.end,
+    });
+  }
+
+  const customServiceAssignmentSources: SyncSource[] = [];
+  const { data: customAssignments, error: customAssignmentsError } = await service
+    .from("custom_service_assignments")
+    .select(`
+      id,
+      assignment_date,
+      role,
+      custom_services!inner(
+        id,
+        service_name,
+        ministry_type,
+        campus_id,
+        start_time,
+        end_time,
+        campuses(name)
+      )
+    `)
+    .eq("user_id", userId)
+    .gte("assignment_date", syncFromDate)
+    .lte("assignment_date", syncToDate)
+    .order("assignment_date", { ascending: true });
+
+  if (customAssignmentsError) {
+    throw new Error(
+      `custom_service_assignments_lookup_failed_${customAssignmentsError.code ?? "unknown"}:${customAssignmentsError.message}`
+    );
+  }
+
+  for (const assignment of (customAssignments as any[]) ?? []) {
+    const customService = Array.isArray(assignment.custom_services)
+      ? assignment.custom_services[0]
+      : assignment.custom_services;
+
+    if (!assignment?.id || !assignment?.assignment_date || !customService?.id) continue;
+
+    if (campusIds.length > 0 && customService.campus_id && !campusIds.includes(customService.campus_id)) {
+      continue;
+    }
+
+    const occurrenceKey = `${customService.id}|${assignment.assignment_date}`;
+    if (rosteredPublishedCustomServiceDates.has(occurrenceKey)) {
+      continue;
+    }
+
+    const campusName = customService.campuses?.name ?? "Campus";
+    const roleLabel = formatRole(assignment.role);
+    const ministryLabel = formatMinistry(customService.ministry_type);
+
+    let range: { start: SyncSource["start"]; end: SyncSource["end"] };
+    if (customService.start_time) {
+      range = createTimedRange(assignment.assignment_date, customService.start_time, customService.end_time);
+    } else {
+      range = createAllDayRange(assignment.assignment_date);
+    }
+
+    customServiceAssignmentSources.push({
+      sourceType: "custom_service_assignment",
+      sourceId: assignment.id,
+      summary: `${campusName} • ${customService.service_name}`,
+      description: `${ministryLabel}\nAssigned role: ${roleLabel}`,
+      location: campusName,
+      start: range.start,
+      end: range.end,
+    });
+  }
+
   const scheduleSources: SyncSource[] = [];
   let scheduledQuery = service
     .from("team_schedule")
     .select("id,schedule_date,ministry_type,campus_id,team_id,campuses(name),worship_teams(name)")
-    .gte("schedule_date", fromDate)
-    .lte("schedule_date", toDate)
+    .gte("schedule_date", scheduleFromDate)
+    .lte("schedule_date", scheduleToDate)
     .order("schedule_date", { ascending: true });
 
   if (campusIds.length > 0) {
@@ -446,14 +597,20 @@ const syncSingleUser = async (
     });
   }
 
-  const syncSources = [...eventSources, ...setlistSources, ...scheduleSources];
+  const syncSources = [
+    ...eventSources,
+    ...setlistSources,
+    ...customServiceSources,
+    ...customServiceAssignmentSources,
+    ...scheduleSources,
+  ];
   const activeSourceKeys = new Set(syncSources.map((source) => `${source.sourceType}:${source.sourceId}`));
 
   const { data: existingMappings, error: mappingsError } = await service
     .from("google_calendar_mappings")
     .select("id,source_type,source_id,google_event_id,calendar_id")
     .eq("user_id", userId)
-    .in("source_type", ["event", "setlist", "schedule"]);
+    .in("source_type", ["event", "setlist", "schedule", "custom_service", "custom_service_assignment"]);
 
   if (mappingsError) {
     throw new Error(`mappings_lookup_failed_${mappingsError.code ?? "unknown"}:${mappingsError.message}`);
@@ -591,6 +748,8 @@ const syncSingleUser = async (
       event_count: eventSources.length,
       setlist_count: setlistSources.length,
       schedule_count: scheduleSources.length,
+      custom_service_count: customServiceSources.length,
+      custom_service_assignment_count: customServiceAssignmentSources.length,
     },
     results: {
       created,

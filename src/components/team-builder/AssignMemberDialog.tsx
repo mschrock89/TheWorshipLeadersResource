@@ -20,6 +20,7 @@ import {
   memberMatchesMinistryFilter,
   resolveTeamBuilderSlotMinistryType,
 } from "@/lib/constants";
+import { VocalSlotGender } from "@/lib/teamTemplates";
 
 interface AssignMemberDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ interface AssignMemberDialogProps {
   members: AvailableMember[];
   onSelect: (member: AvailableMember, ministryTypes: string[]) => void;
   ministryFilter?: string;
+  requiredGender?: VocalSlotGender | null;
 }
 
 export function AssignMemberDialog({
@@ -39,6 +41,7 @@ export function AssignMemberDialog({
   members,
   onSelect,
   ministryFilter,
+  requiredGender,
 }: AssignMemberDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedMember, setSelectedMember] = useState<AvailableMember | null>(null);
@@ -47,6 +50,37 @@ export function AssignMemberDialog({
   const slotConfig = POSITION_SLOTS.find(s => s.slot === slot);
   const slotLabel = slotConfig?.label || slot;
   const effectiveMinistryFilter = resolveTeamBuilderSlotMinistryType(ministryFilter, slot);
+  const visibleMinistryOptions = useMemo(
+    () => {
+      const seen = new Set<string>();
+
+      return MINISTRY_TYPES.filter((ministry) => {
+        const normalizedValue =
+          ministry.value === "weekend_team" || ministry.value === "sunday_am"
+            ? "weekend"
+            : ministry.value;
+
+        if (seen.has(normalizedValue)) {
+          return false;
+        }
+
+        if ("hidden" in ministry && ministry.hidden) {
+          return false;
+        }
+
+        seen.add(normalizedValue);
+        return true;
+      }).map((ministry) => (
+        ministry.value === "weekend_team"
+          ? { ...ministry, value: "weekend", shortLabel: "WKD" }
+          : ministry
+      ));
+    },
+    []
+  );
+
+  const normalizeSelectedMinistry = (value: string) =>
+    value === "weekend_team" || value === "sunday_am" ? "weekend" : value;
 
   // Check if a member's positions match the slot
   const matchesPosition = (positions: string[], slotType: string): boolean => {
@@ -91,6 +125,12 @@ export function AssignMemberDialog({
         if (search && !m.full_name.toLowerCase().includes(search.toLowerCase())) {
           return false;
         }
+        if (requiredGender) {
+          const memberGender = m.gender?.trim().toLowerCase();
+          if (memberGender !== requiredGender) {
+            return false;
+          }
+        }
         // Match position
         return matchesPosition(m.positions, slotType);
       })
@@ -113,13 +153,22 @@ export function AssignMemberDialog({
   const otherCount = relevantMembers.length - matchingMinistryCount;
 
   const handleMemberClick = (member: AvailableMember) => {
+    if (effectiveMinistryFilter) {
+      onSelect(member, [normalizeSelectedMinistry(effectiveMinistryFilter)]);
+      onOpenChange(false);
+      setSearch("");
+      setSelectedMember(null);
+      setSelectedMinistries([]);
+      return;
+    }
+
     setSelectedMember(member);
     // Pre-select the current ministry filter, and any ministries the member already has
     const initialMinistries = new Set<string>();
     if (effectiveMinistryFilter) {
-      initialMinistries.add(effectiveMinistryFilter);
+      initialMinistries.add(normalizeSelectedMinistry(effectiveMinistryFilter));
     }
-    member.ministry_types?.forEach(mt => initialMinistries.add(mt));
+    member.ministry_types?.forEach(mt => initialMinistries.add(normalizeSelectedMinistry(mt)));
     setSelectedMinistries(Array.from(initialMinistries));
   };
 
@@ -148,10 +197,11 @@ export function AssignMemberDialog({
   };
 
   const toggleMinistry = (value: string) => {
+    const normalizedValue = normalizeSelectedMinistry(value);
     setSelectedMinistries(prev => 
-      prev.includes(value) 
-        ? prev.filter(m => m !== value)
-        : [...prev, value]
+      prev.includes(normalizedValue) 
+        ? prev.filter(m => m !== normalizedValue)
+        : [...prev, normalizedValue]
     );
   };
 
@@ -190,6 +240,11 @@ export function AssignMemberDialog({
                 <span>{matchingMinistryCount} {ministryLabel} members</span>
                 {otherCount > 0 && (
                   <span className="text-muted-foreground/60">• {otherCount} others</span>
+                )}
+                {requiredGender && (
+                  <span className="text-muted-foreground/60">
+                    • {requiredGender === "male" ? "Male" : "Female"} only
+                  </span>
                 )}
               </div>
             )}
@@ -262,7 +317,7 @@ export function AssignMemberDialog({
               Select which ministries this assignment applies to:
             </p>
             <div className="space-y-3">
-              {MINISTRY_TYPES.map(ministry => (
+              {visibleMinistryOptions.map(ministry => (
                 <label
                   key={ministry.value}
                   className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"

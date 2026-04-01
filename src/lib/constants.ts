@@ -244,6 +244,21 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
 
 const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
+export function normalizeWeekendWorshipMinistryType(
+  ministryType: string | null | undefined,
+): string | null | undefined {
+  if (!ministryType) {
+    return ministryType;
+  }
+
+  return WEEKEND_TEAM_MINISTRY_TYPES.has(ministryType) ? "weekend" : ministryType;
+}
+
+export function getMinistryLabel(ministryType: string | null | undefined): string {
+  const normalizedType = normalizeWeekendWorshipMinistryType(ministryType);
+  return MINISTRY_TYPES.find((ministry) => ministry.value === normalizedType)?.label || normalizedType || "All";
+}
+
 export function resolveTeamBuilderSlotMinistryType(
   ministryFilter: string | null | undefined,
   slot: string | null | undefined,
@@ -296,7 +311,7 @@ export function breakRequestMatchesMinistryFilter(
     return true;
   }
 
-  if (ministryFilter === "weekend_team") {
+  if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
     return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType);
   }
 

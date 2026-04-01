@@ -496,6 +496,28 @@ export function ServiceFlowEditor({
     return localItems.reduce((sum, item) => sum + (item.duration_seconds || 0), 0);
   }, [localItems]);
 
+  const printDateRange = useMemo(() => {
+    const date = new Date(selectedDate);
+    const dayOfWeek = date.getDay();
+    const saturday = new Date(date);
+
+    if (dayOfWeek === 0) {
+      saturday.setDate(date.getDate() - 1);
+    } else if (dayOfWeek !== 6) {
+      saturday.setDate(date.getDate() + (6 - dayOfWeek));
+    }
+
+    const sunday = new Date(saturday);
+    sunday.setDate(saturday.getDate() + 1);
+
+    const options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric" };
+    const satStr = saturday.toLocaleDateString("en-US", options);
+    const sunStr = sunday.toLocaleDateString("en-US", { day: "numeric" });
+    const year = saturday.getFullYear();
+
+    return `${satStr}-${sunStr}, ${year}`;
+  }, [selectedDate]);
+
   const handleAddItem = useCallback(
     async (newItem: {
       item_type: "header" | "item" | "song";
@@ -606,10 +628,61 @@ export function ServiceFlowEditor({
 
   const isLoading = campusesLoading || flowLoading || itemsLoading || isAutoGenerating;
 
+  const renderPrintSheet = (copyKey: string) => (
+    <div key={copyKey} className="service-flow-print-sheet">
+      <div className="service-flow-copy-header">
+        <h2 className="service-flow-copy-title">Service Flow</h2>
+        <p className="service-flow-copy-date">{printDateRange}</p>
+      </div>
+
+      {teachingWeek ? (
+        <div className="service-flow-copy-teaching rounded-lg border border-border bg-muted/20 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Teaching
+            </span>
+            <span className="text-xs font-medium">
+              {formatTeachingReference(teachingWeek)}
+            </span>
+            <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]">
+              <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
+                Read Passage
+              </Link>
+            </Button>
+          </div>
+          {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {teachingWeek.themes_manual.join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="service-flow-print-items space-y-2">
+        {localItems.map((item) => (
+          <div key={`${copyKey}-${item.id}`} className="transition-transform">
+            <ServiceFlowItem
+              item={item}
+              onUpdate={() => undefined}
+              onDelete={() => undefined}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="service-flow-print-total flex items-center justify-end pt-4 border-t">
+        <div className="text-sm font-medium">
+          <span className="text-muted-foreground">Total: </span>
+          <span>{formatTotalDuration(totalDuration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="service-flow-editor space-y-4">
       {/* Header Controls */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="service-flow-screen-layout flex flex-wrap gap-3 items-center print:hidden">
         <Select value={effectiveCampusId || ""} onValueChange={handleCampusChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select Campus" />
@@ -655,7 +728,7 @@ export function ServiceFlowEditor({
       </div>
 
       {teachingWeek ? (
-        <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+        <div className="service-flow-screen-layout rounded-lg border border-border bg-muted/20 px-4 py-3 print:hidden">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
               Teaching
@@ -688,7 +761,7 @@ export function ServiceFlowEditor({
       ) : null}
 
       {/* Items List */}
-      <div className="space-y-2 min-h-[200px]">
+      <div className="service-flow-screen-layout space-y-2 min-h-[200px] print:hidden">
         {isLoading ? (
           <>
             <Skeleton className="h-10 w-full" />
@@ -725,7 +798,7 @@ export function ServiceFlowEditor({
       </div>
 
       {/* Footer */}
-      <div className="service-flow-total-footer flex items-center justify-between pt-4 border-t">
+      <div className="service-flow-screen-layout service-flow-total-footer flex items-center justify-between pt-4 border-t print:hidden">
         <Button
           variant="outline"
           size="sm"
@@ -740,6 +813,13 @@ export function ServiceFlowEditor({
           <span>{formatTotalDuration(totalDuration)}</span>
         </div>
       </div>
+
+      {!isLoading && localItems.length > 0 ? (
+        <div className="service-flow-print-dual hidden print:grid">
+          {renderPrintSheet("left")}
+          {renderPrintSheet("right")}
+        </div>
+      ) : null}
 
       <AddItemDialog
         open={isAddDialogOpen}

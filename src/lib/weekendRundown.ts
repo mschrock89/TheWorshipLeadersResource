@@ -7,31 +7,17 @@ export const WEEKEND_RUNDOWN_STATUS_OPTIONS = [
 
 export const GOOD_FIT_LABEL = "good_fit";
 
-const WEEKEND_RUNDOWN_ACCESS_ROLES = new Set([
+const WEEKEND_RUNDOWN_ADMIN_ROLES = new Set([
   "admin",
   "campus_admin",
-  "network_worship_pastor",
-  "campus_worship_pastor",
-  "student_worship_pastor",
-  "network_worship_leader",
-  "video_director",
-  "production_manager",
-]);
-
-const WEEKEND_RUNDOWN_WORSHIP_ROLES = new Set([
-  "admin",
-  "network_worship_pastor",
-  "campus_worship_pastor",
-  "student_worship_pastor",
-  "network_worship_leader",
 ]);
 
 export function canAccessWeekendRundown(roleNames: string[]) {
-  return roleNames.some((role) => WEEKEND_RUNDOWN_ACCESS_ROLES.has(role));
+  return roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
 }
 
 export function canReviewWeekendSongs(roleNames: string[]) {
-  return roleNames.some((role) => WEEKEND_RUNDOWN_WORSHIP_ROLES.has(role));
+  return roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
 }
 
 export function getWeekendRundownTargetSunday(now = new Date()) {

@@ -34,7 +34,7 @@ export function TestPushNotification() {
         window.setTimeout(() => reject(new Error("Test notification timed out. Please try again.")), TEST_PUSH_TIMEOUT_MS);
       });
 
-      // Send via VAPID/web-push to all subscribed users
+      // Send via VAPID/web-push to all active subscriptions
       const { data, error } = await Promise.race([
         supabase.functions.invoke("send-push-notification", {
           body: {
@@ -42,7 +42,11 @@ export function TestPushNotification() {
             message: "Push notifications are working! This is a test from your worship team.",
             url: "/dashboard",
             tag: "test-notification",
-            userIds: [user.id],
+            audience: "all_enabled_users",
+            createdBy: user.id,
+            metadata: {
+              source: "admin_test_push",
+            },
           },
         }),
         timeoutPromise,
@@ -66,13 +70,16 @@ export function TestPushNotification() {
           return;
         }
 
-        toast.error("No active push subscription found for your account on this device.");
+        toast.error("No active push subscriptions were found.");
         return;
       }
 
       setSent(true);
       const recipientCount = data?.sent || 0;
-      toast.success(`Test notification sent to ${recipientCount} device${recipientCount !== 1 ? "s" : ""}.`);
+      const recipientUserCount = data?.recipientUserCount || 0;
+      toast.success(
+        `Test notification sent to ${recipientUserCount} user${recipientUserCount !== 1 ? "s" : ""} across ${recipientCount} device${recipientCount !== 1 ? "s" : ""}.`,
+      );
     } catch (error) {
       console.error("Error sending test notification:", error);
       toast.error("Failed to send test notification");
@@ -110,7 +117,7 @@ export function TestPushNotification() {
         <div>
           <p className="text-sm font-medium">Test Push Notifications</p>
           <p className="text-xs text-muted-foreground">
-            Send a test notification to this device
+            Send a test notification to all subscribed devices
           </p>
         </div>
       </div>

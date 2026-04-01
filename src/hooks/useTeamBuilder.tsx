@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
+import { MINISTRY_SLOT_CATEGORIES, POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
+import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface TeamPeriodLock {
@@ -29,6 +30,7 @@ export interface WorshipTeam {
   name: string;
   color: string;
   icon: string;
+  template_config?: TeamTemplateConfig | null;
 }
 
 export interface TeamMemberAssignment {
@@ -48,6 +50,7 @@ export interface AvailableMember {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  gender: string | null;
   positions: string[];
   ministry_types: string[];
 }
@@ -55,6 +58,11 @@ export interface AvailableMember {
 export interface Campus {
   id: string;
   name: string;
+}
+
+export interface CampusWorshipPastor {
+  id: string;
+  full_name: string;
 }
 
 interface CampusMinistryPositionAssignment {
@@ -67,13 +75,9 @@ interface AvailableMemberProfileRow {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  gender?: string | null;
   positions?: string[] | null;
   ministry_types?: string[] | null;
-}
-
-export interface ApprovedBreakSummary {
-  user_id: string;
-  ministry_type: string | null;
 }
 
 // Re-export POSITION_SLOTS for backwards compatibility
@@ -142,12 +146,29 @@ export function useRotationPeriodsForCampus(campusId: string | null) {
   });
 }
 
-// Helper to get previous period ID
-function getPreviousPeriodId(periods: RotationPeriod[], currentPeriodId: string | null): string | null {
+function comparePeriods(a: Pick<RotationPeriod, "year" | "trimester">, b: Pick<RotationPeriod, "year" | "trimester">) {
+  if (a.year !== b.year) {
+    return a.year - b.year;
+  }
+
+  return a.trimester - b.trimester;
+}
+
+// Helper to get the chronologically previous period ID
+export function getPreviousPeriodId(periods: RotationPeriod[], currentPeriodId: string | null): string | null {
   if (!currentPeriodId || periods.length === 0) return null;
-  const currentIndex = periods.findIndex(p => p.id === currentPeriodId);
-  // Periods are sorted desc by year, so previous is next in array
-  return periods[currentIndex + 1]?.id || null;
+
+  const currentPeriod = periods.find((period) => period.id === currentPeriodId);
+  if (!currentPeriod) return null;
+
+  const previousPeriods = periods.filter(
+    (period) => comparePeriods(period, currentPeriod) < 0,
+  );
+
+  if (previousPeriods.length === 0) return null;
+
+  previousPeriods.sort((a, b) => comparePeriods(b, a));
+  return previousPeriods[0].id;
 }
 
 // Get members for the previous period (for consecutive break detection)
@@ -173,29 +194,8 @@ export function usePreviousPeriodMembers(
         ...m,
         // Treat NULL or empty array as default ministry for backwards compatibility
         ministry_types: m.ministry_types?.length ? m.ministry_types : ['weekend'],
+        service_day: m.service_day || null,
       })) as TeamMemberAssignment[];
-    },
-  });
-}
-
-// Get approved breaks from the previous period
-export function usePreviousPeriodApprovedBreaks(periods: RotationPeriod[], currentPeriodId: string | null) {
-  const previousPeriodId = useMemo(() => {
-    return getPreviousPeriodId(periods, currentPeriodId);
-  }, [periods, currentPeriodId]);
-
-  return useQuery({
-    queryKey: ["break-requests", "approved", previousPeriodId],
-    enabled: !!previousPeriodId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("break_requests")
-        .select("user_id, ministry_type")
-        .eq("rotation_period_id", previousPeriodId)
-        .eq("status", "approved");
-
-      if (error) throw error;
-      return (data || []) as ApprovedBreakSummary[];
     },
   });
 }
@@ -211,6 +211,45 @@ export function useWorshipTeams() {
 
       if (error) throw error;
       return data as WorshipTeam[];
+    },
+  });
+}
+
+export function useCampusWorshipPastors(campusId: string | null) {
+  return useQuery({
+    queryKey: ["campus-worship-pastors", campusId],
+    enabled: !!campusId,
+    queryFn: async () => {
+      if (!campusId) return [];
+
+      const { data: roleRows, error: roleError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "campus_worship_pastor");
+
+      if (roleError) throw roleError;
+
+      const pastorUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (pastorUserIds.length === 0) return [];
+
+      const { data: campusRows, error: campusError } = await supabase
+        .from("user_campuses")
+        .select("user_id")
+        .eq("campus_id", campusId)
+        .in("user_id", pastorUserIds);
+
+      if (campusError) throw campusError;
+
+      const campusPastorIds = [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (campusPastorIds.length === 0) return [];
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", campusPastorIds);
+
+      if (profilesError) throw profilesError;
+      return (profiles || []) as CampusWorshipPastor[];
     },
   });
 }
@@ -296,6 +335,7 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
           id: p.id,
           full_name: p.full_name,
           avatar_url: p.avatar_url || null,
+          gender: p.gender || null,
           // Use campus+ministry specific positions from new table
           positions: campusId && memberDataMap[p.id] 
             ? memberDataMap[p.id].positions 
@@ -626,8 +666,178 @@ function getMemberAvailableSlots(positions: string[]): string[] {
   return Array.from(slots);
 }
 
+function normalizeGender(gender: string | null | undefined): "male" | "female" | null {
+  if (!gender) return null;
+  const normalized = gender.trim().toLowerCase();
+  if (normalized === "male" || normalized === "female") return normalized;
+  return null;
+}
+
+function memberMatchesSlotGender(
+  member: AvailableMember,
+  requiredGender: "male" | "female" | null,
+) {
+  if (!requiredGender) return true;
+  return normalizeGender(member.gender) === requiredGender;
+}
+
+function canDoubleUpMaleVocalGuitarist(member: AvailableMember, targetSlot: string, existingSlots: Set<string>) {
+  if (normalizeGender(member.gender) !== "male") return false;
+
+  const memberSlots = new Set(getMemberAvailableSlots(member.positions));
+  const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"].some((slot) => memberSlots.has(slot));
+  const hasGuitarSlot = memberSlots.has("ag_1") || memberSlots.has("eg_2");
+  if (!hasVocalSlot || !hasGuitarSlot) return false;
+
+  const targetIsVocal = targetSlot.startsWith("vocalist_");
+  const targetIsDoubleUpGuitar = targetSlot === "ag_1" || targetSlot === "eg_2";
+  const alreadyHasVocal = [...existingSlots].some((slot) => slot.startsWith("vocalist_"));
+  const alreadyHasDoubleUpGuitar = existingSlots.has("ag_1") || existingSlots.has("eg_2");
+
+  if (targetIsVocal) {
+    return !alreadyHasVocal && alreadyHasDoubleUpGuitar;
+  }
+
+  if (targetIsDoubleUpGuitar) {
+    return alreadyHasVocal && !alreadyHasDoubleUpGuitar;
+  }
+
+  return false;
+}
+
+function exceedsGuitarFamilyLimit(filledSlots: Set<string>, targetSlot: string) {
+  if (targetSlot === "ag_1" || targetSlot === "ag_2") {
+    const acousticCount = ["ag_1", "ag_2"].filter((slot) => filledSlots.has(slot)).length;
+    return acousticCount >= 2;
+  }
+
+  if (targetSlot === "eg_1" || targetSlot === "eg_2") {
+    const electricCount = ["eg_1", "eg_2"].filter((slot) => filledSlots.has(slot)).length;
+    return electricCount >= 2;
+  }
+
+  return false;
+}
+
+function canAssignMemberToTeam(
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  member: AvailableMember,
+  teamId: string,
+  targetSlot: string,
+  blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+) {
+  const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
+  if (blockedTeammates?.has(member.id)) return false;
+
+  const teamAssignments = assignedSlotsByTeam.get(member.id);
+  if (!teamAssignments) return true;
+
+  const existingSlots = teamAssignments.get(teamId);
+  if (!existingSlots || existingSlots.size === 0) return true;
+
+  return canDoubleUpMaleVocalGuitarist(member, targetSlot, existingSlots);
+}
+
+function trackMemberAssignment(
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  memberId: string,
+  teamId: string,
+  slot: string,
+) {
+  if (!assignedSlotsByTeam.has(memberId)) {
+    assignedSlotsByTeam.set(memberId, new Map());
+  }
+
+  const memberTeams = assignedSlotsByTeam.get(memberId)!;
+  if (!memberTeams.has(teamId)) {
+    memberTeams.set(teamId, new Set());
+  }
+
+  memberTeams.get(teamId)!.add(slot);
+}
+
+function getAssignedSlotsForTeam(
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  teamId: string,
+) {
+  const assignedSlots = new Map<string, Set<string>>();
+
+  for (const [memberId, teams] of assignedSlotsByTeam.entries()) {
+    const teamSlots = teams.get(teamId);
+    if (teamSlots?.size) {
+      assignedSlots.set(memberId, teamSlots);
+    }
+  }
+
+  return assignedSlots;
+}
+
+function hasTwoDedicatedBacklineElectrics(
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  teamId: string,
+) {
+  let dedicatedElectricCount = 0;
+
+  for (const slots of getAssignedSlotsForTeam(assignedSlotsByTeam, teamId).values()) {
+    const hasElectric = slots.has("eg_1") || slots.has("eg_2");
+    const hasVocal = [...slots].some((slot) => slot.startsWith("vocalist_"));
+
+    if (hasElectric && !hasVocal) {
+      dedicatedElectricCount += 1;
+    }
+  }
+
+  return dedicatedElectricCount >= 2;
+}
+
+function assignCampusPastorsToVocalSlots(
+  teams: WorshipTeam[],
+  campusPastors: AvailableMember[],
+  teamVisibleVocalSlots: Map<string, ReturnType<typeof getTeamTemplateSlotConfigs>["vocalSlots"]>,
+  assignMemberToSlot: (member: AvailableMember, team: WorshipTeam, targetSlot: string) => boolean,
+) {
+  for (const pastor of campusPastors) {
+    const pastorGender = normalizeGender(pastor.gender);
+    if (!pastorGender) continue;
+
+    for (const team of teams) {
+      const teamVocalSlots = teamVisibleVocalSlots.get(team.id) || [];
+      const preferredVocalSlots = teamVocalSlots
+        .filter((slot) => slot.vocalGender === pastorGender)
+        .map((slot) => slot.slot);
+      const assigned = preferredVocalSlots.some((slot) =>
+        assignMemberToSlot(pastor, team, slot),
+      );
+
+      if (!assigned) {
+        const fallbackSlots = teamVocalSlots
+          .filter((slot) => slot.vocalGender !== pastorGender)
+          .map((slot) => slot.slot);
+
+        fallbackSlots.some((slot) => assignMemberToSlot(pastor, team, slot));
+      }
+    }
+  }
+}
+
+function isWeekendRosterBreakLogicMinistry(ministryType: string) {
+  return ministryType === "weekend" || ministryType === "weekend_team";
+}
+
+function countsAsTrimesterRosterAssignment(
+  member: Pick<TeamMemberAssignment, "service_day">,
+  ministryType: string,
+) {
+  if (isWeekendRosterBreakLogicMinistry(ministryType) && member.service_day) {
+    return false;
+  }
+
+  return true;
+}
+
 // Auto-builder algorithm with ministry filtering, break rotation, and team variety
 export function useAutoBuildTeams() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -636,22 +846,55 @@ export function useAutoBuildTeams() {
       teams,
       members,
       ministryType,
+      campusName,
+      campusWorshipPastorIds,
       previousPeriodMembers,
       approvedBreakUserIds,
+      previousApprovedBreakUserIds,
     }: {
       rotationPeriodId: string;
       teams: WorshipTeam[];
       members: AvailableMember[];
       ministryType: string;
+      campusName?: string | null;
+      campusWorshipPastorIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
       approvedBreakUserIds: string[];
+      previousApprovedBreakUserIds: string[];
     }) => {
+      const slotPriority = [
+        "drums", "bass", "keys",
+        "eg_1", "eg_2", "ag_1", "ag_2",
+        "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
+        "teacher", "announcement", "closing_prayer",
+        "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
+        "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6",
+        "chat_host", "director", "graphics", "switcher",
+      ];
+      const allowedCategories =
+        MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
+      const visibleSlotsByTeam = new Map(
+        teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)]),
+      );
+      const relevantSlots = new Set(
+        teams.flatMap((team) =>
+          slotPriority.filter((slot) => {
+            const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
+            if (!slotConfig || !allowedCategories.includes(slotConfig.category)) return false;
+            return isTeamSlotVisible(team.template_config, slot);
+          }),
+        ),
+      );
+
       // 1. Filter members by ministry type
-      const eligibleMembers = ministryType === "all" 
+      const ministryEligibleMembers = ministryType === "all" 
         ? members 
         : members.filter((member) =>
             memberMatchesMinistryFilter(member.ministry_types, ministryType)
           );
+      const eligibleMembers = ministryEligibleMembers.filter((member) =>
+        getMemberAvailableSlots(member.positions).some((slot) => relevantSlots.has(slot)),
+      );
 
       // 2. Exclude members with approved break requests
       const availablePool = eligibleMembers.filter(
@@ -664,16 +907,26 @@ export function useAutoBuildTeams() {
         : previousPeriodMembers.filter((member) =>
             memberMatchesMinistryFilter(member.ministry_types, ministryType)
           );
+      const previousTrimesterRosterMembers = prevPeriodFiltered.filter((member) =>
+        countsAsTrimesterRosterAssignment(member, ministryType),
+      );
       
-      const previouslyAssignedIds = new Set(prevPeriodFiltered.map(m => m.user_id).filter(Boolean));
       const previousTeamMap = new Map<string, string>(); // userId -> teamId
-      prevPeriodFiltered.forEach(m => {
+      previousTrimesterRosterMembers.forEach(m => {
         if (m.user_id) previousTeamMap.set(m.user_id, m.team_id);
       });
 
       // 4. Categorize members
-      const wasOnBreakLastPeriod = availablePool.filter(m => !previouslyAssignedIds.has(m.id));
-      const servedLastPeriod = availablePool.filter(m => previouslyAssignedIds.has(m.id));
+      // "Must serve" means they were off the previous trimester roster OR had
+      // an approved full-trimester break in the previous period.
+      const previousRosterUserIds = new Set(previousTrimesterRosterMembers.map(m => m.user_id).filter(Boolean));
+      const previousApprovedBreakUserIdSet = new Set(previousApprovedBreakUserIds);
+      const wasOffRosterLastPeriod = availablePool.filter(
+        (member) =>
+          !previousRosterUserIds.has(member.id) ||
+          previousApprovedBreakUserIdSet.has(member.id),
+      );
+      const servedLastPeriod = availablePool.filter(m => previousRosterUserIds.has(m.id));
 
       // 5. Clear existing assignments for this period and ministry
       if (ministryType === "all") {
@@ -713,26 +966,160 @@ export function useAutoBuildTeams() {
         ministry_types: string[];
       }[] = [];
 
-      // Track assignments per user to prevent duplicate assignments
-      const userAssignedToTeam = new Map<string, Set<string>>(); // userId -> set of teamIds
+      const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
+      const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
-      // Priority: Fill harder positions first (drums, bass, keys, then guitars, then vocals)
-      const slotPriority = [
-        "drums", "bass", "keys",
-        "eg_1", "eg_2", "ag_1", "ag_2",
-        "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
-        // Production
-        "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
-        // Video
-        "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6",
-        "chat_host", "director", "graphics", "switcher",
-      ];
+      const assignMemberToSlot = (member: AvailableMember, team: WorshipTeam, targetSlot: string) => {
+        const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === targetSlot);
+        if (!slotConfig) return false;
+        if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
+        if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
+
+        const filledSlots = slotFilledPerTeam.get(team.id)!;
+        if (filledSlots.has(targetSlot)) return false;
+        if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
+
+        filledSlots.add(targetSlot);
+        trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
+
+        assignments.push({
+          team_id: team.id,
+          user_id: member.id,
+          member_name: member.full_name,
+          position: slotConfig.label,
+          position_slot: targetSlot,
+          display_order: POSITION_SLOTS.findIndex(s => s.slot === targetSlot) + 1,
+          rotation_period_id: rotationPeriodId,
+          ministry_types: ministryType === "all" ? ["weekend"] : [ministryType],
+        });
+
+        return true;
+      };
+
+      const isWeekendWorshipBuild =
+        ministryType === "weekend" || ministryType === "weekend_team";
+      const isMurfreesboroWeekendBuild =
+        campusName === "Murfreesboro Central" && isWeekendWorshipBuild;
+
+      if (isWeekendWorshipBuild && teams.length > 0) {
+        const allVisibleVocalSlots = teams.flatMap(
+          (team) => visibleSlotsByTeam.get(team.id)?.vocalSlots || [],
+        );
+        const maleVocalists = availablePool.filter((member) => {
+          return (
+            normalizeGender(member.gender) === "male" &&
+            getMemberAvailableSlots(member.positions).some((slot) =>
+              allVisibleVocalSlots.some((visibleSlot) => visibleSlot.slot === slot),
+            )
+          );
+        });
+        const femaleVocalists = availablePool.filter((member) => {
+          return (
+            normalizeGender(member.gender) === "female" &&
+            getMemberAvailableSlots(member.positions).some((slot) =>
+              allVisibleVocalSlots.some((visibleSlot) => visibleSlot.slot === slot),
+            )
+          );
+        });
+
+        const currentUserMember = availablePool.find((member) => member.id === user?.id);
+        const kyleMember = availablePool.find((member) => member.full_name === "Kyle Elkins");
+        const campusPastors = availablePool.filter((member) =>
+          campusWorshipPastorIds?.includes(member.id)
+        );
+        assignCampusPastorsToVocalSlots(teams, campusPastors, visibleSlotsByTeam, assignMemberToSlot);
+
+        if (isMurfreesboroWeekendBuild) {
+          const prioritizedTeams = teams.slice(0, Math.min(3, teams.length));
+          const kyleTeam = teams.find((team) => !prioritizedTeams.some((prioritizedTeam) => prioritizedTeam.id === team.id));
+
+          if (currentUserMember && normalizeGender(currentUserMember.gender) === "male") {
+            for (const team of prioritizedTeams) {
+              if (kyleMember) {
+              if (!blockedTeammateIdsByTeam.has(team.id)) {
+                  blockedTeammateIdsByTeam.set(team.id, new Set());
+                }
+                blockedTeammateIdsByTeam.get(team.id)!.add(kyleMember.id);
+              }
+              const defaultMaleSlot = (visibleSlotsByTeam.get(team.id)?.vocalSlots || []).find(
+                (slot) => slot.vocalGender === "male",
+              )?.slot;
+              if (defaultMaleSlot) {
+                assignMemberToSlot(currentUserMember, team, defaultMaleSlot);
+              }
+              if (getMemberAvailableSlots(currentUserMember.positions).includes("ag_1")) {
+                assignMemberToSlot(currentUserMember, team, "ag_1");
+              } else if (getMemberAvailableSlots(currentUserMember.positions).includes("eg_2")) {
+                assignMemberToSlot(currentUserMember, team, "eg_2");
+              }
+            }
+          }
+
+          if (kyleMember && kyleTeam) {
+            if (currentUserMember) {
+              if (!blockedTeammateIdsByTeam.has(kyleTeam.id)) {
+                blockedTeammateIdsByTeam.set(kyleTeam.id, new Set());
+              }
+              blockedTeammateIdsByTeam.get(kyleTeam.id)!.add(currentUserMember.id);
+            }
+            const defaultMaleSlot = (visibleSlotsByTeam.get(kyleTeam.id)?.vocalSlots || []).find(
+              (slot) => slot.vocalGender === "male",
+            )?.slot;
+            if (defaultMaleSlot) {
+              assignMemberToSlot(kyleMember, kyleTeam, defaultMaleSlot);
+            }
+          }
+        }
+
+        const assignGenderedVocalists = (
+          targetTeams: WorshipTeam[],
+          targetGender: "male" | "female",
+          pool: AvailableMember[],
+        ) => {
+          const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+
+          for (const team of targetTeams) {
+            const targetSlots = (visibleSlotsByTeam.get(team.id)?.vocalSlots || [])
+              .filter((slot) => slot.vocalGender === targetGender)
+              .map((slot) => slot.slot);
+
+            for (const targetSlot of targetSlots) {
+              const filledSlots = slotFilledPerTeam.get(team.id)!;
+              if (filledSlots.has(targetSlot)) continue;
+
+            const candidate = shuffledPool.find((member) => {
+              return getMemberAvailableSlots(member.positions).includes(targetSlot) &&
+                canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam);
+            });
+
+              if (!candidate) continue;
+              assignMemberToSlot(candidate, team, targetSlot);
+
+              const candidateIndex = shuffledPool.indexOf(candidate);
+              if (candidateIndex > -1 && !canDoubleUpMaleVocalGuitarist(candidate, targetSlot, new Set())) {
+                shuffledPool.splice(candidateIndex, 1);
+              }
+            }
+          }
+        };
+
+        assignGenderedVocalists(teams, "male", maleVocalists);
+        assignGenderedVocalists(teams, "female", femaleVocalists);
+      }
 
       // For each slot in priority order
       for (const targetSlot of slotPriority) {
+        if (
+          isMurfreesboroWeekendBuild &&
+          targetSlot === "ag_2"
+        ) {
+          continue;
+        }
+
         const slotConfig = POSITION_SLOTS.find(s => s.slot === targetSlot);
         if (!slotConfig) continue;
 
@@ -741,7 +1128,7 @@ export function useAutoBuildTeams() {
           pool.filter(m => getMemberAvailableSlots(m.positions).includes(targetSlot));
 
         // Candidates who were on break (must serve this period - no consecutive breaks)
-        const mustServeCandidates = getCandidates(wasOnBreakLastPeriod);
+        const mustServeCandidates = getCandidates(wasOffRosterLastPeriod);
         // Candidates who served last period
         const canServeCandidates = getCandidates(servedLastPeriod);
 
@@ -763,51 +1150,59 @@ export function useAutoBuildTeams() {
 
         // Assign to each team
         for (const team of teams) {
+          if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
           const filledSlots = slotFilledPerTeam.get(team.id)!;
           if (filledSlots.has(targetSlot)) continue;
 
           // Find best candidate
           let assigned: AvailableMember | undefined;
 
-          // First priority: Must serve (was on break last period)
-          assigned = shuffleMustServe.find(m => {
-            const assignedTeams = userAssignedToTeam.get(m.id) || new Set();
-            return !assignedTeams.has(team.id);
-          });
+          // First priority: Must serve (was off the previous roster)
+        assigned = shuffleMustServe.find(m =>
+            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+          );
 
           // Second priority: Can serve, prefer different team
           if (!assigned) {
             const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-            assigned = sortedCanServe.find(m => {
-              const assignedTeams = userAssignedToTeam.get(m.id) || new Set();
-              return !assignedTeams.has(team.id);
-            });
+          assigned = sortedCanServe.find(m =>
+              canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+            );
           }
 
           if (assigned) {
-            // Track assignment
-            if (!userAssignedToTeam.has(assigned.id)) {
-              userAssignedToTeam.set(assigned.id, new Set());
-            }
-            userAssignedToTeam.get(assigned.id)!.add(team.id);
-            filledSlots.add(targetSlot);
-
-            assignments.push({
-              team_id: team.id,
-              user_id: assigned.id,
-              member_name: assigned.full_name,
-              position: slotConfig.label,
-              position_slot: targetSlot,
-              display_order: POSITION_SLOTS.findIndex(s => s.slot === targetSlot) + 1,
-              rotation_period_id: rotationPeriodId,
-              ministry_types: ministryType === "all" ? ["weekend"] : [ministryType],
-            });
+            assignMemberToSlot(assigned, team, targetSlot);
 
             // Remove from pools to avoid double assignment to same slot
             const mustServeIdx = shuffleMustServe.indexOf(assigned);
             if (mustServeIdx > -1) shuffleMustServe.splice(mustServeIdx, 1);
             const canServeIdx = shuffleCanServe.indexOf(assigned);
             if (canServeIdx > -1) shuffleCanServe.splice(canServeIdx, 1);
+          }
+        }
+      }
+
+      if (isMurfreesboroWeekendBuild) {
+        for (const team of teams) {
+          if (hasTwoDedicatedBacklineElectrics(userAssignedSlotsByTeam, team.id)) {
+            continue;
+          }
+
+          const ag2Candidates = [
+            ...wasOffRosterLastPeriod,
+            ...servedLastPeriod,
+          ]
+            .filter((member, index, pool) =>
+              pool.findIndex((candidate) => candidate.id === member.id) === index
+            )
+            .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
+
+          const candidate = ag2Candidates.find((member) =>
+            canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam)
+          );
+
+          if (candidate) {
+            assignMemberToSlot(candidate, team, "ag_2");
           }
         }
       }
@@ -821,7 +1216,7 @@ export function useAutoBuildTeams() {
         totalAssignments: assignments.length,
         teamsBuilt: teams.length,
         eligibleMembers: availablePool.length,
-        mustServe: wasOnBreakLastPeriod.length,
+        mustServe: wasOffRosterLastPeriod.length,
       };
     },
     onSuccess: (result) => {
@@ -904,6 +1299,38 @@ export function useToggleTeamLock() {
     onError: (error) => {
       toast({
         title: "Failed to toggle lock",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useUpdateTeamTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      teamId,
+      templateConfig,
+    }: {
+      teamId: string;
+      templateConfig: TeamTemplateConfig;
+    }) => {
+      const { error } = await supabase
+        .from("worship_teams")
+        .update({ template_config: templateConfig })
+        .eq("id", teamId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["worship-teams"] });
+      toast({ title: "Team template updated" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update team template",
         description: error.message,
         variant: "destructive",
       });

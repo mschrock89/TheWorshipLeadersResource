@@ -50,7 +50,7 @@ export function useDeleteReferenceTrack() {
       });
       queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Delete failed",
         description: error.message || "Could not delete the reference track",
@@ -104,6 +104,7 @@ export function useAutoReorderChartsFromReferenceTrack() {
         success: boolean;
         updated_songs: number;
         built_songs: number;
+        arrangement_version_name?: string;
         songs_considered: number;
         skipped: Array<{ song: string; reason: string }>;
       };
@@ -111,12 +112,12 @@ export function useAutoReorderChartsFromReferenceTrack() {
     onSuccess: (data) => {
       toast({
         title: "Chart reordering complete",
-        description: `Reordered ${data.updated_songs}, built ${data.built_songs} draft chart${data.songs_considered === 1 ? "" : "s"} (${data.songs_considered} song${data.songs_considered === 1 ? "" : "s"} analyzed).`,
+        description: `${data.arrangement_version_name || "Dated arrangement"} updated. Reordered ${data.updated_songs}, built ${data.built_songs} draft chart${data.songs_considered === 1 ? "" : "s"} (${data.songs_considered} song${data.songs_considered === 1 ? "" : "s"} analyzed).`,
       });
       queryClient.invalidateQueries({ queryKey: ["song-versions"] });
       queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Auto reorder failed",
         description: error.message || "Could not analyze the reference track.",

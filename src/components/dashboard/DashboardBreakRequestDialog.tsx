@@ -25,6 +25,7 @@ import { useUserCampusMinistryPositions } from "@/hooks/useCampusMinistryPositio
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { addDays, format, getDay, isAfter, isBefore, isWithinInterval, startOfDay, subDays } from "date-fns";
+import { getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 interface DashboardBreakRequestDialogProps {
   open: boolean;
@@ -42,14 +43,6 @@ const TRIMESTERS = [
   { value: "2", label: "Trimester 2" },
   { value: "3", label: "Trimester 3" },
 ];
-
-const MINISTRY_LABELS: Record<string, string> = {
-  weekend: "Weekend Worship",
-  weekend_team: "Weekend Worship",
-  student: "Student",
-  encounter: "Encounter",
-  eon: "EON",
-};
 
 export function DashboardBreakRequestDialog({
   open,
@@ -84,9 +77,10 @@ export function DashboardBreakRequestDialog({
     ministryPositions
       .filter((p) => p.campus_id === campusId)
       .forEach((p) => {
-        const normalizedMinistry =
-          p.ministry_type === "weekend" ? "weekend_team" : p.ministry_type;
-        normalizedMinistries.add(normalizedMinistry);
+        const normalizedMinistry = normalizeWeekendWorshipMinistryType(p.ministry_type);
+        if (normalizedMinistry) {
+          normalizedMinistries.add(normalizedMinistry);
+        }
       });
     return Array.from(normalizedMinistries);
   }, [ministryPositions, campusId]);
@@ -378,7 +372,7 @@ export function DashboardBreakRequestDialog({
               <SelectContent>
                 {availableMinistries.map((m) => (
                   <SelectItem key={m} value={m}>
-                    {MINISTRY_LABELS[m] || m}
+                    {getMinistryLabel(m)}
                   </SelectItem>
                 ))}
               </SelectContent>

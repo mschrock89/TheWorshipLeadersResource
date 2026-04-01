@@ -1,7 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const APP_URL = Deno.env.get("APP_URL") ?? "https://www.theworshipleadersresource.com";
-const CALLBACK_URL = "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-auth-callback";
+const CALLBACK_URL =
+  Deno.env.get("GOOGLE_REDIRECT_URI") ??
+  "https://fgemlokxbugfihaxbfyp.functions.supabase.co/google-auth-callback";
 
 Deno.serve(async (req) => {
   try {

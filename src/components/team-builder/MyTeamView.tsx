@@ -8,6 +8,7 @@ import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Vide
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import { cn } from "@/lib/utils";
 import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
+import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 import { BreakRequestDialog } from "./BreakRequestDialog";
 import { BreakRequestsList } from "./BreakRequestsList";
 import { useMyBreakRequests } from "@/hooks/useBreakRequests";
@@ -69,9 +70,10 @@ function CondensedTeamCard({
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
   );
 
-  const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
+  const bandSlots = templateSlots.bandSlots;
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
 
@@ -251,9 +253,10 @@ function FullTeamCard({
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
   );
 
-  const vocalSlots = POSITION_SLOTS.filter(s => s.category === "Vocalists");
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = POSITION_SLOTS.filter(s => s.category === "Band");
+  const bandSlots = templateSlots.bandSlots;
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
   const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
 

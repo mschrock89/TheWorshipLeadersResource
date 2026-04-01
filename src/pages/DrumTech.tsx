@@ -1065,17 +1065,27 @@ export default function DrumTech() {
   const { data: campuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const campusCtx = useCampusSelectionOptional();
-  const selectedCampusId = campusCtx?.selectedCampusId || userCampuses[0]?.campus_id || null;
-  const setSelectedCampusId = campusCtx?.setSelectedCampusId;
+  const assignmentAccess = useDrumTechAccess(campusCtx?.selectedCampusId || null);
+  const selectedCampusId =
+    campusCtx?.selectedCampusId ||
+    assignmentAccess.assignedCampusIds[0] ||
+    userCampuses[0]?.campus_id ||
+    null;
   const access = useDrumTechAccess(selectedCampusId);
+  const setSelectedCampusId = campusCtx?.setSelectedCampusId;
   const { data: kits = [], isLoading } = useDrumKits(selectedCampusId);
   const upsertKit = useUpsertDrumKit();
   const deleteKit = useDeleteDrumKit();
 
   const availableCampuses = useMemo(() => {
     if (canManageTeam) return campuses;
+    if (assignmentAccess.assignedCampusIds.length > 0) {
+      return userCampuses
+        .filter((entry) => assignmentAccess.assignedCampusIds.includes(entry.campus_id))
+        .map((entry) => entry.campuses);
+    }
     return userCampuses.map((entry) => entry.campuses);
-  }, [campuses, canManageTeam, userCampuses]);
+  }, [assignmentAccess.assignedCampusIds, campuses, canManageTeam, userCampuses]);
 
   const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);

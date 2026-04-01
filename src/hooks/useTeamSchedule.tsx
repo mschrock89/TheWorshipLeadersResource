@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { TeamTemplateConfig } from "@/lib/teamTemplates";
 
 /** Get the rotation period name that covers a given date for a campus (for filtering team_schedule) */
 export function useRotationPeriodForDate(campusId: string | null, date: Date | null) {
@@ -32,6 +33,7 @@ export interface WorshipTeam {
   color: string;
   icon: string;
   created_at: string;
+  template_config?: TeamTemplateConfig | null;
 }
 
 export interface TeamMember {

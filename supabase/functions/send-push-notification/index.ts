@@ -14,12 +14,20 @@ interface PushPayload {
   url?: string;
   tag?: string;
   userIds?: string[];
+  audience?: "all_enabled_users";
   contextType?: string;
   contextId?: string;
   createdBy?: string;
   metadata?: Record<string, unknown>;
   skipLogging?: boolean;
 }
+
+const ADMIN_TEST_ROLES = [
+  "admin",
+  "campus_admin",
+  "network_worship_pastor",
+  "network_worship_leader",
+] as const;
 
 // Convert URL-safe base64 to regular base64
 function urlBase64ToBase64(urlSafe: string): string {
@@ -108,6 +116,20 @@ function concatUint8Arrays(...arrays: Uint8Array[]): Uint8Array {
     offset += arr.length;
   }
   return result;
+}
+
+function isInvalidSubscriptionResponse(statusCode?: number, error?: string): boolean {
+  if (statusCode === 400 || statusCode === 401 || statusCode === 404 || statusCode === 410) {
+    return true;
+  }
+
+  const normalizedError = error?.toLowerCase() || "";
+  return (
+    normalizedError.includes("vapidpkhashmismatch") ||
+    normalizedError.includes("vapid public key mismatch") ||
+    normalizedError.includes("vapid credentials") ||
+    normalizedError.includes("authorization header do not correspond")
+  );
 }
 
 // HKDF implementation using Web Crypto
@@ -375,6 +397,7 @@ serve(async (req) => {
   try {
     const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY");
     const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     if (!vapidPublicKey || !vapidPrivateKey) {
       console.error("VAPID keys not configured");
@@ -385,23 +408,99 @@ serve(async (req) => {
     }
 
     const payload: PushPayload = await req.json();
+    const authHeader = req.headers.get("Authorization");
+    const isAdminTestPush = payload.tag === "test-notification" || payload.audience === "all_enabled_users";
 
     console.log("Push request received:", {
       title: payload.title,
       message: payload.message,
+      audience: payload.audience || "default",
       userIds: payload.userIds?.length || "all",
+      isAdminTestPush,
     });
 
     // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: authHeader ? { Authorization: authHeader } : {},
+      },
+    });
 
-    // Get subscriptions from database
+    let requestUserId: string | null = null;
+
+    if (isAdminTestPush) {
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: "Missing authorization header" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await userClient.auth.getUser();
+
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      requestUserId = user.id;
+
+      const { data: roleRows, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .in("role", [...ADMIN_TEST_ROLES]);
+
+      if (roleError) {
+        console.error("Error checking roles for test push:", roleError);
+        return new Response(
+          JSON.stringify({ error: "Failed to verify permissions" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!roleRows?.length) {
+        return new Response(
+          JSON.stringify({ error: "Admin access required for test push" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    let recipientUserIds: string[] = [];
+
+    if (isAdminTestPush) {
+      const { data: enabledUsers, error: enabledUsersError } = await supabase
+        .from("push_subscriptions")
+        .select("user_id");
+
+      if (enabledUsersError) {
+        console.error("Error fetching enabled push users:", enabledUsersError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch enabled push users" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      recipientUserIds = Array.from(
+        new Set((enabledUsers || []).map((subscription) => subscription.user_id).filter(Boolean)),
+      );
+    } else if (payload.userIds && payload.userIds.length > 0) {
+      recipientUserIds = Array.from(new Set(payload.userIds.filter(Boolean)));
+    }
+
     let query = supabase.from("push_subscriptions").select("*");
-    
-    if (payload.userIds && payload.userIds.length > 0) {
-      query = query.in("user_id", payload.userIds);
+
+    if (recipientUserIds.length > 0) {
+      query = query.in("user_id", recipientUserIds);
     }
 
     const { data: subscriptions, error: fetchError } = await query;
@@ -426,6 +525,40 @@ serve(async (req) => {
     const uniqueUserIds = Array.from(new Set(subscriptions.map((subscription) => subscription.user_id).filter(Boolean)));
     let notificationLogId: string | null = null;
 
+    if (
+      !payload.skipLogging &&
+      (payload.contextType === "chat-message" || payload.tag?.startsWith("chat-message-")) &&
+      payload.tag
+    ) {
+      const { data: existingLog, error: existingLogError } = await supabase
+        .from("push_notification_logs")
+        .select("id")
+        .eq("tag", payload.tag)
+        .is("canceled_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLogError) {
+        console.error("Failed to check for duplicate chat push log:", existingLogError);
+      } else if (existingLog?.id) {
+        console.log(`Skipping duplicate chat push for tag ${payload.tag}`);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            sent: 0,
+            failed: 0,
+            total: subscriptions.length,
+            recipientUserCount: uniqueUserIds.length,
+            recipientDeviceCount: subscriptions.length,
+            notificationLogId: existingLog.id,
+            duplicateSkipped: true,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     if (!payload.skipLogging) {
       const { data: notificationLog, error: notificationLogError } = await supabase
         .from("push_notification_logs")
@@ -437,7 +570,7 @@ serve(async (req) => {
           context_type: payload.contextType || null,
           context_id: payload.contextId || null,
           metadata: payload.metadata || {},
-          created_by: payload.createdBy || null,
+          created_by: payload.createdBy || requestUserId || null,
         })
         .select("id")
         .single();
@@ -505,8 +638,8 @@ serve(async (req) => {
           }
           console.error(`Failed to send to ${sub.user_id}: status ${result.statusCode}, error: ${result.error}`);
           
-          // If subscription is expired/invalid, mark for deletion
-          if (result.statusCode === 400 || result.statusCode === 404 || result.statusCode === 410) {
+          // Remove subscriptions that are expired or tied to an old VAPID key pair.
+          if (isInvalidSubscriptionResponse(result.statusCode, result.error)) {
             expiredEndpoints.push(sub.endpoint);
           }
         }
@@ -561,6 +694,8 @@ serve(async (req) => {
         sent,
         failed,
         total: subscriptions.length,
+        recipientUserCount: uniqueUserIds.length,
+        recipientDeviceCount: subscriptions.length,
         notificationLogId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

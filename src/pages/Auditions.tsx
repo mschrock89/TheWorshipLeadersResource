@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
-import { CalendarClock, Home, ListChecks, MapPin, Users } from "lucide-react";
+import { CalendarClock, Home, ListChecks, MapPin, UserCheck, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -23,6 +23,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { PromoteAuditionCandidateDialog } from "@/components/team/PromoteAuditionCandidateDialog";
 
 type QueueAudition = {
   id: string;
@@ -169,6 +170,7 @@ export default function Auditions() {
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
   const [activeCandidate, setActiveCandidate] = useState<QueueCandidate | null>(null);
   const [auditionDate, setAuditionDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -213,6 +215,11 @@ export default function Auditions() {
     await queryClient.invalidateQueries({ queryKey: ["audition-queue"] });
     setDialogOpen(false);
     setActiveCandidate(null);
+  };
+
+  const openPromoteDialog = (candidate: QueueCandidate) => {
+    setActiveCandidate(candidate);
+    setPromoteDialogOpen(true);
   };
 
   return (
@@ -286,9 +293,15 @@ export default function Auditions() {
                             : ((candidate.positions?.[0] && POSITION_LABELS[candidate.positions[0]]) || "Track not set")}
                         </p>
                       </div>
-                      <Button size="sm" onClick={() => openScheduleDialog(candidate)}>
-                        Schedule
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openPromoteDialog(candidate)}>
+                          <UserCheck className="mr-2 h-4 w-4" />
+                          Promote
+                        </Button>
+                        <Button size="sm" onClick={() => openScheduleDialog(candidate)}>
+                          Schedule
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -329,6 +342,10 @@ export default function Auditions() {
                           </p>
                         </div>
                         <div className="flex flex-col gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openPromoteDialog(candidate)}>
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            Promote
+                          </Button>
                           <Button size="sm" variant="outline" onClick={() => openScheduleDialog(candidate)}>
                             Reschedule
                           </Button>
@@ -426,6 +443,24 @@ export default function Auditions() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PromoteAuditionCandidateDialog
+        open={promoteDialogOpen}
+        onOpenChange={(open) => {
+          setPromoteDialogOpen(open);
+          if (!open) {
+            setActiveCandidate(null);
+          }
+        }}
+        candidateId={activeCandidate?.id || null}
+        candidateName={activeCandidate?.full_name || null}
+        onPromoted={() => {
+          queryClient.invalidateQueries({ queryKey: ["audition-queue"] });
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-role", activeCandidate?.id] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles", activeCandidate?.id] });
+        }}
+      />
     </div>
   );
 }

@@ -68,6 +68,14 @@ interface WeekendRundownPayload {
   }>;
 }
 
+interface DraftSetSongRow {
+  id: string;
+  song_id: string;
+  sequence_order: number;
+  vocalist_id?: string | null;
+  songs?: { id: string; title: string } | null;
+}
+
 export function useWeekendRundown(userId: string | undefined, campusId: string | null, weekendDate: string | null) {
   return useQuery({
     queryKey: ["weekend-rundown", userId, campusId, weekendDate],
@@ -278,24 +286,35 @@ export function useWeekendRundownSetSongs(
 
       const { data: songs, error: songsError } = await supabase
         .from("draft_set_songs")
-        .select("id, song_id, sequence_order, vocalist_id, vocalist_ids, songs(id, title)")
+        .select("id, song_id, sequence_order, vocalist_id, songs(id, title)")
         .eq("draft_set_id", selectedDraftSet.id)
         .order("sequence_order", { ascending: true });
 
       if (songsError) throw songsError;
 
-      const songRows = (songs || []) as Array<{
-        id: string;
-        song_id: string;
-        sequence_order: number;
-        vocalist_id?: string | null;
-        vocalist_ids?: string[] | null;
-        songs?: { id: string; title: string } | null;
-      }>;
+      const songRows = (songs || []) as DraftSetSongRow[];
+
+      const draftSetSongIds = songRows.map((song) => song.id);
+      const { data: vocalistAssignments, error: vocalistAssignmentsError } = await supabase
+        .from("draft_set_song_vocalists")
+        .select("draft_set_song_id, vocalist_id")
+        .in("draft_set_song_id", draftSetSongIds.length > 0 ? draftSetSongIds : ["00000000-0000-0000-0000-000000000000"]);
+
+      if (vocalistAssignmentsError) throw vocalistAssignmentsError;
+
+      const vocalistAssignmentsMap = new Map<string, string[]>();
+      for (const assignment of vocalistAssignments || []) {
+        const existingAssignments = vocalistAssignmentsMap.get(assignment.draft_set_song_id) || [];
+        existingAssignments.push(assignment.vocalist_id);
+        vocalistAssignmentsMap.set(assignment.draft_set_song_id, existingAssignments);
+      }
 
       const vocalistIds = Array.from(
         new Set(
-          songRows.flatMap((song) => song.vocalist_ids || (song.vocalist_id ? [song.vocalist_id] : [])),
+          songRows.flatMap((song) => {
+            const linkedVocalistIds = vocalistAssignmentsMap.get(song.id) || [];
+            return linkedVocalistIds.length > 0 ? linkedVocalistIds : (song.vocalist_id ? [song.vocalist_id] : []);
+          }),
         ),
       );
 
@@ -314,7 +333,10 @@ export function useWeekendRundownSetSongs(
       }
 
       return songRows.map((song) => {
-        const assignedVocalistIds = song.vocalist_ids || (song.vocalist_id ? [song.vocalist_id] : []);
+        const linkedVocalistIds = vocalistAssignmentsMap.get(song.id) || [];
+        const assignedVocalistIds = linkedVocalistIds.length > 0
+          ? Array.from(new Set(linkedVocalistIds))
+          : (song.vocalist_id ? [song.vocalist_id] : []);
         return {
           draft_set_song_id: song.id,
           song_id: song.song_id,

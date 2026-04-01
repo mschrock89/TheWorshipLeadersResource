@@ -74,8 +74,18 @@ serve(async (req) => {
     let userIdsToNotify: string[] = [];
 
     if (draftSet.ministry_type === "audition") {
-      // Audition setlists are handled through explicit assignment flows.
-      userIdsToNotify = [];
+      const { data: assignments, error: assignmentError } = await supabase
+        .from("audition_setlist_assignments")
+        .select("user_id")
+        .eq("draft_set_id", draftSetId);
+
+      if (assignmentError) {
+        console.error("Error fetching audition assignments:", assignmentError);
+      }
+
+      userIdsToNotify = Array.from(
+        new Set((assignments || []).map((assignment) => assignment.user_id).filter(Boolean))
+      ) as string[];
     } else if (draftSet.custom_service_id) {
       const { data: assignments, error: assignmentsError } = await supabase
         .from("custom_service_assignments")

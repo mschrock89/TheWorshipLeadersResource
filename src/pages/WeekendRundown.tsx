@@ -248,7 +248,7 @@ export default function WeekendRundown() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <Music2 className="h-4 w-4 text-primary" />
-                    <h2 className="font-semibold">Worship song review</h2>
+                    <h2 className="font-semibold">Worship Review</h2>
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Mark songs that were a strong fit for the vocalists you scheduled and leave notes for next time.
@@ -260,7 +260,7 @@ export default function WeekendRundown() {
                 ) : setSongs.length === 0 ? (
                   <Card className="border-dashed">
                     <CardContent className="py-6 text-sm text-muted-foreground">
-                      No weekend set with vocalist assignments was found for this campus yet.
+                      No weekend set was found for this campus yet.
                     </CardContent>
                   </Card>
                 ) : (

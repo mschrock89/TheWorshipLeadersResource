@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface BreakRequest {
   id: string;
@@ -158,6 +159,8 @@ export function useCreateBreakRequest() {
     }) => {
       if (!user?.id) throw new Error("Not authenticated");
 
+      const normalizedMinistryType = normalizeWeekendWorshipMinistryType(ministryType);
+
       const { error } = await supabase.from("break_requests").insert({
         user_id: user.id,
         rotation_period_id: rotationPeriodId,
@@ -165,7 +168,7 @@ export function useCreateBreakRequest() {
         request_type: requestType,
         request_scope: requestScope,
         blackout_dates: blackoutDates?.length ? blackoutDates : null,
-        ministry_type: ministryType || null,
+        ministry_type: normalizedMinistryType || null,
       });
 
       if (error) throw error;

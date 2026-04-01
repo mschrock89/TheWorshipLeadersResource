@@ -2640,6 +2640,7 @@ export type Database = {
           icon: string
           id: string
           name: string
+          template_config: Json
         }
         Insert: {
           color: string
@@ -2647,6 +2648,7 @@ export type Database = {
           icon: string
           id?: string
           name: string
+          template_config?: Json
         }
         Update: {
           color?: string
@@ -2654,6 +2656,7 @@ export type Database = {
           icon?: string
           id?: string
           name?: string
+          template_config?: Json
         }
         Relationships: []
       }
@@ -3067,3 +3070,38 @@ export const Constants = {
     },
   },
 } as const
+      user_serving_requirements: {
+        Row: {
+          attended_six_months: boolean
+          created_at: string
+          following_jesus: boolean
+          serves_somewhere_else: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attended_six_months?: boolean
+          created_at?: string
+          following_jesus?: boolean
+          serves_somewhere_else?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attended_six_months?: boolean
+          created_at?: string
+          following_jesus?: boolean
+          serves_somewhere_else?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_serving_requirements_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }

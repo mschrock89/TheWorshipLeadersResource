@@ -10,9 +10,11 @@ import { BreakRequestWidget } from "@/components/dashboard/BreakRequestWidget";
 import { VolunteerUpcomingWidget } from "@/components/dashboard/VolunteerUpcomingWidget";
 import { SwapManagementWidget } from "@/components/dashboard/SwapManagementWidget";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
+import { SetlistReviewWidget } from "@/components/dashboard/SetlistReviewWidget";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
+import { useIsApprover } from "@/hooks/useSetlistApprovals";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList } from "lucide-react";
@@ -55,6 +57,7 @@ export default function Dashboard() {
     data: profileCampusMap = {}
   } = useProfilesWithCampuses();
   const drumTechAccess = useDrumTechAccess();
+  const { data: isApprover = false } = useIsApprover();
   const [selectedCampusId, setSelectedCampusId] = useState<string>(() => {
     return localStorage.getItem("dashboard-campus-filter") || "all";
   });
@@ -261,6 +264,8 @@ export default function Dashboard() {
       {canManageTeam && <section className="mb-8">
           <SetlistConfirmationWidget selectedCampusId={selectedCampusId} />
         </section>}
+
+      {isApprover && <SetlistReviewWidget selectedCampusId={selectedCampusId} />}
 
       {/* Main content grid */}
       <div className="grid gap-6 lg:grid-cols-2">

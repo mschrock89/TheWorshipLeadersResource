@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfile, useUpdateProfile, TeamPosition } from "@/hooks/useProfiles";
+import { useProfile, useUpdateProfile, TeamPosition, useUpdateServingRequirements } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses, useUpdateUserCampuses } from "@/hooks/useCampuses";
 import { useUserRoles, useUserAdminCampuses, useAddUserRole, useRemoveUserRole, useToggleUserRole, useUpdateBaseRole } from "@/hooks/useUserRoles";
 import { useUserMinistryAssignments, useToggleMinistryAssignment } from "@/hooks/useMinistryAssignments";
@@ -11,6 +11,7 @@ import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
 import { TestPushNotification } from "@/components/settings/TestPushNotification";
+import { PromoteAuditionCandidateDialog } from "@/components/team/PromoteAuditionCandidateDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,18 @@ const PROFILE_MINISTRY_ORDER = [
   "prayer_night",
 ] as const;
 
+const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
+
+function normalizeProfileMinistryType(ministryType: string) {
+  return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
+    ? "weekend_team"
+    : ministryType;
+}
+
+function ministryTypesMatch(left: string, right: string) {
+  return normalizeProfileMinistryType(left) === normalizeProfileMinistryType(right);
+}
+
 export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -79,6 +92,7 @@ export default function Profile() {
   const { data: ministryAssignments = [] } = useUserMinistryAssignments(profileId);
   const { data: campusMinistryPositions = [] } = useUserCampusMinistryPositions(profileId);
   const updateProfile = useUpdateProfile();
+  const updateServingRequirements = useUpdateServingRequirements();
   const updateUserCampuses = useUpdateUserCampuses();
   const toggleUserRole = useToggleUserRole();
   const updateBaseRole = useUpdateBaseRole();
@@ -109,6 +123,9 @@ export default function Profile() {
   const [shareContactWithCampus, setShareContactWithCampus] = useState(false);
   const [gender, setGender] = useState<string | null>(null);
   const [defaultCampusId, setDefaultCampusId] = useState<string | null>(null);
+  const [followingJesus, setFollowingJesus] = useState(false);
+  const [servesSomewhereElse, setServesSomewhereElse] = useState(false);
+  const [attendedSixMonths, setAttendedSixMonths] = useState(false);
   const [auditionDate, setAuditionDate] = useState("");
   const [auditionStage, setAuditionStage] = useState<"pre_audition" | "audition">("pre_audition");
   const [auditionTrack, setAuditionTrack] = useState<"vocalist" | "instrumentalist">("vocalist");
@@ -131,6 +148,7 @@ export default function Profile() {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -145,6 +163,9 @@ export default function Profile() {
       setShareContactWithCampus(profile.share_contact_with_campus ?? false);
       setGender(profile.gender || null);
       setDefaultCampusId(profile.default_campus_id || null);
+      setFollowingJesus(profile.following_jesus ?? false);
+      setServesSomewhereElse(profile.serves_somewhere_else ?? false);
+      setAttendedSixMonths(profile.attended_six_months ?? false);
     }
   }, [profile]);
 
@@ -202,6 +223,15 @@ export default function Profile() {
       gender: gender,
       default_campus_id: defaultCampusId,
     } as any);
+
+    updateServingRequirements.mutate({
+      userId: profileId,
+      updates: {
+        following_jesus: followingJesus,
+        serves_somewhere_else: servesSomewhereElse,
+        attended_six_months: attendedSixMonths,
+      },
+    });
 
     // Update campus assignments (only leaders/admins can do this)
     if (canManageAssignments) {
@@ -324,6 +354,20 @@ export default function Profile() {
           variant: "destructive",
         });
       } else {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ must_change_password: false })
+          .eq("id", user?.id || "");
+
+        if (profileError) {
+          toast({
+            title: "Password changed",
+            description: "Your password was updated, but we couldn't clear the temporary-password flag.",
+            variant: "destructive",
+          });
+          return;
+        }
+
         toast({
           title: "Password changed",
           description: "Your password has been updated successfully.",
@@ -677,6 +721,16 @@ export default function Profile() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {isAuditionCandidate && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setPromoteDialogOpen(true)}
+                        className="w-[280px]"
+                      >
+                        Promote To Full User
+                      </Button>
+                    )}
                   </div>
                   
                   {(toggleUserRole.isPending || updateBaseRole.isPending) && (
@@ -713,6 +767,41 @@ export default function Profile() {
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <div>
+                  <Label className="text-sm font-medium">Serving Requirements</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Track the steps required before this person can serve.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="flex items-center gap-2 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+                    <Checkbox
+                      checked={followingJesus}
+                      onCheckedChange={(checked) => setFollowingJesus(Boolean(checked))}
+                      disabled={!canEdit}
+                    />
+                    <span className="text-sm">Following Jesus</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+                    <Checkbox
+                      checked={servesSomewhereElse}
+                      onCheckedChange={(checked) => setServesSomewhereElse(Boolean(checked))}
+                      disabled={!canEdit}
+                    />
+                    <span className="text-sm">Serve Somewhere Else</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border/60 bg-background/70 px-3 py-2">
+                    <Checkbox
+                      checked={attendedSixMonths}
+                      onCheckedChange={(checked) => setAttendedSixMonths(Boolean(checked))}
+                      disabled={!canEdit}
+                    />
+                    <span className="text-sm">Attended 6 Months</span>
+                  </label>
+                </div>
+              </div>
+
               {/* Basic info */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -1041,9 +1130,13 @@ export default function Profile() {
                 ) : (
                   <div className="space-y-4">
                     {(canManageTeam ? campuses.filter(c => selectedCampuses.includes(c.id)) : campuses.filter(c => userCampuses.some(uc => uc.campus_id === c.id))).map((campus) => {
-                      const campusMinistries = ministryAssignments
-                        .filter(a => a.campus_id === campus.id)
-                        .map(a => a.ministry_type);
+                      const campusMinistries = Array.from(
+                        new Set(
+                          ministryAssignments
+                            .filter(a => a.campus_id === campus.id)
+                            .map(a => normalizeProfileMinistryType(a.ministry_type))
+                        )
+                      );
                       
                       return (
                         <div key={campus.id} className="rounded-lg border p-4 space-y-4">
@@ -1116,14 +1209,23 @@ export default function Profile() {
                                 .filter((ministryType) => campusMinistries.includes(ministryType))
                                 .map((ministryType) => {
                                 const ministry = MINISTRY_TYPES.find(m => m.value === ministryType);
-                                const ministryPositions = campusMinistryPositions
-                                  .filter(p => p.campus_id === campus.id && p.ministry_type === ministryType)
-                                  .map(p => p.position);
+                                const ministryPositions = Array.from(
+                                  new Set(
+                                    campusMinistryPositions
+                                      .filter(
+                                        (p) =>
+                                          p.campus_id === campus.id &&
+                                          ministryTypesMatch(p.ministry_type, ministryType)
+                                      )
+                                      .map(p => p.position)
+                                  )
+                                );
                                 
                                 // Determine which position categories to show based on ministry type.
                                 // Weekend Worship should only show worship positions here; Production
                                 // and Video are managed through their own ministry assignments.
                                 const showMusicPositions = ['weekend', 'weekend_team', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
+                                const showDrumTechSupport = ['weekend', 'weekend_team', 'encounter', 'eon', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 const showVideoPositions = ministryType === 'video';
@@ -1137,12 +1239,14 @@ export default function Profile() {
                                     
                                     {canManageAssignments ? (
                                       <div className="space-y-2">
-                                        {renderMinistryPositionGroup(
-                                          "Support:",
-                                          ministryType,
-                                          campus.id,
-                                          ministryPositions,
-                                          ["drum_tech"],
+                                        {showDrumTechSupport && (
+                                          renderMinistryPositionGroup(
+                                            "Support:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            ["drum_tech"],
+                                          )
                                         )}
 
                                         {showSpeakerPositions && (
@@ -1386,6 +1490,20 @@ export default function Profile() {
           </CardContent>
         </Card>
       </div>
+
+      <PromoteAuditionCandidateDialog
+        open={promoteDialogOpen}
+        onOpenChange={setPromoteDialogOpen}
+        candidateId={profileId || null}
+        candidateName={profile?.full_name || null}
+        onPromoted={() => {
+          queryClient.invalidateQueries({ queryKey: ["profile", profileId] });
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-role", profileId] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles", profileId] });
+          queryClient.invalidateQueries({ queryKey: ["audition-queue"] });
+        }}
+      />
     </>
   );
 }
