@@ -49,14 +49,12 @@ export function usePushNotifications() {
     if (!user) return false;
 
     const subscriptionJson = subscription.toJSON();
-
-    const { error } = await supabase.from("push_subscriptions").upsert({
-      user_id: user.id,
-      endpoint: subscription.endpoint,
-      p256dh: subscriptionJson.keys?.p256dh || "",
-      auth: subscriptionJson.keys?.auth || "",
-    }, {
-      onConflict: "user_id,endpoint",
+    const { error } = await supabase.functions.invoke("save-push-subscription", {
+      body: {
+        endpoint: subscription.endpoint,
+        p256dh: subscriptionJson.keys?.p256dh || "",
+        auth: subscriptionJson.keys?.auth || "",
+      },
     });
 
     if (error) {

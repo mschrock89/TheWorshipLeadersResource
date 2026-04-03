@@ -332,22 +332,6 @@ export function useSubmitForApproval() {
 
       if (approvalError) throw approvalError;
 
-      const approverRecipientIds = new Set<string>([APPROVER_USER_ID]);
-      const { data: kyleProfiles, error: kyleProfilesError } = await supabase
-        .from("profiles")
-        .select("id")
-        .ilike("full_name", "Kyle Elkins");
-
-      if (kyleProfilesError) {
-        console.error("Failed to resolve Kyle Elkins profile IDs:", kyleProfilesError);
-      } else {
-        (kyleProfiles || []).forEach((profile) => {
-          if (profile.id) {
-            approverRecipientIds.add(profile.id);
-          }
-        });
-      }
-
       // Send push notification to Kyle
       try {
         const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", {
@@ -355,7 +339,7 @@ export function useSubmitForApproval() {
             title: "Setlist Pending Approval",
             message: `A setlist for ${thisSet.plan_date} needs your approval`,
             url: "/approvals",
-            userIds: Array.from(approverRecipientIds),
+            userIds: [APPROVER_USER_ID],
           },
         });
 

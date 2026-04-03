@@ -125,6 +125,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if ("serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+
+        if (subscription && user?.id) {
+          await subscription.unsubscribe();
+          await supabase
+            .from("push_subscriptions")
+            .delete()
+            .eq("user_id", user.id)
+            .eq("endpoint", subscription.endpoint);
+        }
+      } catch (error) {
+        console.error("Failed to clean up push subscription during sign out:", error);
+      }
+    }
+
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
