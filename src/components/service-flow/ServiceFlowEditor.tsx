@@ -644,11 +644,6 @@ export function ServiceFlowEditor({
             <span className="text-xs font-medium">
               {formatTeachingReference(teachingWeek)}
             </span>
-            <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]">
-              <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
-                Read Passage
-              </Link>
-            </Button>
           </div>
           {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
             <p className="mt-1 text-[10px] text-muted-foreground">

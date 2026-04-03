@@ -255,18 +255,18 @@ html.service-flow-export-mode .print-header {
 
 html.service-flow-export-mode main,
 html.service-flow-export-mode .service-flow-page {
-  padding: 6px !important;
+  padding: 0.02in !important;
   margin: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
+  width: calc(100% - 0.04in) !important;
+  max-width: calc(100% - 0.04in) !important;
   position: relative !important;
   box-sizing: border-box !important;
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
   zoom: 1 !important;
-  width: calc(100% - 12px) !important;
-  margin: 0 auto !important;
+  width: 100% !important;
+  margin: 0 !important;
   border: 2px solid #111 !important;
 }
 
@@ -274,14 +274,14 @@ html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
   html.service-flow-export-mode .service-flow-page.service-flow-print-fit {
     transform: scale(1) !important;
     transform-origin: top left !important;
-    width: calc(100% - 12px) !important;
+    width: 100% !important;
   }
 }
 
 html.service-flow-export-mode .service-flow-page.service-flow-half-sheet {
   width: 100% !important;
   min-height: auto !important;
-  padding: 0.06in !important;
+  padding: 0 !important;
   display: block !important;
   border: none !important;
 }
@@ -355,6 +355,44 @@ html.service-flow-export-mode .service-flow-page .space-y-2 > div {
   border-radius: 1px !important;
 }
 
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="header"] {
+  height: 1.55rem !important;
+  min-height: 1.55rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0.45rem !important;
+  padding-right: 0.45rem !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="song"],
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="custom"],
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="element"],
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="video"] {
+  height: 1.55rem !important;
+  min-height: 1.55rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0.45rem !important;
+  padding-right: 0.45rem !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="custom"] button.flex-1,
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="element"] button.flex-1,
+html.service-flow-export-mode .service-flow-page [data-flow-item-type="video"] button.flex-1 {
+  line-height: 1 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
 html.service-flow-export-mode .service-flow-page,
 html.service-flow-export-mode .service-flow-page * {
   box-shadow: none !important;
@@ -364,7 +402,8 @@ html.service-flow-export-mode .service-flow-page .service-flow-header {
   background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
   color: #0f4160 !important;
   font-weight: 600 !important;
-  min-height: 14px !important;
+  height: 1.55rem !important;
+  min-height: 1.55rem !important;
   padding: 0 3px !important;
   border: 1px solid #35B0E5 !important;
 }
@@ -386,12 +425,24 @@ html.service-flow-export-mode .service-flow-page select {
 }
 
 html.service-flow-export-mode .service-flow-page input {
-  height: 0.9rem !important;
-  min-height: 0.9rem !important;
+  height: 0.72rem !important;
+  min-height: 0.72rem !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
   font-size: 8pt !important;
   line-height: 1 !important;
+}
+
+html.service-flow-export-mode .service-flow-page .h-6.w-6,
+html.service-flow-export-mode .service-flow-page .h-6 {
+  height: 0.72rem !important;
+  width: 0.72rem !important;
+  min-height: 0.72rem !important;
+  min-width: 0.72rem !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-header {
+  min-height: 10px !important;
 }
 
 html.service-flow-export-mode .service-flow-page .border-t {
@@ -475,25 +526,17 @@ html.service-flow-export-mode .service-flow-page .text-xs {
 html.service-flow-export-mode .service-flow-print-dual {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 0.08in !important;
-  align-items: stretch !important;
-  zoom: 0.92 !important;
+  gap: 0.05in !important;
+  align-items: start !important;
   width: 100% !important;
-  transform-origin: top left !important;
-}
-
-@supports not (zoom: 1) {
-  html.service-flow-export-mode .service-flow-print-dual {
-    transform: scale(0.92) !important;
-    width: 108.7% !important;
-    transform-origin: top left !important;
-  }
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
 }
 
 html.service-flow-export-mode .service-flow-print-sheet {
   min-height: 0 !important;
   border: 2px solid #111 !important;
-  padding: 0.07in !important;
+  padding: 0.04in !important;
   display: flex !important;
   flex-direction: column !important;
   background: white !important;
@@ -501,7 +544,7 @@ html.service-flow-export-mode .service-flow-print-sheet {
 
 html.service-flow-export-mode .service-flow-copy-header {
   text-align: center !important;
-  padding-bottom: 0.03in !important;
+  padding-bottom: 0.015in !important;
 }
 
 html.service-flow-export-mode .service-flow-copy-title {
@@ -514,22 +557,44 @@ html.service-flow-export-mode .service-flow-copy-title {
 
 html.service-flow-export-mode .service-flow-copy-date {
   color: #444 !important;
-  font-size: 8pt !important;
+  font-size: 7.25pt !important;
   line-height: 1.05 !important;
-  margin: 1px 0 0 !important;
+  margin: 0 !important;
 }
 
 html.service-flow-export-mode .service-flow-copy-teaching {
-  margin-bottom: 0.03in !important;
+  height: 1.55rem !important;
+  min-height: 1.55rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0.45rem !important;
+  padding-right: 0.45rem !important;
+  margin-bottom: 0.015in !important;
+  display: flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-teaching > div {
+  width: 100% !important;
+  min-height: 0 !important;
+}
+
+html.service-flow-export-mode .service-flow-copy-teaching p {
+  display: none !important;
 }
 
 html.service-flow-export-mode .service-flow-print-items {
   flex: 1 1 auto !important;
 }
 
+html.service-flow-export-mode .service-flow-print-items.space-y-2 {
+  gap: 0.015in !important;
+}
+
 html.service-flow-export-mode .service-flow-print-total {
   margin-top: auto !important;
-  padding-top: 0.02in !important;
+  padding-top: 0.01in !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-song-meta {
@@ -545,9 +610,19 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
   display: none !important;
 }
 
+html.service-flow-export-mode .service-flow-editor,
+html.service-flow-export-mode .service-flow-print-dual {
+  margin: 0 !important;
+  padding: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
 @media print {
   @page {
-    margin: 0.1in;
+    margin: 0;
     size: letter landscape;
   }
 
@@ -571,6 +646,16 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
 
   .service-flow-editor > :not(.service-flow-print-dual) {
     display: none !important;
+  }
+
+  .service-flow-editor,
+  .service-flow-print-dual {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   /* Reset body and html for print - compact for single page */
@@ -604,18 +689,18 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
   /* Make main content full width */
   main,
   .service-flow-page {
-    padding: 6px !important;
+    padding: 0.02in !important;
     margin: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    width: calc(100% - 0.04in) !important;
+    max-width: calc(100% - 0.04in) !important;
     position: relative !important;
     box-sizing: border-box !important;
   }
 
   .service-flow-page.service-flow-print-fit {
     zoom: 1 !important;
-    width: calc(100% - 12px) !important;
-    margin: 0 auto !important;
+    width: 100% !important;
+    margin: 0 !important;
     border: 2px solid #111 !important;
   }
 
@@ -630,7 +715,7 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
   .service-flow-page.service-flow-half-sheet {
     width: 100% !important;
     min-height: auto !important;
-    padding: 0.06in !important;
+    padding: 0 !important;
     display: block !important;
     border: none !important;
   }
@@ -699,12 +784,51 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
     border-radius: 1px !important;
   }
 
+  .service-flow-page [data-flow-item-type="header"] {
+    height: 1.55rem !important;
+    min-height: 1.55rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0.45rem !important;
+    padding-right: 0.45rem !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .service-flow-page [data-flow-item-type="song"],
+  .service-flow-page [data-flow-item-type="custom"],
+  .service-flow-page [data-flow-item-type="element"],
+  .service-flow-page [data-flow-item-type="video"] {
+    height: 1.55rem !important;
+    min-height: 1.55rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0.45rem !important;
+    padding-right: 0.45rem !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .service-flow-page [data-flow-item-type="custom"] button.flex-1,
+  .service-flow-page [data-flow-item-type="element"] button.flex-1,
+  .service-flow-page [data-flow-item-type="video"] button.flex-1 {
+    line-height: 1 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
   /* ECC Blue (#35B0E5) outline/border around header sections */
   .service-flow-page .service-flow-header {
     background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
     color: #0f4160 !important;
     font-weight: 600 !important;
-    min-height: 14px !important;
+    height: 1.55rem !important;
+    min-height: 1.55rem !important;
     padding: 0 3px !important;
     border: 1px solid #35B0E5 !important;
   }
@@ -810,12 +934,20 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
   }
 
   .service-flow-page input {
-    height: 0.9rem !important;
-    min-height: 0.9rem !important;
+    height: 0.72rem !important;
+    min-height: 0.72rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
     font-size: 8pt !important;
     line-height: 1 !important;
+  }
+
+  .service-flow-page .h-6.w-6,
+  .service-flow-page .h-6 {
+    height: 0.72rem !important;
+    width: 0.72rem !important;
+    min-height: 0.72rem !important;
+    min-width: 0.72rem !important;
   }
 
   .service-flow-page .service-flow-song-meta {
@@ -830,25 +962,17 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
   .service-flow-print-dual {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 0.08in !important;
-    align-items: stretch !important;
-    zoom: 0.92 !important;
+    gap: 0.05in !important;
+    align-items: start !important;
     width: 100% !important;
-    transform-origin: top left !important;
-  }
-
-  @supports not (zoom: 1) {
-    .service-flow-print-dual {
-      transform: scale(0.92) !important;
-      width: 108.7% !important;
-      transform-origin: top left !important;
-    }
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .service-flow-print-sheet {
     min-height: 0 !important;
     border: 2px solid #111 !important;
-    padding: 0.07in !important;
+    padding: 0.04in !important;
     display: flex !important;
     flex-direction: column !important;
     background: white !important;
@@ -858,7 +982,7 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
 
   .service-flow-copy-header {
     text-align: center !important;
-    padding-bottom: 0.03in !important;
+    padding-bottom: 0.015in !important;
   }
 
   .service-flow-copy-title {
@@ -871,21 +995,43 @@ html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-du
 
   .service-flow-copy-date {
     color: #444 !important;
-    font-size: 8pt !important;
+    font-size: 7.25pt !important;
     line-height: 1.05 !important;
-    margin: 1px 0 0 !important;
+    margin: 0 !important;
   }
 
   .service-flow-copy-teaching {
-    margin-bottom: 0.03in !important;
+    height: 1.55rem !important;
+    min-height: 1.55rem !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 0.45rem !important;
+    padding-right: 0.45rem !important;
+    margin-bottom: 0.015in !important;
+    display: flex !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .service-flow-copy-teaching > div {
+    width: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .service-flow-copy-teaching p {
+    display: none !important;
   }
 
   .service-flow-print-items {
     flex: 1 1 auto !important;
   }
 
+  .service-flow-print-items.space-y-2 {
+    gap: 0.015in !important;
+  }
+
   .service-flow-print-total {
     margin-top: auto !important;
-    padding-top: 0.02in !important;
+    padding-top: 0.01in !important;
   }
 }
