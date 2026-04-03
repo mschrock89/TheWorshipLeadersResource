@@ -144,19 +144,9 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
-  blackoutDatesByUser?: Record<string, string[]>,
-  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
-
-  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
-  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
-  const hasBlackoutConflict =
-    memberBlackoutDates.size > 0 &&
-    [...teamScheduledDates].some((scheduleDate) => memberBlackoutDates.has(scheduleDate));
-
-  if (hasBlackoutConflict) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
@@ -165,6 +155,64 @@ function canAssignMemberToTeam(
   if (!existingSlots || existingSlots.size === 0) return true;
 
   return canDoubleUpMaleVocalGuitarist(member, targetSlot, existingSlots);
+}
+
+function getBlackoutConflictDatesForTeam(
+  member: AvailableMember,
+  teamId: string,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+) {
+  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
+  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
+
+  if (memberBlackoutDates.size === 0 || teamScheduledDates.size === 0) {
+    return [];
+  }
+
+  return [...teamScheduledDates].filter((scheduleDate) => memberBlackoutDates.has(scheduleDate)).sort();
+}
+
+function findBestCandidateForTeam(
+  pool: AvailableMember[],
+  team: WorshipTeam,
+  targetSlot: string,
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+  preferZeroConflicts = false,
+) {
+  let bestCandidate: AvailableMember | undefined;
+  let bestConflictCount = Number.POSITIVE_INFINITY;
+
+  for (const member of pool) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+      continue;
+    }
+
+    const conflictCount = getBlackoutConflictDatesForTeam(
+      member,
+      team.id,
+      blackoutDatesByUser,
+      teamScheduledDatesByTeam,
+    ).length;
+
+    if (preferZeroConflicts && conflictCount > 0) {
+      continue;
+    }
+
+    if (conflictCount < bestConflictCount) {
+      bestCandidate = member;
+      bestConflictCount = conflictCount;
+
+      if (conflictCount === 0) {
+        break;
+      }
+    }
+  }
+
+  return bestCandidate;
 }
 
 function trackMemberAssignment(
@@ -274,6 +322,7 @@ interface PreviewAssignment {
   position_slot: string;
   was_on_break: boolean;
   previous_team?: string;
+  blackout_conflict_dates?: string[];
 }
 
 export function AutoBuilderDialog({
@@ -444,7 +493,7 @@ export function AutoBuilderDialog({
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
       if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
+      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
 
       filledSlots.add(targetSlot);
       trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -459,6 +508,12 @@ export function AutoBuilderDialog({
         position_slot: targetSlot,
         was_on_break: !previousRosterUserIds.has(member.id),
         previous_team: previousTeamMap.get(member.id),
+        blackout_conflict_dates: getBlackoutConflictDatesForTeam(
+          member,
+          team.id,
+          blackoutDatesByUser,
+          teamScheduledDatesByTeam,
+        ),
       });
 
       return true;
@@ -555,9 +610,14 @@ export function AutoBuilderDialog({
             const filledSlots = slotFilledPerTeam.get(team.id)!;
             if (filledSlots.has(targetSlot)) continue;
 
-            const candidate = shuffledPool.find((member) =>
-              getMemberAvailableSlots(member.positions).includes(targetSlot) &&
-              canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+            const candidate = findBestCandidateForTeam(
+              shuffledPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+              team,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
             );
 
             if (!candidate) continue;
@@ -609,14 +669,53 @@ export function AutoBuilderDialog({
 
         let assigned: AvailableMember | undefined;
 
-        assigned = shuffleMustServe.find(m =>
-          canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+        assigned = findBestCandidateForTeam(
+          shuffleMustServe,
+          team,
+          targetSlot,
+          userAssignedSlotsByTeam,
+          blockedTeammateIdsByTeam,
+          blackoutDatesByUser,
+          teamScheduledDatesByTeam,
+          true,
         );
 
         if (!assigned) {
           const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-          assigned = sortedCanServe.find(m =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+          assigned = findBestCandidateForTeam(
+            sortedCanServe,
+            team,
+            targetSlot,
+            userAssignedSlotsByTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+            true,
+          );
+        }
+
+        if (!assigned) {
+          assigned = findBestCandidateForTeam(
+            shuffleMustServe,
+            team,
+            targetSlot,
+            userAssignedSlotsByTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+          );
+        }
+
+        if (!assigned) {
+          const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
+          assigned = findBestCandidateForTeam(
+            sortedCanServe,
+            team,
+            targetSlot,
+            userAssignedSlotsByTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
           );
         }
 
@@ -646,8 +745,14 @@ export function AutoBuilderDialog({
           )
           .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
 
-        const candidate = ag2Candidates.find((member) =>
-          canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+        const candidate = findBestCandidateForTeam(
+          ag2Candidates,
+          team,
+          "ag_2",
+          userAssignedSlotsByTeam,
+          blockedTeammateIdsByTeam,
+          blackoutDatesByUser,
+          teamScheduledDatesByTeam,
         );
 
         if (candidate) {
@@ -712,6 +817,10 @@ export function AutoBuilderDialog({
     const assignedIds = new Set(previewData.map(a => a.user_id));
     return availablePool.filter(m => !assignedIds.has(m.id));
   }, [previewData, availablePool]);
+
+  const blackoutConflictPreview = useMemo(() => {
+    return (previewData || []).filter((assignment) => (assignment.blackout_conflict_dates?.length || 0) > 0);
+  }, [previewData]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -796,6 +905,14 @@ export function AutoBuilderDialog({
           <div className="min-h-0 overflow-hidden">
             <ScrollArea className="h-full -mx-6 px-6">
               <div className="space-y-4 py-2">
+              {blackoutConflictPreview.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    {blackoutConflictPreview.length} assignment{blackoutConflictPreview.length === 1 ? "" : "s"} still conflict with blackout dates. Review these before confirming.
+                  </AlertDescription>
+                </Alert>
+              )}
               {teams.map(team => {
                 const teamAssignments = previewByTeam?.get(team.id) || [];
                 return (
@@ -837,7 +954,17 @@ export function AutoBuilderDialog({
                                     from {a.previous_team}
                                   </Badge>
                                 )}
+                                {(a.blackout_conflict_dates?.length || 0) > 0 && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-700 border-orange-200">
+                                    {a.blackout_conflict_dates?.length} blackout conflict{a.blackout_conflict_dates?.length === 1 ? "" : "s"}
+                                  </Badge>
+                                )}
                               </div>
+                              {(a.blackout_conflict_dates?.length || 0) > 0 && (
+                                <p className="text-[11px] text-orange-700 dark:text-orange-300 mt-1">
+                                  Conflicts: {a.blackout_conflict_dates?.join(", ")}
+                                </p>
+                              )}
                             </div>
                           </div>
                         ))

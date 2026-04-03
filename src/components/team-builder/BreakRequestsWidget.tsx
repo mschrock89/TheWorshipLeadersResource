@@ -18,6 +18,7 @@ const REQUEST_TYPE_LABELS = {
   need_break: "Needs Break",
   willing_break: "Willing to Break",
 };
+const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
 
 export function BreakRequestsWidget({
   requests,
@@ -145,7 +146,10 @@ interface RequestCardProps {
 }
 
 function RequestCard({ request, onApprove, onDeny, isLoading }: RequestCardProps) {
-  const requestTypeLabel = REQUEST_TYPE_LABELS[request.request_type] || request.request_type;
+  const isManagedSit = request.reason?.startsWith(MANAGED_SIT_REASON_PREFIX);
+  const requestTypeLabel = isManagedSit
+    ? "Break Given"
+    : REQUEST_TYPE_LABELS[request.request_type] || request.request_type;
   const blackoutDatesLabel = request.blackout_dates?.length
     ? request.blackout_dates
         .slice()
@@ -159,7 +163,10 @@ function RequestCard({ request, onApprove, onDeny, isLoading }: RequestCardProps
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium truncate">{request.user_name}</span>
-          <Badge variant="outline" className="text-xs">
+          <Badge
+            variant="outline"
+            className={isManagedSit ? "text-xs border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200" : "text-xs"}
+          >
             {requestTypeLabel}
           </Badge>
           {request.ministry_type && (

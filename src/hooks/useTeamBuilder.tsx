@@ -783,19 +783,9 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
-  blackoutDatesByUser?: Record<string, string[]>,
-  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
-
-  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
-  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
-  const hasBlackoutConflict =
-    memberBlackoutDates.size > 0 &&
-    [...teamScheduledDates].some((scheduleDate) => memberBlackoutDates.has(scheduleDate));
-
-  if (hasBlackoutConflict) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
@@ -804,6 +794,64 @@ function canAssignMemberToTeam(
   if (!existingSlots || existingSlots.size === 0) return true;
 
   return canDoubleUpMaleVocalGuitarist(member, targetSlot, existingSlots);
+}
+
+function getBlackoutConflictDatesForTeam(
+  member: AvailableMember,
+  teamId: string,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+) {
+  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
+  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
+
+  if (memberBlackoutDates.size === 0 || teamScheduledDates.size === 0) {
+    return [];
+  }
+
+  return [...teamScheduledDates].filter((scheduleDate) => memberBlackoutDates.has(scheduleDate)).sort();
+}
+
+function findBestCandidateForTeam(
+  pool: AvailableMember[],
+  team: WorshipTeam,
+  targetSlot: string,
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+  preferZeroConflicts = false,
+) {
+  let bestCandidate: AvailableMember | undefined;
+  let bestConflictCount = Number.POSITIVE_INFINITY;
+
+  for (const member of pool) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+      continue;
+    }
+
+    const conflictCount = getBlackoutConflictDatesForTeam(
+      member,
+      team.id,
+      blackoutDatesByUser,
+      teamScheduledDatesByTeam,
+    ).length;
+
+    if (preferZeroConflicts && conflictCount > 0) {
+      continue;
+    }
+
+    if (conflictCount < bestConflictCount) {
+      bestCandidate = member;
+      bestConflictCount = conflictCount;
+
+      if (conflictCount === 0) {
+        break;
+      }
+    }
+  }
+
+  return bestCandidate;
 }
 
 function trackMemberAssignment(
@@ -1060,7 +1108,7 @@ export function useAutoBuildTeams() {
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -1170,10 +1218,15 @@ export function useAutoBuildTeams() {
               const filledSlots = slotFilledPerTeam.get(team.id)!;
               if (filledSlots.has(targetSlot)) continue;
 
-            const candidate = shuffledPool.find((member) => {
-              return getMemberAvailableSlots(member.positions).includes(targetSlot) &&
-              canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam);
-            });
+            const candidate = findBestCandidateForTeam(
+              shuffledPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+              team,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
+            );
 
               if (!candidate) continue;
               assignMemberToSlot(candidate, team, targetSlot);
@@ -1237,15 +1290,54 @@ export function useAutoBuildTeams() {
           let assigned: AvailableMember | undefined;
 
           // First priority: Must serve (was off the previous roster)
-        assigned = shuffleMustServe.find(m =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+          assigned = findBestCandidateForTeam(
+            shuffleMustServe,
+            team,
+            targetSlot,
+            userAssignedSlotsByTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+            true,
           );
 
           // Second priority: Can serve, prefer different team
           if (!assigned) {
             const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-          assigned = sortedCanServe.find(m =>
-              canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+            assigned = findBestCandidateForTeam(
+              sortedCanServe,
+              team,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
+              true,
+            );
+          }
+
+          if (!assigned) {
+            assigned = findBestCandidateForTeam(
+              shuffleMustServe,
+              team,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
+            );
+          }
+
+          if (!assigned) {
+            const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
+            assigned = findBestCandidateForTeam(
+              sortedCanServe,
+              team,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
             );
           }
 
@@ -1276,8 +1368,14 @@ export function useAutoBuildTeams() {
             )
             .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
 
-          const candidate = ag2Candidates.find((member) =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
+          const candidate = findBestCandidateForTeam(
+            ag2Candidates,
+            team,
+            "ag_2",
+            userAssignedSlotsByTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
           );
 
           if (candidate) {
@@ -1291,18 +1389,44 @@ export function useAutoBuildTeams() {
         if (error) throw error;
       }
 
+      const blackoutConflictAssignments = assignments
+        .map((assignment) => {
+          const member = members.find((candidate) => candidate.id === assignment.user_id);
+          if (!member) return null;
+
+          const conflictDates = getBlackoutConflictDatesForTeam(
+            member,
+            assignment.team_id,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+          );
+
+          if (conflictDates.length === 0) return null;
+
+          return {
+            memberName: assignment.member_name,
+            teamId: assignment.team_id,
+            conflictDates,
+          };
+        })
+        .filter(Boolean);
+
       return {
         totalAssignments: assignments.length,
         teamsBuilt: teams.length,
         eligibleMembers: availablePool.length,
         mustServe: wasOffRosterLastPeriod.length,
+        blackoutConflictAssignments,
       };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
       toast({ 
         title: `Auto-built ${result.teamsBuilt} teams`,
-        description: `${result.totalAssignments} assignments made from ${result.eligibleMembers} eligible members`,
+        description:
+          result.blackoutConflictAssignments.length > 0
+            ? `${result.totalAssignments} assignments made with ${result.blackoutConflictAssignments.length} blackout conflict${result.blackoutConflictAssignments.length === 1 ? "" : "s"} to review`
+            : `${result.totalAssignments} assignments made from ${result.eligibleMembers} eligible members`,
       });
     },
     onError: (error) => {
