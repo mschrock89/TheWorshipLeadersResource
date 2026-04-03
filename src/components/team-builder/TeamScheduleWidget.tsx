@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
-import { format, parseISO, getDay } from "date-fns";
-import { Calendar, Plus, Trash2, Info } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { format, parseISO, getDay, eachDayOfInterval } from "date-fns";
+import { Calendar, Plus, Trash2, Info, Globe2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -32,6 +31,7 @@ import {
   useUpdateScheduleTeam,
   useCreateScheduleEntry,
   useDeleteScheduleEntry,
+  usePublishScheduleNetworkWide,
 } from "@/hooks/useTeamScheduleEditor";
 import { useWorshipTeams } from "@/hooks/useTeamSchedule";
 import { useCampuses } from "@/hooks/useCampuses";
@@ -39,7 +39,21 @@ import { useCampuses } from "@/hooks/useCampuses";
 interface TeamScheduleWidgetProps {
   campusId: string | null;
   rotationPeriodName: string | null;
+  rotationPeriodStartDate: string | null;
+  rotationPeriodEndDate: string | null;
   ministryFilter: string | null;
+  canPublishNetworkWide?: boolean;
+}
+
+interface DisplayScheduleEntry {
+  id: string;
+  schedule_date: string;
+  team_id: string;
+  team_name: string;
+  team_color: string;
+  ministry_type: string | null;
+  campus_id: string | null;
+  isVirtual: boolean;
 }
 
 const MINISTRY_COLORS: Record<string, string> = {
@@ -52,7 +66,10 @@ const MINISTRY_COLORS: Record<string, string> = {
 export function TeamScheduleWidget({
   campusId,
   rotationPeriodName,
+  rotationPeriodStartDate,
+  rotationPeriodEndDate,
   ministryFilter,
+  canPublishNetworkWide = false,
 }: TeamScheduleWidgetProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
@@ -66,6 +83,36 @@ export function TeamScheduleWidget({
   );
   const { data: campuses = [] } = useCampuses();
   const { data: teams = [] } = useWorshipTeams();
+  const selectedCampus = useMemo(
+    () => campuses.find((campus) => campus.id === campusId) || null,
+    [campusId, campuses],
+  );
+
+  const preloadableDates = useMemo(() => {
+    if (!selectedCampus || !rotationPeriodStartDate || !rotationPeriodEndDate) {
+      return [];
+    }
+
+    return eachDayOfInterval({
+      start: parseISO(rotationPeriodStartDate),
+      end: parseISO(rotationPeriodEndDate),
+    })
+      .filter((date) => {
+        const dayOfWeek = getDay(date);
+        if (dayOfWeek === 6) return selectedCampus.has_saturday_service;
+        if (dayOfWeek === 0) return selectedCampus.has_sunday_service;
+        return false;
+      })
+      .map((date) => format(date, "yyyy-MM-dd"));
+  }, [rotationPeriodEndDate, rotationPeriodStartDate, selectedCampus]);
+
+  const activeScheduleMinistry = useMemo(() => {
+    if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
+      return "weekend";
+    }
+
+    return ministryFilter;
+  }, [ministryFilter]);
 
   // Filter out Saturday/Sunday entries for campuses that don't have service on those days
   // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
@@ -81,13 +128,82 @@ export function TeamScheduleWidget({
       return true;
     });
   }, [scheduleEntries, campusId, campuses]);
+
+  const availableDates = useMemo(() => {
+    const usedDates = new Set(
+      filteredEntries
+        .filter((entry) => (entry.ministry_type || "weekend") === newMinistryType)
+        .map((entry) => entry.schedule_date),
+    );
+
+    return preloadableDates.filter((date) => !usedDates.has(date));
+  }, [filteredEntries, newMinistryType, preloadableDates]);
+  const displayEntries = useMemo<DisplayScheduleEntry[]>(() => {
+    const existingEntriesByDate = new Map(
+      filteredEntries.map((entry) => [entry.schedule_date, entry]),
+    );
+
+    if (preloadableDates.length === 0) {
+      return filteredEntries.map((entry) => ({
+        id: entry.id,
+        schedule_date: entry.schedule_date,
+        team_id: entry.team_id,
+        team_name: entry.team_name,
+        team_color: entry.team_color,
+        ministry_type: entry.ministry_type,
+        campus_id: entry.campus_id,
+        isVirtual: false,
+      }));
+    }
+
+    return preloadableDates.map((date) => {
+      const existingEntry = existingEntriesByDate.get(date);
+
+      if (existingEntry) {
+        return {
+          id: existingEntry.id,
+          schedule_date: existingEntry.schedule_date,
+          team_id: existingEntry.team_id,
+          team_name: existingEntry.team_name,
+          team_color: existingEntry.team_color,
+          ministry_type: existingEntry.ministry_type,
+          campus_id: existingEntry.campus_id,
+          isVirtual: false,
+        };
+      }
+
+      return {
+        id: `virtual-${activeScheduleMinistry}-${date}`,
+        schedule_date: date,
+        team_id: "",
+        team_name: "Unassigned",
+        team_color: "transparent",
+        ministry_type: activeScheduleMinistry,
+        campus_id: campusId,
+        isVirtual: true,
+      };
+    });
+  }, [activeScheduleMinistry, campusId, filteredEntries, preloadableDates]);
   const updateTeam = useUpdateScheduleTeam();
   const createEntry = useCreateScheduleEntry();
   const deleteEntry = useDeleteScheduleEntry();
+  const publishNetworkWide = usePublishScheduleNetworkWide();
 
-  const handleTeamChange = (scheduleId: string, teamId: string) => {
-    if (!campusId) return;
-    updateTeam.mutate({ scheduleId, teamId, campusId });
+  const handleTeamChange = (entry: DisplayScheduleEntry, teamId: string) => {
+    if (!campusId || !rotationPeriodName) return;
+
+    if (entry.isVirtual) {
+      createEntry.mutate({
+        campusId,
+        date: entry.schedule_date,
+        teamId,
+        ministryType: entry.ministry_type || activeScheduleMinistry,
+        rotationPeriod: rotationPeriodName,
+      });
+      return;
+    }
+
+    updateTeam.mutate({ scheduleId: entry.id, teamId, campusId });
   };
 
   const handleAddEntry = () => {
@@ -115,6 +231,23 @@ export function TeamScheduleWidget({
     deleteEntry.mutate(scheduleId);
   };
 
+  const handlePublishNetworkWide = () => {
+    if (!campusId || !rotationPeriodName) return;
+
+    publishNetworkWide.mutate({
+      campusId,
+      rotationPeriod: rotationPeriodName,
+      ministryType: activeScheduleMinistry,
+    });
+  };
+
+  useEffect(() => {
+    if (!addDialogOpen) return;
+    if (!newDate || !availableDates.includes(newDate)) {
+      setNewDate(availableDates[0] || "");
+    }
+  }, [addDialogOpen, availableDates, newDate]);
+
   if (!campusId || !rotationPeriodName) {
     return null;
   }
@@ -140,75 +273,99 @@ export function TeamScheduleWidget({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-1" />
-                Add Date
+          <div className="flex items-center gap-2">
+            {canPublishNetworkWide && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePublishNetworkWide}
+                disabled={publishNetworkWide.isPending}
+              >
+                <Globe2 className="h-4 w-4 mr-1" />
+                Publish Network Wide
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Schedule Entry</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="team">Team</Label>
-                  <Select value={newTeamId} onValueChange={setNewTeamId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select team" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teams.map((team) => (
-                        <SelectItem key={team.id} value={team.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: team.color }}
-                            />
-                            {team.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ministry">Ministry Type</Label>
-                  <Select
-                    value={newMinistryType}
-                    onValueChange={setNewMinistryType}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="weekend">Weekend</SelectItem>
-                      <SelectItem value="encounter">Encounter</SelectItem>
-                      <SelectItem value="eon">EON</SelectItem>
-                      <SelectItem value="student">Student</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={handleAddEntry}
-                  disabled={!newDate || !newTeamId || createEntry.isPending}
-                  className="w-full"
-                >
-                  Add Entry
+            )}
+            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Date
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Schedule Entry</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date">Date</Label>
+                    <Select value={newDate} onValueChange={setNewDate}>
+                      <SelectTrigger id="date">
+                        <SelectValue placeholder="Select a trimester date" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableDates.map((date) => (
+                          <SelectItem key={date} value={date}>
+                            {format(parseISO(date), "EEE, MMM d, yyyy")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {availableDates.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        All scheduled dates for this ministry are already loaded for this trimester.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="team">Team</Label>
+                    <Select value={newTeamId} onValueChange={setNewTeamId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select team" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map((team) => (
+                          <SelectItem key={team.id} value={team.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: team.color }}
+                              />
+                              {team.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ministry">Ministry Type</Label>
+                    <Select
+                      value={newMinistryType}
+                      onValueChange={setNewMinistryType}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekend">Weekend</SelectItem>
+                        <SelectItem value="encounter">Encounter</SelectItem>
+                        <SelectItem value="eon">EON</SelectItem>
+                        <SelectItem value="student">Student</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleAddEntry}
+                    disabled={!newDate || !newTeamId || createEntry.isPending || availableDates.length === 0}
+                    className="w-full"
+                  >
+                    Add Entry
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -216,18 +373,18 @@ export function TeamScheduleWidget({
           <div className="text-center text-muted-foreground py-8">
             Loading schedule...
           </div>
-        ) : filteredEntries.length === 0 ? (
+        ) : displayEntries.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No schedule entries for this period.</p>
-            <p className="text-sm">Click "Add Date" to create one.</p>
+            <p className="text-sm">No trimester dates are available for this campus yet.</p>
           </div>
         ) : (
           <ScrollArea className="h-[300px] pr-4">
             <div className="space-y-2">
-              {filteredEntries.map((entry) => {
+              {displayEntries.map((entry) => {
                 const date = parseISO(entry.schedule_date);
-                const isShared = entry.campus_id === null;
+                const isShared = !entry.isVirtual && entry.campus_id === null;
                 const ministryType = entry.ministry_type || "weekend";
 
                 return (
@@ -247,18 +404,22 @@ export function TeamScheduleWidget({
                     <Select
                       value={entry.team_id}
                       onValueChange={(value) =>
-                        handleTeamChange(entry.id, value)
+                        handleTeamChange(entry, value)
                       }
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: entry.team_color }}
-                            />
-                            <span className="truncate">{entry.team_name}</span>
-                          </div>
+                          {entry.team_id ? (
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: entry.team_color }}
+                              />
+                              <span className="truncate">{entry.team_name}</span>
+                            </div>
+                          ) : (
+                            <span className="truncate text-muted-foreground">Select team</span>
+                          )}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
@@ -304,7 +465,7 @@ export function TeamScheduleWidget({
 
                     <div className="flex-1" />
 
-                    {!isShared && (
+                    {!isShared && !entry.isVirtual && (
                       <Button
                         variant="ghost"
                         size="icon"

@@ -57,6 +57,34 @@ export interface TeamScheduleEntry {
   worship_teams?: WorshipTeam;
 }
 
+const WORSHIP_TEAM_DISPLAY_ORDER = [
+  "Team 1",
+  "Team 2",
+  "Team 3",
+  "Team 4",
+  "Simple Worship",
+  "5th Sunday",
+] as const;
+
+function sortWorshipTeams(teams: WorshipTeam[]) {
+  const orderMap = new Map(
+    WORSHIP_TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+  );
+
+  return [...teams].sort((a, b) => {
+    const aIndex = orderMap.get(a.name.toLowerCase());
+    const bIndex = orderMap.get(b.name.toLowerCase());
+
+    if (aIndex !== undefined || bIndex !== undefined) {
+      if (aIndex === undefined) return 1;
+      if (bIndex === undefined) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export function useWorshipTeams() {
   return useQuery({
     queryKey: ["worship-teams"],
@@ -67,7 +95,7 @@ export function useWorshipTeams() {
         .select("*")
         .order("name");
       if (error) throw error;
-      return data as WorshipTeam[];
+      return sortWorshipTeams((data || []) as WorshipTeam[]);
     },
   });
 }

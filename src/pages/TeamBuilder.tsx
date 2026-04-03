@@ -48,6 +48,7 @@ import {
   WorshipTeam,
 } from "@/hooks/useTeamBuilder";
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
+import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesWithCampuses } from "@/hooks/useCampuses";
 import {
@@ -56,6 +57,8 @@ import {
   breakRequestMatchesMinistryFilter,
 } from "@/lib/constants";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
+
+const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
@@ -97,6 +100,13 @@ export default function TeamBuilder() {
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
+  const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
+  const selectedCampus = campuses.find(c => c.id === selectedCampusId);
+  const { data: scheduleEntries = [] } = useTeamScheduleForCampus(
+    selectedCampusId,
+    selectedPeriod?.name || null,
+    selectedMinistryType,
+  );
   const { data: userCampusMap } = useProfilesWithCampuses();
   const previousPeriodId = useMemo(() => {
     return getPreviousPeriodId(periods, selectedPeriodId);
@@ -151,20 +161,6 @@ export default function TeamBuilder() {
     }
   }, [selectedMinistryType]);
 
-  const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
-  const selectedCampus = campuses.find(c => c.id === selectedCampusId);
-
-  const approvedBreakUserIds = useMemo(() => {
-    const matchingBreaks = breakRequests.filter(
-      (request) =>
-        request.status === "approved" &&
-        request.request_scope === "full_trimester" &&
-        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
-    );
-
-    return [...new Set(matchingBreaks.map((request) => request.user_id))];
-  }, [breakRequests, selectedMinistryType]);
-
   const previousApprovedBreakUserIds = useMemo(() => {
     const matchingBreaks = previousBreakRequests.filter(
       (request) =>
@@ -175,6 +171,83 @@ export default function TeamBuilder() {
 
     return [...new Set(matchingBreaks.map((request) => request.user_id))];
   }, [previousBreakRequests, selectedMinistryType]);
+
+  const requestedBreakUserIds = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "full_trimester" &&
+        !request.reason?.startsWith(MANAGED_SIT_REASON_PREFIX) &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [breakRequests, selectedMinistryType]);
+
+  const satUserIds = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "full_trimester" &&
+        request.reason?.startsWith(MANAGED_SIT_REASON_PREFIX) &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [breakRequests, selectedMinistryType]);
+
+  const satRequestIdsByUser = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "full_trimester" &&
+        request.reason?.startsWith(MANAGED_SIT_REASON_PREFIX) &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return matchingBreaks.reduce<Record<string, string>>((acc, request) => {
+      acc[request.user_id] = request.id;
+      return acc;
+    }, {});
+  }, [breakRequests, selectedMinistryType]);
+
+  const blackoutDateUserIds = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "blackout_dates" &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [breakRequests, selectedMinistryType]);
+
+  const blackoutDatesByUser = useMemo(() => {
+    const entries = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "blackout_dates" &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return entries.reduce<Record<string, string[]>>((acc, request) => {
+      const existing = new Set(acc[request.user_id] || []);
+      (request.blackout_dates || []).forEach((date) => existing.add(date));
+      acc[request.user_id] = Array.from(existing);
+      return acc;
+    }, {});
+  }, [breakRequests, selectedMinistryType]);
+
+  const selectedPeriodBreakUserIds = useMemo(() => {
+    const matchingBreaks = breakRequests.filter(
+      (request) =>
+        request.status !== "denied" &&
+        request.request_scope === "full_trimester" &&
+        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+    );
+
+    return [...new Set(matchingBreaks.map((request) => request.user_id))];
+  }, [breakRequests, selectedMinistryType]);
 
   // Filter teams by selected ministry type
   const filteredTeams = useMemo(() => {
@@ -338,6 +411,13 @@ export default function TeamBuilder() {
                   campusId={selectedCampusId}
                   userCampusMap={userCampusMap}
                   ministryFilter={selectedMinistryType}
+                  requestedBreakUserIds={requestedBreakUserIds}
+                  satUserIds={satUserIds}
+                  satRequestIdsByUser={satRequestIdsByUser}
+                  blackoutDateUserIds={blackoutDateUserIds}
+                  canSitUpcomingRotation={canEditCampus}
+                  nextRotationPeriodId={selectedPeriodId}
+                  nextRotationBreakUserIds={selectedPeriodBreakUserIds}
                 />
               </TabsContent>
 
@@ -347,7 +427,10 @@ export default function TeamBuilder() {
                   <TeamScheduleWidget
                     campusId={selectedCampusId}
                     rotationPeriodName={selectedPeriod?.name || null}
+                    rotationPeriodStartDate={selectedPeriod?.start_date || null}
+                    rotationPeriodEndDate={selectedPeriod?.end_date || null}
                     ministryFilter={selectedMinistryType}
+                    canPublishNetworkWide={adminCampusInfo?.isOrgAdmin === true}
                   />
                 )}
 
@@ -424,6 +507,13 @@ export default function TeamBuilder() {
                   campusId={selectedCampusId}
                   userCampusMap={userCampusMap}
                   ministryFilter={selectedMinistryType}
+                  requestedBreakUserIds={requestedBreakUserIds}
+                  satUserIds={satUserIds}
+                  satRequestIdsByUser={satRequestIdsByUser}
+                  blackoutDateUserIds={blackoutDateUserIds}
+                  canSitUpcomingRotation={canEditCampus}
+                  nextRotationPeriodId={selectedPeriodId}
+                  nextRotationBreakUserIds={selectedPeriodBreakUserIds}
                 />
               </TabsContent>
             </Tabs>
@@ -451,6 +541,13 @@ export default function TeamBuilder() {
                 campusId={selectedCampusId}
                 userCampusMap={userCampusMap}
                 ministryFilter={selectedMinistryType}
+                requestedBreakUserIds={requestedBreakUserIds}
+                satUserIds={satUserIds}
+                satRequestIdsByUser={satRequestIdsByUser}
+                blackoutDateUserIds={blackoutDateUserIds}
+                canSitUpcomingRotation={canEditCampus}
+                nextRotationPeriodId={selectedPeriodId}
+                nextRotationBreakUserIds={selectedPeriodBreakUserIds}
               />
             </>
           )}
@@ -480,8 +577,13 @@ export default function TeamBuilder() {
           members={availableMembers}
           ministryType={selectedMinistryType}
           previousPeriodMembers={previousPeriodMembers}
-          approvedBreakUserIds={approvedBreakUserIds}
+          breakExcludedUserIds={requestedBreakUserIds}
           previousApprovedBreakUserIds={previousApprovedBreakUserIds}
+          blackoutDatesByUser={blackoutDatesByUser}
+          scheduleEntries={scheduleEntries.map((entry) => ({
+            team_id: entry.team_id,
+            schedule_date: entry.schedule_date,
+          }))}
         />
       )}
 

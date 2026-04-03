@@ -33,6 +33,34 @@ export interface WorshipTeam {
   template_config?: TeamTemplateConfig | null;
 }
 
+const WORSHIP_TEAM_DISPLAY_ORDER = [
+  "Team 1",
+  "Team 2",
+  "Team 3",
+  "Team 4",
+  "Simple Worship",
+  "5th Sunday",
+] as const;
+
+function sortWorshipTeams(teams: WorshipTeam[]) {
+  const orderMap = new Map(
+    WORSHIP_TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+  );
+
+  return [...teams].sort((a, b) => {
+    const aIndex = orderMap.get(a.name.toLowerCase());
+    const bIndex = orderMap.get(b.name.toLowerCase());
+
+    if (aIndex !== undefined || bIndex !== undefined) {
+      if (aIndex === undefined) return 1;
+      if (bIndex === undefined) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export interface TeamMemberAssignment {
   id: string;
   team_id: string;
@@ -171,6 +199,22 @@ export function getPreviousPeriodId(periods: RotationPeriod[], currentPeriodId: 
   return previousPeriods[0].id;
 }
 
+export function getNextPeriodId(periods: RotationPeriod[], currentPeriodId: string | null): string | null {
+  if (!currentPeriodId || periods.length === 0) return null;
+
+  const currentPeriod = periods.find((period) => period.id === currentPeriodId);
+  if (!currentPeriod) return null;
+
+  const nextPeriods = periods.filter(
+    (period) => comparePeriods(period, currentPeriod) > 0,
+  );
+
+  if (nextPeriods.length === 0) return null;
+
+  nextPeriods.sort((a, b) => comparePeriods(a, b));
+  return nextPeriods[0].id;
+}
+
 // Get members for the previous period (for consecutive break detection)
 export function usePreviousPeriodMembers(
   periods: RotationPeriod[],
@@ -210,7 +254,7 @@ export function useWorshipTeams() {
         .order("name");
 
       if (error) throw error;
-      return data as WorshipTeam[];
+      return sortWorshipTeams((data || []) as WorshipTeam[]);
     },
   });
 }
@@ -292,6 +336,17 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
       const memberDataMap: Record<string, { ministry_types: string[]; positions: string[] }> = {};
       
       if (campusId) {
+        const { data: ministryAssignments, error: ministryAssignmentsError } = await supabase
+          .from("user_ministry_campuses")
+          .select("user_id, ministry_type")
+          .eq("campus_id", campusId);
+
+        if (ministryAssignmentsError) throw ministryAssignmentsError;
+
+        const activeMinistryAssignments = new Set(
+          (ministryAssignments || []).map((assignment) => `${assignment.user_id}:${assignment.ministry_type}`),
+        );
+
         // Query the new user_campus_ministry_positions table for positions
         const positionsQuery = supabase
           .from("user_campus_ministry_positions")
@@ -305,12 +360,15 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
         const filteredAssignments =
           ministryType && ministryType !== "all"
             ? ((positionAssignments || []) as CampusMinistryPositionAssignment[]).filter((assignment) =>
+                activeMinistryAssignments.has(`${assignment.user_id}:${assignment.ministry_type}`) &&
                 memberMatchesMinistryFilter(
                   [assignment.ministry_type || "weekend"],
                   ministryType,
                 ),
               )
-            : ((positionAssignments || []) as CampusMinistryPositionAssignment[]);
+            : ((positionAssignments || []) as CampusMinistryPositionAssignment[]).filter((assignment) =>
+                activeMinistryAssignments.has(`${assignment.user_id}:${assignment.ministry_type}`),
+              );
 
         // Build a map of user_id -> { ministry_types, positions } for this campus
         filteredAssignments.forEach((a) => {
@@ -725,9 +783,19 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
+
+  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
+  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
+  const hasBlackoutConflict =
+    memberBlackoutDates.size > 0 &&
+    [...teamScheduledDates].some((scheduleDate) => memberBlackoutDates.has(scheduleDate));
+
+  if (hasBlackoutConflict) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
@@ -849,8 +917,10 @@ export function useAutoBuildTeams() {
       campusName,
       campusWorshipPastorIds,
       previousPeriodMembers,
-      approvedBreakUserIds,
+      breakExcludedUserIds,
       previousApprovedBreakUserIds,
+      blackoutDatesByUser,
+      scheduleEntries,
     }: {
       rotationPeriodId: string;
       teams: WorshipTeam[];
@@ -859,8 +929,10 @@ export function useAutoBuildTeams() {
       campusName?: string | null;
       campusWorshipPastorIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
-      approvedBreakUserIds: string[];
+      breakExcludedUserIds: string[];
       previousApprovedBreakUserIds: string[];
+      blackoutDatesByUser: Record<string, string[]>;
+      scheduleEntries: Array<{ team_id: string; schedule_date: string }>;
     }) => {
       const slotPriority = [
         "drums", "bass", "keys",
@@ -876,6 +948,13 @@ export function useAutoBuildTeams() {
       const visibleSlotsByTeam = new Map(
         teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)]),
       );
+      const teamScheduledDatesByTeam = new Map<string, Set<string>>();
+      for (const entry of scheduleEntries) {
+        if (!teamScheduledDatesByTeam.has(entry.team_id)) {
+          teamScheduledDatesByTeam.set(entry.team_id, new Set());
+        }
+        teamScheduledDatesByTeam.get(entry.team_id)!.add(entry.schedule_date);
+      }
       const relevantSlots = new Set(
         teams.flatMap((team) =>
           slotPriority.filter((slot) => {
@@ -898,7 +977,7 @@ export function useAutoBuildTeams() {
 
       // 2. Exclude members with approved break requests
       const availablePool = eligibleMembers.filter(
-        m => !approvedBreakUserIds.includes(m.id)
+        m => !breakExcludedUserIds.includes(m.id)
       );
 
       // 3. Build previous period tracking (filter by ministry if applicable)
@@ -981,7 +1060,7 @@ export function useAutoBuildTeams() {
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -1093,7 +1172,7 @@ export function useAutoBuildTeams() {
 
             const candidate = shuffledPool.find((member) => {
               return getMemberAvailableSlots(member.positions).includes(targetSlot) &&
-                canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam);
+              canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam);
             });
 
               if (!candidate) continue;
@@ -1159,14 +1238,14 @@ export function useAutoBuildTeams() {
 
           // First priority: Must serve (was off the previous roster)
         assigned = shuffleMustServe.find(m =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
           );
 
           // Second priority: Can serve, prefer different team
           if (!assigned) {
             const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
           assigned = sortedCanServe.find(m =>
-              canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+              canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
             );
           }
 
@@ -1198,7 +1277,7 @@ export function useAutoBuildTeams() {
             .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
 
           const candidate = ag2Candidates.find((member) =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam)
+            canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
           );
 
           if (candidate) {

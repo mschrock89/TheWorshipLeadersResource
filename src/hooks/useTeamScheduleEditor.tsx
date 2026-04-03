@@ -15,6 +15,73 @@ export interface ScheduleEntry {
   rotation_period: string;
 }
 
+export function usePublishScheduleNetworkWide() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      campusId,
+      rotationPeriod,
+      ministryType,
+    }: {
+      campusId: string;
+      rotationPeriod: string;
+      ministryType: string;
+    }) => {
+      const { data: campusEntries, error: campusEntriesError } = await supabase
+        .from("team_schedule")
+        .select("schedule_date, team_id, ministry_type, notes")
+        .eq("campus_id", campusId)
+        .eq("rotation_period", rotationPeriod)
+        .eq("ministry_type", ministryType)
+        .order("schedule_date", { ascending: true });
+
+      if (campusEntriesError) throw campusEntriesError;
+
+      if (!campusEntries || campusEntries.length === 0) {
+        throw new Error("No campus schedule entries to publish yet.");
+      }
+
+      const scheduleDates = campusEntries.map((entry) => entry.schedule_date);
+
+      const { error: deleteError } = await supabase
+        .from("team_schedule")
+        .delete()
+        .is("campus_id", null)
+        .eq("rotation_period", rotationPeriod)
+        .eq("ministry_type", ministryType)
+        .in("schedule_date", scheduleDates);
+
+      if (deleteError) throw deleteError;
+
+      const sharedEntries = campusEntries.map((entry) => ({
+        campus_id: null,
+        schedule_date: entry.schedule_date,
+        team_id: entry.team_id,
+        ministry_type: entry.ministry_type,
+        rotation_period: rotationPeriod,
+        notes: entry.notes,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("team_schedule")
+        .insert(sharedEntries);
+
+      if (insertError) throw insertError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team-schedule-campus"] });
+      queryClient.invalidateQueries({ queryKey: ["team-schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-team-for-date"] });
+      toast.success("Team schedule published network wide");
+    },
+    onError: (error) => {
+      console.error("Failed to publish schedule network wide:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to publish schedule network wide");
+    },
+  });
+}
+
 export function useTeamScheduleForCampus(
   campusId: string | null,
   rotationPeriodName: string | null,

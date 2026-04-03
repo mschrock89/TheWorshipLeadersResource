@@ -55,6 +55,8 @@ export function useUpdateMinistryAssignments() {
       campusId: string;
       ministryTypes: string[];
     }) => {
+      const normalizedMinistryTypes = ministryTypes.map(getNormalizedMinistryType);
+
       // First, delete existing assignments for this user+campus combo
       const { error: deleteError } = await supabase
         .from("user_ministry_campuses")
@@ -63,10 +65,18 @@ export function useUpdateMinistryAssignments() {
         .eq("campus_id", campusId);
       
       if (deleteError) throw deleteError;
+
+      const { error: deletePositionsError } = await supabase
+        .from("user_campus_ministry_positions")
+        .delete()
+        .eq("user_id", userId)
+        .eq("campus_id", campusId);
+
+      if (deletePositionsError) throw deletePositionsError;
       
       // Then insert the new assignments
-      if (ministryTypes.length > 0) {
-        const newAssignments = ministryTypes.map(mt => ({
+      if (normalizedMinistryTypes.length > 0) {
+        const newAssignments = normalizedMinistryTypes.map(mt => ({
           user_id: userId,
           campus_id: campusId,
           ministry_type: mt,
@@ -115,6 +125,15 @@ export function useToggleMinistryAssignment() {
           .in("ministry_type", equivalentMinistryTypes);
         
         if (error) throw error;
+
+        const { error: positionError } = await supabase
+          .from("user_campus_ministry_positions")
+          .delete()
+          .eq("user_id", userId)
+          .eq("campus_id", campusId)
+          .in("ministry_type", equivalentMinistryTypes);
+
+        if (positionError) throw positionError;
       } else {
         const { error: cleanupError } = await supabase
           .from("user_ministry_campuses")
@@ -140,6 +159,15 @@ export function useToggleMinistryAssignment() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ 
         queryKey: ["user-ministry-assignments", variables.userId] 
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["user-campus-ministry-positions", variables.userId]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["all-campus-ministry-positions"]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["available-members"]
       });
     },
   });

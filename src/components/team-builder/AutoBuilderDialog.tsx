@@ -33,8 +33,10 @@ interface AutoBuilderDialogProps {
   members: AvailableMember[];
   ministryType: string;
   previousPeriodMembers: TeamMemberAssignment[];
-  approvedBreakUserIds: string[];
+  breakExcludedUserIds: string[];
   previousApprovedBreakUserIds: string[];
+  blackoutDatesByUser: Record<string, string[]>;
+  scheduleEntries: Array<{ team_id: string; schedule_date: string }>;
 }
 
 // Position mapping from profile positions to slot names
@@ -142,9 +144,19 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
+
+  const memberBlackoutDates = new Set(blackoutDatesByUser?.[member.id] || []);
+  const teamScheduledDates = teamScheduledDatesByTeam?.get(teamId) || new Set<string>();
+  const hasBlackoutConflict =
+    memberBlackoutDates.size > 0 &&
+    [...teamScheduledDates].some((scheduleDate) => memberBlackoutDates.has(scheduleDate));
+
+  if (hasBlackoutConflict) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
@@ -210,7 +222,7 @@ function hasTwoDedicatedBacklineElectrics(
 function assignCampusPastorsToVocalSlots(
   teams: WorshipTeam[],
   campusPastors: AvailableMember[],
-  teamVisibleVocalSlots: Map<string, ReturnType<typeof getTeamTemplateSlotConfigs>["vocalSlots"]>,
+  teamVisibleVocalSlots: Map<string, ReturnType<typeof getTeamTemplateSlotConfigs>>,
   assignMemberToSlot: (member: AvailableMember, team: WorshipTeam, targetSlot: string) => boolean,
 ) {
   for (const pastor of campusPastors) {
@@ -218,7 +230,7 @@ function assignCampusPastorsToVocalSlots(
     if (!pastorGender) continue;
 
     for (const team of teams) {
-      const teamVocalSlots = teamVisibleVocalSlots.get(team.id) || [];
+      const teamVocalSlots = teamVisibleVocalSlots.get(team.id)?.vocalSlots || [];
       const preferredVocalSlots = teamVocalSlots
         .filter((slot) => slot.vocalGender === pastorGender)
         .map((slot) => slot.slot);
@@ -274,8 +286,10 @@ export function AutoBuilderDialog({
   members,
   ministryType,
   previousPeriodMembers,
-  approvedBreakUserIds,
+  breakExcludedUserIds,
   previousApprovedBreakUserIds,
+  blackoutDatesByUser,
+  scheduleEntries,
 }: AutoBuilderDialogProps) {
   const { user } = useAuth();
   const autoBuild = useAutoBuildTeams();
@@ -298,6 +312,16 @@ export function AutoBuilderDialog({
     () => new Map(teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)])),
     [teams],
   );
+  const teamScheduledDatesByTeam = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const entry of scheduleEntries) {
+      if (!map.has(entry.team_id)) {
+        map.set(entry.team_id, new Set());
+      }
+      map.get(entry.team_id)!.add(entry.schedule_date);
+    }
+    return map;
+  }, [scheduleEntries]);
   const relevantSlots = useMemo(() => {
     return new Set(
       teams.flatMap((team) =>
@@ -325,8 +349,8 @@ export function AutoBuilderDialog({
 
   // Exclude approved breaks
   const availablePool = useMemo(() => {
-    return eligibleMembers.filter(m => !approvedBreakUserIds.includes(m.id));
-  }, [eligibleMembers, approvedBreakUserIds]);
+    return eligibleMembers.filter(m => !breakExcludedUserIds.includes(m.id));
+  }, [eligibleMembers, breakExcludedUserIds]);
 
   // Track previous period assignments
   const prevPeriodFiltered = useMemo(() => {
@@ -420,7 +444,7 @@ export function AutoBuilderDialog({
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
       if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
+      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
 
       filledSlots.add(targetSlot);
       trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -533,7 +557,7 @@ export function AutoBuilderDialog({
 
             const candidate = shuffledPool.find((member) =>
               getMemberAvailableSlots(member.positions).includes(targetSlot) &&
-              canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)
+              canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
             );
 
             if (!candidate) continue;
@@ -586,13 +610,13 @@ export function AutoBuilderDialog({
         let assigned: AvailableMember | undefined;
 
         assigned = shuffleMustServe.find(m =>
-          canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+          canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
         );
 
         if (!assigned) {
           const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
           assigned = sortedCanServe.find(m =>
-            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam)
+            canAssignMemberToTeam(userAssignedSlotsByTeam, m, team.id, targetSlot, blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
           );
         }
 
@@ -623,7 +647,7 @@ export function AutoBuilderDialog({
           .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
 
         const candidate = ag2Candidates.find((member) =>
-          canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam)
+          canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, "ag_2", blockedTeammateIdsByTeam, blackoutDatesByUser, teamScheduledDatesByTeam)
         );
 
         if (candidate) {
@@ -646,8 +670,10 @@ export function AutoBuilderDialog({
         members,
         ministryType,
         previousPeriodMembers,
-        approvedBreakUserIds,
+        breakExcludedUserIds,
         previousApprovedBreakUserIds,
+        blackoutDatesByUser,
+        scheduleEntries,
       });
       setPreviewData(null);
       onOpenChange(false);
@@ -719,7 +745,7 @@ export function AutoBuilderDialog({
               </div>
               <div className="rounded-lg bg-muted p-3 text-center">
                 <Coffee className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-lg font-semibold">{approvedBreakUserIds.length}</p>
+                <p className="text-lg font-semibold">{breakExcludedUserIds.length}</p>
                 <p className="text-xs text-muted-foreground">On Break</p>
               </div>
             </div>

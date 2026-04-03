@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useCreateManagedBreakRequest, useDeleteManagedBreakRequest } from "@/hooks/useBreakRequests";
 import { AvailableMember, TeamMemberAssignment } from "@/hooks/useTeamBuilder";
 import { memberMatchesMinistryFilter } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -19,13 +20,25 @@ interface OnBreakListProps {
   campusId?: string | null;
   userCampusMap?: Record<string, { names: string[]; ids: string[] }>;
   ministryFilter?: string;
+  requestedBreakUserIds?: string[];
+  satUserIds?: string[];
+  satRequestIdsByUser?: Record<string, string>;
+  blackoutDateUserIds?: string[];
+  canSitUpcomingRotation?: boolean;
+  nextRotationPeriodId?: string | null;
+  nextRotationBreakUserIds?: string[];
 }
 
 interface PositionGroup {
   category: string;
   icon: React.ReactNode;
   positions: string[];
-  members: (AvailableMember & { wasOnBreakBefore: boolean })[];
+  members: (AvailableMember & {
+    wasOnBreakBefore: boolean;
+    hasRequestedBreak: boolean;
+    wasSatByAdmin: boolean;
+    hasBlackoutDates: boolean;
+  })[];
 }
 
 // Tech positions to exclude from the On Break list (until weekend tech schedule is uploaded)
@@ -89,8 +102,21 @@ export function OnBreakList({
   campusId,
   userCampusMap,
   ministryFilter,
+  requestedBreakUserIds = [],
+  satUserIds = [],
+  satRequestIdsByUser = {},
+  blackoutDateUserIds = [],
+  canSitUpcomingRotation = false,
+  nextRotationPeriodId = null,
+  nextRotationBreakUserIds = [],
 }: OnBreakListProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const createManagedBreakRequest = useCreateManagedBreakRequest();
+  const deleteManagedBreakRequest = useDeleteManagedBreakRequest();
+  const nextRotationBreakUserIdSet = useMemo(
+    () => new Set(nextRotationBreakUserIds),
+    [nextRotationBreakUserIds],
+  );
 
   // Find members on break (not assigned in current period)
   // Include members who have historical assignments OR have positions defined (active worship team members)
@@ -127,6 +153,10 @@ export function OnBreakList({
     // Also consider it first period if there's no previous period data to compare
     const hasPreviousPeriodData = previousPeriodMembers.length > 0;
 
+    const requestedBreakUserIdSet = new Set(requestedBreakUserIds);
+    const satUserIdSet = new Set(satUserIds);
+    const blackoutDateUserIdSet = new Set(blackoutDateUserIds);
+
     return allMembers
       .filter(m => {
         // Must belong to the selected campus if campusId is provided
@@ -155,8 +185,11 @@ export function OnBreakList({
         ...m,
         // Only flag as consecutive break if we have previous period data AND it's not the first historical period
         wasOnBreakBefore: hasPreviousPeriodData && !isFirstHistoricalPeriod && !previousAssignedUserIds.has(m.id),
+        hasRequestedBreak: requestedBreakUserIdSet.has(m.id),
+        wasSatByAdmin: satUserIdSet.has(m.id),
+        hasBlackoutDates: blackoutDateUserIdSet.has(m.id),
       }));
-  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, campusId, userCampusMap, periodName, ministryFilter]);
+  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, campusId, userCampusMap, periodName, ministryFilter, requestedBreakUserIds, satUserIds, blackoutDateUserIds]);
 
   // Filter by ministry type for display (after computing who is on break)
   const filteredOnBreakMembers = useMemo(() => {
@@ -276,8 +309,14 @@ export function OnBreakList({
                       key={member.id}
                       className={cn(
                         "flex items-center gap-2 rounded-lg border p-2 text-sm",
-                        member.wasOnBreakBefore 
-                          ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20" 
+                        member.wasSatByAdmin
+                          ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-100"
+                          : member.hasRequestedBreak
+                          ? "border-red-300 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-100"
+                          : member.hasBlackoutDates
+                            ? "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/20 dark:text-orange-100"
+                          : member.wasOnBreakBefore 
+                            ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20" 
                           : "border-border bg-card"
                       )}
                     >
@@ -288,10 +327,55 @@ export function OnBreakList({
                         </AvatarFallback>
                       </Avatar>
                       <span className="truncate flex-1">{member.full_name}</span>
+                      {member.wasSatByAdmin && (
+                        <Badge variant="outline" className="border-sky-300 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                          Sat
+                        </Badge>
+                      )}
+                      {!member.wasSatByAdmin && member.hasRequestedBreak && (
+                        <Badge variant="outline" className="border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+                          Break
+                        </Badge>
+                      )}
+                      {!member.wasSatByAdmin && !member.hasRequestedBreak && member.hasBlackoutDates && (
+                        <Badge variant="outline" className="border-orange-300 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200">
+                          Blackout
+                        </Badge>
+                      )}
                       {member.wasOnBreakBefore && (
                         <span title="Consecutive break - was also on break last trimester">
                           <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
                         </span>
+                      )}
+                      {canSitUpcomingRotation && nextRotationPeriodId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          disabled={
+                            createManagedBreakRequest.isPending ||
+                            deleteManagedBreakRequest.isPending ||
+                            (member.wasSatByAdmin && !satRequestIdsByUser[member.id])
+                          }
+                          onClick={() => {
+                            if (member.wasSatByAdmin) {
+                              const requestId = satRequestIdsByUser[member.id];
+                              if (!requestId) return;
+
+                              deleteManagedBreakRequest.mutate(requestId);
+                              return;
+                            }
+
+                            createManagedBreakRequest.mutate({
+                              userId: member.id,
+                              rotationPeriodId: nextRotationPeriodId,
+                              ministryType: ministryFilter,
+                              reason: `Sat from Team Builder for this rotation`,
+                            });
+                          }}
+                        >
+                          {nextRotationBreakUserIdSet.has(member.id) ? "Unsit" : "Sit"}
+                        </Button>
                       )}
                     </div>
                   ))}

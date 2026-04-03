@@ -243,3 +243,74 @@ export function useReviewBreakRequest() {
     },
   });
 }
+
+export function useCreateManagedBreakRequest() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      rotationPeriodId,
+      ministryType,
+      reason,
+    }: {
+      userId: string;
+      rotationPeriodId: string;
+      ministryType?: string;
+      reason?: string;
+    }) => {
+      if (!user?.id) throw new Error("Not authenticated");
+
+      const normalizedMinistryType = normalizeWeekendWorshipMinistryType(ministryType);
+
+      const { error } = await supabase.from("break_requests").insert({
+        user_id: userId,
+        rotation_period_id: rotationPeriodId,
+        reason: reason || null,
+        request_type: "need_break",
+        request_scope: "full_trimester",
+        blackout_dates: null,
+        ministry_type: normalizedMinistryType || null,
+        status: "approved",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["break-requests"] });
+      toast.success("Volunteer sat for this rotation");
+    },
+    onError: (error: { code?: string; message?: string }) => {
+      if (error.code === "23505") {
+        toast.error("That volunteer already has a break request for this rotation");
+      } else {
+        toast.error(error.message || "Failed to sit volunteer for this rotation");
+      }
+    },
+  });
+}
+
+export function useDeleteManagedBreakRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (requestId: string) => {
+      const { error } = await supabase
+        .from("break_requests")
+        .delete()
+        .eq("id", requestId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["break-requests"] });
+      toast.success("Volunteer unsat for this rotation");
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || "Failed to unsit volunteer for this rotation");
+    },
+  });
+}
