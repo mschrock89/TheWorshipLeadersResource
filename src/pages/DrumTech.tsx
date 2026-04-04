@@ -9,6 +9,7 @@ import {
   Lock,
   MessageSquare,
   Plus,
+  Reply,
   RotateCcw,
   Save,
   Send,
@@ -23,6 +24,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import {
   DrumTechComment,
+  DrumTechCommentReply,
   DrumTechReactionType,
   DrumKit,
   DrumKitInput,
@@ -31,6 +33,7 @@ import {
   DrumPieceType,
   CymbalCrackMarker,
   useCreateDrumTechComment,
+  useCreateDrumTechCommentReply,
   useDeleteDrumKit,
   useDrumKits,
   useDrumTechComments,
@@ -1091,8 +1094,10 @@ function DrumTechCommentBoard({
   currentUserId,
   isLoading,
   isSubmitting,
+  isSubmittingReply,
   isTogglingReaction,
   onSubmit,
+  onReplySubmit,
   onToggleReaction,
 }: {
   campusName: string;
@@ -1100,16 +1105,52 @@ function DrumTechCommentBoard({
   currentUserId: string | null;
   isLoading: boolean;
   isSubmitting: boolean;
+  isSubmittingReply: boolean;
   isTogglingReaction: boolean;
   onSubmit: (body: string) => Promise<void>;
+  onReplySubmit: (commentId: string, body: string) => Promise<void>;
   onToggleReaction: (commentId: string, reactionType: DrumTechReactionType, currentReaction: DrumTechReactionType | null) => Promise<void>;
 }) {
   const [message, setMessage] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [openReplyComposerId, setOpenReplyComposerId] = useState<string | null>(null);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await onSubmit(message);
     setMessage("");
+  };
+
+  const handleReplySubmit = async (commentId: string) => {
+    const draft = replyDrafts[commentId] || "";
+    await onReplySubmit(commentId, draft);
+    setReplyDrafts((current) => ({ ...current, [commentId]: "" }));
+    setOpenReplyComposerId(null);
+  };
+
+  const renderReply = (reply: DrumTechCommentReply) => {
+    const authorName = reply.author_name || (reply.user_id === currentUserId ? "You" : "Team Member");
+    const timestamp = isValid(parseISO(reply.created_at))
+      ? formatDistanceToNowStrict(parseISO(reply.created_at), { addSuffix: true })
+      : "just now";
+
+    return (
+      <div key={reply.id} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+        <div className="flex items-start gap-3">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={reply.author_avatar_url || undefined} alt={authorName} />
+            <AvatarFallback className="text-[10px]">{getInitials(authorName)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="text-sm font-medium text-foreground">{authorName}</p>
+              <span className="text-xs text-muted-foreground">{timestamp}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{reply.body}</p>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1197,7 +1238,60 @@ function DrumTechCommentBoard({
                           <span>Dislike</span>
                           <span className="text-xs">{comment.dislike_count}</span>
                         </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-2"
+                          onClick={() => setOpenReplyComposerId((current) => (current === comment.id ? null : comment.id))}
+                        >
+                          <Reply className="h-3.5 w-3.5" />
+                          <span>Reply</span>
+                          <span className="text-xs">{comment.reply_count}</span>
+                        </Button>
                       </div>
+                      {(comment.replies.length > 0 || openReplyComposerId === comment.id) && (
+                        <div className="mt-4 space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-3">
+                          {comment.replies.length > 0 && (
+                            <div className="space-y-2">
+                              {comment.replies.map((reply) => renderReply(reply))}
+                            </div>
+                          )}
+                          {openReplyComposerId === comment.id && (
+                            <div className="space-y-3">
+                              <Textarea
+                                value={replyDrafts[comment.id] || ""}
+                                onChange={(event) =>
+                                  setReplyDrafts((current) => ({
+                                    ...current,
+                                    [comment.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Write a reply..."
+                                maxLength={500}
+                                rows={3}
+                              />
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs text-muted-foreground">{(replyDrafts[comment.id] || "").length}/500 characters</p>
+                                <div className="flex gap-2">
+                                  <Button type="button" variant="ghost" size="sm" onClick={() => setOpenReplyComposerId(null)}>
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => handleReplySubmit(comment.id)}
+                                    disabled={isSubmittingReply || !(replyDrafts[comment.id] || "").trim()}
+                                  >
+                                    <Send className="mr-2 h-4 w-4" />
+                                    {isSubmittingReply ? "Replying..." : "Post reply"}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1231,6 +1325,7 @@ export default function DrumTech() {
   const { data: comments = [], isLoading: isCommentsLoading } = useDrumTechComments(selectedCampusId);
   const upsertKit = useUpsertDrumKit();
   const createComment = useCreateDrumTechComment();
+  const createCommentReply = useCreateDrumTechCommentReply();
   const toggleCommentReaction = useToggleDrumTechCommentReaction();
   const deleteKit = useDeleteDrumKit();
 
@@ -1333,6 +1428,11 @@ export default function DrumTech() {
   const handleCommentSubmit = async (body: string) => {
     if (!selectedCampusId) return;
     await createComment.mutateAsync({ campusId: selectedCampusId, body });
+  };
+
+  const handleReplySubmit = async (commentId: string, body: string) => {
+    if (!selectedCampusId) return;
+    await createCommentReply.mutateAsync({ campusId: selectedCampusId, commentId, body });
   };
 
   const handleToggleCommentReaction = async (
@@ -1982,8 +2082,10 @@ export default function DrumTech() {
             currentUserId={user?.id ?? null}
             isLoading={isCommentsLoading}
             isSubmitting={createComment.isPending}
+            isSubmittingReply={createCommentReply.isPending}
             isTogglingReaction={toggleCommentReaction.isPending}
             onSubmit={handleCommentSubmit}
+            onReplySubmit={handleReplySubmit}
             onToggleReaction={handleToggleCommentReaction}
           />
         </section>

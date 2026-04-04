@@ -103,9 +103,22 @@ export interface DrumTechComment {
   like_count: number;
   dislike_count: number;
   my_reaction: DrumTechReactionType | null;
+  reply_count: number;
+  replies: DrumTechCommentReply[];
 }
 
 export type DrumTechReactionType = "like" | "dislike";
+
+export interface DrumTechCommentReply {
+  id: string;
+  comment_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author_name: string | null;
+  author_avatar_url: string | null;
+}
 
 type DrumTechCommentRow = Database["public"]["Tables"]["drum_tech_comments"]["Row"] & {
   author?: {
@@ -115,6 +128,12 @@ type DrumTechCommentRow = Database["public"]["Tables"]["drum_tech_comments"]["Ro
 };
 
 type DrumTechCommentReactionRow = Database["public"]["Tables"]["drum_tech_comment_reactions"]["Row"];
+type DrumTechCommentReplyRow = Database["public"]["Tables"]["drum_tech_comment_replies"]["Row"] & {
+  author?: {
+    full_name: string | null;
+    avatar_url: string | null;
+  } | null;
+};
 
 const LOCAL_DRUM_KITS_KEY = "drum-tech-local-kits";
 
@@ -617,6 +636,44 @@ export function useDrumTechComments(campusId?: string | null) {
       }
 
       const commentIds = comments.map((comment) => comment.id);
+      const { data: replyData, error: replyError } = await supabase
+        .from("drum_tech_comment_replies")
+        .select(`
+          id,
+          comment_id,
+          user_id,
+          body,
+          created_at,
+          updated_at,
+          author:profiles!drum_tech_comment_replies_user_id_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
+        .in("comment_id", commentIds)
+        .order("created_at", { ascending: true });
+
+      if (replyError) {
+        if (isSchemaMismatchError(replyError)) {
+          return comments.map((comment) => ({
+            id: comment.id,
+            campus_id: comment.campus_id,
+            user_id: comment.user_id,
+            body: comment.body,
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+            author_name: comment.author?.full_name ?? null,
+            author_avatar_url: comment.author?.avatar_url ?? null,
+            like_count: 0,
+            dislike_count: 0,
+            my_reaction: null,
+            reply_count: 0,
+            replies: [],
+          }));
+        }
+        throw replyError;
+      }
+
       const { data: reactionData, error: reactionError } = await supabase
         .from("drum_tech_comment_reactions")
         .select("comment_id, user_id, reaction_type")
@@ -636,10 +693,39 @@ export function useDrumTechComments(campusId?: string | null) {
             like_count: 0,
             dislike_count: 0,
             my_reaction: null,
+            reply_count: ((replyData || []) as DrumTechCommentReplyRow[]).filter((reply) => reply.comment_id === comment.id).length,
+            replies: ((replyData || []) as DrumTechCommentReplyRow[])
+              .filter((reply) => reply.comment_id === comment.id)
+              .map((reply) => ({
+                id: reply.id,
+                comment_id: reply.comment_id,
+                user_id: reply.user_id,
+                body: reply.body,
+                created_at: reply.created_at,
+                updated_at: reply.updated_at,
+                author_name: reply.author?.full_name ?? null,
+                author_avatar_url: reply.author?.avatar_url ?? null,
+              })),
           }));
         }
         throw reactionError;
       }
+
+      const repliesByCommentId = new Map<string, DrumTechCommentReply[]>();
+      ((replyData || []) as DrumTechCommentReplyRow[]).forEach((reply) => {
+        const existing = repliesByCommentId.get(reply.comment_id) || [];
+        existing.push({
+          id: reply.id,
+          comment_id: reply.comment_id,
+          user_id: reply.user_id,
+          body: reply.body,
+          created_at: reply.created_at,
+          updated_at: reply.updated_at,
+          author_name: reply.author?.full_name ?? null,
+          author_avatar_url: reply.author?.avatar_url ?? null,
+        });
+        repliesByCommentId.set(reply.comment_id, existing);
+      });
 
       const reactions = (reactionData || []) as DrumTechCommentReactionRow[];
       const likeCounts = new Map<string, number>();
@@ -670,6 +756,8 @@ export function useDrumTechComments(campusId?: string | null) {
         like_count: likeCounts.get(comment.id) || 0,
         dislike_count: dislikeCounts.get(comment.id) || 0,
         my_reaction: myReactions.get(comment.id) || null,
+        reply_count: (repliesByCommentId.get(comment.id) || []).length,
+        replies: repliesByCommentId.get(comment.id) || [],
       }));
     },
   });
@@ -704,6 +792,43 @@ export function useCreateDrumTechComment() {
         title: isSchemaMismatchError(error) ? "Comment board unavailable" : "Could not post message",
         description: isSchemaMismatchError(error)
           ? "The Drum Tech comment board needs the latest database migration before it can be used."
+          : error.message,
+        variant: "destructive",
+      });
+    },
+    retry: false,
+  });
+}
+
+export function useCreateDrumTechCommentReply() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ campusId, commentId, body }: { campusId: string; commentId: string; body: string }) => {
+      if (!user?.id) throw new Error("You must be signed in to reply.");
+
+      const trimmedBody = body.trim();
+      if (!trimmedBody) throw new Error("Write a reply before posting.");
+      if (trimmedBody.length > 500) throw new Error("Replies must be 500 characters or less.");
+
+      const { error } = await supabase.from("drum_tech_comment_replies").insert({
+        comment_id: commentId,
+        user_id: user.id,
+        body: trimmedBody,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["drum-tech-comments", variables.campusId] });
+    },
+    onError: (error) => {
+      toast({
+        title: isSchemaMismatchError(error) ? "Replies unavailable" : "Could not post reply",
+        description: isSchemaMismatchError(error)
+          ? "The Drum Tech reply feature needs the latest database migration before it can be used."
           : error.message,
         variant: "destructive",
       });
