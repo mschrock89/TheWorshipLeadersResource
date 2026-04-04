@@ -17,6 +17,22 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
+function arrayBufferToBase64Url(buffer: ArrayBuffer | null): string {
+  if (!buffer) return "";
+
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return window
+    .btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 function isIosDevice() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
@@ -49,11 +65,14 @@ export function usePushNotifications() {
     if (!user) return false;
 
     const subscriptionJson = subscription.toJSON();
+    const p256dh = subscriptionJson.keys?.p256dh || arrayBufferToBase64Url(subscription.getKey("p256dh"));
+    const auth = subscriptionJson.keys?.auth || arrayBufferToBase64Url(subscription.getKey("auth"));
+
     const { error } = await supabase.functions.invoke("save-push-subscription", {
       body: {
         endpoint: subscription.endpoint,
-        p256dh: subscriptionJson.keys?.p256dh || "",
-        auth: subscriptionJson.keys?.auth || "",
+        p256dh,
+        auth,
       },
     });
 
