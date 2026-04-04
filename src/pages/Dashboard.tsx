@@ -11,6 +11,7 @@ import { VolunteerUpcomingWidget } from "@/components/dashboard/VolunteerUpcomin
 import { SwapManagementWidget } from "@/components/dashboard/SwapManagementWidget";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { SetlistReviewWidget } from "@/components/dashboard/SetlistReviewWidget";
+import { ApprovedTimeAwayWidget } from "@/components/dashboard/ApprovedTimeAwayWidget";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
@@ -279,6 +280,10 @@ export default function Dashboard() {
       {/* Break Request Widget - visible to all users */}
       <section className="mt-6">
         <BreakRequestWidget />
+      </section>
+
+      <section className="mt-6">
+        <ApprovedTimeAwayWidget />
       </section>
 
       {/* Leader tip */}
