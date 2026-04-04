@@ -53,7 +53,7 @@ verify_jwt = false
 
 [functions.save-push-subscription]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/save-push-subscription/index.ts"
 
 [functions.google-auth-callback]
