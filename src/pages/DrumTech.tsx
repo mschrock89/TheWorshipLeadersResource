@@ -13,6 +13,8 @@ import {
   Save,
   Send,
   Settings2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Unlock,
   Wrench,
@@ -21,6 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import {
   DrumTechComment,
+  DrumTechReactionType,
   DrumKit,
   DrumKitInput,
   DrumKitPiece,
@@ -32,6 +35,7 @@ import {
   useDrumKits,
   useDrumTechComments,
   useDrumTechAccess,
+  useToggleDrumTechCommentReaction,
   useUpsertDrumKit,
 } from "@/hooks/useDrumTech";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
@@ -1087,14 +1091,18 @@ function DrumTechCommentBoard({
   currentUserId,
   isLoading,
   isSubmitting,
+  isTogglingReaction,
   onSubmit,
+  onToggleReaction,
 }: {
   campusName: string;
   comments: DrumTechComment[];
   currentUserId: string | null;
   isLoading: boolean;
   isSubmitting: boolean;
+  isTogglingReaction: boolean;
   onSubmit: (body: string) => Promise<void>;
+  onToggleReaction: (commentId: string, reactionType: DrumTechReactionType, currentReaction: DrumTechReactionType | null) => Promise<void>;
 }) {
   const [message, setMessage] = useState("");
 
@@ -1158,6 +1166,38 @@ function DrumTechCommentBoard({
                         <span className="text-xs text-muted-foreground">{timestamp}</span>
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "h-8 gap-2",
+                            comment.my_reaction === "like" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
+                          )}
+                          onClick={() => onToggleReaction(comment.id, "like", comment.my_reaction)}
+                          disabled={isTogglingReaction}
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                          <span>Like</span>
+                          <span className="text-xs">{comment.like_count}</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "h-8 gap-2",
+                            comment.my_reaction === "dislike" && "border-rose-500/40 bg-rose-500/10 text-rose-600",
+                          )}
+                          onClick={() => onToggleReaction(comment.id, "dislike", comment.my_reaction)}
+                          disabled={isTogglingReaction}
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5" />
+                          <span>Dislike</span>
+                          <span className="text-xs">{comment.dislike_count}</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1191,6 +1231,7 @@ export default function DrumTech() {
   const { data: comments = [], isLoading: isCommentsLoading } = useDrumTechComments(selectedCampusId);
   const upsertKit = useUpsertDrumKit();
   const createComment = useCreateDrumTechComment();
+  const toggleCommentReaction = useToggleDrumTechCommentReaction();
   const deleteKit = useDeleteDrumKit();
 
   const availableCampuses = useMemo(() => {
@@ -1292,6 +1333,15 @@ export default function DrumTech() {
   const handleCommentSubmit = async (body: string) => {
     if (!selectedCampusId) return;
     await createComment.mutateAsync({ campusId: selectedCampusId, body });
+  };
+
+  const handleToggleCommentReaction = async (
+    commentId: string,
+    reactionType: DrumTechReactionType,
+    currentReaction: DrumTechReactionType | null,
+  ) => {
+    if (!selectedCampusId) return;
+    await toggleCommentReaction.mutateAsync({ campusId: selectedCampusId, commentId, reactionType, currentReaction });
   };
 
   const handleSavePieceMonitor = async () => {
@@ -1932,7 +1982,9 @@ export default function DrumTech() {
             currentUserId={user?.id ?? null}
             isLoading={isCommentsLoading}
             isSubmitting={createComment.isPending}
+            isTogglingReaction={toggleCommentReaction.isPending}
             onSubmit={handleCommentSubmit}
+            onToggleReaction={handleToggleCommentReaction}
           />
         </section>
       </div>
