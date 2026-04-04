@@ -133,6 +133,9 @@ export function usePushNotifications() {
         const subscription = await registration.pushManager.getSubscription();
         
         if (subscription) {
+          // The browser subscription is the real source of truth for the device toggle.
+          setIsSubscribed(true);
+
           // Verify subscription exists in database
           const { data, error } = await supabase
             .from("push_subscriptions")
@@ -148,11 +151,8 @@ export function usePushNotifications() {
           if (!data) {
             // Self-heal if the browser has an active subscription but the database row is missing.
             await saveSubscription(subscription);
-            setIsSubscribed(true);
             return;
           }
-          
-          setIsSubscribed(!!data);
         } else {
           setIsSubscribed(false);
         }
