@@ -69,7 +69,7 @@ serve(async (req) => {
           auth,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "endpoint" },
+        { onConflict: "user_id,endpoint" },
       );
 
     if (upsertError) {
