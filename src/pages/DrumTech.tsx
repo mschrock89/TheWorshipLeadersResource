@@ -1,4 +1,4 @@
-import { MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { differenceInCalendarDays, formatDistanceToNowStrict, isValid, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -7,8 +7,11 @@ import {
   Disc3,
   Drum,
   Lock,
+  MessageSquare,
   Plus,
+  RotateCcw,
   Save,
+  Send,
   Settings2,
   Trash2,
   Unlock,
@@ -17,18 +20,22 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import {
+  DrumTechComment,
   DrumKit,
   DrumKitInput,
   DrumKitPiece,
   DrumKitPieceInput,
   DrumPieceType,
   CymbalCrackMarker,
+  useCreateDrumTechComment,
   useDeleteDrumKit,
   useDrumKits,
+  useDrumTechComments,
   useDrumTechAccess,
   useUpsertDrumKit,
 } from "@/hooks/useDrumTech";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +130,16 @@ type WearBand = "green" | "yellow" | "orange" | "red" | "neutral";
 
 function formatSize(size: number) {
   return `${size}"`;
+}
+
+function getInitials(name: string | null | undefined) {
+  return (name || "Team Member")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "TM";
 }
 
 function getPieceMeta(type: string) {
@@ -298,6 +315,10 @@ function formatInstalledDate(installedOn: string | null | undefined) {
   if (!isValid(parsedDate)) return "Install date is invalid";
 
   return `${installedOn} · ${formatDistanceToNowStrict(parsedDate, { addSuffix: true })}`;
+}
+
+function getTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function getPieceHeadHealth(piece: DrumKitPiece | DrumKitPieceInput, side: HeadSide): HeadHealth {
@@ -1060,6 +1081,99 @@ function KitBuilderDialog({
   );
 }
 
+function DrumTechCommentBoard({
+  campusName,
+  comments,
+  currentUserId,
+  isLoading,
+  isSubmitting,
+  onSubmit,
+}: {
+  campusName: string;
+  comments: DrumTechComment[];
+  currentUserId: string | null;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  onSubmit: (body: string) => Promise<void>;
+}) {
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await onSubmit(message);
+    setMessage("");
+  };
+
+  return (
+    <Card className="border-border/70">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-xl">
+          <MessageSquare className="h-5 w-5 text-primary" />
+          Message Board
+        </CardTitle>
+        <CardDescription>
+          Shared notes for {campusName}. Everyone with Drum Tech access can post updates, needs, or quick handoff notes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <form className="space-y-3" onSubmit={handleSubmit}>
+          <Textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="Share an update, ask a question, or leave a handoff note..."
+            maxLength={500}
+            rows={4}
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">{message.length}/500 characters</p>
+            <Button type="submit" disabled={isSubmitting || !message.trim()}>
+              <Send className="mr-2 h-4 w-4" />
+              {isSubmitting ? "Posting..." : "Post message"}
+            </Button>
+          </div>
+        </form>
+
+        <div className="space-y-3">
+          {isLoading ? (
+            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              Loading messages...
+            </div>
+          ) : comments && comments.length > 0 ? (
+            comments.map((comment) => {
+              const authorName = comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member");
+              const timestamp = isValid(parseISO(comment.created_at))
+                ? formatDistanceToNowStrict(parseISO(comment.created_at), { addSuffix: true })
+                : "just now";
+
+              return (
+                <div key={comment.id} className="rounded-2xl border border-border bg-muted/20 p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={comment.author_avatar_url || undefined} alt={authorName} />
+                      <AvatarFallback className="text-[11px]">{getInitials(authorName)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="font-medium text-foreground">{authorName}</p>
+                        <span className="text-xs text-muted-foreground">{timestamp}</span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              No messages yet. Start the conversation with a quick update or request.
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DrumTech() {
   const { user, canManageTeam } = useAuth();
   const { data: campuses = [] } = useCampuses();
@@ -1074,7 +1188,9 @@ export default function DrumTech() {
   const access = useDrumTechAccess(selectedCampusId);
   const setSelectedCampusId = campusCtx?.setSelectedCampusId;
   const { data: kits = [], isLoading } = useDrumKits(selectedCampusId);
+  const { data: comments = [], isLoading: isCommentsLoading } = useDrumTechComments(selectedCampusId);
   const upsertKit = useUpsertDrumKit();
+  const createComment = useCreateDrumTechComment();
   const deleteKit = useDeleteDrumKit();
 
   const availableCampuses = useMemo(() => {
@@ -1173,6 +1289,11 @@ export default function DrumTech() {
     await deleteKit.mutateAsync({ kitId: selectedKit.id, campusId: selectedCampusId });
   };
 
+  const handleCommentSubmit = async (body: string) => {
+    if (!selectedCampusId) return;
+    await createComment.mutateAsync({ campusId: selectedCampusId, body });
+  };
+
   const handleSavePieceMonitor = async () => {
     if (!selectedKit || !pieceDraft || !selectedCampusId || !access.canEditCampus) return;
 
@@ -1213,6 +1334,51 @@ export default function DrumTech() {
         reso_head_installed_on: piece.reso_head_installed_on,
         reso_expected_head_life_days: piece.reso_expected_head_life_days,
         notes: piece.notes,
+      })),
+    });
+  };
+
+  const handleResetHeadHealth = async (side: HeadSide) => {
+    if (!selectedKit || !pieceDraft || !selectedCampusId || !access.canEditCampus) return;
+
+    const installedOn = getTodayIsoDate();
+    const nextPieceDraft =
+      side === "batter"
+        ? { ...pieceDraft, batter_head_installed_on: installedOn }
+        : { ...pieceDraft, reso_head_installed_on: installedOn };
+
+    setPieceDraft(nextPieceDraft);
+
+    await upsertKit.mutateAsync({
+      id: selectedKit.id,
+      campus_id: selectedCampusId,
+      name: selectedKit.name,
+      description: selectedKit.description,
+      pieces: selectedKit.drum_kit_pieces.map((piece, index) => ({
+        id: piece.id,
+        layout_x: piece.id === nextPieceDraft.id ? nextPieceDraft.layout_x : piece.layout_x,
+        layout_y: piece.id === nextPieceDraft.id ? nextPieceDraft.layout_y : piece.layout_y,
+        piece_type: piece.piece_type,
+        piece_label: piece.piece_label,
+        size_inches: piece.size_inches,
+        sort_order: index,
+        cymbal_brand: piece.id === nextPieceDraft.id ? nextPieceDraft.cymbal_brand : piece.cymbal_brand,
+        cymbal_model: piece.id === nextPieceDraft.id ? nextPieceDraft.cymbal_model : piece.cymbal_model,
+        cymbal_crack_markers:
+          piece.id === nextPieceDraft.id ? nextPieceDraft.cymbal_crack_markers || [] : piece.cymbal_crack_markers || [],
+        batter_head_brand: piece.id === nextPieceDraft.id ? nextPieceDraft.batter_head_brand : piece.batter_head_brand,
+        batter_head_model: piece.id === nextPieceDraft.id ? nextPieceDraft.batter_head_model : piece.batter_head_model,
+        batter_head_installed_on:
+          piece.id === nextPieceDraft.id ? nextPieceDraft.batter_head_installed_on : piece.batter_head_installed_on,
+        batter_expected_head_life_days:
+          piece.id === nextPieceDraft.id ? nextPieceDraft.batter_expected_head_life_days : piece.batter_expected_head_life_days,
+        reso_head_brand: piece.id === nextPieceDraft.id ? nextPieceDraft.reso_head_brand : piece.reso_head_brand,
+        reso_head_model: piece.id === nextPieceDraft.id ? nextPieceDraft.reso_head_model : piece.reso_head_model,
+        reso_head_installed_on:
+          piece.id === nextPieceDraft.id ? nextPieceDraft.reso_head_installed_on : piece.reso_head_installed_on,
+        reso_expected_head_life_days:
+          piece.id === nextPieceDraft.id ? nextPieceDraft.reso_expected_head_life_days : piece.reso_expected_head_life_days,
+        notes: piece.id === nextPieceDraft.id ? nextPieceDraft.notes : piece.notes,
       })),
     });
   };
@@ -1281,6 +1447,8 @@ export default function DrumTech() {
       </div>
     );
   }
+
+  const selectedCampusName = availableCampuses.find((campus) => campus.id === selectedCampusId)?.name || "this campus";
 
   return (
     <div className="space-y-6 pb-28">
@@ -1580,13 +1748,27 @@ export default function DrumTech() {
                                               <p className="font-medium text-foreground">{head.title}</p>
                                               <p className="text-sm text-muted-foreground">{head.health.label}</p>
                                             </div>
-                                            <span className={cn("rounded-full border px-2 py-1 text-xs", healthClasses(head.health.tone))}>
-                                              {head.health.daysRemaining !== null
-                                                ? head.health.daysRemaining > 0
-                                                  ? `${head.health.daysRemaining}d left`
-                                                  : "Due"
-                                                : "No estimate"}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                              <span className={cn("rounded-full border px-2 py-1 text-xs", healthClasses(head.health.tone))}>
+                                                {head.health.daysRemaining !== null
+                                                  ? head.health.daysRemaining > 0
+                                                    ? `${head.health.daysRemaining}d left`
+                                                    : "Due"
+                                                  : "No estimate"}
+                                              </span>
+                                              {access.canEditCampus && (
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => handleResetHeadHealth(head.key)}
+                                                  disabled={upsertKit.isPending}
+                                                >
+                                                  <RotateCcw className="mr-2 h-4 w-4" />
+                                                  Reset health
+                                                </Button>
+                                              )}
+                                            </div>
                                           </div>
 
                                           <div className="mt-3 space-y-2">
@@ -1743,6 +1925,15 @@ export default function DrumTech() {
               </Card>
             </>
           )}
+
+          <DrumTechCommentBoard
+            campusName={selectedCampusName}
+            comments={comments}
+            currentUserId={user?.id ?? null}
+            isLoading={isCommentsLoading}
+            isSubmitting={createComment.isPending}
+            onSubmit={handleCommentSubmit}
+          />
         </section>
       </div>
 

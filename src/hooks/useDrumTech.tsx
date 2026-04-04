@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Json } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useToast } from "@/hooks/use-toast";
@@ -90,6 +90,24 @@ export interface DrumKitInput {
   description?: string | null;
   pieces: DrumKitPieceInput[];
 }
+
+export interface DrumTechComment {
+  id: string;
+  campus_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author_name: string | null;
+  author_avatar_url: string | null;
+}
+
+type DrumTechCommentRow = Database["public"]["Tables"]["drum_tech_comments"]["Row"] & {
+  author?: {
+    full_name: string | null;
+    avatar_url: string | null;
+  } | null;
+};
 
 const LOCAL_DRUM_KITS_KEY = "drum-tech-local-kits";
 
@@ -547,6 +565,86 @@ export function useDeleteDrumKit() {
       toast({
         title: "Unable to delete kit",
         description: error.message,
+        variant: "destructive",
+      });
+    },
+    retry: false,
+  });
+}
+
+export function useDrumTechComments(campusId?: string | null) {
+  return useQuery({
+    queryKey: ["drum-tech-comments", campusId],
+    enabled: !!campusId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("drum_tech_comments")
+        .select(`
+          id,
+          campus_id,
+          user_id,
+          body,
+          created_at,
+          updated_at,
+          author:profiles!drum_tech_comments_user_id_fkey (
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq("campus_id", campusId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        if (isSchemaMismatchError(error)) {
+          return [];
+        }
+        throw error;
+      }
+
+      return ((data || []) as DrumTechCommentRow[]).map((comment) => ({
+        id: comment.id,
+        campus_id: comment.campus_id,
+        user_id: comment.user_id,
+        body: comment.body,
+        created_at: comment.created_at,
+        updated_at: comment.updated_at,
+        author_name: comment.author?.full_name ?? null,
+        author_avatar_url: comment.author?.avatar_url ?? null,
+      }));
+    },
+  });
+}
+
+export function useCreateDrumTechComment() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ campusId, body }: { campusId: string; body: string }) => {
+      if (!user?.id) throw new Error("You must be signed in to comment.");
+
+      const trimmedBody = body.trim();
+      if (!trimmedBody) throw new Error("Write a message before posting.");
+      if (trimmedBody.length > 500) throw new Error("Messages must be 500 characters or less.");
+
+      const { error } = await supabase.from("drum_tech_comments").insert({
+        campus_id: campusId,
+        user_id: user.id,
+        body: trimmedBody,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["drum-tech-comments", variables.campusId] });
+    },
+    onError: (error) => {
+      toast({
+        title: isSchemaMismatchError(error) ? "Comment board unavailable" : "Could not post message",
+        description: isSchemaMismatchError(error)
+          ? "The Drum Tech comment board needs the latest database migration before it can be used."
+          : error.message,
         variant: "destructive",
       });
     },
