@@ -40,6 +40,11 @@ type MyBreakRequestRow = BreakRequest & {
   } | null;
 };
 
+interface CreateBlackoutPeriodGroup {
+  rotationPeriodId: string;
+  blackoutDates: string[];
+}
+
 export function useMyBreakRequests() {
   const { user } = useAuth();
 
@@ -74,11 +79,36 @@ export function useBreakRequestsForPeriod(rotationPeriodId: string | null) {
     queryFn: async () => {
       if (!rotationPeriodId) return [];
 
-      // Fetch break requests
+      const { data: targetPeriod, error: targetPeriodError } = await supabase
+        .from("rotation_periods")
+        .select("id, year, trimester, campus_id")
+        .eq("id", rotationPeriodId)
+        .maybeSingle();
+
+      if (targetPeriodError) throw targetPeriodError;
+      if (!targetPeriod) return [];
+
+      const periodIds = [rotationPeriodId];
+
+      if (targetPeriod.campus_id) {
+        const { data: networkWidePeriod, error: networkWidePeriodError } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .eq("year", targetPeriod.year)
+          .eq("trimester", targetPeriod.trimester)
+          .is("campus_id", null)
+          .maybeSingle();
+
+        if (networkWidePeriodError) throw networkWidePeriodError;
+        if (networkWidePeriod?.id) {
+          periodIds.push(networkWidePeriod.id);
+        }
+      }
+
       const { data: requests, error: requestsError } = await supabase
         .from("break_requests")
         .select("*")
-        .eq("rotation_period_id", rotationPeriodId)
+        .in("rotation_period_id", periodIds)
         .order("created_at", { ascending: false });
 
       if (requestsError) throw requestsError;
@@ -110,28 +140,39 @@ export function useRotationPeriodsForUser() {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      // First get user's campus IDs
       const { data: userCampuses, error: campusError } = await supabase
         .from("user_campuses")
         .select("campus_id")
         .eq("user_id", user.id);
 
       if (campusError) throw campusError;
-      if (!userCampuses || userCampuses.length === 0) return [];
 
-      const campusIds = userCampuses.map((uc) => uc.campus_id);
+      const campusIds = (userCampuses || []).map((uc) => uc.campus_id);
 
-      // Fetch rotation periods for those campuses
-      const { data: periods, error: periodsError } = await supabase
-        .from("rotation_periods")
-        .select("*")
-        .in("campus_id", campusIds)
-        .order("year", { ascending: false })
-        .order("trimester", { ascending: true });
+      const [networkWideResult, campusResult] = await Promise.all([
+        supabase
+          .from("rotation_periods")
+          .select("*")
+          .is("campus_id", null),
+        campusIds.length > 0
+          ? supabase
+              .from("rotation_periods")
+              .select("*")
+              .in("campus_id", campusIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-      if (periodsError) throw periodsError;
+      if (networkWideResult.error) throw networkWideResult.error;
+      if (campusResult.error) throw campusResult.error;
 
-      return (periods || []) as RotationPeriod[];
+      const periods = [...(networkWideResult.data || []), ...(campusResult.data || [])];
+
+      return periods
+        .sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          if (a.trimester !== b.trimester) return a.trimester - b.trimester;
+          return (a.campus_id || "").localeCompare(b.campus_id || "");
+        }) as RotationPeriod[];
     },
     enabled: !!user?.id,
   });
@@ -149,6 +190,7 @@ export function useCreateBreakRequest() {
       requestScope = "full_trimester",
       blackoutDates,
       ministryType,
+      blackoutPeriodGroups,
     }: {
       rotationPeriodId: string;
       reason?: string;
@@ -156,10 +198,69 @@ export function useCreateBreakRequest() {
       requestScope?: "full_trimester" | "blackout_dates";
       blackoutDates?: string[];
       ministryType?: string;
+      blackoutPeriodGroups?: CreateBlackoutPeriodGroup[];
     }) => {
       if (!user?.id) throw new Error("Not authenticated");
 
       const normalizedMinistryType = normalizeWeekendWorshipMinistryType(ministryType);
+
+      if (requestScope === "blackout_dates" && blackoutPeriodGroups?.length) {
+        const periodIds = blackoutPeriodGroups.map((group) => group.rotationPeriodId);
+        const { data: existingRequests, error: existingRequestsError } = await supabase
+          .from("break_requests")
+          .select("id, rotation_period_id, request_scope, blackout_dates, reason")
+          .eq("user_id", user.id)
+          .in("rotation_period_id", periodIds);
+
+        if (existingRequestsError) throw existingRequestsError;
+
+        for (const group of blackoutPeriodGroups) {
+          const uniqueBlackoutDates = Array.from(new Set(group.blackoutDates)).sort();
+          const existingRequest = existingRequests?.find(
+            (request) => request.rotation_period_id === group.rotationPeriodId
+          );
+
+          if (existingRequest?.request_scope === "full_trimester") {
+            continue;
+          }
+
+          if (existingRequest) {
+            const mergedDates = Array.from(
+              new Set([...(existingRequest.blackout_dates || []), ...uniqueBlackoutDates])
+            ).sort();
+
+            const { error: updateError } = await supabase
+              .from("break_requests")
+              .update({
+                reason: reason || existingRequest.reason || null,
+                request_type: requestType,
+                request_scope: "blackout_dates",
+                blackout_dates: mergedDates,
+                ministry_type: null,
+                status: "pending",
+                reviewed_by: null,
+                reviewed_at: null,
+              })
+              .eq("id", existingRequest.id);
+
+            if (updateError) throw updateError;
+          } else {
+            const { error: insertError } = await supabase.from("break_requests").insert({
+              user_id: user.id,
+              rotation_period_id: group.rotationPeriodId,
+              reason: reason || null,
+              request_type: requestType,
+              request_scope: "blackout_dates",
+              blackout_dates: uniqueBlackoutDates,
+              ministry_type: null,
+            });
+
+            if (insertError) throw insertError;
+          }
+        }
+
+        return;
+      }
 
       const { error } = await supabase.from("break_requests").insert({
         user_id: user.id,
@@ -173,9 +274,13 @@ export function useCreateBreakRequest() {
 
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["break-requests"] });
-      toast.success("Break request submitted");
+      toast.success(
+        variables.requestScope === "blackout_dates"
+          ? "Blackout dates submitted"
+          : "Break request submitted"
+      );
     },
     onError: (error: { code?: string }) => {
       if (error.code === "23505") {

@@ -215,19 +215,17 @@ export default function TeamBuilder() {
     const matchingBreaks = breakRequests.filter(
       (request) =>
         request.status !== "denied" &&
-        request.request_scope === "blackout_dates" &&
-        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+        request.request_scope === "blackout_dates",
     );
 
     return [...new Set(matchingBreaks.map((request) => request.user_id))];
-  }, [breakRequests, selectedMinistryType]);
+  }, [breakRequests]);
 
   const blackoutDatesByUser = useMemo(() => {
     const entries = breakRequests.filter(
       (request) =>
         request.status !== "denied" &&
-        request.request_scope === "blackout_dates" &&
-        breakRequestMatchesMinistryFilter(request.ministry_type, selectedMinistryType),
+        request.request_scope === "blackout_dates",
     );
 
     return entries.reduce<Record<string, string[]>>((acc, request) => {
@@ -236,7 +234,7 @@ export default function TeamBuilder() {
       acc[request.user_id] = Array.from(existing);
       return acc;
     }, {});
-  }, [breakRequests, selectedMinistryType]);
+  }, [breakRequests]);
 
   const selectedPeriodBreakUserIds = useMemo(() => {
     const matchingBreaks = breakRequests.filter(
