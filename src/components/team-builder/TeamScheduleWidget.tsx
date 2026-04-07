@@ -35,6 +35,7 @@ import {
 } from "@/hooks/useTeamScheduleEditor";
 import { useWorshipTeams } from "@/hooks/useTeamSchedule";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useAuth } from "@/hooks/useAuth";
 
 interface TeamScheduleWidgetProps {
   campusId: string | null;
@@ -71,6 +72,7 @@ export function TeamScheduleWidget({
   ministryFilter,
   canPublishNetworkWide = false,
 }: TeamScheduleWidgetProps) {
+  const { isAdmin } = useAuth();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [newTeamId, setNewTeamId] = useState("");
@@ -188,6 +190,7 @@ export function TeamScheduleWidget({
   const createEntry = useCreateScheduleEntry();
   const deleteEntry = useDeleteScheduleEntry();
   const publishNetworkWide = usePublishScheduleNetworkWide();
+  const showPublishNetworkWide = canPublishNetworkWide && isAdmin;
 
   const handleTeamChange = (entry: DisplayScheduleEntry, teamId: string) => {
     if (!campusId || !rotationPeriodName) return;
@@ -274,7 +277,7 @@ export function TeamScheduleWidget({
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-2">
-            {canPublishNetworkWide && (
+            {showPublishNetworkWide && (
               <Button
                 size="sm"
                 variant="outline"
