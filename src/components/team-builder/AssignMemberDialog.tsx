@@ -105,8 +105,9 @@ export function AssignMemberDialog({
       if (slotType === "lighting") return pLower === "lighting" || pLower.includes("light");
       if (slotType === "propresenter") return pLower === "media" || pLower.includes("propresenter") || pLower.includes("pro presenter") || pLower.includes("lyrics");
       // Video slots
+      if (slotType === "tri_pod_camera") return pLower === "tri_pod_camera" || pLower.includes("tripod") || pLower.includes("tri-pod") || pLower.includes("camera") || pLower === "broadcast";
+      if (slotType === "hand_held_camera") return pLower === "hand_held_camera" || pLower.includes("handheld") || pLower.includes("hand-held") || pLower.includes("hand held") || pLower === "broadcast";
       if (slotType === "camera") return pLower.includes("camera") || pLower === "broadcast";
-      if (slotType === "chat_host") return pLower === "chat_host" || pLower.includes("chat");
       if (slotType === "director") return pLower === "director" || pLower === "broadcast";
       if (slotType === "graphics") return pLower === "graphics" || pLower === "broadcast";
       if (slotType === "producer") return pLower === "producer" || pLower === "broadcast";

@@ -13,7 +13,8 @@ export type TeamPosition =
   | "violin" | "cello" | "saxophone" | "trumpet" | "other_instrument"
   | "sound_tech" | "lighting" | "media" | "other"
   | "broadcast" | "camera_1" | "camera_2" | "camera_3" | "camera_4" | "camera_5" | "camera_6"
-  | "chat_host" | "director" | "graphics" | "producer" | "switcher"
+  | "tri_pod_camera" | "hand_held_camera"
+  | "director" | "graphics" | "producer" | "switcher"
   | "audio_shadow" | "mon";
 
 export interface Profile {
