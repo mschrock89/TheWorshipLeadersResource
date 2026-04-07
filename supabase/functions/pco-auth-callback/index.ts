@@ -5,6 +5,7 @@ const PCO_CLIENT_ID = Deno.env.get('PCO_CLIENT_ID');
 const PCO_CLIENT_SECRET = Deno.env.get('PCO_CLIENT_SECRET');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const APP_URL = Deno.env.get('APP_URL') ?? 'https://www.theworshipleadersresource.com';
 
 serve(async (req) => {
   try {
@@ -51,7 +52,7 @@ serve(async (req) => {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error('Token exchange failed:', errorText);
-      return redirectWithError('Failed to exchange authorization code');
+      return redirectWithError('Failed to exchange authorization code', stateData.redirectUri);
     }
 
     const tokens = await tokenResponse.json();
@@ -105,9 +106,9 @@ serve(async (req) => {
   }
 });
 
-function redirectWithError(message: string): Response {
-  // Redirect to a generic error page or the app with an error
-  const errorUrl = new URL(Deno.env.get('SUPABASE_URL') || '');
+function redirectWithError(message: string, redirectUri?: string): Response {
+  const baseUrl = redirectUri || `${APP_URL}/settings/planning-center`;
+  const errorUrl = new URL(baseUrl);
   errorUrl.pathname = '/settings/planning-center';
   errorUrl.searchParams.set('error', message);
   return Response.redirect(errorUrl.toString(), 302);

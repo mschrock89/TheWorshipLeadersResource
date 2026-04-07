@@ -52,11 +52,15 @@ serve(async (req) => {
     const refreshTokenEncrypted = await encryptToken(connectionData.refresh_token);
 
     // Check if connection already exists
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('pco_connections')
       .select('id')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
 
     if (existing) {
       // Update existing connection with encrypted tokens

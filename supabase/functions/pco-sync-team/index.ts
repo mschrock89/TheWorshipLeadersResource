@@ -10,6 +10,8 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ACTIVE_LOOKBACK_DAYS = 365;
+const ACTIVE_SCAN_TIMEOUT_MS = 20_000;
 
 // Position mapping from PCO team names to our team_position enum
 const positionMapping: Record<string, string> = {
@@ -56,8 +58,27 @@ const positionMapping: Record<string, string> = {
   'lyrics': 'media',
   'propresenter': 'media',
   'broadcast': 'broadcast',
+  'livestream': 'broadcast',
+  'live stream': 'broadcast',
+  'live-stream': 'broadcast',
   'streaming': 'broadcast',
-  'camera': 'broadcast',
+  'camera': 'tri_pod_camera',
+  'camera 1': 'tri_pod_camera',
+  'camera 2': 'tri_pod_camera',
+  'camera 3': 'tri_pod_camera',
+  'camera 4': 'tri_pod_camera',
+  'camera 5': 'tri_pod_camera',
+  'camera 6': 'tri_pod_camera',
+  'tripod camera': 'tri_pod_camera',
+  'tri-pod camera': 'tri_pod_camera',
+  'tripod': 'tri_pod_camera',
+  'handheld camera': 'hand_held_camera',
+  'hand-held camera': 'hand_held_camera',
+  'hand held camera': 'hand_held_camera',
+  'handheld': 'hand_held_camera',
+  'hand-held': 'hand_held_camera',
+  'hand held': 'hand_held_camera',
+  'hh camera': 'hand_held_camera',
   'tech': 'sound_tech',
   'production': 'sound_tech',
   'band': 'other_instrument',
@@ -145,14 +166,48 @@ async function fetchAllFromPCO(accessToken: string, endpoint: string): Promise<a
   return allData;
 }
 
+async function fetchAllAssignmentsWithPeople(
+  accessToken: string,
+  endpoint: string,
+): Promise<{ assignments: any[]; includedPeople: any[] }> {
+  const assignments: any[] = [];
+  const includedPeopleById = new Map<string, any>();
+  let nextUrl: string | null = endpoint;
+
+  while (nextUrl) {
+    const response = await fetchFromPCO(accessToken, nextUrl);
+    assignments.push(...(response.data || []));
+
+    for (const included of response.included || []) {
+      if (included?.type === 'Person' && included?.id) {
+        includedPeopleById.set(included.id, included);
+      }
+    }
+
+    nextUrl = response.links?.next
+      ? response.links.next.replace('https://api.planningcenteronline.com', '')
+      : null;
+
+    if (nextUrl) {
+      await sleep(50);
+    }
+  }
+
+  return {
+    assignments,
+    includedPeople: Array.from(includedPeopleById.values()),
+  };
+}
+
 // Get person IDs who have been scheduled in recent plans (last 1 year)
-async function getActivePersonIds(accessToken: string): Promise<Set<string>> {
+async function getActivePersonIds(accessToken: string): Promise<{ ids: Set<string>; complete: boolean }> {
   const activePersonIds = new Set<string>();
+  const startedAt = Date.now();
   const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - 365); // 1 year
+  cutoffDate.setDate(cutoffDate.getDate() - ACTIVE_LOOKBACK_DAYS);
   const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
 
-  console.log(`Fetching active members scheduled since ${cutoffDateStr} (1 year lookback)`);
+  console.log(`Fetching active members scheduled since ${cutoffDateStr} (${ACTIVE_LOOKBACK_DAYS} day lookback)`);
 
   const serviceTypes = await fetchAllFromPCO(accessToken, '/services/v2/service_types');
   console.log(`Found ${serviceTypes.length} service types`);
@@ -160,6 +215,11 @@ async function getActivePersonIds(accessToken: string): Promise<Set<string>> {
   // Process service types in parallel batches of 3
   const batchSize = 3;
   for (let i = 0; i < serviceTypes.length; i += batchSize) {
+    if (Date.now() - startedAt > ACTIVE_SCAN_TIMEOUT_MS) {
+      console.warn('Active member scan timed out before completion; falling back to full team sync');
+      return { ids: activePersonIds, complete: false };
+    }
+
     const batch = serviceTypes.slice(i, i + batchSize);
     
     await Promise.all(batch.map(async (serviceType) => {
@@ -172,6 +232,10 @@ async function getActivePersonIds(accessToken: string): Promise<Set<string>> {
         // Process plans in parallel batches of 5
         const planBatchSize = 5;
         for (let j = 0; j < plans.length; j += planBatchSize) {
+          if (Date.now() - startedAt > ACTIVE_SCAN_TIMEOUT_MS) {
+            return;
+          }
+
           const planBatch = plans.slice(j, j + planBatchSize);
           
           await Promise.all(planBatch.map(async (plan) => {
@@ -199,7 +263,7 @@ async function getActivePersonIds(accessToken: string): Promise<Set<string>> {
   }
 
   console.log(`Found ${activePersonIds.size} unique active person IDs`);
-  return activePersonIds;
+  return { ids: activePersonIds, complete: true };
 }
 
 serve(async (req) => {
@@ -243,12 +307,20 @@ serve(async (req) => {
       updated: 0,
       skipped: 0,
       errors: [] as string[],
+      active_filter_applied: false,
+      active_filter_fallback_reason: null as string | null,
     };
 
     // If sync_active_only is enabled, fetch the list of recently scheduled person IDs
     let activePersonIds: Set<string> | null = null;
     if (connection.sync_active_only) {
-      activePersonIds = await getActivePersonIds(accessToken);
+      const activeScan = await getActivePersonIds(accessToken);
+      if (activeScan.complete) {
+        activePersonIds = activeScan.ids;
+        results.active_filter_applied = true;
+      } else {
+        results.active_filter_fallback_reason = 'Timed out scanning active schedules, so full team sync was used instead.';
+      }
     }
 
     // PRE-FETCH all existing profiles to avoid individual queries
@@ -281,26 +353,23 @@ serve(async (req) => {
     const membersToProcess: MemberToProcess[] = [];
     const processedEmails = new Set<string>();
 
-    // Fetch teams from Services
-    const teamsData = await fetchFromPCO(accessToken, '/services/v2/teams');
-    console.log(`Found ${teamsData.data?.length || 0} teams`);
+    // Fetch all teams from Services
+    const teams = await fetchAllFromPCO(accessToken, '/services/v2/teams?per_page=100');
+    console.log(`Found ${teams.length} teams`);
 
-    for (const team of teamsData.data || []) {
+    for (const team of teams) {
       console.log(`Processing team: ${team.attributes.name}`);
 
-      const membersData = await fetchFromPCO(
+      const { assignments: teamAssignments, includedPeople } = await fetchAllAssignmentsWithPeople(
         accessToken,
         `/services/v2/teams/${team.id}/person_team_position_assignments?include=person&per_page=100`
       );
-      
-      console.log(`Team ${team.attributes.name} has ${membersData.data?.length || 0} position assignments`);
-      
-      const includedPeople = membersData.included?.filter((i: any) => i.type === 'Person') || [];
       console.log(`Found ${includedPeople.length} included people`);
+      console.log(`Team ${team.attributes.name} has ${teamAssignments.length} position assignments`);
 
       let noPersonId = 0, notActive = 0, noAttrs = 0, noEmail = 0, duplicates = 0;
       
-      for (const assignment of membersData.data || []) {
+      for (const assignment of teamAssignments) {
         const personId = assignment.relationships?.person?.data?.id;
         if (!personId) {
           noPersonId++;
@@ -336,6 +405,7 @@ serve(async (req) => {
           results.skipped++;
           continue;
         }
+        processedEmails.add(email);
 
         const fullName = `${personAttrs.first_name || ''} ${personAttrs.last_name || ''}`.trim();
         const position = mapPosition(team.attributes.name);

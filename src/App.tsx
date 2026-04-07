@@ -54,11 +54,6 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.error("Service worker registration failed:", error);
     });
-  } else {
-    // Prevent stale SW-cached bundles from interfering with local development.
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      registrations.forEach((registration) => registration.unregister());
-    });
   }
 }
 
