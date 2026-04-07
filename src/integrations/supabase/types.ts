@@ -2378,6 +2378,54 @@ export type Database = {
           },
         ]
       }
+      team_rotation_drafts: {
+        Row: {
+          assignments: Json
+          campus_id: string
+          created_at: string
+          id: string
+          ministry_type: string
+          rotation_period_id: string
+          saved_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          assignments?: Json
+          campus_id: string
+          created_at?: string
+          id?: string
+          ministry_type: string
+          rotation_period_id: string
+          saved_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assignments?: Json
+          campus_id?: string
+          created_at?: string
+          id?: string
+          ministry_type?: string
+          rotation_period_id?: string
+          saved_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_rotation_drafts_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_rotation_drafts_rotation_period_id_fkey"
+            columns: ["rotation_period_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_period_locks: {
         Row: {
           created_at: string
@@ -2995,7 +3043,6 @@ export type Database = {
         | "camera_2"
         | "camera_3"
         | "camera_4"
-        | "chat_host"
         | "director"
         | "graphics"
         | "producer"
@@ -3006,6 +3053,8 @@ export type Database = {
         | "acoustic_2"
         | "camera_5"
         | "camera_6"
+        | "tri_pod_camera"
+        | "hand_held_camera"
         | "vocalist"
     }
     CompositeTypes: {
@@ -3180,7 +3229,6 @@ export const Constants = {
         "camera_2",
         "camera_3",
         "camera_4",
-        "chat_host",
         "director",
         "graphics",
         "producer",
@@ -3191,6 +3239,8 @@ export const Constants = {
         "acoustic_2",
         "camera_5",
         "camera_6",
+        "tri_pod_camera",
+        "hand_held_camera",
         "vocalist",
       ],
     },

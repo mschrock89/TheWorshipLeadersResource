@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "@/hooks/use-toast";
 import { MINISTRY_SLOT_CATEGORIES, POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
 import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
+import { getWeekendKey, isWeekend } from "@/lib/utils";
 
 export interface TeamPeriodLock {
   id: string;
@@ -83,6 +85,31 @@ export interface AvailableMember {
   ministry_types: string[];
 }
 
+export interface RotationDraftSummary {
+  id: string;
+  rotation_period_id: string;
+  campus_id: string;
+  ministry_type: string;
+  updated_at: string;
+}
+
+export interface RotationConflictAssignment {
+  campusId: string | null;
+  campusName: string;
+  scheduleDate: string;
+  teamId: string;
+  teamName: string;
+  ministryType: string | null;
+  serviceDay: string | null;
+}
+
+export interface RotationConflict {
+  userId: string;
+  memberName: string;
+  weekendKey: string;
+  assignments: RotationConflictAssignment[];
+}
+
 export interface Campus {
   id: string;
   name: string;
@@ -106,6 +133,17 @@ interface AvailableMemberProfileRow {
   gender?: string | null;
   positions?: string[] | null;
   ministry_types?: string[] | null;
+}
+
+type TeamRotationDraftRow = Tables<"team_rotation_drafts">;
+type TeamRotationDraftInsert = TablesInsert<"team_rotation_drafts">;
+type TeamMemberRow = Tables<"team_members">;
+type TeamScheduleRow = Tables<"team_schedule">;
+type WorshipTeamRow = Tables<"worship_teams">;
+type RotationPeriodRow = Tables<"rotation_periods">;
+
+interface RelatedRotationPeriodRow extends Pick<RotationPeriodRow, "id" | "campus_id"> {
+  campuses: { name: string | null } | null;
 }
 
 // Re-export POSITION_SLOTS for backwards compatibility
@@ -666,6 +704,277 @@ export function useClearPeriod() {
   });
 }
 
+function resolveConflictScheduleMinistries(ministryType: string) {
+  if (ministryType === "all") {
+    return null;
+  }
+
+  if (
+    ministryType === "weekend" ||
+    ministryType === "weekend_team" ||
+    ministryType === "production" ||
+    ministryType === "video"
+  ) {
+    return ["weekend", "sunday_am"];
+  }
+
+  return [ministryType];
+}
+
+function assignmentAppliesToScheduleDate(
+  serviceDay: string | null | undefined,
+  scheduleDate: string,
+  ministryType: string,
+) {
+  if (!isWeekend(scheduleDate)) {
+    return true;
+  }
+
+  if (!isWeekendRosterBreakLogicMinistry(ministryType) || !serviceDay) {
+    return true;
+  }
+
+  const day = new Date(`${scheduleDate}T00:00:00`).getDay();
+  if (serviceDay === "saturday") return day === 6;
+  if (serviceDay === "sunday") return day === 0;
+  return true;
+}
+
+export function useSaveRotationDraft() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      rotationPeriodId,
+      campusId,
+      ministryType,
+      assignments,
+    }: {
+      rotationPeriodId: string;
+      campusId: string;
+      ministryType: string;
+      assignments: TeamMemberAssignment[];
+    }) => {
+      const snapshot = assignments.map((assignment) => ({
+        id: assignment.id,
+        team_id: assignment.team_id,
+        user_id: assignment.user_id,
+        member_name: assignment.member_name,
+        position: assignment.position,
+        position_slot: assignment.position_slot,
+        display_order: assignment.display_order,
+        ministry_types: assignment.ministry_types,
+        service_day: assignment.service_day,
+      }));
+
+      const draftPayload: TeamRotationDraftInsert = {
+        rotation_period_id: rotationPeriodId,
+        campus_id: campusId,
+        ministry_type: ministryType,
+        assignments: snapshot,
+        saved_by: user?.id || null,
+      };
+
+      const { error } = await supabase
+        .from("team_rotation_drafts")
+        .upsert(draftPayload, { onConflict: "rotation_period_id,campus_id,ministry_type" });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team-rotation-draft"] });
+      toast({ title: "Rotation saved as draft" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to save draft",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useRotationDraftSummary(
+  rotationPeriodId: string | null,
+  campusId: string | null,
+  ministryType: string | null,
+) {
+  return useQuery({
+    queryKey: ["team-rotation-draft", rotationPeriodId, campusId, ministryType],
+    enabled: !!rotationPeriodId && !!campusId && !!ministryType,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("team_rotation_drafts")
+        .select("id, rotation_period_id, campus_id, ministry_type, updated_at")
+        .eq("rotation_period_id", rotationPeriodId)
+        .eq("campus_id", campusId)
+        .eq("ministry_type", ministryType)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data || null) as RotationDraftSummary | null;
+    },
+  });
+}
+
+export function useCrossCheckRotationAssignments() {
+  return useMutation({
+    mutationFn: async ({
+      rotationPeriodId,
+      rotationPeriodName,
+      year,
+      trimester,
+      ministryType,
+    }: {
+      rotationPeriodId: string;
+      rotationPeriodName: string;
+      year: number;
+      trimester: number;
+      ministryType: string;
+    }) => {
+      const { data: relatedPeriods, error: periodsError } = await supabase
+        .from("rotation_periods")
+        .select("id, campus_id, campuses(name)")
+        .eq("year", year)
+        .eq("trimester", trimester);
+
+      if (periodsError) throw periodsError;
+
+      const periodRows = (relatedPeriods || []) as RelatedRotationPeriodRow[];
+
+      const periodIds = periodRows.map((period) => period.id);
+      if (!periodIds.includes(rotationPeriodId)) {
+        periodIds.push(rotationPeriodId);
+      }
+
+      const periodCampusMap = new Map(
+        periodRows.map((period) => [
+          period.id,
+          {
+            campusId: period.campus_id,
+            campusName: period.campuses?.name || "Unknown campus",
+          },
+        ]),
+      );
+
+      const { data: teamMembers, error: membersError } = await supabase
+        .from("team_members")
+        .select("rotation_period_id, user_id, member_name, team_id, ministry_types, service_day")
+        .in("rotation_period_id", periodIds);
+
+      if (membersError) throw membersError;
+
+      const relevantScheduleMinistries = resolveConflictScheduleMinistries(ministryType);
+      let scheduleQuery = supabase
+        .from("team_schedule")
+        .select("team_id, schedule_date, ministry_type, campus_id, created_at")
+        .eq("rotation_period", rotationPeriodName)
+        .order("schedule_date", { ascending: true });
+
+      if (relevantScheduleMinistries) {
+        scheduleQuery = scheduleQuery.in("ministry_type", relevantScheduleMinistries);
+      }
+
+      const { data: scheduleEntries, error: scheduleError } = await scheduleQuery;
+      if (scheduleError) throw scheduleError;
+
+      const teamIds = Array.from(
+        new Set((teamMembers || []).map((member) => member.team_id).filter(Boolean)),
+      );
+      const { data: teams, error: teamsError } = await supabase
+        .from("worship_teams")
+        .select("id, name")
+        .in("id", teamIds.length > 0 ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
+
+      if (teamsError) throw teamsError;
+
+      const teamNameMap = new Map((teams || []).map((team: Pick<WorshipTeamRow, "id" | "name">) => [team.id, team.name]));
+      const schedulesByCampus = new Map<string, Array<Pick<TeamScheduleRow, "team_id" | "schedule_date" | "ministry_type" | "campus_id" | "created_at">>>();
+
+      periodRows.forEach((period) => {
+        const campusId = period.campus_id;
+        const effectiveEntries = new Map<string, Pick<TeamScheduleRow, "team_id" | "schedule_date" | "ministry_type" | "campus_id" | "created_at">>();
+        (scheduleEntries || [])
+          .filter((entry) => entry.campus_id === campusId || entry.campus_id === null)
+          .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+          .forEach((entry) => {
+            const key = `${entry.schedule_date}-${entry.ministry_type || "default"}`;
+            const existing = effectiveEntries.get(key);
+            if (!existing || (entry.campus_id !== null && existing.campus_id === null)) {
+              effectiveEntries.set(key, entry);
+            } else if ((entry.campus_id ?? null) === (existing.campus_id ?? null)) {
+              const entryCreated = new Date(entry.created_at || 0).getTime();
+              const existingCreated = new Date(existing.created_at || 0).getTime();
+              if (entryCreated > existingCreated) {
+                effectiveEntries.set(key, entry);
+              }
+            }
+          });
+
+        schedulesByCampus.set(period.id, Array.from(effectiveEntries.values()));
+      });
+
+      const conflictsByUserWeekend = new Map<string, RotationConflict>();
+      (teamMembers as Array<Pick<TeamMemberRow, "rotation_period_id" | "user_id" | "member_name" | "team_id" | "ministry_types" | "service_day">> | null || [])
+        .filter((member) => member.user_id && memberMatchesMinistryFilter(member.ministry_types || [], ministryType))
+        .forEach((member) => {
+          const periodMeta = periodCampusMap.get(member.rotation_period_id);
+          if (!periodMeta) return;
+
+          const applicableSchedules = (schedulesByCampus.get(member.rotation_period_id) || []).filter(
+            (entry) =>
+              entry.team_id === member.team_id &&
+              assignmentAppliesToScheduleDate(member.service_day, entry.schedule_date, ministryType),
+          );
+
+          applicableSchedules.forEach((entry) => {
+            const weekendKey = isWeekend(entry.schedule_date) ? getWeekendKey(entry.schedule_date) : entry.schedule_date;
+            const conflictKey = `${member.user_id}:${weekendKey}`;
+            const existing = conflictsByUserWeekend.get(conflictKey);
+            const assignment: RotationConflictAssignment = {
+              campusId: periodMeta.campusId,
+              campusName: periodMeta.campusName,
+              scheduleDate: entry.schedule_date,
+              teamId: member.team_id,
+              teamName: teamNameMap.get(member.team_id) || "Unknown team",
+              ministryType: entry.ministry_type,
+              serviceDay: member.service_day,
+            };
+
+            if (!existing) {
+              conflictsByUserWeekend.set(conflictKey, {
+                userId: member.user_id!,
+                memberName: member.member_name,
+                weekendKey,
+                assignments: [assignment],
+              });
+              return;
+            }
+
+            existing.assignments.push(assignment);
+          });
+        });
+
+      return Array.from(conflictsByUserWeekend.values())
+        .filter((conflict) => new Set(conflict.assignments.map((assignment) => assignment.campusId || assignment.campusName)).size > 1)
+        .map((conflict) => ({
+          ...conflict,
+          assignments: conflict.assignments.sort((a, b) => a.scheduleDate.localeCompare(b.scheduleDate) || a.campusName.localeCompare(b.campusName)),
+        }))
+        .sort((a, b) => a.weekendKey.localeCompare(b.weekendKey) || a.memberName.localeCompare(b.memberName));
+    },
+    onError: (error) => {
+      toast({
+        title: "Cross-check failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 // Update ministry types for a team member
 export function useUpdateMinistryTypes() {
   const queryClient = useQueryClient();
@@ -801,12 +1110,19 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
+
+  if (!allowMultiTeamUserIds?.has(member.id)) {
+    const assignedTeamIds = [...teamAssignments.keys()];
+    const isAssignedToDifferentTeam = assignedTeamIds.some((assignedTeamId) => assignedTeamId !== teamId);
+    if (isAssignedToDifferentTeam) return false;
+  }
 
   const existingSlots = teamAssignments.get(teamId);
   if (!existingSlots || existingSlots.size === 0) return true;
@@ -1114,19 +1430,21 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
+      const allowMultiTeamUserIds = new Set(campusWorshipPastorIds || []);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
       const assignMemberToSlot = (member: AvailableMember, team: WorshipTeam, targetSlot: string) => {
         const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === targetSlot);
         if (!slotConfig) return false;
+        if (!allowedCategories.includes(slotConfig.category)) return false;
         if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
         if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
 
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -1170,6 +1488,18 @@ export function useAutoBuildTeams() {
             )
           );
         });
+        const maleMustServeVocalists = maleVocalists.filter((member) =>
+          wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+        );
+        const maleReturningVocalists = maleVocalists.filter((member) =>
+          !wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+        );
+        const femaleMustServeVocalists = femaleVocalists.filter((member) =>
+          wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+        );
+        const femaleReturningVocalists = femaleVocalists.filter((member) =>
+          !wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+        );
 
         const currentUserMember = availablePool.find((member) => member.id === user?.id);
         const kyleMember = availablePool.find((member) => member.full_name === "Kyle Elkins");
@@ -1223,9 +1553,11 @@ export function useAutoBuildTeams() {
         const assignGenderedVocalists = (
           targetTeams: WorshipTeam[],
           targetGender: "male" | "female",
-          pool: AvailableMember[],
+          mustServePool: AvailableMember[],
+          returningPool: AvailableMember[],
         ) => {
-          const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+          const shuffledMustServePool = [...mustServePool].sort(() => Math.random() - 0.5);
+          const shuffledReturningPool = [...returningPool].sort(() => Math.random() - 0.5);
 
           for (const team of targetTeams) {
             const targetSlots = (visibleSlotsByTeam.get(team.id)?.vocalSlots || [])
@@ -1236,29 +1568,46 @@ export function useAutoBuildTeams() {
               const filledSlots = slotFilledPerTeam.get(team.id)!;
               if (filledSlots.has(targetSlot)) continue;
 
-            const candidate = findBestCandidateForTeam(
-              shuffledPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
-              team,
-              targetSlot,
-              userAssignedSlotsByTeam,
-              blockedTeammateIdsByTeam,
-              blackoutDatesByUser,
-              teamScheduledDatesByTeam,
-            );
+              let candidate = findBestCandidateForTeam(
+                shuffledMustServePool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+                team,
+                targetSlot,
+                userAssignedSlotsByTeam,
+                blockedTeammateIdsByTeam,
+                blackoutDatesByUser,
+                teamScheduledDatesByTeam,
+              );
+
+              if (!candidate) {
+                candidate = findBestCandidateForTeam(
+                  shuffledReturningPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+                  team,
+                  targetSlot,
+                  userAssignedSlotsByTeam,
+                  blockedTeammateIdsByTeam,
+                  blackoutDatesByUser,
+                  teamScheduledDatesByTeam,
+                );
+              }
 
               if (!candidate) continue;
               assignMemberToSlot(candidate, team, targetSlot);
 
-              const candidateIndex = shuffledPool.indexOf(candidate);
-              if (candidateIndex > -1 && !canDoubleUpMaleVocalGuitarist(candidate, targetSlot, new Set())) {
-                shuffledPool.splice(candidateIndex, 1);
+              const mustServeCandidateIndex = shuffledMustServePool.indexOf(candidate);
+              if (mustServeCandidateIndex > -1 && !canDoubleUpMaleVocalGuitarist(candidate, targetSlot, new Set())) {
+                shuffledMustServePool.splice(mustServeCandidateIndex, 1);
+              }
+
+              const returningCandidateIndex = shuffledReturningPool.indexOf(candidate);
+              if (returningCandidateIndex > -1 && !canDoubleUpMaleVocalGuitarist(candidate, targetSlot, new Set())) {
+                shuffledReturningPool.splice(returningCandidateIndex, 1);
               }
             }
           }
         };
 
-        assignGenderedVocalists(teams, "male", maleVocalists);
-        assignGenderedVocalists(teams, "female", femaleVocalists);
+        assignGenderedVocalists(teams, "male", maleMustServeVocalists, maleReturningVocalists);
+        assignGenderedVocalists(teams, "female", femaleMustServeVocalists, femaleReturningVocalists);
       }
 
       // For each slot in priority order
@@ -1272,6 +1621,7 @@ export function useAutoBuildTeams() {
 
         const slotConfig = POSITION_SLOTS.find(s => s.slot === targetSlot);
         if (!slotConfig) continue;
+        if (!allowedCategories.includes(slotConfig.category)) continue;
 
         // Find members who can fill this slot
         const getCandidates = (pool: AvailableMember[]) => 

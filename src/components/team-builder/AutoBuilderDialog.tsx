@@ -64,16 +64,21 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   media: ["propresenter"],
   graphics: ["propresenter"],
   producer: ["producer"],
-  camera_1: ["camera_1"],
-  camera_2: ["camera_2"],
-  camera_3: ["camera_3"],
-  camera_4: ["camera_4"],
-  camera_5: ["camera_5"],
-  camera_6: ["camera_6"],
-  chat_host: ["chat_host"],
+  tri_pod_camera: ["tri_pod_camera"],
+  hand_held_camera: ["hand_held_camera"],
   director: ["director"],
   switcher: ["switcher"],
 };
+
+const AUTO_BUILD_SLOT_PRIORITY = [
+  "drums", "bass", "keys",
+  "eg_1", "eg_2", "ag_1", "ag_2",
+  "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
+  "teacher", "announcement", "closing_prayer",
+  "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
+  "tri_pod_camera", "hand_held_camera",
+  "director", "graphics", "switcher",
+] as const;
 
 function getMemberAvailableSlots(positions: string[]): string[] {
   const slots = new Set<string>();
@@ -144,12 +149,19 @@ function canAssignMemberToTeam(
   teamId: string,
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
 
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
+
+  if (!allowMultiTeamUserIds?.has(member.id)) {
+    const assignedTeamIds = [...teamAssignments.keys()];
+    const isAssignedToDifferentTeam = assignedTeamIds.some((assignedTeamId) => assignedTeamId !== teamId);
+    if (isAssignedToDifferentTeam) return false;
+  }
 
   const existingSlots = teamAssignments.get(teamId);
   if (!existingSlots || existingSlots.size === 0) return true;
@@ -345,17 +357,12 @@ export function AutoBuilderDialog({
   const [isBuilding, setIsBuilding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewAssignment[] | null>(null);
+  const allowMultiTeamUserIds = useMemo(
+    () => new Set(campusWorshipPastorIds),
+    [campusWorshipPastorIds],
+  );
 
   const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
-  const slotPriority = [
-    "drums", "bass", "keys",
-    "eg_1", "eg_2", "ag_1", "ag_2",
-    "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
-    "teacher", "announcement", "closing_prayer",
-    "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
-    "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6",
-    "chat_host", "director", "graphics", "switcher",
-  ];
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
   const visibleSlotsByTeam = useMemo(
     () => new Map(teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)])),
@@ -374,7 +381,7 @@ export function AutoBuilderDialog({
   const relevantSlots = useMemo(() => {
     return new Set(
       teams.flatMap((team) =>
-        slotPriority.filter((slot) => {
+        AUTO_BUILD_SLOT_PRIORITY.filter((slot) => {
           const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
           if (!slotConfig || !allowedCategories.includes(slotConfig.category)) return false;
           return isTeamSlotVisible(team.template_config, slot);
@@ -487,13 +494,14 @@ export function AutoBuilderDialog({
     const assignMemberToSlot = (member: AvailableMember, team: WorshipTeam, targetSlot: string) => {
       const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === targetSlot);
       if (!slotConfig) return false;
+      if (!allowedCategories.includes(slotConfig.category)) return false;
       if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
       if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
 
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
       if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) return false;
+      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
 
       filledSlots.add(targetSlot);
       trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -547,6 +555,18 @@ export function AutoBuilderDialog({
           allVocalSlots.some((visibleSlot) => visibleSlot.slot === slot),
         )
       );
+      const maleMustServeVocalists = maleVocalists.filter((member) =>
+        wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+      );
+      const maleReturningVocalists = maleVocalists.filter((member) =>
+        !wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+      );
+      const femaleMustServeVocalists = femaleVocalists.filter((member) =>
+        wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+      );
+      const femaleReturningVocalists = femaleVocalists.filter((member) =>
+        !wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
+      );
       const campusPastors = availablePool.filter((member) => campusWorshipPastorIds.includes(member.id));
       assignCampusPastorsToVocalSlots(teams, campusPastors, visibleSlotsByTeam, assignMemberToSlot);
 
@@ -597,9 +617,11 @@ export function AutoBuilderDialog({
       const assignGenderedVocalists = (
         targetTeams: WorshipTeam[],
         targetGender: "male" | "female",
-        pool: AvailableMember[],
+        mustServePool: AvailableMember[],
+        returningPool: AvailableMember[],
       ) => {
-        const shuffledPool = [...pool].sort(() => Math.random() - 0.5);
+        const shuffledMustServePool = [...mustServePool].sort(() => Math.random() - 0.5);
+        const shuffledReturningPool = [...returningPool].sort(() => Math.random() - 0.5);
 
         for (const team of targetTeams) {
           const targetSlots = (visibleSlotsByTeam.get(team.id)?.vocalSlots || [])
@@ -610,8 +632,8 @@ export function AutoBuilderDialog({
             const filledSlots = slotFilledPerTeam.get(team.id)!;
             if (filledSlots.has(targetSlot)) continue;
 
-            const candidate = findBestCandidateForTeam(
-              shuffledPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+            let candidate = findBestCandidateForTeam(
+              shuffledMustServePool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
               team,
               targetSlot,
               userAssignedSlotsByTeam,
@@ -620,22 +642,39 @@ export function AutoBuilderDialog({
               teamScheduledDatesByTeam,
             );
 
+            if (!candidate) {
+              candidate = findBestCandidateForTeam(
+                shuffledReturningPool.filter((member) => getMemberAvailableSlots(member.positions).includes(targetSlot)),
+                team,
+                targetSlot,
+                userAssignedSlotsByTeam,
+                blockedTeammateIdsByTeam,
+                blackoutDatesByUser,
+                teamScheduledDatesByTeam,
+              );
+            }
+
             if (!candidate) continue;
             assignMemberToSlot(candidate, team, targetSlot);
 
-            const candidateIndex = shuffledPool.indexOf(candidate);
-            if (candidateIndex > -1) {
-              shuffledPool.splice(candidateIndex, 1);
+            const mustServeCandidateIndex = shuffledMustServePool.indexOf(candidate);
+            if (mustServeCandidateIndex > -1) {
+              shuffledMustServePool.splice(mustServeCandidateIndex, 1);
+            }
+
+            const returningCandidateIndex = shuffledReturningPool.indexOf(candidate);
+            if (returningCandidateIndex > -1) {
+              shuffledReturningPool.splice(returningCandidateIndex, 1);
             }
           }
         }
       };
 
-      assignGenderedVocalists(teams, "male", maleVocalists);
-      assignGenderedVocalists(teams, "female", femaleVocalists);
+      assignGenderedVocalists(teams, "male", maleMustServeVocalists, maleReturningVocalists);
+      assignGenderedVocalists(teams, "female", femaleMustServeVocalists, femaleReturningVocalists);
     }
 
-    for (const targetSlot of slotPriority) {
+    for (const targetSlot of AUTO_BUILD_SLOT_PRIORITY) {
       if (
         isMurfreesboroWeekendBuild &&
         targetSlot === "ag_2"
@@ -645,6 +684,7 @@ export function AutoBuilderDialog({
 
       const slotConfig = POSITION_SLOTS.find(s => s.slot === targetSlot);
       if (!slotConfig) continue;
+      if (!allowedCategories.includes(slotConfig.category)) continue;
 
       const getCandidates = (pool: AvailableMember[]) => 
         pool.filter(m => getMemberAvailableSlots(m.positions).includes(targetSlot));

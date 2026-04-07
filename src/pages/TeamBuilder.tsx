@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { Wand2, Trash2, Copy, Loader2, Settings } from "lucide-react";
+import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TeamCard } from "@/components/team-builder/TeamCard";
 import { TeamBuilderHeader } from "@/components/team-builder/TeamBuilderHeader";
@@ -43,9 +52,13 @@ import {
   usePreviousPeriodMembers,
   getPreviousPeriodId,
   useCampusWorshipPastors,
+  useSaveRotationDraft,
+  useRotationDraftSummary,
+  useCrossCheckRotationAssignments,
   AvailableMember,
   TeamMemberAssignment,
   WorshipTeam,
+  RotationConflict,
 } from "@/hooks/useTeamBuilder";
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
@@ -55,6 +68,7 @@ import {
   isTeamVisibleForMinistry,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
+  memberMatchesMinistryFilter,
 } from "@/lib/constants";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 
@@ -81,6 +95,8 @@ export default function TeamBuilder() {
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
   const [editingTemplateTeam, setEditingTemplateTeam] = useState<WorshipTeam | null>(null);
+  const [crossCheckDialogOpen, setCrossCheckDialogOpen] = useState(false);
+  const [crossCheckResults, setCrossCheckResults] = useState<RotationConflict[]>([]);
   const assigningMinistryType = resolveTeamBuilderSlotMinistryType(
     selectedMinistryType,
     assigningSlot?.slot,
@@ -120,6 +136,13 @@ export default function TeamBuilder() {
   const toggleLock = useToggleTeamLock();
   const updateMinistryTypes = useUpdateMinistryTypes();
   const updateTeamTemplate = useUpdateTeamTemplate();
+  const saveRotationDraft = useSaveRotationDraft();
+  const crossCheckRotationAssignments = useCrossCheckRotationAssignments();
+  const { data: rotationDraftSummary } = useRotationDraftSummary(
+    selectedPeriodId,
+    selectedCampusId,
+    selectedMinistryType,
+  );
 
   // Determine if user can edit the selected campus
   const canEditCampus = useMemo(() => {
@@ -196,6 +219,10 @@ export default function TeamBuilder() {
     return [...new Set(matchingBreaks.map((request) => request.user_id))];
   }, [breakRequests, selectedMinistryType]);
 
+  const autoBuildExcludedUserIds = useMemo(() => {
+    return [...new Set([...requestedBreakUserIds, ...satUserIds])];
+  }, [requestedBreakUserIds, satUserIds]);
+
   const satRequestIdsByUser = useMemo(() => {
     const matchingBreaks = breakRequests.filter(
       (request) =>
@@ -251,6 +278,16 @@ export default function TeamBuilder() {
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
   }, [teams, selectedMinistryType]);
+
+  const visibleAssignments = useMemo(() => {
+    if (selectedMinistryType === "all") {
+      return members;
+    }
+
+    return members.filter((member) =>
+      memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)
+    );
+  }, [members, selectedMinistryType]);
 
   // Get members by team. Rotation periods are already campus-scoped, so keep
   // cross-campus fill-ins visible here so admins can edit/remove them.
@@ -338,6 +375,32 @@ export default function TeamBuilder() {
       templateConfig,
     });
     setEditingTemplateTeam(null);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!selectedPeriodId || !selectedCampusId) return;
+
+    await saveRotationDraft.mutateAsync({
+      rotationPeriodId: selectedPeriodId,
+      campusId: selectedCampusId,
+      ministryType: selectedMinistryType,
+      assignments: visibleAssignments,
+    });
+  };
+
+  const handleCrossCheck = async () => {
+    if (!selectedPeriodId || !selectedPeriod) return;
+
+    const results = await crossCheckRotationAssignments.mutateAsync({
+      rotationPeriodId: selectedPeriodId,
+      rotationPeriodName: selectedPeriod.name,
+      year: selectedPeriod.year,
+      trimester: selectedPeriod.trimester,
+      ministryType: selectedMinistryType,
+    });
+
+    setCrossCheckResults(results);
+    setCrossCheckDialogOpen(true);
   };
 
   const isLoading = periodsLoading || teamsLoading || membersLoading || authLoading || campusesLoading || adminCampusLoading;
@@ -445,6 +508,30 @@ export default function TeamBuilder() {
                     </Button>
                     <Button
                       variant="outline"
+                      onClick={handleSaveDraft}
+                      disabled={!selectedPeriodId || !selectedCampusId || visibleAssignments.length === 0 || saveRotationDraft.isPending}
+                    >
+                      {saveRotationDraft.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 h-4 w-4" />
+                      )}
+                      Save as Draft
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleCrossCheck}
+                      disabled={!selectedPeriodId || !selectedPeriod || visibleAssignments.length === 0 || crossCheckRotationAssignments.isPending}
+                    >
+                      {crossCheckRotationAssignments.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <SearchCheck className="mr-2 h-4 w-4" />
+                      )}
+                      Cross Check
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={handleCopyFromPrevious}
                       disabled={!selectedPeriodId || copyFromPrevious.isPending}
                     >
@@ -464,6 +551,28 @@ export default function TeamBuilder() {
                       <Trash2 className="mr-2 h-4 w-4" />
                       Clear All
                     </Button>
+                  </div>
+                )}
+
+                {(rotationDraftSummary || crossCheckResults.length > 0) && (
+                  <div className="space-y-3">
+                    {rotationDraftSummary && (
+                      <Alert>
+                        <Save className="h-4 w-4" />
+                        <AlertDescription>
+                          Draft saved for this campus/ministry on{" "}
+                          {new Date(rotationDraftSummary.updated_at).toLocaleString()}.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {crossCheckResults.length > 0 && (
+                      <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          Cross Check found {crossCheckResults.length} volunteer overlap{crossCheckResults.length === 1 ? "" : "s"} across campuses for this rotation.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 )}
 
@@ -575,7 +684,7 @@ export default function TeamBuilder() {
           members={availableMembers}
           ministryType={selectedMinistryType}
           previousPeriodMembers={previousPeriodMembers}
-          breakExcludedUserIds={requestedBreakUserIds}
+          breakExcludedUserIds={autoBuildExcludedUserIds}
           previousApprovedBreakUserIds={previousApprovedBreakUserIds}
           blackoutDatesByUser={blackoutDatesByUser}
           scheduleEntries={scheduleEntries.map((entry) => ({
@@ -609,6 +718,58 @@ export default function TeamBuilder() {
           isSaving={updateTeamTemplate.isPending}
         />
       )}
+
+      <Dialog open={crossCheckDialogOpen} onOpenChange={setCrossCheckDialogOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Cross-Campus Conflict Check</DialogTitle>
+            <DialogDescription>
+              Review volunteers scheduled on the same weekend across multiple campuses for this rotation.
+            </DialogDescription>
+          </DialogHeader>
+          {crossCheckResults.length === 0 ? (
+            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              No cross-campus weekend conflicts were found.
+            </div>
+          ) : (
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-2">
+              {crossCheckResults.map((conflict) => (
+                <div key={`${conflict.userId}-${conflict.weekendKey}`} className="rounded-lg border border-border p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">{conflict.memberName}</p>
+                    <Badge variant="outline">{conflict.weekendKey}</Badge>
+                    <Badge variant="destructive">
+                      {conflict.assignments.length} assignments
+                    </Badge>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {conflict.assignments.map((assignment, index) => (
+                      <div key={`${assignment.campusName}-${assignment.teamId}-${assignment.scheduleDate}-${index}`} className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+                        <span className="font-medium">{assignment.campusName}</span>
+                        {" · "}
+                        <span>{assignment.teamName}</span>
+                        {" · "}
+                        <span>{assignment.scheduleDate}</span>
+                        {assignment.serviceDay && (
+                          <>
+                            {" · "}
+                            <span className="capitalize">{assignment.serviceDay}</span>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCrossCheckDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear confirmation dialog */}
       <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>

@@ -70,7 +70,7 @@ const POSITION_GROUPS = [
   { 
     category: "Acoustic Guitar", 
     icon: <Music className="h-4 w-4" />,
-    positions: ["Acoustic", "Acoustic 1", "Acoustic 2", "acoustic_guitar"]
+    positions: ["Acoustic", "Acoustic 1", "Acoustic 2", "acoustic_guitar", "acoustic_1", "acoustic_2"]
   },
   {
     category: "Speaker",
