@@ -290,7 +290,12 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
           </Badge>
           <GroupTextButton
             phoneNumbers={groupTextMembers.map((member) => member.phone)}
-            rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
+            rosterMembers={groupTextMembers.map((member) => ({
+              name: member.memberName,
+              phone: member.phone,
+              ministryTypes: member.ministryTypes,
+              positions: member.positions,
+            }))}
             defaultMessage={buildRosterGroupTextTemplate({
               date: targetDate,
               serviceLabel: scheduledTeam.teamName,

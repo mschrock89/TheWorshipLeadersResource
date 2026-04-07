@@ -159,13 +159,9 @@ export function OnBreakList({
 
     return allMembers
       .filter(m => {
-        // Must belong to the selected campus if campusId is provided
-        if (campusId && userCampusMap) {
-          const memberCampuses = userCampusMap[m.id];
-          if (!memberCampuses || !memberCampuses.ids.includes(campusId)) {
-            return false;
-          }
-        }
+        // allMembers is already campus-scoped in Team Builder, so don't re-filter
+        // through user_campuses here. Some campuses only have ministry-campus
+        // assignments populated, which would incorrectly hide valid members.
         // Must not be currently assigned
         if (assignedUserIds.has(m.id)) return false;
         // Include if they have historical assignments OR if they have positions (active worship team members)
@@ -189,7 +185,7 @@ export function OnBreakList({
         wasSatByAdmin: satUserIdSet.has(m.id),
         hasBlackoutDates: blackoutDateUserIdSet.has(m.id),
       }));
-  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, campusId, userCampusMap, periodName, ministryFilter, requestedBreakUserIds, satUserIds, blackoutDateUserIds]);
+  }, [allMembers, assignedMembers, previousPeriodMembers, historicalMemberIds, periodName, ministryFilter, requestedBreakUserIds, satUserIds, blackoutDateUserIds]);
 
   // Filter by ministry type for display (after computing who is on break)
   const filteredOnBreakMembers = useMemo(() => {

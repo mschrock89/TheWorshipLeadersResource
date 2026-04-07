@@ -2060,7 +2060,7 @@ function BandRoster({
   const audioPositions = ['sound_tech', 'audio_shadow', 'lighting', 'media', 'foh', 'mon', 'propresenter', 'broadcast', 'Lyrics'];
 
   // Broadcast positions (cameras, director, producer, etc.)
-  const broadcastPositions = ['camera_1', 'camera_2', 'camera_3', 'camera_4', 'camera_5', 'camera_6', 'chat_host', 'director', 'graphics', 'producer', 'switcher'];
+  const broadcastPositions = ['tri_pod_camera', 'hand_held_camera', 'director', 'graphics', 'producer', 'switcher'];
 
   // Get production/video members separately (they serve across all ministries)
   // Only include explicit production/video ministries, or legacy untagged rows
@@ -2322,7 +2322,12 @@ function BandRoster({
         <div className="flex justify-end">
           <GroupTextButton
             phoneNumbers={groupTextMembers.map((member) => member.phone)}
-            rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
+            rosterMembers={groupTextMembers.map((member) => ({
+              name: member.memberName,
+              phone: member.phone,
+              ministryTypes: member.ministryTypes,
+              positions: member.positions,
+            }))}
             defaultMessage={buildRosterGroupTextTemplate({
               date,
               serviceLabel,
@@ -2357,7 +2362,12 @@ function BandRoster({
       <div className="mb-3 flex justify-end">
         <GroupTextButton
           phoneNumbers={groupTextMembers.map((member) => member.phone)}
-          rosterMembers={groupTextMembers.map((member) => ({ name: member.memberName, phone: member.phone }))}
+          rosterMembers={groupTextMembers.map((member) => ({
+            name: member.memberName,
+            phone: member.phone,
+            ministryTypes: member.ministryTypes,
+            positions: member.positions,
+          }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date,
             serviceLabel,
