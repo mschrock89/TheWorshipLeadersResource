@@ -343,8 +343,27 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
 
         if (ministryAssignmentsError) throw ministryAssignmentsError;
 
+        const filteredMinistryAssignments =
+          ministryType && ministryType !== "all"
+            ? (ministryAssignments || []).filter((assignment) =>
+                memberMatchesMinistryFilter(
+                  [assignment.ministry_type || "weekend"],
+                  ministryType,
+                ),
+              )
+            : (ministryAssignments || []);
+
+        filteredMinistryAssignments.forEach((assignment) => {
+          if (!memberDataMap[assignment.user_id]) {
+            memberDataMap[assignment.user_id] = { ministry_types: [], positions: [] };
+          }
+          if (!memberDataMap[assignment.user_id].ministry_types.includes(assignment.ministry_type)) {
+            memberDataMap[assignment.user_id].ministry_types.push(assignment.ministry_type);
+          }
+        });
+
         const activeMinistryAssignments = new Set(
-          (ministryAssignments || []).map((assignment) => `${assignment.user_id}:${assignment.ministry_type}`),
+          filteredMinistryAssignments.map((assignment) => `${assignment.user_id}:${assignment.ministry_type}`),
         );
 
         // Query the new user_campus_ministry_positions table for positions
@@ -370,7 +389,9 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
                 activeMinistryAssignments.has(`${assignment.user_id}:${assignment.ministry_type}`),
               );
 
-        // Build a map of user_id -> { ministry_types, positions } for this campus
+        // Build a map of user_id -> { ministry_types, positions } for this campus.
+        // Some campuses may have ministry assignments before all detailed position rows
+        // are entered, so positions are additive but not required for inclusion.
         filteredAssignments.forEach((a) => {
           if (!memberDataMap[a.user_id]) {
             memberDataMap[a.user_id] = { ministry_types: [], positions: [] };
@@ -394,9 +415,11 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
           full_name: p.full_name,
           avatar_url: p.avatar_url || null,
           gender: p.gender || null,
-          // Use campus+ministry specific positions from new table
+          // Use campus+ministry specific positions from new table when present,
+          // otherwise fall back to profile positions so ministry-assigned members
+          // still appear in Team Builder and On Break lists.
           positions: campusId && memberDataMap[p.id] 
-            ? memberDataMap[p.id].positions 
+            ? (memberDataMap[p.id].positions.length > 0 ? memberDataMap[p.id].positions : (p.positions || []))
             : (p.positions || []),
           // Use campus-specific ministry types
           ministry_types: campusId && memberDataMap[p.id] 
@@ -702,13 +725,8 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   graphics: ["propresenter"], // Graphics maps to Lyrics/ProPresenter slot
   producer: ["producer"],
   // Video
-  camera_1: ["camera_1"],
-  camera_2: ["camera_2"],
-  camera_3: ["camera_3"],
-  camera_4: ["camera_4"],
-  camera_5: ["camera_5"],
-  camera_6: ["camera_6"],
-  chat_host: ["chat_host"],
+  tri_pod_camera: ["tri_pod_camera"],
+  hand_held_camera: ["hand_held_camera"],
   director: ["director"],
   switcher: ["switcher"],
 };
@@ -988,8 +1006,8 @@ export function useAutoBuildTeams() {
         "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
         "teacher", "announcement", "closing_prayer",
         "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
-        "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6",
-        "chat_host", "director", "graphics", "switcher",
+        "tri_pod_camera", "hand_held_camera",
+        "director", "graphics", "switcher",
       ];
       const allowedCategories =
         MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight, Coffee, AlertTriangle, Mic, Music } from "lucide-react";
+import { ChevronDown, ChevronRight, Coffee, AlertTriangle, Mic, Music, Headphones, Video, BookOpen, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -41,9 +41,6 @@ interface PositionGroup {
   })[];
 }
 
-// Tech positions to exclude from the On Break list (until weekend tech schedule is uploaded)
-const TECH_POSITIONS = ["sound_tech", "lighting", "media", "broadcast", "other"];
-
 const POSITION_GROUPS = [
   { 
     category: "Vocalists", 
@@ -74,6 +71,26 @@ const POSITION_GROUPS = [
     category: "Acoustic Guitar", 
     icon: <Music className="h-4 w-4" />,
     positions: ["Acoustic", "Acoustic 1", "Acoustic 2", "acoustic_guitar"]
+  },
+  {
+    category: "Speaker",
+    icon: <BookOpen className="h-4 w-4" />,
+    positions: ["teacher", "announcement", "annoucement", "closing_prayer"]
+  },
+  {
+    category: "Production",
+    icon: <Headphones className="h-4 w-4" />,
+    positions: ["sound_tech", "lighting", "media", "audio_shadow", "mon", "broadcast", "producer", "Lyrics"]
+  },
+  {
+    category: "Video",
+    icon: <Video className="h-4 w-4" />,
+    positions: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "camera_1", "camera_2", "camera_3", "camera_4", "camera_5", "camera_6"]
+  },
+  {
+    category: "Other",
+    icon: <Users className="h-4 w-4" />,
+    positions: []
   },
 ];
 
@@ -168,13 +185,7 @@ export function OnBreakList({
         const hasHistoricalAssignment = historicalMemberIds?.has(m.id);
         const hasPositions = m.positions && m.positions.length > 0;
         if (!hasHistoricalAssignment && !hasPositions) return false;
-        
-        // Exclude members who ONLY have tech positions
-        if (m.positions && m.positions.length > 0) {
-          const hasNonTechPosition = m.positions.some(p => !TECH_POSITIONS.includes(p));
-          if (!hasNonTechPosition) return false;
-        }
-        
+
         return true;
       })
       .map(m => ({
@@ -203,11 +214,23 @@ export function OnBreakList({
     }));
 
     for (const member of filteredOnBreakMembers) {
+      let matchedGroup = false;
+
       for (const group of groups) {
+        if (group.category === "Other") {
+          continue;
+        }
+
         if (member.positions.some(p => group.positions.includes(p))) {
           group.members.push(member);
+          matchedGroup = true;
           break;
         }
+      }
+
+      if (!matchedGroup) {
+        const otherGroup = groups.find((group) => group.category === "Other");
+        otherGroup?.members.push(member);
       }
     }
 
@@ -219,25 +242,6 @@ export function OnBreakList({
 
   if (isLoading) {
     return null;
-  }
-
-  // Show empty state if no team schedule has been built yet
-  if (assignedMembers.length === 0) {
-    return (
-      <Card className="mt-6">
-        <CardHeader className="py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Coffee className="h-4 w-4 text-muted-foreground" />
-            <span>On Break This Trimester</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-muted-foreground">
-            Build the {periodName || "trimester"} schedule to see who's on break.
-          </p>
-        </CardContent>
-      </Card>
-    );
   }
 
   if (totalOnBreak === 0) {
@@ -252,7 +256,9 @@ export function OnBreakList({
         </CardHeader>
         <CardContent className="pt-0">
           <p className="text-sm text-muted-foreground">
-            Everyone is scheduled for {periodName || "this trimester"}! 🎉
+            {assignedMembers.length === 0
+              ? `No one is scheduled for ${periodName || "this trimester"} yet.`
+              : `Everyone is scheduled for ${periodName || "this trimester"}! 🎉`}
           </p>
         </CardContent>
       </Card>
@@ -288,6 +294,11 @@ export function OnBreakList({
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-4">
+            {assignedMembers.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No team schedule has been built for {periodName || "this trimester"} yet, so everyone below is currently unscheduled.
+              </p>
+            )}
             {groupedMembers.map(group => (
               <div key={group.category}>
                 <div className="flex items-center gap-2 mb-2">
