@@ -237,9 +237,9 @@ export function useCreateBreakRequest() {
                 request_scope: "blackout_dates",
                 blackout_dates: mergedDates,
                 ministry_type: null,
-                status: "pending",
+                status: "approved",
                 reviewed_by: null,
-                reviewed_at: null,
+                reviewed_at: new Date().toISOString(),
               })
               .eq("id", existingRequest.id);
 
@@ -253,6 +253,8 @@ export function useCreateBreakRequest() {
               request_scope: "blackout_dates",
               blackout_dates: uniqueBlackoutDates,
               ministry_type: null,
+              status: "approved",
+              reviewed_at: new Date().toISOString(),
             });
 
             if (insertError) throw insertError;
