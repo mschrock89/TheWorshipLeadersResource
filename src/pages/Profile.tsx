@@ -1020,7 +1020,7 @@ export default function Profile() {
               )}
 
               {/* Dates */}
-              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="birthday">Birthday</Label>
                   <Input
@@ -1029,7 +1029,7 @@ export default function Profile() {
                     value={birthday}
                     onChange={(e) => setBirthday(e.target.value)}
                     disabled={!canEdit}
-                    className="h-10 min-h-[2.5rem] min-w-0 max-w-[11.5rem] text-left [&::-webkit-date-and-time-value]:text-left"
+                    className="h-11 min-w-0 w-full rounded-lg pr-3 text-sm [color-scheme:dark] [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
                   />
                 </div>
                 <div className="min-w-0 space-y-2">
@@ -1040,7 +1040,7 @@ export default function Profile() {
                     value={anniversary}
                     onChange={(e) => setAnniversary(e.target.value)}
                     disabled={!canEdit}
-                    className="h-10 min-h-[2.5rem] min-w-0 max-w-[11.5rem] text-left [&::-webkit-date-and-time-value]:text-left"
+                    className="h-11 min-w-0 w-full rounded-lg pr-3 text-sm [color-scheme:dark] [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
                   />
                 </div>
               </div>
