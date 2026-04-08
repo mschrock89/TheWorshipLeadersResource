@@ -227,6 +227,20 @@ function findBestCandidateForTeam(
   return bestCandidate;
 }
 
+function canAssignWithoutBlackoutConflict(
+  member: AvailableMember,
+  teamId: string,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+) {
+  return getBlackoutConflictDatesForTeam(
+    member,
+    teamId,
+    blackoutDatesByUser,
+    teamScheduledDatesByTeam,
+  ).length === 0;
+}
+
 function trackMemberAssignment(
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   memberId: string,
@@ -335,6 +349,23 @@ interface PreviewAssignment {
   was_on_break: boolean;
   previous_team?: string;
   blackout_conflict_dates?: string[];
+}
+
+interface PreviewGap {
+  teamId: string;
+  teamName: string;
+  slotId: string;
+  slotLabel: string;
+  candidateCount: number;
+  availableCount: number;
+  assignedElsewhereCount: number;
+  blackoutCount: number;
+  wrongGenderCount: number;
+  sampleCandidates: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
 }
 
 export function AutoBuilderDialog({
@@ -497,6 +528,7 @@ export function AutoBuilderDialog({
       if (!allowedCategories.includes(slotConfig.category)) return false;
       if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
       if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
+      if (!canAssignWithoutBlackoutConflict(member, team.id, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
 
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
@@ -640,6 +672,7 @@ export function AutoBuilderDialog({
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
+              true,
             );
 
             if (!candidate) {
@@ -651,6 +684,7 @@ export function AutoBuilderDialog({
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
+                true,
               );
             }
 
@@ -734,34 +768,7 @@ export function AutoBuilderDialog({
           );
         }
 
-        if (!assigned) {
-          assigned = findBestCandidateForTeam(
-            shuffleMustServe,
-            team,
-            targetSlot,
-            userAssignedSlotsByTeam,
-            blockedTeammateIdsByTeam,
-            blackoutDatesByUser,
-            teamScheduledDatesByTeam,
-          );
-        }
-
-        if (!assigned) {
-          const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-          assigned = findBestCandidateForTeam(
-            sortedCanServe,
-            team,
-            targetSlot,
-            userAssignedSlotsByTeam,
-            blockedTeammateIdsByTeam,
-            blackoutDatesByUser,
-            teamScheduledDatesByTeam,
-          );
-        }
-
-        if (assigned) {
-          assignMemberToSlot(assigned, team, targetSlot);
-
+        if (assigned && assignMemberToSlot(assigned, team, targetSlot)) {
           const mustServeIdx = shuffleMustServe.indexOf(assigned);
           if (mustServeIdx > -1) shuffleMustServe.splice(mustServeIdx, 1);
           const canServeIdx = shuffleCanServe.indexOf(assigned);
@@ -793,6 +800,7 @@ export function AutoBuilderDialog({
           blockedTeammateIdsByTeam,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
+          true,
         );
 
         if (candidate) {
@@ -861,6 +869,107 @@ export function AutoBuilderDialog({
   const blackoutConflictPreview = useMemo(() => {
     return (previewData || []).filter((assignment) => (assignment.blackout_conflict_dates?.length || 0) > 0);
   }, [previewData]);
+
+  const unfilledSlotPreview = useMemo(() => {
+    if (!previewData) return [];
+
+    const assignmentsByTeamSlot = new Set(
+      previewData.map((assignment) => `${assignment.team_id}:${assignment.position_slot}`),
+    );
+    const assignedTeamsByUser = new Map<string, Set<string>>();
+
+    previewData.forEach((assignment) => {
+      if (!assignedTeamsByUser.has(assignment.user_id)) {
+        assignedTeamsByUser.set(assignment.user_id, new Set());
+      }
+      assignedTeamsByUser.get(assignment.user_id)!.add(assignment.team_name);
+    });
+
+    const gaps: PreviewGap[] = [];
+
+    teams.forEach((team) => {
+      const visibleTeamSlots = visibleSlotsByTeam.get(team.id);
+      if (!visibleTeamSlots) return;
+
+      const slots = [
+        ...visibleTeamSlots.vocalSlots,
+        ...POSITION_SLOTS.filter((slot) => slot.category === "Speaker"),
+        ...visibleTeamSlots.bandSlots,
+        ...POSITION_SLOTS.filter((slot) => slot.category === "Production"),
+        ...POSITION_SLOTS.filter((slot) => slot.category === "Video"),
+      ].filter((slot) => allowedCategories.includes(slot.category));
+
+      slots.forEach((slotConfig) => {
+        if (assignmentsByTeamSlot.has(`${team.id}:${slotConfig.slot}`)) return;
+
+        const requiredGender = getRequiredGenderForSlot(team.template_config, slotConfig.slot);
+        const positionCandidates = availablePool.filter((member) =>
+          getMemberAvailableSlots(member.positions).includes(slotConfig.slot),
+        );
+
+        const candidateBreakdown = positionCandidates.map((member) => {
+          const assignedTeams = [...(assignedTeamsByUser.get(member.id) || new Set<string>())]
+            .filter((assignedTeamName) => assignedTeamName !== team.name);
+          const hasWrongGender = !memberMatchesSlotGender(member, requiredGender);
+          const blackoutConflicts = getBlackoutConflictDatesForTeam(
+            member,
+            team.id,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+          );
+
+          let status = "available";
+          if (hasWrongGender) {
+            status = "wrong gender";
+          } else if (assignedTeams.length > 0) {
+            status = `assigned to ${assignedTeams[0]}`;
+          } else if (blackoutConflicts.length > 0) {
+            status = `blackout ${blackoutConflicts[0]}`;
+          }
+
+          return {
+            id: member.id,
+            name: member.full_name,
+            status,
+            isAvailable: status === "available",
+            assignedElsewhere: assignedTeams.length > 0,
+            blackoutConflict: blackoutConflicts.length > 0,
+            wrongGender: hasWrongGender,
+          };
+        });
+
+        gaps.push({
+          teamId: team.id,
+          teamName: team.name,
+          slotId: slotConfig.slot,
+          slotLabel: slotConfig.label,
+          candidateCount: candidateBreakdown.length,
+          availableCount: candidateBreakdown.filter((candidate) => candidate.isAvailable).length,
+          assignedElsewhereCount: candidateBreakdown.filter((candidate) => candidate.assignedElsewhere).length,
+          blackoutCount: candidateBreakdown.filter((candidate) => candidate.blackoutConflict).length,
+          wrongGenderCount: candidateBreakdown.filter((candidate) => candidate.wrongGender).length,
+          sampleCandidates: candidateBreakdown
+            .sort((a, b) => {
+              if (a.isAvailable && !b.isAvailable) return -1;
+              if (!a.isAvailable && b.isAvailable) return 1;
+              return a.name.localeCompare(b.name);
+            })
+            .slice(0, 4)
+            .map(({ id, name, status }) => ({ id, name, status })),
+        });
+      });
+    });
+
+    return gaps;
+  }, [
+    previewData,
+    teams,
+    visibleSlotsByTeam,
+    allowedCategories,
+    availablePool,
+    blackoutDatesByUser,
+    teamScheduledDatesByTeam,
+  ]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -952,6 +1061,65 @@ export function AutoBuilderDialog({
                     {blackoutConflictPreview.length} assignment{blackoutConflictPreview.length === 1 ? "" : "s"} still conflict with blackout dates. Review these before confirming.
                   </AlertDescription>
                 </Alert>
+              )}
+              {unfilledSlotPreview.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="px-3 py-2 font-medium text-sm flex items-center justify-between bg-amber-50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Unfilled Slots
+                    </span>
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 dark:text-amber-200">
+                      {unfilledSlotPreview.length}
+                    </Badge>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {unfilledSlotPreview.map((gap) => (
+                      <div key={`${gap.teamId}:${gap.slotId}`} className="px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{gap.teamName} · {gap.slotLabel}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {gap.availableCount} clean option{gap.availableCount === 1 ? "" : "s"} out of {gap.candidateCount} qualified member{gap.candidateCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {gap.assignedElsewhereCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.assignedElsewhereCount} already placed
+                              </Badge>
+                            )}
+                            {gap.blackoutCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.blackoutCount} blackout
+                              </Badge>
+                            )}
+                            {gap.wrongGenderCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.wrongGenderCount} wrong gender
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {gap.sampleCandidates.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {gap.sampleCandidates.map((candidate) => (
+                              <Badge
+                                key={candidate.id}
+                                variant={candidate.status === "available" ? "secondary" : "outline"}
+                                className="text-[10px]"
+                              >
+                                {candidate.name.split(" ")[0]}: {candidate.status}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No one in the current pool can cover this slot.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               {teams.map(team => {
                 const teamAssignments = previewByTeam?.get(team.id) || [];

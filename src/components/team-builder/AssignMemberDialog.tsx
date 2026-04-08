@@ -27,6 +27,7 @@ interface AssignMemberDialogProps {
   onOpenChange: (open: boolean) => void;
   slot: string;
   teamName: string;
+  serviceDay?: "saturday" | "sunday" | null;
   members: AvailableMember[];
   onSelect: (member: AvailableMember, ministryTypes: string[]) => void;
   ministryFilter?: string;
@@ -38,6 +39,7 @@ export function AssignMemberDialog({
   onOpenChange,
   slot,
   teamName,
+  serviceDay,
   members,
   onSelect,
   ministryFilter,
@@ -49,6 +51,9 @@ export function AssignMemberDialog({
 
   const slotConfig = POSITION_SLOTS.find(s => s.slot === slot);
   const slotLabel = slotConfig?.label || slot;
+  const slotContextLabel = serviceDay
+    ? `${slotLabel} (${serviceDay === "saturday" ? "Saturday" : "Sunday"})`
+    : slotLabel;
   const effectiveMinistryFilter = resolveTeamBuilderSlotMinistryType(ministryFilter, slot);
   const visibleMinistryOptions = useMemo(
     () => {
@@ -148,7 +153,7 @@ export function AssignMemberDialog({
         if (!a.hasMinistry && b.hasMinistry) return 1;
         return a.full_name.localeCompare(b.full_name);
       });
-  }, [members, search, slot, effectiveMinistryFilter]);
+  }, [members, search, slot, effectiveMinistryFilter, requiredGender]);
 
   const matchingMinistryCount = relevantMembers.filter(m => m.hasMinistry).length;
   const otherCount = relevantMembers.length - matchingMinistryCount;
@@ -218,7 +223,7 @@ export function AssignMemberDialog({
           <DialogTitle>
             {selectedMember 
               ? `Select Ministries for ${selectedMember.full_name}`
-              : `Assign ${slotLabel} to ${teamName}`
+              : `Assign ${slotContextLabel} to ${teamName}`
             }
           </DialogTitle>
         </DialogHeader>

@@ -113,6 +113,8 @@ export interface RotationConflict {
 export interface Campus {
   id: string;
   name: string;
+  has_saturday_service?: boolean;
+  has_sunday_service?: boolean;
 }
 
 export interface CampusWorshipPastor {
@@ -156,7 +158,7 @@ export function useAllCampuses() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campuses")
-        .select("id, name")
+        .select("id, name, has_saturday_service, has_sunday_service")
         .order("name");
 
       if (error) throw error;
@@ -521,31 +523,89 @@ export function useAssignMember() {
       const position = slotConfig?.position || positionSlot;
 
       // Check if slot already has an assignment for this period
-      const { data: existing } = await supabase
+      const { data: existingRows, error: existingError } = await supabase
         .from("team_members")
-        .select("id")
+        .select("id, service_day")
         .eq("team_id", teamId)
         .eq("position_slot", positionSlot)
-        .eq("rotation_period_id", rotationPeriodId)
-        .single();
+        .eq("rotation_period_id", rotationPeriodId);
 
-      if (existing) {
-        // Update existing
-        const updateData: Record<string, unknown> = {
-          user_id: userId,
-          member_name: memberName,
-          position,
-          service_day: serviceDay,
-        };
-        updateData.ministry_types = normalizedMinistryTypes;
+      if (existingError) throw existingError;
+
+      const existingSpecificRow = (existingRows || []).find((row) => row.service_day === (serviceDay || null));
+      const existingWholeWeekendRow = (existingRows || []).find((row) => !row.service_day);
+      const oppositeServiceDay =
+        serviceDay === "saturday" ? "sunday" : serviceDay === "sunday" ? "saturday" : null;
+
+      if (!serviceDay) {
+        if (existingWholeWeekendRow) {
+          const { error } = await supabase
+            .from("team_members")
+            .update({
+              user_id: userId,
+              member_name: memberName,
+              position,
+              service_day: null,
+              ministry_types: normalizedMinistryTypes,
+            })
+            .eq("id", existingWholeWeekendRow.id);
+
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("team_members").insert({
+            team_id: teamId,
+            user_id: userId,
+            member_name: memberName,
+            position,
+            position_slot: positionSlot,
+            rotation_period_id: rotationPeriodId,
+            display_order: POSITION_SLOTS.findIndex(s => s.slot === positionSlot) + 1,
+            service_day: null,
+            ministry_types: normalizedMinistryTypes,
+          });
+
+          if (error) throw error;
+        }
+
+        const splitRowIds = (existingRows || [])
+          .filter((row) => row.service_day)
+          .map((row) => row.id);
+
+        if (splitRowIds.length > 0) {
+          const { error } = await supabase
+            .from("team_members")
+            .delete()
+            .in("id", splitRowIds);
+
+          if (error) throw error;
+        }
+
+        return;
+      }
+
+      if (existingWholeWeekendRow && oppositeServiceDay) {
         const { error } = await supabase
           .from("team_members")
-          .update(updateData)
-          .eq("id", existing.id);
+          .update({ service_day: oppositeServiceDay })
+          .eq("id", existingWholeWeekendRow.id);
+
+        if (error) throw error;
+      }
+
+      if (existingSpecificRow) {
+        const { error } = await supabase
+          .from("team_members")
+          .update({
+            user_id: userId,
+            member_name: memberName,
+            position,
+            service_day: serviceDay,
+            ministry_types: normalizedMinistryTypes,
+          })
+          .eq("id", existingSpecificRow.id);
 
         if (error) throw error;
       } else {
-        // Insert new
         const { error } = await supabase.from("team_members").insert({
           team_id: teamId,
           user_id: userId,
@@ -583,17 +643,25 @@ export function useRemoveMember() {
       teamId,
       positionSlot,
       rotationPeriodId,
+      serviceDay,
     }: {
       teamId: string;
       positionSlot: string;
       rotationPeriodId: string;
+      serviceDay?: string | null;
     }) => {
-      const { error } = await supabase
+      let query = supabase
         .from("team_members")
         .delete()
         .eq("team_id", teamId)
         .eq("position_slot", positionSlot)
         .eq("rotation_period_id", rotationPeriodId);
+
+      query = serviceDay
+        ? query.eq("service_day", serviceDay)
+        : query.is("service_day", null);
+
+      const { error } = await query;
 
       if (error) throw error;
     },
@@ -1188,6 +1256,20 @@ function findBestCandidateForTeam(
   return bestCandidate;
 }
 
+function canAssignWithoutBlackoutConflict(
+  member: AvailableMember,
+  teamId: string,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+) {
+  return getBlackoutConflictDatesForTeam(
+    member,
+    teamId,
+    blackoutDatesByUser,
+    teamScheduledDatesByTeam,
+  ).length === 0;
+}
+
 function trackMemberAssignment(
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   memberId: string,
@@ -1440,6 +1522,7 @@ export function useAutoBuildTeams() {
         if (!allowedCategories.includes(slotConfig.category)) return false;
         if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
         if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
+        if (!canAssignWithoutBlackoutConflict(member, team.id, blackoutDatesByUser, teamScheduledDatesByTeam)) return false;
 
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
@@ -1576,6 +1659,7 @@ export function useAutoBuildTeams() {
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
+                true,
               );
 
               if (!candidate) {
@@ -1587,6 +1671,7 @@ export function useAutoBuildTeams() {
                   blockedTeammateIdsByTeam,
                   blackoutDatesByUser,
                   teamScheduledDatesByTeam,
+                  true,
                 );
               }
 
@@ -1684,34 +1769,7 @@ export function useAutoBuildTeams() {
             );
           }
 
-          if (!assigned) {
-            assigned = findBestCandidateForTeam(
-              shuffleMustServe,
-              team,
-              targetSlot,
-              userAssignedSlotsByTeam,
-              blockedTeammateIdsByTeam,
-              blackoutDatesByUser,
-              teamScheduledDatesByTeam,
-            );
-          }
-
-          if (!assigned) {
-            const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-            assigned = findBestCandidateForTeam(
-              sortedCanServe,
-              team,
-              targetSlot,
-              userAssignedSlotsByTeam,
-              blockedTeammateIdsByTeam,
-              blackoutDatesByUser,
-              teamScheduledDatesByTeam,
-            );
-          }
-
-          if (assigned) {
-            assignMemberToSlot(assigned, team, targetSlot);
-
+          if (assigned && assignMemberToSlot(assigned, team, targetSlot)) {
             // Remove from pools to avoid double assignment to same slot
             const mustServeIdx = shuffleMustServe.indexOf(assigned);
             if (mustServeIdx > -1) shuffleMustServe.splice(mustServeIdx, 1);
@@ -1736,21 +1794,22 @@ export function useAutoBuildTeams() {
             )
             .filter((member) => getMemberAvailableSlots(member.positions).includes("ag_2"));
 
-          const candidate = findBestCandidateForTeam(
-            ag2Candidates,
-            team,
-            "ag_2",
-            userAssignedSlotsByTeam,
-            blockedTeammateIdsByTeam,
-            blackoutDatesByUser,
-            teamScheduledDatesByTeam,
-          );
+        const candidate = findBestCandidateForTeam(
+          ag2Candidates,
+          team,
+          "ag_2",
+          userAssignedSlotsByTeam,
+          blockedTeammateIdsByTeam,
+          blackoutDatesByUser,
+          teamScheduledDatesByTeam,
+          true,
+        );
 
-          if (candidate) {
-            assignMemberToSlot(candidate, team, "ag_2");
-          }
+        if (candidate) {
+          assignMemberToSlot(candidate, team, "ag_2");
         }
       }
+    }
 
       if (assignments.length > 0) {
         const { error } = await supabase.from("team_members").insert(assignments);

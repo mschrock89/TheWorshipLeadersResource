@@ -91,6 +91,7 @@ export default function TeamBuilder() {
     teamId: string;
     teamName: string;
     slot: string;
+    serviceDay: "saturday" | "sunday" | null;
     requiredGender: "male" | "female" | null;
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
@@ -308,22 +309,32 @@ export default function TeamBuilder() {
     });
   };
 
-  const handleAssign = (team: WorshipTeam, slot: string) => {
+  const handleAssign = (
+    team: WorshipTeam,
+    slot: string,
+    serviceDay: "saturday" | "sunday" | null = null,
+  ) => {
     if (!canEditCampus || isTeamLocked(team.id)) return;
     setAssigningSlot({
       teamId: team.id,
       teamName: team.name,
       slot,
+      serviceDay,
       requiredGender: getRequiredGenderForSlot(team.template_config, slot),
     });
   };
 
-  const handleRemove = (teamId: string, slot: string) => {
+  const handleRemove = (
+    teamId: string,
+    slot: string,
+    serviceDay: "saturday" | "sunday" | null = null,
+  ) => {
     if (!selectedPeriodId || !canEditCampus || isTeamLocked(teamId)) return;
     removeMember.mutate({
       teamId,
       positionSlot: slot,
       rotationPeriodId: selectedPeriodId,
+      serviceDay,
     });
   };
 
@@ -335,6 +346,7 @@ export default function TeamBuilder() {
       memberName: member.full_name,
       positionSlot: assigningSlot.slot,
       rotationPeriodId: selectedPeriodId,
+      serviceDay: assigningSlot.serviceDay,
       ministryTypes: ministryTypes,
     });
     setAssigningSlot(null);
@@ -583,8 +595,8 @@ export default function TeamBuilder() {
                       team={team}
                       members={getMembersForTeam(team.id)}
                       availableMembers={availableMembers}
-                      onAssign={slot => handleAssign(team, slot)}
-                      onRemove={slot => handleRemove(team.id, slot)}
+                      onAssign={(slot, serviceDay) => handleAssign(team, slot, serviceDay)}
+                      onRemove={(slot, serviceDay) => handleRemove(team.id, slot, serviceDay)}
                       onEditMinistry={handleEditMinistry}
                       onEditTemplate={canEditCampus ? () => setEditingTemplateTeam(team) : undefined}
                       readOnly={!canEditCampus}
@@ -594,6 +606,9 @@ export default function TeamBuilder() {
                       canEditBroadcast={isVideoDirector || isAdmin}
                       canEditAudio={isProductionManager || isAdmin}
                       ministryFilter={selectedMinistryType}
+                      canSplitWeekendSlots={Boolean(
+                        selectedCampus?.has_saturday_service && selectedCampus?.has_sunday_service
+                      )}
                     />
                   ))}
                 </div>
@@ -701,6 +716,7 @@ export default function TeamBuilder() {
           onOpenChange={open => !open && setAssigningSlot(null)}
           slot={assigningSlot.slot}
           teamName={assigningSlot.teamName}
+          serviceDay={assigningSlot.serviceDay}
           members={availableMembers}
           onSelect={handleSelectMember}
           ministryFilter={selectedMinistryType !== "all" ? selectedMinistryType : undefined}

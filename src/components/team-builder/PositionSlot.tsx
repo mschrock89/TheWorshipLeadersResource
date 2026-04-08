@@ -11,6 +11,10 @@ interface PositionSlotProps {
   isEmpty: boolean;
   onRemove: () => void;
   onAdd: () => void;
+  addActions?: Array<{
+    label: string;
+    onClick: () => void;
+  }>;
   readOnly?: boolean;
   ministryTypes?: string[];
   onEditMinistry?: () => void;
@@ -24,6 +28,7 @@ export function PositionSlot({
   isEmpty,
   onRemove,
   onAdd,
+  addActions = [],
   readOnly = false,
   ministryTypes = [],
   onEditMinistry,
@@ -52,14 +57,30 @@ export function PositionSlot({
             <p className="text-xs text-muted-foreground/60">Empty</p>
           </div>
           {!readOnly && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-primary hover:bg-primary/10"
-              onClick={onAdd}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+            addActions.length > 0 ? (
+              <div className="flex items-center gap-1">
+                {addActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[10px]"
+                    onClick={action.onClick}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-primary hover:bg-primary/10"
+                onClick={onAdd}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            )
           )}
         </div>
       ) : (
