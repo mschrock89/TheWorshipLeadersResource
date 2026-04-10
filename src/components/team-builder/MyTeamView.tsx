@@ -87,10 +87,6 @@ function CondensedTeamCard({
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-  const getMemberForSlotAndDay = (slot: string, serviceDay: "saturday" | "sunday") =>
-    visibleMembers.find(m => m.position_slot === slot && m.service_day === serviceDay) ||
-    visibleMembers.find(m => m.position_slot === slot && !m.service_day);
-
   const renderSlot = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -135,68 +131,6 @@ function CondensedTeamCard({
     </div>
   );
 
-  const renderSplitSection = (
-    title: string,
-    Icon: React.ComponentType<{ className?: string }>,
-    slots: (typeof POSITION_SLOTS)[number][],
-  ) => {
-    const sectionMembers = visibleMembers.filter((member) =>
-      slots.some((slot) => slot.slot === member.position_slot) && Boolean(member.service_day),
-    );
-
-    if (sectionMembers.length === 0) {
-      return renderSection(title, Icon, slots);
-    }
-
-    const renderSlotForDay = (
-      slotConfig: (typeof POSITION_SLOTS)[0],
-      serviceDay: "saturday" | "sunday",
-    ) => {
-      const member = getMemberForSlotAndDay(slotConfig.slot, serviceDay);
-      if (!member) return null;
-      const isMe = member.user_id === userId;
-
-      return (
-        <div
-          key={`${serviceDay}-${slotConfig.slot}`}
-          className={cn(
-            "flex items-center gap-2 text-xs py-1 px-2 rounded",
-            isMe ? "bg-primary/10" : "",
-          )}
-        >
-          <span className="text-muted-foreground w-16 shrink-0 truncate">{slotConfig.label}:</span>
-          <span className={cn("truncate", isMe && "font-medium text-primary")}>
-            {member.member_name}
-            {isMe && " (You)"}
-          </span>
-        </div>
-      );
-    };
-
-    return (
-      <div>
-        <div className="flex items-center gap-1.5 mb-1">
-          <Icon className="h-4 w-4 text-primary" />
-          <span className="text-sm font-bold text-primary">{title}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Saturday</h5>
-            <div className="space-y-0.5">
-              {slots.map((slot) => renderSlotForDay(slot, "saturday"))}
-            </div>
-          </div>
-          <div>
-            <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Sunday</h5>
-            <div className="space-y-0.5">
-              {slots.map((slot) => renderSlotForDay(slot, "sunday"))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <Card className="overflow-hidden">
       <CardHeader className="py-2 px-3" style={{ backgroundColor: `${team.color}20` }}>
@@ -212,11 +146,11 @@ function CondensedTeamCard({
       </CardHeader>
 
       <CardContent className="p-3 space-y-2">
-        {showVocalists && renderSplitSection("Vocalists", Mic, vocalSlots)}
-        {showSpeaker && renderSplitSection("Speaker", BookOpen, speakerSlots)}
-        {showBand && renderSplitSection("Band", Guitar, bandSlots)}
+        {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
+        {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && renderSplitSection("Video", Video, videoSlots)}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );
@@ -266,10 +200,6 @@ function FullTeamCard({
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-  const getMemberForSlotAndDay = (slot: string, serviceDay: "saturday" | "sunday") =>
-    visibleMembers.find(m => m.position_slot === slot && m.service_day === serviceDay) ||
-    visibleMembers.find(m => m.position_slot === slot && !m.service_day);
-
   const renderMember = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -319,81 +249,6 @@ function FullTeamCard({
     </div>
   );
 
-  const renderSplitSection = (
-    title: string,
-    Icon: React.ComponentType<{ className?: string }>,
-    slots: (typeof POSITION_SLOTS)[number][],
-  ) => {
-    const sectionMembers = visibleMembers.filter((member) =>
-      slots.some((slot) => slot.slot === member.position_slot) && Boolean(member.service_day),
-    );
-
-    if (sectionMembers.length === 0) {
-      return renderSection(title, Icon, slots);
-    }
-
-    const renderMemberForDay = (
-      slotConfig: (typeof POSITION_SLOTS)[0],
-      serviceDay: "saturday" | "sunday",
-    ) => {
-      const member = getMemberForSlotAndDay(slotConfig.slot, serviceDay);
-      if (!member) return null;
-      const isMe = member.user_id === userId;
-
-      return (
-        <div
-          key={`${serviceDay}-${slotConfig.slot}`}
-          className={cn(
-            "flex items-center gap-3 rounded-lg border p-2",
-            isMe ? "border-primary bg-primary/5" : "border-border bg-card",
-          )}
-        >
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-              {member.member_name?.
-                split(" ")
-                .map(n => n[0])
-                .join("")
-                .slice(0, 2)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <p className="text-sm font-medium truncate">
-                {member.member_name}
-                {isMe && <span className="text-primary ml-1">(You)</span>}
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground">{slotConfig.label}</p>
-          </div>
-        </div>
-      );
-    };
-
-    return (
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Saturday</h5>
-            <div className="grid gap-2">
-              {slots.map((slot) => renderMemberForDay(slot, "saturday"))}
-            </div>
-          </div>
-          <div>
-            <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Sunday</h5>
-            <div className="grid gap-2">
-              {slots.map((slot) => renderMemberForDay(slot, "sunday"))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <Card className="overflow-hidden">
       <CardHeader className="py-4" style={{ backgroundColor: `${team.color}20` }}>
@@ -417,11 +272,11 @@ function FullTeamCard({
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
-        {showVocalists && renderSplitSection("Vocalists", Mic, vocalSlots)}
-        {showSpeaker && renderSplitSection("Speaker", BookOpen, speakerSlots)}
-        {showBand && renderSplitSection("Band", Guitar, bandSlots)}
+        {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
+        {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && renderSplitSection("Video", Video, videoSlots)}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );

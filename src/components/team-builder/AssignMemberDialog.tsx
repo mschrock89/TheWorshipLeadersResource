@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { Search, Users } from "lucide-react";
+import { Search, Users, AlertTriangle } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -27,11 +28,12 @@ interface AssignMemberDialogProps {
   onOpenChange: (open: boolean) => void;
   slot: string;
   teamName: string;
-  serviceDay?: "saturday" | "sunday" | null;
   members: AvailableMember[];
+  blackoutConflictDatesByMember?: Record<string, string[]>;
   onSelect: (member: AvailableMember, ministryTypes: string[]) => void;
   ministryFilter?: string;
   requiredGender?: VocalSlotGender | null;
+  scheduleDate?: string;
 }
 
 export function AssignMemberDialog({
@@ -39,11 +41,12 @@ export function AssignMemberDialog({
   onOpenChange,
   slot,
   teamName,
-  serviceDay,
   members,
+  blackoutConflictDatesByMember = {},
   onSelect,
   ministryFilter,
   requiredGender,
+  scheduleDate,
 }: AssignMemberDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedMember, setSelectedMember] = useState<AvailableMember | null>(null);
@@ -51,9 +54,6 @@ export function AssignMemberDialog({
 
   const slotConfig = POSITION_SLOTS.find(s => s.slot === slot);
   const slotLabel = slotConfig?.label || slot;
-  const slotContextLabel = serviceDay
-    ? `${slotLabel} (${serviceDay === "saturday" ? "Saturday" : "Sunday"})`
-    : slotLabel;
   const effectiveMinistryFilter = resolveTeamBuilderSlotMinistryType(ministryFilter, slot);
   const visibleMinistryOptions = useMemo(
     () => {
@@ -86,6 +86,22 @@ export function AssignMemberDialog({
 
   const normalizeSelectedMinistry = (value: string) =>
     value === "weekend_team" || value === "sunday_am" ? "weekend" : value;
+
+  const formatConflictDates = (dates: string[]) => {
+    const formatted = dates.map((date) => {
+      try {
+        return format(parseISO(date), "MMM d");
+      } catch {
+        return date;
+      }
+    });
+
+    if (formatted.length <= 3) {
+      return formatted.join(", ");
+    }
+
+    return `${formatted.slice(0, 3).join(", ")} +${formatted.length - 3} more`;
+  };
 
   // Check if a member's positions match the slot
   const matchesPosition = (positions: string[], slotType: string): boolean => {
@@ -145,15 +161,18 @@ export function AssignMemberDialog({
         const hasMinistry = effectiveMinistryFilter
           ? memberMatchesMinistryFilter(m.ministry_types, effectiveMinistryFilter)
           : true;
-        return { ...m, hasMinistry };
+        const conflictDates = blackoutConflictDatesByMember[m.id] || [];
+        return { ...m, hasMinistry, conflictDates };
       })
       .sort((a, b) => {
         // Sort: members with matching ministry first, then alphabetically
         if (a.hasMinistry && !b.hasMinistry) return -1;
         if (!a.hasMinistry && b.hasMinistry) return 1;
+        if (a.conflictDates.length === 0 && b.conflictDates.length > 0) return -1;
+        if (a.conflictDates.length > 0 && b.conflictDates.length === 0) return 1;
         return a.full_name.localeCompare(b.full_name);
       });
-  }, [members, search, slot, effectiveMinistryFilter, requiredGender]);
+  }, [members, search, slot, effectiveMinistryFilter, requiredGender, blackoutConflictDatesByMember]);
 
   const matchingMinistryCount = relevantMembers.filter(m => m.hasMinistry).length;
   const otherCount = relevantMembers.length - matchingMinistryCount;
@@ -215,6 +234,7 @@ export function AssignMemberDialog({
     : effectiveMinistryFilter === 'eon' ? 'EON'
     : effectiveMinistryFilter === 'encounter' ? 'Encounter'
     : effectiveMinistryFilter || 'All';
+  const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -223,7 +243,9 @@ export function AssignMemberDialog({
           <DialogTitle>
             {selectedMember 
               ? `Select Ministries for ${selectedMember.full_name}`
-              : `Assign ${slotContextLabel} to ${teamName}`
+              : scheduleDateLabel
+              ? `Assign ${slotLabel} for ${scheduleDateLabel} to ${teamName}`
+              : `Assign ${slotLabel} to ${teamName}`
             }
           </DialogTitle>
         </DialogHeader>
@@ -275,34 +297,55 @@ export function AssignMemberDialog({
                       )}
                       <Button
                         variant="ghost"
-                        className="w-full justify-start gap-3 h-auto py-3"
+                        className="h-auto w-full justify-start rounded-xl px-3 py-3 hover:bg-muted/60"
                         onClick={() => handleMemberClick(member)}
                       >
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={member.avatar_url || undefined} />
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            {member.full_name
-                              .split(" ")
-                              .map(n => n[0])
-                              .join("")
-                              .slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 text-left">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{member.full_name}</p>
-                            {effectiveMinistryFilter && member.hasMinistry && (
-                              <Badge variant="default" className="text-xs">
-                                {ministryLabel}
-                              </Badge>
+                        <div className="flex w-full items-start gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={member.avatar_url || undefined} />
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {member.full_name
+                                .split(" ")
+                                .map(n => n[0])
+                                .join("")
+                                .slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 text-left">
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-medium">{member.full_name}</p>
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {effectiveMinistryFilter && member.hasMinistry && (
+                                    <Badge variant="secondary" className="h-5 rounded-md px-2 text-[10px] font-medium">
+                                      {ministryLabel}
+                                    </Badge>
+                                  )}
+                                  {member.positions.map(pos => (
+                                    <Badge key={pos} variant="outline" className="h-5 rounded-md px-2 text-[10px] text-muted-foreground">
+                                      {POSITION_LABELS[pos] || pos}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                              {member.conflictDates.length > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="mt-0.5 shrink-0 border-amber-500/35 bg-amber-500/8 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                                >
+                                  <AlertTriangle className="mr-1 h-3 w-3" />
+                                  Conflict
+                                </Badge>
+                              )}
+                            </div>
+                            {member.conflictDates.length > 0 && (
+                              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-700/90 dark:text-amber-300">
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">
+                                  Blackout dates: {formatConflictDates(member.conflictDates)}
+                                </span>
+                              </div>
                             )}
-                          </div>
-                          <div className="flex gap-1 flex-wrap mt-1">
-                            {member.positions.map(pos => (
-                              <Badge key={pos} variant="secondary" className="text-xs">
-                                {POSITION_LABELS[pos] || pos}
-                              </Badge>
-                            ))}
                           </div>
                         </div>
                       </Button>

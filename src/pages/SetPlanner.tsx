@@ -410,12 +410,11 @@ export default function SetPlanner() {
   const handleAddSong = useCallback((songAvail: SongAvailability) => {
     if (addedSongIds.has(songAvail.song.id)) return;
     if (songAvail.status === 'too-recent') {
-      if (songAvail.isNewSong) {
-        toast.error("New songs require at least a 3-week gap before scheduling again.");
-      } else {
-        toast.error("Regular rotation songs require at least a 5-week gap before scheduling again.");
-      }
-      return;
+      toast.warning(
+        songAvail.isNewSong
+          ? "This song is still red because it has been less than 3 weeks since it was last scheduled, but you can still add it."
+          : "This song is still red because it has been less than 5 weeks since it was last scheduled, but you can still add it."
+      );
     }
     if (songAvail.status === 'warning') {
       toast.warning("This song can be scheduled now, but waiting 8 weeks is still recommended for regular rotation songs.");
@@ -649,7 +648,7 @@ export default function SetPlanner() {
     return Array.from(byUser.values());
   }, [selectedCustomService, scheduledVocalists, customServiceAssignments]);
 
-  const canOverrideSongRestrictions = isAdmin && !!selectedCustomService;
+  const canOverrideScheduledSongs = isAdmin && !!selectedCustomService;
   const { data: goodFitHighlights = {} } = useWeekendRundownGoodFitHighlights(
     user?.id,
     effectiveCampusId || null,
@@ -1477,7 +1476,7 @@ export default function SetPlanner() {
                 addedSongIds={addedSongIds}
                 publishedSetlistSongIds={publishedSetlistSongIds}
                 isLoading={isLoading}
-                allowSchedulingOverrides={canOverrideSongRestrictions}
+                allowSchedulingOverrides={canOverrideScheduledSongs}
                 referenceDate={selectedDate}
                 goodFitHighlights={goodFitHighlights}
                 readOnly={existingSet?.status === "published" && !isEditingPublishedSet}

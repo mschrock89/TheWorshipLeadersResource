@@ -115,6 +115,17 @@ interface TeamMemberWithPeriodRow extends TeamMemberRow {
   } | null;
 }
 
+interface TeamMemberDateOverrideRow {
+  id: string;
+  member_name: string;
+  position: string;
+  position_slot: string;
+  user_id: string | null;
+  rotation_period_id: string;
+  ministry_types: string[] | null;
+  schedule_date: string;
+}
+
 export function useTeamRosterForDate(
   date: Date | null,
   teamId?: string,
@@ -291,8 +302,40 @@ export function useTeamRosterForDate(
         }
       }
 
+      let overrideQuery = supabase
+        .from("team_member_date_overrides")
+        .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, schedule_date")
+        .eq("team_id", teamId)
+        .eq("schedule_date", dateStr);
+
+      if (rotationPeriodIds.length > 0) {
+        overrideQuery = overrideQuery.in("rotation_period_id", rotationPeriodIds);
+      }
+
+      const { data: dateOverrides, error: dateOverridesError } = await overrideQuery;
+      if (dateOverridesError) throw dateOverridesError;
+
+      const overrideBySlot = new Map(
+        ((dateOverrides || []) as TeamMemberDateOverrideRow[]).map((override) => [override.position_slot, override]),
+      );
+
+      const effectiveMembers = filteredMembers
+        .filter((member) => !member.position_slot || !overrideBySlot.has(member.position_slot))
+        .concat(
+          ((dateOverrides || []) as TeamMemberDateOverrideRow[]).map((override) => ({
+            id: override.id,
+            member_name: override.member_name,
+            position: override.position,
+            position_slot: override.position_slot,
+            user_id: override.user_id,
+            rotation_period_id: override.rotation_period_id,
+            ministry_types: override.ministry_types,
+            service_day: null,
+          })),
+        );
+
       // Get user IDs to fetch their profiles
-      const userIds = filteredMembers.filter(m => m.user_id).map(m => m.user_id!);
+      const userIds = effectiveMembers.filter(m => m.user_id).map(m => m.user_id!);
       
       // Fetch safe campus profiles for name/phone matching
       const safeProfilesPromise = supabase.rpc("get_profiles_for_campus");
@@ -508,7 +551,7 @@ export function useTeamRosterForDate(
       if (swapsOnDateError) throw swapsOnDateError;
 
       // Filter swapsOnDate to only those where the accepter is on this team
-      const teamMemberUserIds = new Set(filteredMembers.map(m => m.user_id).filter(Boolean));
+      const teamMemberUserIds = new Set(effectiveMembers.map(m => m.user_id).filter(Boolean));
       const filteredSwapsOnDate = (swapsOnDate || []).filter(swap => 
         swap.accepted_by_id && teamMemberUserIds.has(swap.accepted_by_id)
       );
@@ -594,7 +637,7 @@ export function useTeamRosterForDate(
 
       // Build a map from member id to ministry types for lookup
       const memberMinistryMap = new Map<string, string[]>();
-      for (const m of filteredMembers) {
+      for (const m of effectiveMembers) {
         memberMinistryMap.set(m.id, m.ministry_types || []);
       }
 
@@ -626,7 +669,7 @@ export function useTeamRosterForDate(
         }
       }
 
-      for (const member of filteredMembers) {
+      for (const member of effectiveMembers) {
         const memberPositionKey = member.user_id ? `${member.user_id}|${member.position}` : null;
         const swap = memberPositionKey ? swapMap.get(memberPositionKey) : null;
         const reverseSwap = memberPositionKey ? reverseSwapMap.get(memberPositionKey) : null;
@@ -757,8 +800,8 @@ export function useTeamRosterForDate(
 
       if (campusId) {
         const announcementLookupDate = isWeekend(dateStr) ? getWeekendKey(dateStr) : dateStr;
-        let announcementQuery = (supabase as any)
-          .from("teaching_week_announcements")
+        let announcementQuery = supabase
+          .from("teaching_week_announcements" as never)
           .select("id, ministry_type, announcer_name")
           .eq("campus_id", campusId)
           .eq("weekend_date", announcementLookupDate)

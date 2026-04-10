@@ -1,6 +1,7 @@
 import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { PositionSlot } from "./PositionSlot";
 import {
   POSITION_SLOTS,
@@ -26,8 +27,8 @@ interface TeamCardProps {
   };
   members: TeamMemberAssignment[];
   availableMembers: AvailableMember[];
-  onAssign: (slot: string, serviceDay?: "saturday" | "sunday" | null) => void;
-  onRemove: (slot: string, serviceDay?: "saturday" | "sunday" | null) => void;
+  onAssign: (slot: string, scheduleDate?: string) => void;
+  onRemove: (slot: string, scheduleDate?: string) => void;
   onEditMinistry?: (member: TeamMemberAssignment) => void;
   readOnly?: boolean;
   isLocked?: boolean;
@@ -37,7 +38,10 @@ interface TeamCardProps {
   canEditAudio?: boolean;
   ministryFilter?: string;
   onEditTemplate?: () => void;
-  canSplitWeekendSlots?: boolean;
+  slotConflictDates?: Record<string, string[]>;
+  slotScheduleDates?: string[];
+  slotDateOverrides?: Record<string, Record<string, TeamMemberAssignment>>;
+  slotDateOverrideConflictDates?: Record<string, Record<string, string[]>>;
 }
 
 export function TeamCard({
@@ -54,7 +58,10 @@ export function TeamCard({
   canEditAudio = false,
   ministryFilter = "all",
   onEditTemplate,
-  canSplitWeekendSlots = false,
+  slotConflictDates = {},
+  slotScheduleDates = [],
+  slotDateOverrides = {},
+  slotDateOverrideConflictDates = {},
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -82,62 +89,37 @@ export function TeamCard({
     return filteredMembers.find(m => m.position_slot === slot);
   };
 
-  const getMembersForSlot = (slot: string) => {
-    return filteredMembers.filter((member) => member.position_slot === slot);
-  };
-
-  const getMemberForSlotAndDay = (slot: string, serviceDay: "saturday" | "sunday") => {
-    const slotMembers = getMembersForSlot(slot);
-    return (
-      slotMembers.find((member) => member.service_day === serviceDay) ||
-      slotMembers.find((member) => !member.service_day)
-    );
-  };
-
-  const isWeekendSplitEligible = canSplitWeekendSlots && ministryFilter === "weekend";
-
   const renderPositionSlot = ({
     key,
     slotConfig,
     member,
-    serviceDay = null,
     slotReadOnly,
     allowMinistryEdit,
-    allowSplitActions = false,
   }: {
     key: string;
     slotConfig: (typeof POSITION_SLOTS)[number];
     member?: TeamMemberAssignment;
-    serviceDay?: "saturday" | "sunday" | null;
     slotReadOnly: boolean;
     allowMinistryEdit: boolean;
-    allowSplitActions?: boolean;
   }) => (
     <PositionSlot
       key={key}
-      label={
-        serviceDay
-          ? `${slotConfig.label} (${serviceDay === "saturday" ? "Sat" : "Sun"})`
-          : slotConfig.label
-      }
+      label={slotConfig.label}
       memberName={member?.member_name}
       avatarUrl={null}
       isEmpty={!member}
-      onRemove={() => onRemove(slotConfig.slot, member ? member.service_day : serviceDay)}
-      onAdd={() => onAssign(slotConfig.slot, serviceDay)}
-      addActions={
-        !member && allowSplitActions
-          ? [
-              { label: "Both", onClick: () => onAssign(slotConfig.slot, null) },
-              { label: "Sat", onClick: () => onAssign(slotConfig.slot, "saturday") },
-              { label: "Sun", onClick: () => onAssign(slotConfig.slot, "sunday") },
-            ]
-          : undefined
-      }
+      onRemove={() => onRemove(slotConfig.slot)}
+      onAdd={() => onAssign(slotConfig.slot)}
       readOnly={slotReadOnly}
       ministryTypes={member?.ministry_types}
       onEditMinistry={member && onEditMinistry && allowMinistryEdit ? () => onEditMinistry(member) : undefined}
       showMinistryBadges={false}
+      conflictDates={member ? slotConflictDates[slotConfig.slot] || [] : []}
+      scheduleDates={slotScheduleDates}
+      dateOverrides={slotDateOverrides[slotConfig.slot] || {}}
+      dateOverrideConflictDates={slotDateOverrideConflictDates[slotConfig.slot] || {}}
+      onAssignDate={(scheduleDate) => onAssign(slotConfig.slot, scheduleDate)}
+      onRemoveDateOverride={(scheduleDate) => onRemove(slotConfig.slot, scheduleDate)}
     />
   );
 
@@ -147,7 +129,6 @@ export function TeamCard({
     slots,
     slotReadOnly,
     allowMinistryEdit,
-    splitEligible = false,
     emptyMessage,
   }: {
     title: string;
@@ -155,14 +136,8 @@ export function TeamCard({
     slots: (typeof POSITION_SLOTS)[number][];
     slotReadOnly: boolean;
     allowMinistryEdit: boolean;
-    splitEligible?: boolean;
     emptyMessage?: string;
   }) => {
-    const sectionMembers = filteredMembers.filter((member) =>
-      slots.some((slotConfig) => slotConfig.slot === member.position_slot)
-    );
-    const hasSplitDays = splitEligible && sectionMembers.some((member) => Boolean(member.service_day));
-
     return (
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -170,54 +145,18 @@ export function TeamCard({
           <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
           {emptyMessage && <span className="text-xs text-muted-foreground/60">{emptyMessage}</span>}
         </div>
-        {hasSplitDays ? (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Saturday</h5>
-              <div className="grid gap-2">
-                {slots.map((slotConfig) =>
-                  renderPositionSlot({
-                    key: `sat-${slotConfig.slot}`,
-                    slotConfig,
-                    member: getMemberForSlotAndDay(slotConfig.slot, "saturday"),
-                    serviceDay: "saturday",
-                    slotReadOnly,
-                    allowMinistryEdit,
-                  }),
-                )}
-              </div>
-            </div>
-            <div>
-              <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Sunday</h5>
-              <div className="grid gap-2">
-                {slots.map((slotConfig) =>
-                  renderPositionSlot({
-                    key: `sun-${slotConfig.slot}`,
-                    slotConfig,
-                    member: getMemberForSlotAndDay(slotConfig.slot, "sunday"),
-                    serviceDay: "sunday",
-                    slotReadOnly,
-                    allowMinistryEdit,
-                  }),
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-2">
-            {slots.map((slotConfig) => {
-              const member = getMemberForSlot(slotConfig.slot);
-              return renderPositionSlot({
-                key: slotConfig.slot,
-                slotConfig,
-                member,
-                slotReadOnly,
-                allowMinistryEdit,
-                allowSplitActions: splitEligible,
-              });
-            })}
-          </div>
-        )}
+        <div className="grid gap-2">
+          {slots.map((slotConfig) => {
+            const member = getMemberForSlot(slotConfig.slot);
+            return renderPositionSlot({
+              key: slotConfig.slot,
+              slotConfig,
+              member,
+              slotReadOnly,
+              allowMinistryEdit,
+            });
+          })}
+        </div>
       </div>
     );
   };
@@ -241,6 +180,7 @@ export function TeamCard({
   
   // Count filled slots only from visible categories
   const filledCount = visibleSlots.filter(slot => getMemberForSlot(slot.slot)).length;
+  const teamConflictCount = Object.values(slotConflictDates).filter((dates) => dates.length > 0).length;
 
   return (
     <Card className={`overflow-hidden ${isLocked ? "opacity-80" : ""}`}>
@@ -285,15 +225,29 @@ export function TeamCard({
           </div>
           
           {!canLock && (
-            <span className="text-sm font-normal text-muted-foreground">
-              {filledCount}/{totalSlots} filled
-            </span>
+            <div className="flex items-center gap-2">
+              {teamConflictCount > 0 && (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                  {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
+                </Badge>
+              )}
+              <span className="text-sm font-normal text-muted-foreground">
+                {filledCount}/{totalSlots} filled
+              </span>
+            </div>
           )}
           
           {canLock && (
-            <span className="text-sm font-normal text-muted-foreground">
-              {filledCount}/{totalSlots}
-            </span>
+            <div className="flex items-center gap-2">
+              {teamConflictCount > 0 && (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                  {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
+                </Badge>
+              )}
+              <span className="text-sm font-normal text-muted-foreground">
+                {filledCount}/{totalSlots}
+              </span>
+            </div>
           )}
         </CardTitle>
       </CardHeader>
@@ -306,7 +260,6 @@ export function TeamCard({
             slots: vocalSlots,
             slotReadOnly: effectiveReadOnly,
             allowMinistryEdit: true,
-            splitEligible: isWeekendSplitEligible,
           })
         )}
 
@@ -318,7 +271,6 @@ export function TeamCard({
             slots: speakerSlots,
             slotReadOnly: effectiveReadOnly,
             allowMinistryEdit: true,
-            splitEligible: isWeekendSplitEligible,
           })
         )}
 
@@ -330,7 +282,6 @@ export function TeamCard({
             slots: bandSlots,
             slotReadOnly: effectiveReadOnly,
             allowMinistryEdit: true,
-            splitEligible: isWeekendSplitEligible,
           })
         )}
 
@@ -354,7 +305,6 @@ export function TeamCard({
             slots: videoSlots,
             slotReadOnly: broadcastReadOnly,
             allowMinistryEdit: canEditBroadcast,
-            splitEligible: true,
             emptyMessage: broadcastReadOnly && !isLocked ? "(View only)" : undefined,
           })
         )}
