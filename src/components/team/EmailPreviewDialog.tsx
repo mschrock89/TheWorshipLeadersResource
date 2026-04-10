@@ -35,10 +35,12 @@ function generatePreviewHtml(
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background-color: #0a0a0a;">
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #0d0d0d;">
-    <!-- Logo Header -->
+    <!-- Brand Header -->
     <tr>
       <td style="padding: 32px 48px 16px; text-align: center; background: linear-gradient(180deg, #141414 0%, #0d0d0d 100%);">
-        <img src="https://worshipleadersresource.lovable.app/lovable-uploads/c439528b-da42-46da-b665-52d1dfe138fb.png" alt="Experience Music" style="height: 60px; width: auto;" />
+        <div style="color: #ffffff; font-size: 34px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.1; margin: 0;">
+          Experience Music
+        </div>
       </td>
     </tr>
     

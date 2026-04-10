@@ -50,6 +50,10 @@ function normalizeStoredEncryptedHex(value: string): string {
   return normalized;
 }
 
+function buildReconnectMessage(): string {
+  return 'Planning Center connection is missing valid stored tokens. Please disconnect and reconnect Planning Center.';
+}
+
 // Get or derive the encryption key
 async function getEncryptionKey(): Promise<CryptoKey> {
   const keyHex = Deno.env.get(ENCRYPTION_KEY_ENV);
@@ -112,8 +116,12 @@ export async function encryptToken(plaintext: string): Promise<string> {
 export async function decryptToken(encryptedHex: string): Promise<string> {
   const key = await getEncryptionKey();
   const decoder = new TextDecoder();
+  const normalized = normalizeStoredEncryptedHex(encryptedHex);
+  if (!normalized || normalized.length < 24 || normalized.length % 2 !== 0) {
+    throw new Error(buildReconnectMessage());
+  }
 
-  const combined = hexToBytes(normalizeStoredEncryptedHex(encryptedHex));
+  const combined = hexToBytes(normalized);
   
   // Extract IV (first 12 bytes) and ciphertext
   const iv = combined.slice(0, 12);
@@ -137,11 +145,11 @@ export async function getDecryptedTokens(connection: {
   refresh_token_encrypted?: string | null;
 }): Promise<{ accessToken: string; refreshToken: string }> {
   if (!connection.access_token_encrypted) {
-    throw new Error('No encrypted access token found');
+    throw new Error(buildReconnectMessage());
   }
   
   if (!connection.refresh_token_encrypted) {
-    throw new Error('No encrypted refresh token found');
+    throw new Error(buildReconnectMessage());
   }
   
   const accessToken = await decryptToken(connection.access_token_encrypted);
@@ -185,13 +193,13 @@ export async function refreshTokenIfNeededEncrypted(
   connection: any
 ): Promise<string> {
   const now = new Date();
-  const expiresAt = new Date(connection.token_expires_at);
+  const expiresAt = connection?.token_expires_at ? new Date(connection.token_expires_at) : null;
   
   // Get current tokens (encrypted or legacy)
   const { accessToken, refreshToken } = await getDecryptedTokens(connection);
   
   // If token is not expiring soon, return current access token
-  if (expiresAt.getTime() - now.getTime() >= 5 * 60 * 1000) {
+  if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt.getTime() - now.getTime() >= 5 * 60 * 1000) {
     return accessToken;
   }
   
@@ -212,10 +220,15 @@ export async function refreshTokenIfNeededEncrypted(
   });
   
   if (!response.ok) {
-    throw new Error('Failed to refresh token');
+    const details = await response.text();
+    throw new Error(`Failed to refresh Planning Center token (${response.status}): ${details}`);
   }
   
   const tokens = await response.json();
+  if (!tokens?.access_token) {
+    throw new Error('Planning Center token refresh succeeded without returning an access token');
+  }
+
   const newExpiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
   
   // Store new tokens encrypted
@@ -223,7 +236,7 @@ export async function refreshTokenIfNeededEncrypted(
     supabase,
     connection.id,
     tokens.access_token,
-    tokens.refresh_token,
+    tokens.refresh_token || refreshToken,
     newExpiresAt.toISOString()
   );
   

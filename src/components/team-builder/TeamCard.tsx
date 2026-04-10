@@ -1,6 +1,7 @@
 import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { PositionSlot } from "./PositionSlot";
 import {
   POSITION_SLOTS,
@@ -26,8 +27,8 @@ interface TeamCardProps {
   };
   members: TeamMemberAssignment[];
   availableMembers: AvailableMember[];
-  onAssign: (slot: string) => void;
-  onRemove: (slot: string) => void;
+  onAssign: (slot: string, scheduleDate?: string) => void;
+  onRemove: (slot: string, scheduleDate?: string) => void;
   onEditMinistry?: (member: TeamMemberAssignment) => void;
   readOnly?: boolean;
   isLocked?: boolean;
@@ -37,6 +38,10 @@ interface TeamCardProps {
   canEditAudio?: boolean;
   ministryFilter?: string;
   onEditTemplate?: () => void;
+  slotConflictDates?: Record<string, string[]>;
+  slotScheduleDates?: string[];
+  slotDateOverrides?: Record<string, Record<string, TeamMemberAssignment>>;
+  slotDateOverrideConflictDates?: Record<string, Record<string, string[]>>;
 }
 
 export function TeamCard({
@@ -53,6 +58,10 @@ export function TeamCard({
   canEditAudio = false,
   ministryFilter = "all",
   onEditTemplate,
+  slotConflictDates = {},
+  slotScheduleDates = [],
+  slotDateOverrides = {},
+  slotDateOverrideConflictDates = {},
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -105,8 +114,52 @@ export function TeamCard({
       ministryTypes={member?.ministry_types}
       onEditMinistry={member && onEditMinistry && allowMinistryEdit ? () => onEditMinistry(member) : undefined}
       showMinistryBadges={false}
+      conflictDates={member ? slotConflictDates[slotConfig.slot] || [] : []}
+      scheduleDates={slotScheduleDates}
+      dateOverrides={slotDateOverrides[slotConfig.slot] || {}}
+      dateOverrideConflictDates={slotDateOverrideConflictDates[slotConfig.slot] || {}}
+      onAssignDate={(scheduleDate) => onAssign(slotConfig.slot, scheduleDate)}
+      onRemoveDateOverride={(scheduleDate) => onRemove(slotConfig.slot, scheduleDate)}
     />
   );
+
+  const renderSlotGroup = ({
+    title,
+    icon,
+    slots,
+    slotReadOnly,
+    allowMinistryEdit,
+    emptyMessage,
+  }: {
+    title: string;
+    icon: React.ReactNode;
+    slots: (typeof POSITION_SLOTS)[number][];
+    slotReadOnly: boolean;
+    allowMinistryEdit: boolean;
+    emptyMessage?: string;
+  }) => {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          {icon}
+          <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
+          {emptyMessage && <span className="text-xs text-muted-foreground/60">{emptyMessage}</span>}
+        </div>
+        <div className="grid gap-2">
+          {slots.map((slotConfig) => {
+            const member = getMemberForSlot(slotConfig.slot);
+            return renderPositionSlot({
+              key: slotConfig.slot,
+              slotConfig,
+              member,
+              slotReadOnly,
+              allowMinistryEdit,
+            });
+          })}
+        </div>
+      </div>
+    );
+  };
 
   // If locked, treat as read-only
   const effectiveReadOnly = readOnly || isLocked;
@@ -127,6 +180,7 @@ export function TeamCard({
   
   // Count filled slots only from visible categories
   const filledCount = visibleSlots.filter(slot => getMemberForSlot(slot.slot)).length;
+  const teamConflictCount = Object.values(slotConflictDates).filter((dates) => dates.length > 0).length;
 
   return (
     <Card className={`overflow-hidden ${isLocked ? "opacity-80" : ""}`}>
@@ -171,187 +225,88 @@ export function TeamCard({
           </div>
           
           {!canLock && (
-            <span className="text-sm font-normal text-muted-foreground">
-              {filledCount}/{totalSlots} filled
-            </span>
+            <div className="flex items-center gap-2">
+              {teamConflictCount > 0 && (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                  {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
+                </Badge>
+              )}
+              <span className="text-sm font-normal text-muted-foreground">
+                {filledCount}/{totalSlots} filled
+              </span>
+            </div>
           )}
           
           {canLock && (
-            <span className="text-sm font-normal text-muted-foreground">
-              {filledCount}/{totalSlots}
-            </span>
+            <div className="flex items-center gap-2">
+              {teamConflictCount > 0 && (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                  {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
+                </Badge>
+              )}
+              <span className="text-sm font-normal text-muted-foreground">
+                {filledCount}/{totalSlots}
+              </span>
+            </div>
           )}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
         {/* Vocalists Section */}
         {showVocalists && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Mic className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Vocalists
-              </h4>
-            </div>
-            <div className="grid gap-2">
-              {vocalSlots.map(slotConfig => {
-                const member = getMemberForSlot(slotConfig.slot);
-                return renderPositionSlot({
-                  key: slotConfig.slot,
-                  slotConfig,
-                  member,
-                  slotReadOnly: effectiveReadOnly,
-                  allowMinistryEdit: true,
-                });
-              })}
-            </div>
-          </div>
+          renderSlotGroup({
+            title: "Vocalists",
+            icon: <Mic className="h-4 w-4 text-muted-foreground" />,
+            slots: vocalSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
         )}
 
         {/* Band Section */}
         {showSpeaker && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-medium text-muted-foreground">Speaker</h4>
-            </div>
-            <div className="grid gap-2">
-              {speakerSlots.map(slotConfig => {
-                const member = getMemberForSlot(slotConfig.slot);
-                return renderPositionSlot({
-                  key: slotConfig.slot,
-                  slotConfig,
-                  member,
-                  slotReadOnly: effectiveReadOnly,
-                  allowMinistryEdit: true,
-                });
-              })}
-            </div>
-          </div>
+          renderSlotGroup({
+            title: "Speaker",
+            icon: <BookOpen className="h-4 w-4 text-muted-foreground" />,
+            slots: speakerSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
         )}
 
         {/* Band Section */}
         {showBand && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Music className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-medium text-muted-foreground">Band</h4>
-            </div>
-            <div className="grid gap-2">
-              {bandSlots.map(slotConfig => {
-                const member = getMemberForSlot(slotConfig.slot);
-                return renderPositionSlot({
-                  key: slotConfig.slot,
-                  slotConfig,
-                  member,
-                  slotReadOnly: effectiveReadOnly,
-                  allowMinistryEdit: true,
-                });
-              })}
-            </div>
-          </div>
+          renderSlotGroup({
+            title: "Band",
+            icon: <Music className="h-4 w-4 text-muted-foreground" />,
+            slots: bandSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
         )}
 
         {/* Production Section */}
         {showProduction && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Volume2 className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-medium text-muted-foreground">Production</h4>
-              {productionReadOnly && !isLocked && (
-                <span className="text-xs text-muted-foreground/60">(View only)</span>
-              )}
-            </div>
-            <div className="grid gap-2">
-              {productionSlots.map(slotConfig => {
-                const member = getMemberForSlot(slotConfig.slot);
-                return renderPositionSlot({
-                  key: slotConfig.slot,
-                  slotConfig,
-                  member,
-                  slotReadOnly: productionReadOnly,
-                  allowMinistryEdit: canEditAudio,
-                });
-              })}
-            </div>
-          </div>
+          renderSlotGroup({
+            title: "Production",
+            icon: <Volume2 className="h-4 w-4 text-muted-foreground" />,
+            slots: productionSlots,
+            slotReadOnly: productionReadOnly,
+            allowMinistryEdit: canEditAudio,
+            emptyMessage: productionReadOnly && !isLocked ? "(View only)" : undefined,
+          })
         )}
 
         {/* Video Section - Split by Saturday/Sunday */}
         {showVideo && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Video className="h-4 w-4 text-muted-foreground" />
-              <h4 className="text-sm font-medium text-muted-foreground">Video</h4>
-              {broadcastReadOnly && !isLocked && (
-                <span className="text-xs text-muted-foreground/60">(View only)</span>
-              )}
-            </div>
-            
-            {/* Check if we have any service_day assignments */}
-            {(() => {
-              const saturdayMembers = filteredMembers.filter(m => m.service_day === 'saturday');
-              const sundayMembers = filteredMembers.filter(m => m.service_day === 'sunday');
-              const hasSplitDays = saturdayMembers.length > 0 || sundayMembers.length > 0;
-
-              if (hasSplitDays) {
-                // Two-column layout for Saturday/Sunday
-                return (
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Saturday Column */}
-                    <div>
-                      <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Saturday</h5>
-                      <div className="grid gap-2">
-                        {videoSlots.map(slotConfig => {
-                          const member = saturdayMembers.find(m => m.position_slot === slotConfig.slot);
-                          return renderPositionSlot({
-                            key: `sat-${slotConfig.slot}`,
-                            slotConfig,
-                            member,
-                            slotReadOnly: broadcastReadOnly,
-                            allowMinistryEdit: canEditBroadcast,
-                          });
-                        })}
-                      </div>
-                    </div>
-                    
-                    {/* Sunday Column */}
-                    <div>
-                      <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Sunday</h5>
-                      <div className="grid gap-2">
-                        {videoSlots.map(slotConfig => {
-                          const member = sundayMembers.find(m => m.position_slot === slotConfig.slot);
-                          return renderPositionSlot({
-                            key: `sun-${slotConfig.slot}`,
-                            slotConfig,
-                            member,
-                            slotReadOnly: broadcastReadOnly,
-                            allowMinistryEdit: canEditBroadcast,
-                          });
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              // Fallback: no service_day split, show single column
-              return (
-                <div className="grid gap-2">
-                  {videoSlots.map(slotConfig => {
-                    const member = getMemberForSlot(slotConfig.slot);
-                    return renderPositionSlot({
-                      key: slotConfig.slot,
-                      slotConfig,
-                      member,
-                      slotReadOnly: broadcastReadOnly,
-                      allowMinistryEdit: canEditBroadcast,
-                    });
-                  })}
-                </div>
-              );
-            })()}
-          </div>
+          renderSlotGroup({
+            title: "Video",
+            icon: <Video className="h-4 w-4 text-muted-foreground" />,
+            slots: videoSlots,
+            slotReadOnly: broadcastReadOnly,
+            allowMinistryEdit: canEditBroadcast,
+            emptyMessage: broadcastReadOnly && !isLocked ? "(View only)" : undefined,
+          })
         )}
       </CardContent>
     </Card>

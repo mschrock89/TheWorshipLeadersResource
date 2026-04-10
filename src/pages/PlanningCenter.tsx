@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   useDisconnectPco,
   usePcoConnection,
@@ -94,7 +95,7 @@ const extractFunctionErrorMessage = async (error: unknown): Promise<string> => {
 };
 
 export default function PlanningCenter() {
-  const { canManageTeam } = useAuth();
+  const { canManageTeam, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCampus, setSelectedCampus] = useState<string>("");
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
@@ -114,6 +115,7 @@ export default function PlanningCenter() {
   const googleConnected = searchParams.get("google_connected") === "1";
   const googleError = searchParams.get("error");
 
+  const { data: userRoles = [] } = useUserRoles(user?.id);
   const { data: connection, isLoading: connectionLoading } = usePcoConnection();
   const { data: campuses } = useCampuses();
   const startAuth = useStartPcoAuth();
@@ -123,6 +125,16 @@ export default function PlanningCenter() {
   const syncPlans = useSyncPcoPlans();
   const syncSongLibrary = useSyncPcoSongLibrary();
   const updateSettings = useUpdatePcoSettings();
+  const canManagePlanningCenter = canManageTeam || userRoles.some(({ role }) =>
+    role === "admin" ||
+    role === "campus_admin" ||
+    role === "campus_worship_pastor" ||
+    role === "student_worship_pastor" ||
+    role === "network_worship_pastor" ||
+    role === "network_worship_leader" ||
+    role === "video_director" ||
+    role === "production_manager"
+  );
 
   // Handle PCO OAuth callback.
   useEffect(() => {
@@ -399,7 +411,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_team_members"
                       checked={connection.sync_team_members}
-                      disabled={!canManageTeam}
+                      disabled={!canManagePlanningCenter}
                       onCheckedChange={(checked) => handleSettingChange("sync_team_members", !!checked)}
                     />
                     <Label htmlFor="sync_team_members" className="text-sm">
@@ -411,7 +423,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_phone_numbers"
                       checked={connection.sync_phone_numbers}
-                      disabled={!canManageTeam}
+                      disabled={!canManagePlanningCenter}
                       onCheckedChange={(checked) => handleSettingChange("sync_phone_numbers", !!checked)}
                     />
                     <Label htmlFor="sync_phone_numbers" className="text-sm">
@@ -423,7 +435,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_birthdays"
                       checked={connection.sync_birthdays}
-                      disabled={!canManageTeam}
+                      disabled={!canManagePlanningCenter}
                       onCheckedChange={(checked) => handleSettingChange("sync_birthdays", !!checked)}
                     />
                     <Label htmlFor="sync_birthdays" className="text-sm">
@@ -435,7 +447,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_positions"
                       checked={connection.sync_positions}
-                      disabled={!canManageTeam}
+                      disabled={!canManagePlanningCenter}
                       onCheckedChange={(checked) => handleSettingChange("sync_positions", !!checked)}
                     />
                     <Label htmlFor="sync_positions" className="text-sm">
@@ -447,7 +459,7 @@ export default function PlanningCenter() {
                     <Checkbox
                       id="sync_chord_charts"
                       checked={connection.sync_chord_charts}
-                      disabled={!canManageTeam}
+                      disabled={!canManagePlanningCenter}
                       onCheckedChange={(checked) => handleSettingChange("sync_chord_charts", !!checked)}
                     />
                     <Label htmlFor="sync_chord_charts" className="text-sm">
@@ -463,7 +475,6 @@ export default function PlanningCenter() {
                   <Checkbox
                     id="sync_active_only"
                     checked={connection.sync_active_only}
-                    disabled={!canManageTeam}
                     onCheckedChange={(checked) => handleSettingChange("sync_active_only", !!checked)}
                   />
                   <div className="space-y-1">
@@ -490,7 +501,7 @@ export default function PlanningCenter() {
                       variant="outline"
                       size="sm"
                       onClick={() => setCleanupDialogOpen(true)}
-                      disabled={!connection.campus_id || !canManageTeam}
+                      disabled={!connection.campus_id || !canManagePlanningCenter}
                     >
                       <UserX className="h-4 w-4 mr-2" />
                       Clean Up Inactive Members
@@ -508,7 +519,7 @@ export default function PlanningCenter() {
                 <div className="flex gap-3">
                   <Button
                     onClick={() => syncTeam.mutate()}
-                    disabled={syncTeam.isPending || syncPlans.isPending || syncSongLibrary.isPending || !canManageTeam}
+                    disabled={syncTeam.isPending || syncPlans.isPending || syncSongLibrary.isPending || !canManagePlanningCenter}
                     className="flex-1"
                   >
                     {syncTeam.isPending ? (
@@ -520,7 +531,7 @@ export default function PlanningCenter() {
                   </Button>
                   <Button
                     onClick={() => syncPlans.mutate()}
-                    disabled={syncPlans.isPending || syncTeam.isPending || syncSongLibrary.isPending || !canManageTeam}
+                    disabled={syncPlans.isPending || syncTeam.isPending || syncSongLibrary.isPending || !canManagePlanningCenter}
                     variant="secondary"
                     className="flex-1"
                   >
@@ -534,7 +545,7 @@ export default function PlanningCenter() {
                 </div>
                 <Button
                   onClick={() => syncSongLibrary.mutate()}
-                  disabled={syncSongLibrary.isPending || syncPlans.isPending || syncTeam.isPending || !canManageTeam}
+                  disabled={syncSongLibrary.isPending || syncPlans.isPending || syncTeam.isPending || !canManagePlanningCenter}
                   variant="outline"
                   className="w-full"
                 >
@@ -548,7 +559,7 @@ export default function PlanningCenter() {
                 <Button
                   variant="outline"
                   onClick={() => disconnect.mutate()}
-                  disabled={disconnect.isPending || !canManageTeam}
+                  disabled={disconnect.isPending || !canManagePlanningCenter}
                   className="w-full"
                 >
                   {disconnect.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Unlink className="h-4 w-4 mr-2" />}
@@ -565,7 +576,7 @@ export default function PlanningCenter() {
             </>
           ) : (
             <>
-              {canManageTeam ? (
+              {canManagePlanningCenter ? (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="campus">Select Campus (Optional)</Label>

@@ -87,7 +87,6 @@ function CondensedTeamCard({
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-
   const renderSlot = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -151,68 +150,7 @@ function CondensedTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && (() => {
-          const saturdayMembers = visibleMembers.filter(m => m.service_day === 'saturday');
-          const sundayMembers = visibleMembers.filter(m => m.service_day === 'sunday');
-          const hasSplitDays = saturdayMembers.length > 0 || sundayMembers.length > 0;
-
-          const renderSlotForDay = (slotConfig: (typeof POSITION_SLOTS)[0], dayMembers: typeof visibleMembers) => {
-            const member = dayMembers.find(m => m.position_slot === slotConfig.slot);
-            if (!member) return null;
-            const isMe = member.user_id === userId;
-
-            return (
-              <div
-                key={slotConfig.slot}
-                className={cn(
-                  "flex items-center gap-2 text-xs py-1 px-2 rounded",
-                  isMe ? "bg-primary/10" : "",
-                )}
-              >
-                <span className="text-muted-foreground w-12 shrink-0 truncate">{slotConfig.label}:</span>
-                <span className={cn("truncate", isMe && "font-medium text-primary")}>
-                  {member.member_name}
-                  {isMe && " (You)"}
-                </span>
-              </div>
-            );
-          };
-
-          if (hasSplitDays) {
-            return (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Video className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-bold text-primary">Video</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Saturday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Saturday</h5>
-                    <div className="space-y-0.5">
-                      {videoSlots.map(s => renderSlotForDay(s, saturdayMembers))}
-                      {videoSlots.every(s => !saturdayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic px-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                  {/* Sunday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Sunday</h5>
-                    <div className="space-y-0.5">
-                      {videoSlots.map(s => renderSlotForDay(s, sundayMembers))}
-                      {videoSlots.every(s => !sundayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic px-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          return renderSection("Video", Video, videoSlots);
-        })()}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );
@@ -262,7 +200,6 @@ function FullTeamCard({
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-
   const renderMember = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -339,81 +276,7 @@ function FullTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && (() => {
-          const saturdayMembers = visibleMembers.filter(m => m.service_day === 'saturday');
-          const sundayMembers = visibleMembers.filter(m => m.service_day === 'sunday');
-          const hasSplitDays = saturdayMembers.length > 0 || sundayMembers.length > 0;
-
-          const renderMemberForDay = (slotConfig: (typeof POSITION_SLOTS)[0], dayMembers: typeof visibleMembers) => {
-            const member = dayMembers.find(m => m.position_slot === slotConfig.slot);
-            if (!member) return null;
-            const isMe = member.user_id === userId;
-
-            return (
-              <div
-                key={slotConfig.slot}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg border p-2",
-                  isMe ? "border-primary bg-primary/5" : "border-border bg-card",
-                )}
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                    {member.member_name?.
-                      split(" ")
-                      .map(n => n[0])
-                      .join("")
-                      .slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium truncate">
-                      {member.member_name}
-                      {isMe && <span className="text-primary ml-1">(You)</span>}
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{slotConfig.label}</p>
-                </div>
-              </div>
-            );
-          };
-
-          if (hasSplitDays) {
-            return (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Video className="h-4 w-4 text-muted-foreground" />
-                  <h4 className="text-sm font-medium text-muted-foreground">Video</h4>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Saturday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Saturday</h5>
-                    <div className="grid gap-2">
-                      {videoSlots.map(s => renderMemberForDay(s, saturdayMembers))}
-                      {videoSlots.every(s => !saturdayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic text-center py-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                  {/* Sunday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Sunday</h5>
-                    <div className="grid gap-2">
-                      {videoSlots.map(s => renderMemberForDay(s, sundayMembers))}
-                      {videoSlots.every(s => !sundayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic text-center py-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          return renderSection("Video", Video, videoSlots);
-        })()}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );

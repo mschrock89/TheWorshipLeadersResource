@@ -231,7 +231,6 @@ export function SongAvailabilityList({
               const isDisabled =
                 isAdded ||
                 item.status === 'upcoming' ||
-                isTooRecentLocked ||
                 (isScheduledOnActiveSet && !allowSchedulingOverrides);
               const weeksInfo = getWeeksInfo(item.lastUsedDate, item.isNewSong);
 
@@ -293,6 +292,11 @@ export function SongAvailabilityList({
                     {item.status === 'warning' && (
                       <p className="text-xs text-amber-600 truncate">
                         Allowed now, but 8 weeks is still recommended
+                      </p>
+                    )}
+                    {item.status === 'too-recent' && (
+                      <p className="text-xs text-amber-600 truncate">
+                        Under 5 weeks, but you can still add it
                       </p>
                     )}
                   </div>

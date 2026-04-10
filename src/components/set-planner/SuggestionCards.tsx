@@ -133,7 +133,6 @@ export function SuggestionCards({
                 onAdd={() => onAddSong(item)}
                 isAdded={addedSongIds.has(item.song.id)}
                 badge={`${item.weeksUntilAvailable}w`}
-                disabled
               />
             ))
           ) : (
