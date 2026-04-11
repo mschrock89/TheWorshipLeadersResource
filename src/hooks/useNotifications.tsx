@@ -81,7 +81,7 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      const [newSetsResult, newEventsResult, userCampusesResult] = await Promise.all([
+      const [newSetsResult, newEventsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
@@ -122,11 +122,30 @@ export function useNotifications() {
           .from("user_campuses")
           .select("campus_id")
           .eq("user_id", user.id),
+        // Direct incoming cover/swap requests for this user
+        supabase
+          .from("swap_requests")
+          .select(`
+            id,
+            created_at,
+            original_date,
+            swap_date,
+            request_type,
+            position,
+            status,
+            requester:profiles!swap_requests_requester_id_fkey(full_name),
+            worship_teams(name)
+          `)
+          .eq("target_user_id", user.id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .limit(10),
       ]);
 
       const userCampusIds = userCampusesResult.data?.map((uc) => uc.campus_id) || [];
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
+      const directSwapRequests = directSwapRequestsResult.data || [];
 
       const notifs: Notification[] = [];
 
@@ -209,6 +228,29 @@ export function useNotifications() {
         });
       });
 
+      directSwapRequests.forEach((swapRequest) => {
+        const requesterName =
+          (swapRequest.requester as { full_name?: string | null } | null)?.full_name || "A team member";
+        const teamName =
+          (swapRequest.worship_teams as { name?: string | null } | null)?.name || "your team";
+        const isCoverRequest =
+          swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
+        const notifId = `swap-request-${swapRequest.id}`;
+
+        notifs.push({
+          id: notifId,
+          type: "swap_request",
+          title: isCoverRequest ? "Cover Request" : "Swap Request",
+          message: isCoverRequest
+            ? `${requesterName} asked you to cover ${swapRequest.position} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
+            : `${requesterName} wants to swap ${swapRequest.position} with you on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()}`,
+          timestamp: swapRequest.created_at || new Date().toISOString(),
+          read: currentReadIds.has(notifId),
+          link: "/swaps",
+          swapRequestId: swapRequest.id,
+        });
+      });
+
       // Sort by timestamp descending
       notifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -239,6 +281,11 @@ export function useNotifications() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "events" },
+        () => fetchNotifications()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "swap_requests" },
         () => fetchNotifications()
       )
       .subscribe();

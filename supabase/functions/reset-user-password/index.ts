@@ -6,21 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Helper to decode JWT payload without verification (we'll verify via RPC check)
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    // Base64url decode
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = atob(base64);
-    return JSON.parse(jsonPayload);
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -49,31 +34,24 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY')!;
 
-    // Decode JWT to get user ID (we verify permissions via database RPC)
-    const token = authHeader.replace('Bearer ', '');
-    const payload = decodeJwtPayload(token);
-    
-    if (!payload || !payload.sub || typeof payload.sub !== 'string') {
-      console.log('Invalid JWT token');
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      console.log('Failed to verify requesting user:', userError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if token is expired
-    const exp = payload.exp as number | undefined;
-    if (exp && Date.now() >= exp * 1000) {
-      console.log('Token expired');
-      return new Response(
-        JSON.stringify({ error: 'Token expired. Please log in again.' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const userId = payload.sub;
-    console.log(`User ID from token: ${userId}`);
+    const userId = user.id;
+    console.log(`Authenticated user ID: ${userId}`);
 
     // Create admin client (service role bypasses RLS)
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
