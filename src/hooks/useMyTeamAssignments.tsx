@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { parseLocalDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -32,6 +33,38 @@ export interface MyScheduledDate {
   ministryType: string;
   /** Whether this date came from an accepted swap (user accepted someone else's date) */
   isSwappedIn?: boolean;
+}
+
+const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
+
+function assignmentMatchesMinistryTypes(
+  memberMinistryTypes: string[],
+  scheduleMinistryType: string,
+): boolean {
+  if (memberMinistryTypes.length === 0 || !scheduleMinistryType) {
+    return true;
+  }
+
+  const normalizedScheduleMinistry =
+    normalizeWeekendWorshipMinistryType(scheduleMinistryType) || scheduleMinistryType;
+
+  if (
+    memberMinistryTypes.some((memberMinistry) => {
+      const normalizedMemberMinistry =
+        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+      return normalizedMemberMinistry === normalizedScheduleMinistry;
+    })
+  ) {
+    return true;
+  }
+
+  if (normalizedScheduleMinistry === "weekend") {
+    return memberMinistryTypes.some((memberMinistry) =>
+      WEEKEND_SUPPORTING_MINISTRIES.has(memberMinistry),
+    );
+  }
+
+  return false;
 }
 
 
@@ -308,12 +341,8 @@ export function useMyTeamAssignments() {
           
           // Get the user's ministry types for this assignment
           const userMinistryTypes = (a as any)?.ministryTypes || [];
-          
-          // If user has no ministry types set, show all dates for their team
-          if (userMinistryTypes.length === 0) return true;
-          
-          // Otherwise, only include if the schedule's ministry type matches
-          return userMinistryTypes.includes(scheduleMinistryType);
+
+          return assignmentMatchesMinistryTypes(userMinistryTypes, scheduleMinistryType);
         });
         
         // Skip this schedule entry if no matching assignments
