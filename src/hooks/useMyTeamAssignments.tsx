@@ -273,6 +273,13 @@ export function useMyTeamAssignments() {
         const scheduleMinistryType = (entry as any).ministry_type || 'weekend';
         const scheduleCampusId = (entry as any).campus_id || null;
         const scheduleCampusName = (entry as any)?.campuses?.name || null;
+        const hasCampusSpecificSibling = (data || []).some((other: any) =>
+          other !== entry &&
+          other.schedule_date === entry.schedule_date &&
+          other.team_id === entry.team_id &&
+          (other.ministry_type || "weekend") === scheduleMinistryType &&
+          !!other.campus_id
+        );
         
         // Skip dates user has swapped out
         if (swappedOutDates.has(entry.schedule_date)) continue;
@@ -292,6 +299,11 @@ export function useMyTeamAssignments() {
               const hasCampusMembership = userCampuses.some((uc: any) => uc.campus_id === scheduleCampusId);
               if (!hasCampusMembership) return false;
             }
+          } else if (assignmentCampusId && hasCampusSpecificSibling) {
+            // Some schedules include a generic network row plus campus-specific rows for the same
+            // service. For personal calendar highlights, prefer the campus-specific row so a
+            // volunteer's dates don't light up for another campus's weekend.
+            return false;
           }
           
           // Get the user's ministry types for this assignment
