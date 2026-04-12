@@ -193,13 +193,17 @@ export default function Team() {
         // Position filter
         const matchesPosition = matchesPositionFilter(positionsForFilter, positionFilter);
 
+        const normalizedProfileMinistries = getNormalizedProfileMinistries(profile);
+        const matchesSelectedMinistry =
+          !selectedMinistrySort || normalizedProfileMinistries.includes(selectedMinistrySort);
+
         // Gender filter
         const matchesGender =
           genderFilter === "all" ||
           (genderFilter === "not_set" && !profile.gender) ||
           profile.gender === genderFilter;
 
-        return matchesSearch && matchesPosition && matchesCampus && matchesGender;
+        return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender;
       })
       .sort((a, b) => {
         const nameA = (a.full_name || a.email || "").toLowerCase();

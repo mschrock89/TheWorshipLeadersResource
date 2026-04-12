@@ -15,6 +15,23 @@ export interface ScheduleEntry {
   rotation_period: string;
 }
 
+interface TeamScheduleRow {
+  id: string;
+  schedule_date: string;
+  team_id: string;
+  ministry_type: string | null;
+  notes: string | null;
+  campus_id: string | null;
+  rotation_period: string;
+  created_at?: string | null;
+  worship_teams?: {
+    id?: string;
+    name?: string | null;
+    color?: string | null;
+    icon?: string | null;
+  } | null;
+}
+
 export function usePublishScheduleNetworkWide() {
   const queryClient = useQueryClient();
 
@@ -22,52 +39,59 @@ export function usePublishScheduleNetworkWide() {
     mutationFn: async ({
       campusId,
       rotationPeriod,
-      ministryType,
+      ministryTypes,
     }: {
       campusId: string;
       rotationPeriod: string;
-      ministryType: string;
+      ministryTypes: string[];
     }) => {
-      const { data: campusEntries, error: campusEntriesError } = await supabase
-        .from("team_schedule")
-        .select("schedule_date, team_id, ministry_type, notes")
-        .eq("campus_id", campusId)
-        .eq("rotation_period", rotationPeriod)
-        .eq("ministry_type", ministryType)
-        .order("schedule_date", { ascending: true });
-
-      if (campusEntriesError) throw campusEntriesError;
-
-      if (!campusEntries || campusEntries.length === 0) {
-        throw new Error("No campus schedule entries to publish yet.");
+      const normalizedMinistryTypes = [...new Set(ministryTypes)].filter(Boolean);
+      if (normalizedMinistryTypes.length === 0) {
+        throw new Error("No ministry types selected to publish.");
       }
 
-      const scheduleDates = campusEntries.map((entry) => entry.schedule_date);
+      for (const ministryType of normalizedMinistryTypes) {
+        const { data: campusEntries, error: campusEntriesError } = await supabase
+          .from("team_schedule")
+          .select("schedule_date, team_id, ministry_type, notes")
+          .eq("campus_id", campusId)
+          .eq("rotation_period", rotationPeriod)
+          .eq("ministry_type", ministryType)
+          .order("schedule_date", { ascending: true });
 
-      const { error: deleteError } = await supabase
-        .from("team_schedule")
-        .delete()
-        .is("campus_id", null)
-        .eq("rotation_period", rotationPeriod)
-        .eq("ministry_type", ministryType)
-        .in("schedule_date", scheduleDates);
+        if (campusEntriesError) throw campusEntriesError;
 
-      if (deleteError) throw deleteError;
+        if (!campusEntries || campusEntries.length === 0) {
+          continue;
+        }
 
-      const sharedEntries = campusEntries.map((entry) => ({
-        campus_id: null,
-        schedule_date: entry.schedule_date,
-        team_id: entry.team_id,
-        ministry_type: entry.ministry_type,
-        rotation_period: rotationPeriod,
-        notes: entry.notes,
-      }));
+        const scheduleDates = campusEntries.map((entry) => entry.schedule_date);
 
-      const { error: insertError } = await supabase
-        .from("team_schedule")
-        .insert(sharedEntries);
+        const { error: deleteError } = await supabase
+          .from("team_schedule")
+          .delete()
+          .is("campus_id", null)
+          .eq("rotation_period", rotationPeriod)
+          .eq("ministry_type", ministryType)
+          .in("schedule_date", scheduleDates);
 
-      if (insertError) throw insertError;
+        if (deleteError) throw deleteError;
+
+        const sharedEntries = campusEntries.map((entry) => ({
+          campus_id: null,
+          schedule_date: entry.schedule_date,
+          team_id: entry.team_id,
+          ministry_type: entry.ministry_type,
+          rotation_period: rotationPeriod,
+          notes: entry.notes,
+        }));
+
+        const { error: insertError } = await supabase
+          .from("team_schedule")
+          .insert(sharedEntries);
+
+        if (insertError) throw insertError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-schedule-campus"] });
@@ -128,8 +152,8 @@ export function useTeamScheduleForCampus(
 
       // Prioritize campus-specific entries over shared ones
       // When same priority (e.g. duplicate shared entries), prefer newer by created_at
-      const entriesMap = new Map<string, any>();
-      const sorted = [...(data || [])].sort((a, b) => {
+      const entriesMap = new Map<string, TeamScheduleRow>();
+      const sorted = [...((data || []) as TeamScheduleRow[])].sort((a, b) => {
         const aT = new Date(a.created_at || 0).getTime();
         const bT = new Date(b.created_at || 0).getTime();
         return aT - bT; // older first, so newer overwrites
@@ -154,7 +178,7 @@ export function useTeamScheduleForCampus(
 
       return Array.from(entriesMap.values())
         .sort((a, b) => a.schedule_date.localeCompare(b.schedule_date))
-        .map((entry: any) => ({
+        .map((entry) => ({
           id: entry.id,
           schedule_date: entry.schedule_date,
           team_id: entry.team_id,
@@ -289,6 +313,35 @@ export function useDeleteScheduleEntry() {
     onError: (error) => {
       console.error("Failed to delete schedule entry:", error);
       toast.error("Failed to remove schedule entry");
+    },
+  });
+}
+
+export function useClearScheduleEntries() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (scheduleIds: string[]) => {
+      if (scheduleIds.length === 0) return;
+
+      const { error } = await supabase
+        .from("team_schedule")
+        .delete()
+        .in("id", scheduleIds);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, scheduleIds) => {
+      if ((scheduleIds || []).length > 0) {
+        queryClient.invalidateQueries({ queryKey: ["team-schedule-campus"] });
+        queryClient.invalidateQueries({ queryKey: ["team-schedule"] });
+        queryClient.invalidateQueries({ queryKey: ["scheduled-team-for-date"] });
+      }
+      toast.success("Schedule dates cleared");
+    },
+    onError: (error) => {
+      console.error("Failed to clear schedule entries:", error);
+      toast.error("Failed to clear schedule dates");
     },
   });
 }

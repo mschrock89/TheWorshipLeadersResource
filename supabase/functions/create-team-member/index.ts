@@ -50,6 +50,34 @@ const replaceableBaseRoles = [
   "volunteer",
 ];
 
+async function findUserByEmail(
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 100) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const existingUser = data.users.find((existing) => existing.email?.toLowerCase() === email);
+    if (existingUser) {
+      return existingUser;
+    }
+
+    if (data.users.length < perPage) {
+      return null;
+    }
+
+    page += 1;
+  }
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -124,42 +152,100 @@ serve(async (req) => {
       });
     }
 
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const exists = existingUsers?.users?.some((existingUser) => existingUser.email?.toLowerCase() === email);
-    if (exists) {
-      return new Response(JSON.stringify({ error: "A user with that email already exists" }), {
-        status: 409,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const fullName = `${firstName} ${lastName}`;
     const temporaryPassword = "123456";
+    const existingUser = await findUserByEmail(adminClient, email);
 
-    const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-      email,
-      password: temporaryPassword,
-      email_confirm: true,
-      user_metadata: { full_name: fullName },
-    });
+    let userId: string;
 
-    if (createError || !created.user) {
-      throw new Error(createError?.message || "Failed to create user");
+    if (existingUser) {
+      const [
+        { data: existingProfile },
+        { data: existingRoles, error: existingRolesError },
+      ] = await Promise.all([
+        adminClient
+          .from("profiles")
+          .select("id")
+          .eq("id", existingUser.id)
+          .maybeSingle(),
+        adminClient
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", existingUser.id)
+          .in("role", replaceableBaseRoles),
+      ]);
+
+      if (existingRolesError) {
+        throw new Error(existingRolesError.message);
+      }
+
+      const existingRoleValues = (existingRoles || []).map(({ role: existingRole }) => existingRole);
+      const blockingRoles = existingRoleValues.filter((existingRole) => !replaceableBaseRoles.includes(existingRole));
+      const needsRecovery = !existingProfile || existingRoleValues.length === 0;
+
+      if (blockingRoles.length > 0) {
+        const formattedRoles = blockingRoles.join(", ");
+        return new Response(
+          JSON.stringify({
+            error: "A user with that email already exists",
+            hint: `That account already has protected role access (${formattedRoles}). Update the existing user instead of creating a new member.`,
+          }),
+          {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (needsRecovery) {
+        const { error: repairAuthError } = await adminClient.auth.admin.updateUserById(existingUser.id, {
+          email,
+          password: temporaryPassword,
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+        });
+
+        if (repairAuthError) {
+          throw new Error(repairAuthError.message);
+        }
+      } else {
+        const { error: refreshAuthError } = await adminClient.auth.admin.updateUserById(existingUser.id, {
+          user_metadata: { full_name: fullName },
+        });
+
+        if (refreshAuthError) {
+          throw new Error(refreshAuthError.message);
+        }
+      }
+
+      userId = existingUser.id;
+    } else {
+      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+
+      if (createError || !created.user) {
+        throw new Error(createError?.message || "Failed to create user");
+      }
+
+      userId = created.user.id;
     }
-
-    const userId = created.user.id;
 
     const { error: profileError } = await adminClient
       .from("profiles")
-      .update({
+      .upsert({
+        id: userId,
+        email,
         full_name: fullName,
         phone,
         default_campus_id: campusId,
-      })
-      .eq("id", userId);
+      });
 
     if (profileError) {
-      console.warn("Profile update warning:", profileError.message);
+      throw new Error(profileError.message);
     }
 
     const { error: deleteRolesError } = await adminClient
@@ -199,6 +285,7 @@ serve(async (req) => {
         userId,
         email,
         temporaryPassword,
+        recoveredExistingUser: Boolean(existingUser),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

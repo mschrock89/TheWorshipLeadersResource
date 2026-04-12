@@ -57,6 +57,7 @@ import {
   useTeamMemberDateOverrides,
   getPreviousPeriodId,
   useCampusWorshipPastors,
+  useMultiTeamAssignableMembers,
   useSaveRotationDraft,
   usePublishRotation,
   useRotationDraftSummary,
@@ -152,6 +153,7 @@ export default function TeamBuilder() {
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
+  const { data: multiTeamAssignableMembers = [] } = useMultiTeamAssignableMembers(selectedCampusId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
   const selectedCampus = campuses.find(c => c.id === selectedCampusId);
@@ -730,8 +732,8 @@ export default function TeamBuilder() {
   const assignableMembersForSlot = useMemo(() => {
     if (!assigningSlot) return availableMembers;
 
-    const multiTeamCampusPastorIds = new Set(
-      campusWorshipPastors.map((pastor) => pastor.id),
+    const multiTeamLeaderIds = new Set(
+      multiTeamAssignableMembers.map((member) => member.id),
     );
 
     const allowedCurrentUserIds = new Set<string>();
@@ -788,7 +790,7 @@ export default function TeamBuilder() {
         return true;
       }
 
-      if (multiTeamCampusPastorIds.has(member.id)) {
+      if (multiTeamLeaderIds.has(member.id)) {
         return true;
       }
 
@@ -805,7 +807,7 @@ export default function TeamBuilder() {
   }, [
     assigningSlot,
     availableMembers,
-    campusWorshipPastors,
+    multiTeamAssignableMembers,
     dateOverrides,
     dateOverridesByTeamSlot,
     members,
@@ -1326,6 +1328,7 @@ export default function TeamBuilder() {
           rotationPeriodId={selectedPeriodId}
           campusName={selectedCampus?.name}
           campusWorshipPastorIds={campusWorshipPastors.map((pastor) => pastor.id)}
+          allowMultiTeamUserIds={multiTeamAssignableMembers.map((member) => member.id)}
           teams={filteredTeams}
           members={availableMembers}
           ministryType={selectedMinistryType}

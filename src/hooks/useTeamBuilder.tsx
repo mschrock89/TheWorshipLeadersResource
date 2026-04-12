@@ -145,6 +145,10 @@ export interface CampusWorshipPastor {
   full_name: string;
 }
 
+export interface MultiTeamAssignableMember {
+  id: string;
+}
+
 interface CampusMinistryPositionAssignment {
   user_id: string;
   ministry_type: string;
@@ -358,6 +362,37 @@ export function useCampusWorshipPastors(campusId: string | null) {
 
       if (profilesError) throw profilesError;
       return (profiles || []) as CampusWorshipPastor[];
+    },
+  });
+}
+
+export function useMultiTeamAssignableMembers(campusId: string | null) {
+  return useQuery({
+    queryKey: ["multi-team-assignable-members", campusId],
+    enabled: !!campusId,
+    queryFn: async () => {
+      if (!campusId) return [];
+
+      const { data: roleRows, error: roleError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["campus_worship_pastor", "student_worship_pastor", "production_manager"]);
+
+      if (roleError) throw roleError;
+
+      const eligibleUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (eligibleUserIds.length === 0) return [];
+
+      const { data: campusRows, error: campusError } = await supabase
+        .from("user_campuses")
+        .select("user_id")
+        .eq("campus_id", campusId)
+        .in("user_id", eligibleUserIds);
+
+      if (campusError) throw campusError;
+
+      return [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))]
+        .map((id) => ({ id })) as MultiTeamAssignableMember[];
     },
   });
 }
@@ -1523,6 +1558,7 @@ function findBestCandidateForTeam(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
   preferZeroConflicts = false,
@@ -1531,7 +1567,7 @@ function findBestCandidateForTeam(
   let bestConflictCount = Number.POSITIVE_INFINITY;
 
   for (const member of pool) {
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
 
@@ -1732,6 +1768,7 @@ export function useAutoBuildTeams() {
       ministryType,
       campusName,
       campusWorshipPastorIds,
+      allowMultiTeamUserIds,
       previousPeriodMembers,
       breakExcludedUserIds,
       previousApprovedBreakUserIds,
@@ -1744,6 +1781,7 @@ export function useAutoBuildTeams() {
       ministryType: string;
       campusName?: string | null;
       campusWorshipPastorIds?: string[];
+      allowMultiTeamUserIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
       breakExcludedUserIds: string[];
       previousApprovedBreakUserIds: string[];
@@ -1882,7 +1920,7 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
-      const allowMultiTeamUserIds = new Set(campusWorshipPastorIds || []);
+      const multiTeamUserIds = new Set(allowMultiTeamUserIds || campusWorshipPastorIds || []);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
@@ -1896,7 +1934,7 @@ export function useAutoBuildTeams() {
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, multiTeamUserIds)) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -2026,6 +2064,7 @@ export function useAutoBuildTeams() {
                 targetSlot,
                 userAssignedSlotsByTeam,
                 blockedTeammateIdsByTeam,
+                multiTeamUserIds,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
                 true,
@@ -2038,6 +2077,7 @@ export function useAutoBuildTeams() {
                   targetSlot,
                   userAssignedSlotsByTeam,
                   blockedTeammateIdsByTeam,
+                  multiTeamUserIds,
                   blackoutDatesByUser,
                   teamScheduledDatesByTeam,
                   true,
@@ -2124,7 +2164,7 @@ export function useAutoBuildTeams() {
                     blockedTeammateIdsByTeam,
                     blackoutDatesByUser,
                     teamScheduledDatesByTeam,
-                    allowMultiTeamUserIds,
+                    multiTeamUserIds,
                   );
 
                   if (!option) continue;
@@ -2213,7 +2253,7 @@ export function useAutoBuildTeams() {
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
-                allowMultiTeamUserIds,
+                multiTeamUserIds,
               );
               const bBest = findBestTeamForMemberSlot(
                 b,
@@ -2224,7 +2264,7 @@ export function useAutoBuildTeams() {
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
-                allowMultiTeamUserIds,
+                multiTeamUserIds,
               );
               const aScore = aBest?.conflictCount ?? Number.POSITIVE_INFINITY;
               const bScore = bBest?.conflictCount ?? Number.POSITIVE_INFINITY;
@@ -2244,7 +2284,7 @@ export function useAutoBuildTeams() {
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
-              allowMultiTeamUserIds,
+              multiTeamUserIds,
             );
 
             if (bestOption) {
@@ -2272,6 +2312,7 @@ export function useAutoBuildTeams() {
             targetSlot,
             userAssignedSlotsByTeam,
             blockedTeammateIdsByTeam,
+            multiTeamUserIds,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
             true,
@@ -2286,6 +2327,7 @@ export function useAutoBuildTeams() {
               targetSlot,
               userAssignedSlotsByTeam,
               blockedTeammateIdsByTeam,
+              multiTeamUserIds,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
               true,
@@ -2323,6 +2365,7 @@ export function useAutoBuildTeams() {
           "ag_2",
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
           true,
