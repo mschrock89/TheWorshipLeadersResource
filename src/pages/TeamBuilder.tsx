@@ -72,6 +72,7 @@ import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesWithCampuses } from "@/hooks/useCampuses";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
   isTeamVisibleForMinistry,
@@ -114,6 +115,7 @@ function shouldCollapseWeekendIntoSingleBucket(ministryType: string) {
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
+  const { data: currentUserRoles = [] } = useUserRoles(user?.id);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -198,7 +200,16 @@ export default function TeamBuilder() {
     return adminCampusInfo.campusId === selectedCampusId;
   }, [adminCampusInfo, selectedCampusId]);
 
-  const hasFullTeamBuilderAccess = canEditCampus && (isVideoDirector || isAdmin);
+  const hasWorshipPastorTeamBuilderAccess = useMemo(
+    () =>
+      currentUserRoles.some(({ role }) =>
+        role === "campus_worship_pastor" || role === "student_worship_pastor",
+      ),
+    [currentUserRoles],
+  );
+
+  const hasFullTeamBuilderAccess =
+    canEditCampus && (isVideoDirector || isAdmin || hasWorshipPastorTeamBuilderAccess);
 
   const isAdminUser = adminCampusInfo?.isOrgAdmin || !!adminCampusInfo?.campusId;
 
