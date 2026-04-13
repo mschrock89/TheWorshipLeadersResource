@@ -421,8 +421,8 @@ export default function Team() {
     }
   };
 
-  const notYetEmailedCount = profiles.filter(p => !p.welcome_email_sent_at).length;
-  const alreadyEmailedCount = profiles.filter(p => p.welcome_email_sent_at).length;
+  const notYetEmailedCount = filteredProfiles.filter((profile) => !profile.welcome_email_sent_at).length;
+  const alreadyEmailedCount = filteredProfiles.filter((profile) => !!profile.welcome_email_sent_at).length;
 
   return (
     <RefreshableContainer queryKeys={[["profiles"]]}>
@@ -573,7 +573,7 @@ export default function Team() {
       <WelcomeEmailDialog
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
-        profiles={profiles}
+        profiles={filteredProfiles}
         mode={emailDialogMode}
         selectedMember={selectedMemberForEmail}
         onEmailSent={handleEmailSent}

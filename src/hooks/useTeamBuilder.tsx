@@ -692,23 +692,19 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
         });
       }
 
-      // Filter profiles to only include members with position assignments for this campus+ministry
-      const assignedUserIds = new Set(Object.keys(memberDataMap));
-
       return ((profiles || []) as AvailableMemberProfileRow[])
-        .filter((p) => !campusId || assignedUserIds.has(p.id))
         .map((p) => ({
           id: p.id,
           full_name: p.full_name,
           avatar_url: p.avatar_url || null,
           gender: p.gender || null,
-          // Use campus+ministry specific positions from new table when present,
-          // otherwise fall back to profile positions so ministry-assigned members
-          // still appear in Team Builder and On Break lists.
+          // Prefer campus-specific positions when present, but keep the user's
+          // global positions visible so they can be scheduled across campuses.
           positions: campusId && memberDataMap[p.id] 
             ? (memberDataMap[p.id].positions.length > 0 ? memberDataMap[p.id].positions : (p.positions || []))
             : (p.positions || []),
-          // Use campus-specific ministry types
+          // Prefer campus-specific ministries when present, but allow existing
+          // global ministry tags to support cross-campus scheduling.
           ministry_types: campusId && memberDataMap[p.id] 
             ? memberDataMap[p.id].ministry_types 
             : (p.ministry_types || []),
