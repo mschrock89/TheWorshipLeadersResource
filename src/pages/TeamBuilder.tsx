@@ -71,7 +71,7 @@ import {
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfilesWithCampuses } from "@/hooks/useCampuses";
+import { useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
@@ -170,6 +170,7 @@ export default function TeamBuilder() {
     selectedMinistryType,
   );
   const { data: userCampusMap } = useProfilesWithCampuses();
+  const { data: currentUserCampuses = [] } = useUserCampuses(user?.id);
   const previousPeriodId = useMemo(() => {
     return getPreviousPeriodId(periods, selectedPeriodId);
   }, [periods, selectedPeriodId]);
@@ -200,8 +201,11 @@ export default function TeamBuilder() {
     if (adminCampusInfo.campusIds.length > 0) {
       return adminCampusInfo.campusIds.includes(selectedCampusId ?? "");
     }
+    if (currentUserRoles.some(({ role }) => role === "campus_admin")) {
+      return currentUserCampuses.some((campus) => campus.campus_id === selectedCampusId);
+    }
     return adminCampusInfo.campusId === selectedCampusId;
-  }, [adminCampusInfo, selectedCampusId]);
+  }, [adminCampusInfo, currentUserCampuses, currentUserRoles, selectedCampusId]);
 
   const hasWorshipPastorTeamBuilderAccess = useMemo(
     () =>
