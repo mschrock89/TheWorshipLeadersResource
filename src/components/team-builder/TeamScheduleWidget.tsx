@@ -68,6 +68,9 @@ interface DisplayScheduleEntry {
   isVirtual: boolean;
 }
 
+const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
+const ENCOUNTER_EON_MINISTRY_TYPES = ["encounter", "eon"] as const;
+
 const MINISTRY_COLORS: Record<string, string> = {
   weekend: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
@@ -118,7 +121,9 @@ export function TeamScheduleWidget({
     }
 
     const preloadWeekday =
-      activeScheduleMinistry === "encounter" || activeScheduleMinistry === "eon"
+      activeScheduleMinistry === "encounter" ||
+      activeScheduleMinistry === "eon" ||
+      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
         ? 3
         : null;
 
@@ -156,7 +161,15 @@ export function TeamScheduleWidget({
   const availableDates = useMemo(() => {
     const usedDates = new Set(
       filteredEntries
-        .filter((entry) => (entry.ministry_type || "weekend") === newMinistryType)
+        .filter((entry) => {
+          const entryMinistryType = entry.ministry_type || "weekend";
+          if (newMinistryType === ENCOUNTER_EON_COMBINED) {
+            return ENCOUNTER_EON_MINISTRY_TYPES.includes(
+              entryMinistryType as (typeof ENCOUNTER_EON_MINISTRY_TYPES)[number],
+            );
+          }
+          return entryMinistryType === newMinistryType;
+        })
         .map((entry) => entry.schedule_date),
     );
 
@@ -245,23 +258,29 @@ export function TeamScheduleWidget({
 
   const handleAddEntry = () => {
     if (!campusId || !newDate || !newTeamId || !rotationPeriodName) return;
-    createEntry.mutate(
-      {
-        campusId,
-        date: newDate,
-        teamId: newTeamId,
-        ministryType: newMinistryType,
-        rotationPeriod: rotationPeriodName,
-      },
-      {
-        onSuccess: () => {
-          setAddDialogOpen(false);
-          setNewDate("");
-          setNewTeamId("");
-          setNewMinistryType("weekend");
-        },
-      }
-    );
+
+    const ministryTypes =
+      newMinistryType === ENCOUNTER_EON_COMBINED
+        ? [...ENCOUNTER_EON_MINISTRY_TYPES]
+        : [newMinistryType];
+
+    Promise.all(
+      ministryTypes.map((ministryType, index) =>
+        createEntry.mutateAsync({
+          campusId,
+          date: newDate,
+          teamId: newTeamId,
+          ministryType,
+          rotationPeriod: rotationPeriodName,
+          suppressToast: index < ministryTypes.length - 1,
+        }),
+      ),
+    ).then(() => {
+      setAddDialogOpen(false);
+      setNewDate("");
+      setNewTeamId("");
+      setNewMinistryType("weekend");
+    });
   };
 
   const handleDeleteEntry = (scheduleId: string) => {
@@ -278,7 +297,9 @@ export function TeamScheduleWidget({
     if (!campusId || !rotationPeriodName) return;
 
     const ministryTypes =
-      activeScheduleMinistry === "encounter" || activeScheduleMinistry === "eon"
+      activeScheduleMinistry === "encounter" ||
+      activeScheduleMinistry === "eon" ||
+      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
         ? ["encounter", "eon"]
         : [activeScheduleMinistry];
 
@@ -331,6 +352,7 @@ export function TeamScheduleWidget({
               >
                 <Globe2 className="h-4 w-4 mr-1" />
                 {activeScheduleMinistry === "encounter" || activeScheduleMinistry === "eon"
+                || activeScheduleMinistry === ENCOUNTER_EON_COMBINED
                   ? "Publish Encounter + EON"
                   : "Publish Network Wide"}
               </Button>
@@ -412,6 +434,7 @@ export function TeamScheduleWidget({
                         <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">Encounter</SelectItem>
                         <SelectItem value="eon">EON</SelectItem>
+                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Encounter + EON</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
                     </Select>

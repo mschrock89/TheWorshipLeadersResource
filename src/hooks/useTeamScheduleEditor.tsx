@@ -139,6 +139,8 @@ export function useTeamScheduleForCampus(
       if (ministryFilter && ministryFilter !== "all") {
         if (ministryFilter === "weekend_team") {
           query = query.in("ministry_type", ["weekend", "sunday_am", "production", "video"]);
+        } else if (ministryFilter === "encounter_eon_combined") {
+          query = query.in("ministry_type", ["encounter", "eon"]);
         } else if (ministryFilter === "production") {
           query = query.in("ministry_type", ["weekend", "sunday_am"]);
         } else if (ministryFilter === "video") {
@@ -266,12 +268,14 @@ export function useCreateScheduleEntry() {
       teamId,
       ministryType,
       rotationPeriod,
+      suppressToast = false,
     }: {
       campusId: string;
       date: string;
       teamId: string;
       ministryType: string;
       rotationPeriod: string;
+      suppressToast?: boolean;
     }) => {
       const { error } = await supabase.from("team_schedule").insert({
         campus_id: campusId,
@@ -282,11 +286,14 @@ export function useCreateScheduleEntry() {
       });
 
       if (error) throw error;
+      return { suppressToast };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-schedule-campus"] });
       queryClient.invalidateQueries({ queryKey: ["team-schedule"] });
-      toast.success("Schedule entry added");
+      if (!result?.suppressToast) {
+        toast.success("Schedule entry added");
+      }
     },
     onError: (error) => {
       console.error("Failed to create schedule entry:", error);
