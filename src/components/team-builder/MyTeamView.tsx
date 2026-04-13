@@ -77,7 +77,7 @@ function CondensedTeamCard({
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
-  const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
+  const videoSlots = templateSlots.videoSlots;
 
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
@@ -200,7 +200,7 @@ function FullTeamCard({
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
-  const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
+  const videoSlots = templateSlots.videoSlots;
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);

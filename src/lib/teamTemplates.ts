@@ -8,6 +8,7 @@ export interface TeamTemplateConfig {
     gender: VocalSlotGender;
   }>;
   bandSlots?: string[];
+  videoSlots?: string[];
 }
 
 const DEFAULT_VOCAL_SLOTS: TeamTemplateConfig["vocalSlots"] = [
@@ -18,12 +19,15 @@ const DEFAULT_VOCAL_SLOTS: TeamTemplateConfig["vocalSlots"] = [
 ];
 
 const DEFAULT_BAND_SLOTS = ["drums", "bass", "keys", "eg_1", "eg_2", "ag_1", "ag_2"];
+const DEFAULT_VIDEO_SLOTS = ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher"];
 const VALID_VOCAL_SLOTS = new Set(DEFAULT_VOCAL_SLOTS.map((slot) => slot.slot));
 const VALID_BAND_SLOTS = new Set(DEFAULT_BAND_SLOTS);
+const VALID_VIDEO_SLOTS = new Set(DEFAULT_VIDEO_SLOTS);
 
 export const DEFAULT_TEAM_TEMPLATE: Required<TeamTemplateConfig> = {
   vocalSlots: DEFAULT_VOCAL_SLOTS,
   bandSlots: DEFAULT_BAND_SLOTS,
+  videoSlots: DEFAULT_VIDEO_SLOTS,
 };
 
 export function normalizeTeamTemplateConfig(config: TeamTemplateConfig | null | undefined): Required<TeamTemplateConfig> {
@@ -41,10 +45,14 @@ export function normalizeTeamTemplateConfig(config: TeamTemplateConfig | null | 
   const normalizedBandSlots = Array.isArray(config?.bandSlots)
     ? config.bandSlots.filter((slot): slot is string => VALID_BAND_SLOTS.has(slot))
     : [];
+  const normalizedVideoSlots = Array.isArray(config?.videoSlots)
+    ? config.videoSlots.filter((slot): slot is string => VALID_VIDEO_SLOTS.has(slot))
+    : [];
 
   return {
     vocalSlots: normalizedVocalSlots.length > 0 ? normalizedVocalSlots : DEFAULT_TEAM_TEMPLATE.vocalSlots,
     bandSlots: normalizedBandSlots.length > 0 ? normalizedBandSlots : DEFAULT_TEAM_TEMPLATE.bandSlots,
+    videoSlots: normalizedVideoSlots.length > 0 ? normalizedVideoSlots : DEFAULT_TEAM_TEMPLATE.videoSlots,
   };
 }
 
@@ -76,13 +84,18 @@ export function getTeamTemplateSlotConfigs(teamTemplateConfig: TeamTemplateConfi
   const bandSlots = template.bandSlots
     .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
     .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
+  const videoSlots = template.videoSlots
+    .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
+    .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
 
   return {
     vocalSlots,
     bandSlots,
+    videoSlots,
     visibleSlotIds: new Set([
       ...vocalSlots.map((slot) => slot.slot),
       ...bandSlots.map((slot) => slot.slot),
+      ...videoSlots.map((slot) => slot.slot),
     ]),
   };
 }
@@ -98,7 +111,11 @@ export function getRequiredGenderForSlot(
 export function isTeamSlotVisible(teamTemplateConfig: TeamTemplateConfig | null | undefined, slotId: string) {
   const slotConfig = POSITION_SLOTS.find((slot) => slot.slot === slotId);
   if (!slotConfig) return false;
-  if (slotConfig.category !== "Vocalists" && slotConfig.category !== "Band") return true;
+  if (
+    slotConfig.category !== "Vocalists" &&
+    slotConfig.category !== "Band" &&
+    slotConfig.category !== "Video"
+  ) return true;
 
   const { visibleSlotIds } = getTeamTemplateSlotConfigs(teamTemplateConfig);
   return visibleSlotIds.has(slotId);

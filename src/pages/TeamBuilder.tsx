@@ -1442,6 +1442,7 @@ export default function TeamBuilder() {
           open={!!editingTemplateTeam}
           onOpenChange={(open) => !open && setEditingTemplateTeam(null)}
           teamName={editingTemplateTeam.name}
+          ministryType={selectedMinistryType}
           initialConfig={editingTemplateTeam.template_config}
           onSave={handleSaveTemplate}
           isSaving={updateTeamTemplate.isPending}
