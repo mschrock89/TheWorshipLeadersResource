@@ -301,6 +301,16 @@ export function MyTeamView({
   const [showBreakDialog, setShowBreakDialog] = useState(false);
   const { data: myBreakRequests = [] } = useMyBreakRequests();
   const isVideoSplitView = ministryFilter === "video";
+  const visibleTeamIds = new Set(teams.map((team) => team.id));
+  const visibleMembers = members.filter((member) => {
+    if (!visibleTeamIds.has(member.team_id)) {
+      return false;
+    }
+
+    return ministryFilter === "all"
+      ? true
+      : memberMatchesMinistryFilter(member.ministry_types, ministryFilter);
+  });
 
   const getMembersForServiceDay = (
     teamMembers: TeamMemberAssignment[],
@@ -309,8 +319,7 @@ export function MyTeamView({
     if (!serviceDay) return teamMembers;
     return teamMembers.filter((member) => member.service_day === serviceDay);
   };
-  // Find user's assignment
-  const myAssignment = members.find(m => m.user_id === userId);
+  const myAssignments = visibleMembers.filter((member) => member.user_id === userId);
   
   if (isLoading) {
     return (
@@ -330,7 +339,91 @@ export function MyTeamView({
     );
   }
 
-  // Admin view: Show all teams in condensed format
+  if (myAssignments.length === 0) {
+    if (isAdmin) {
+      return (
+        <div className="space-y-4">
+          {periodName && (
+            <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" />
+              {periodName}
+            </p>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            {teams.flatMap((team) => {
+              const teamMembers = visibleMembers.filter((member) => member.team_id === team.id);
+              const cards = isVideoSplitView
+                ? [
+                    {
+                      key: `${team.id}-saturday`,
+                      title: `${team.name} Saturday`,
+                      members: getMembersForServiceDay(teamMembers, "saturday"),
+                    },
+                    {
+                      key: `${team.id}-sunday`,
+                      title: `${team.name} Sunday`,
+                      members: getMembersForServiceDay(teamMembers, "sunday"),
+                    },
+                  ]
+                : [
+                    {
+                      key: team.id,
+                      title: team.name,
+                      members: teamMembers,
+                    },
+                  ];
+
+              return cards.map((card) => (
+                <CondensedTeamCard
+                  key={card.key}
+                  team={team}
+                  members={card.members}
+                  userId={userId}
+                  ministryFilter={ministryFilter}
+                  canEditAudio={canEditAudio}
+                  canEditBroadcast={canEditBroadcast}
+                  titleOverride={card.title}
+                />
+              ));
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Coffee className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">You're on break this trimester</h3>
+            <p className="text-sm text-muted-foreground max-w-md mb-4">
+              You're not assigned to any team{periodName ? ` for ${periodName}` : ""}. 
+              Enjoy your time off, or contact your campus worship pastor if you'd like to be added.
+            </p>
+            <Button variant="outline" onClick={() => setShowBreakDialog(true)}>
+              <Coffee className="mr-2 h-4 w-4" />
+              Request Break for Another Trimester
+            </Button>
+          </CardContent>
+        </Card>
+
+        {myBreakRequests.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">Your Break Requests</h4>
+            <BreakRequestsList requests={myBreakRequests} />
+          </div>
+        )}
+
+        <BreakRequestDialog
+          open={showBreakDialog}
+          onOpenChange={setShowBreakDialog}
+          periods={periods}
+        />
+      </div>
+    );
+  }
+
   if (isAdmin) {
     return (
       <div className="space-y-4">
@@ -342,7 +435,7 @@ export function MyTeamView({
         )}
         <div className="grid gap-4 md:grid-cols-2">
           {teams.flatMap((team) => {
-            const teamMembers = members.filter(m => m.team_id === team.id);
+            const teamMembers = visibleMembers.filter((member) => member.team_id === team.id);
             const cards = isVideoSplitView
               ? [
                   {
@@ -382,71 +475,55 @@ export function MyTeamView({
     );
   }
 
-  // Volunteer view: Show only their team (or on-break message)
-  if (!myAssignment) {
-    return (
-      <div className="space-y-6">
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Coffee className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">You're on break this trimester</h3>
-            <p className="text-sm text-muted-foreground max-w-md mb-4">
-              You're not assigned to any team{periodName ? ` for ${periodName}` : ""}. 
-              Enjoy your time off, or contact your campus worship pastor if you'd like to be added.
-            </p>
-            <Button variant="outline" onClick={() => setShowBreakDialog(true)}>
-              <Coffee className="mr-2 h-4 w-4" />
-              Request Break for Another Trimester
-            </Button>
-          </CardContent>
-        </Card>
-
-        {myBreakRequests.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Your Break Requests</h4>
-            <BreakRequestsList requests={myBreakRequests} />
-          </div>
-        )}
-
-        <BreakRequestDialog
-          open={showBreakDialog}
-          onOpenChange={setShowBreakDialog}
-          periods={periods}
-        />
-      </div>
-    );
-  }
-
-  const myTeam = teams.find(t => t.id === myAssignment.team_id);
-  const teammates = members.filter(m => m.team_id === myAssignment.team_id);
-  
-  if (!myTeam) return null;
-
-  const myServiceDay =
-    isVideoSplitView && (myAssignment.service_day === "saturday" || myAssignment.service_day === "sunday")
-      ? myAssignment.service_day
-      : null;
-  const visibleTeammates = getMembersForServiceDay(teammates, myServiceDay);
-  const teamTitle =
-    myServiceDay === "saturday"
-      ? `${myTeam.name} Saturday`
-      : myServiceDay === "sunday"
-        ? `${myTeam.name} Sunday`
-        : myTeam.name;
+  const myTeamCards = Array.from(
+    myAssignments.reduce((acc, assignment) => {
+      const serviceDay =
+        isVideoSplitView && (assignment.service_day === "saturday" || assignment.service_day === "sunday")
+          ? assignment.service_day
+          : null;
+      const key = `${assignment.team_id}:${serviceDay || "all"}`;
+      if (!acc.has(key)) {
+        acc.set(key, {
+          teamId: assignment.team_id,
+          serviceDay,
+          myPositions: new Set<string>(),
+        });
+      }
+      acc.get(key)!.myPositions.add(assignment.position);
+      return acc;
+    }, new Map<string, { teamId: string; serviceDay: "saturday" | "sunday" | null; myPositions: Set<string> }>()),
+  );
 
   return (
     <div className="space-y-6">
-      <FullTeamCard
-        team={myTeam}
-        members={visibleTeammates}
-        userId={userId}
-        periodName={periodName}
-        myPosition={myAssignment.position}
-        ministryFilter={ministryFilter}
-        canEditAudio={canEditAudio}
-        canEditBroadcast={canEditBroadcast}
-        titleOverride={teamTitle}
-      />
+      {myTeamCards.map(([key, card]) => {
+        const myTeam = teams.find((team) => team.id === card.teamId);
+        if (!myTeam) return null;
+
+        const teammates = visibleMembers.filter((member) => member.team_id === card.teamId);
+        const visibleTeammates = getMembersForServiceDay(teammates, card.serviceDay);
+        const teamTitle =
+          card.serviceDay === "saturday"
+            ? `${myTeam.name} Saturday`
+            : card.serviceDay === "sunday"
+              ? `${myTeam.name} Sunday`
+              : myTeam.name;
+
+        return (
+          <FullTeamCard
+            key={key}
+            team={myTeam}
+            members={visibleTeammates}
+            userId={userId}
+            periodName={periodName}
+            myPosition={Array.from(card.myPositions).join(", ")}
+            ministryFilter={ministryFilter}
+            canEditAudio={canEditAudio}
+            canEditBroadcast={canEditBroadcast}
+            titleOverride={teamTitle}
+          />
+        );
+      })}
 
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => setShowBreakDialog(true)}>

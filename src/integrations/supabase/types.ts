@@ -2867,6 +2867,51 @@ export type Database = {
           },
         ]
       }
+      team_template_configs: {
+        Row: {
+          campus_id: string | null
+          created_at: string
+          id: string
+          ministry_type: string
+          team_id: string
+          template_config: Json
+          updated_at: string
+        }
+        Insert: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string
+          team_id: string
+          template_config?: Json
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string
+          team_id?: string
+          template_config?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_template_configs_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_template_configs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "worship_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worship_teams: {
         Row: {
           color: string
