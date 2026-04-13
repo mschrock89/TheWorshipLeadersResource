@@ -35,9 +35,20 @@ const VALID_VIDEO_SLOTS = new Set([
   "tri_pod_camera_4",
   "hand_held_camera_1",
   "hand_held_camera_2",
+  "hand_held_camera_3",
+  "hand_held_camera_4",
   "director",
+  "director_2",
+  "director_3",
+  "director_4",
   "graphics",
+  "graphics_2",
+  "graphics_3",
+  "graphics_4",
   "switcher",
+  "switcher_2",
+  "switcher_3",
+  "switcher_4",
 ]);
 
 export const DEFAULT_TEAM_TEMPLATE: Required<TeamTemplateConfig> = {

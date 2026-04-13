@@ -1567,9 +1567,9 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   producer: ["producer"],
   // Video
   tri_pod_camera: ["tri_pod_camera_1", "tri_pod_camera_2", "tri_pod_camera_3", "tri_pod_camera_4"],
-  hand_held_camera: ["hand_held_camera_1", "hand_held_camera_2"],
-  director: ["director"],
-  switcher: ["switcher"],
+  hand_held_camera: ["hand_held_camera_1", "hand_held_camera_2", "hand_held_camera_3", "hand_held_camera_4"],
+  director: ["director", "director_2", "director_3", "director_4"],
+  switcher: ["switcher", "switcher_2", "switcher_3", "switcher_4"],
 };
 
 // Get all slots a member can fill based on their positions

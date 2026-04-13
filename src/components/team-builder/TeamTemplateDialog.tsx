@@ -42,10 +42,10 @@ const BAND_FIELDS = [
 ] as const;
 const VIDEO_FIELDS = [
   { key: "tri_pod_camera", label: "Tri-Pod Camera", max: 4, slots: ["tri_pod_camera_1", "tri_pod_camera_2", "tri_pod_camera_3", "tri_pod_camera_4"] },
-  { key: "hand_held_camera", label: "Hand-Held Camera", max: 2, slots: ["hand_held_camera_1", "hand_held_camera_2"] },
-  { key: "director", label: "Director", max: 1, slots: ["director"] },
-  { key: "graphics", label: "Graphics", max: 1, slots: ["graphics"] },
-  { key: "switcher", label: "Switcher", max: 1, slots: ["switcher"] },
+  { key: "hand_held_camera", label: "Hand-Held Camera", max: 4, slots: ["hand_held_camera_1", "hand_held_camera_2", "hand_held_camera_3", "hand_held_camera_4"] },
+  { key: "director", label: "Director", max: 4, slots: ["director", "director_2", "director_3", "director_4"] },
+  { key: "graphics", label: "Graphics", max: 4, slots: ["graphics", "graphics_2", "graphics_3", "graphics_4"] },
+  { key: "switcher", label: "Switcher", max: 4, slots: ["switcher", "switcher_2", "switcher_3", "switcher_4"] },
 ] as const;
 
 type BandFieldKey = (typeof BAND_FIELDS)[number]["key"];
