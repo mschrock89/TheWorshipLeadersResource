@@ -47,6 +47,7 @@ function CondensedTeamCard({
   ministryFilter,
   canEditAudio = false,
   canEditBroadcast = false,
+  titleOverride,
 }: {
   team: WorshipTeam;
   members: TeamMemberAssignment[];
@@ -54,6 +55,7 @@ function CondensedTeamCard({
   ministryFilter: string;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
+  titleOverride?: string;
 }) {
   const allowedCategories =
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -138,7 +140,7 @@ function CondensedTeamCard({
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-4 w-4" />}
           </span>
-          <span>{team.name}</span>
+          <span>{titleOverride || team.name}</span>
           <span className="ml-auto text-xs font-normal text-muted-foreground">
             {filledCount}/{totalSlots}
           </span>
@@ -166,6 +168,7 @@ function FullTeamCard({
   ministryFilter,
   canEditAudio = false,
   canEditBroadcast = false,
+  titleOverride,
 }: {
   team: WorshipTeam;
   members: TeamMemberAssignment[];
@@ -175,6 +178,7 @@ function FullTeamCard({
   ministryFilter: string;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
+  titleOverride?: string;
 }) {
   const allowedCategories =
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -256,7 +260,7 @@ function FullTeamCard({
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-5 w-5" />}
           </span>
-          <span>Your Team: {team.name}</span>
+          <span>Your Team: {titleOverride || team.name}</span>
           {myPosition && (
             <Badge variant="secondary" className="ml-auto">
               {myPosition}
@@ -296,6 +300,15 @@ export function MyTeamView({
 }: MyTeamViewProps) {
   const [showBreakDialog, setShowBreakDialog] = useState(false);
   const { data: myBreakRequests = [] } = useMyBreakRequests();
+  const isVideoSplitView = ministryFilter === "video";
+
+  const getMembersForServiceDay = (
+    teamMembers: TeamMemberAssignment[],
+    serviceDay: "saturday" | "sunday" | null,
+  ) => {
+    if (!serviceDay) return teamMembers;
+    return teamMembers.filter((member) => member.service_day === serviceDay);
+  };
   // Find user's assignment
   const myAssignment = members.find(m => m.user_id === userId);
   
@@ -328,19 +341,41 @@ export function MyTeamView({
           </p>
         )}
         <div className="grid gap-4 md:grid-cols-2">
-          {teams.map(team => {
+          {teams.flatMap((team) => {
             const teamMembers = members.filter(m => m.team_id === team.id);
-            return (
+            const cards = isVideoSplitView
+              ? [
+                  {
+                    key: `${team.id}-saturday`,
+                    title: `${team.name} Saturday`,
+                    members: getMembersForServiceDay(teamMembers, "saturday"),
+                  },
+                  {
+                    key: `${team.id}-sunday`,
+                    title: `${team.name} Sunday`,
+                    members: getMembersForServiceDay(teamMembers, "sunday"),
+                  },
+                ]
+              : [
+                  {
+                    key: team.id,
+                    title: team.name,
+                    members: teamMembers,
+                  },
+                ];
+
+            return cards.map((card) => (
               <CondensedTeamCard
-                key={team.id}
+                key={card.key}
                 team={team}
-                members={teamMembers}
+                members={card.members}
                 userId={userId}
                 ministryFilter={ministryFilter}
                 canEditAudio={canEditAudio}
                 canEditBroadcast={canEditBroadcast}
+                titleOverride={card.title}
               />
-            );
+            ));
           })}
         </div>
       </div>
@@ -387,17 +422,30 @@ export function MyTeamView({
   
   if (!myTeam) return null;
 
+  const myServiceDay =
+    isVideoSplitView && (myAssignment.service_day === "saturday" || myAssignment.service_day === "sunday")
+      ? myAssignment.service_day
+      : null;
+  const visibleTeammates = getMembersForServiceDay(teammates, myServiceDay);
+  const teamTitle =
+    myServiceDay === "saturday"
+      ? `${myTeam.name} Saturday`
+      : myServiceDay === "sunday"
+        ? `${myTeam.name} Sunday`
+        : myTeam.name;
+
   return (
     <div className="space-y-6">
       <FullTeamCard
         team={myTeam}
-        members={teammates}
+        members={visibleTeammates}
         userId={userId}
         periodName={periodName}
         myPosition={myAssignment.position}
         ministryFilter={ministryFilter}
         canEditAudio={canEditAudio}
         canEditBroadcast={canEditBroadcast}
+        titleOverride={teamTitle}
       />
 
       <div className="flex justify-end">
