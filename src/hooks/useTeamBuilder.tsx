@@ -170,6 +170,37 @@ export interface MultiTeamAssignableMember {
   id: string;
 }
 
+function assignmentMatchesAnyMinistry(
+  assignmentMinistryTypes: string[] | null | undefined,
+  targetMinistryTypes: string[],
+) {
+  const normalizedAssignmentMinistries =
+    assignmentMinistryTypes && assignmentMinistryTypes.length > 0
+      ? assignmentMinistryTypes
+      : ["weekend"];
+
+  return targetMinistryTypes.some((ministryType) =>
+    memberMatchesMinistryFilter(normalizedAssignmentMinistries, ministryType),
+  );
+}
+
+function removeAssignmentMinistryTypes(
+  assignmentMinistryTypes: string[] | null | undefined,
+  targetMinistryTypes: string[],
+) {
+  const normalizedAssignmentMinistries =
+    assignmentMinistryTypes && assignmentMinistryTypes.length > 0
+      ? assignmentMinistryTypes
+      : ["weekend"];
+
+  return normalizedAssignmentMinistries.filter(
+    (assignmentMinistryType) =>
+      !targetMinistryTypes.some((targetMinistryType) =>
+        memberMatchesMinistryFilter([assignmentMinistryType], targetMinistryType),
+      ),
+  );
+}
+
 interface CampusMinistryPositionAssignment {
   user_id: string;
   ministry_type: string;
@@ -741,15 +772,18 @@ export function useAssignMember() {
       // Check if slot already has an assignment for this period
       const { data: existingRows, error: existingError } = await supabase
         .from("team_members")
-        .select("id, service_day")
+        .select("id, service_day, ministry_types")
         .eq("team_id", teamId)
         .eq("position_slot", positionSlot)
         .eq("rotation_period_id", rotationPeriodId);
 
       if (existingError) throw existingError;
 
-      const existingSpecificRow = (existingRows || []).find((row) => row.service_day === (serviceDay || null));
-      const existingWholeWeekendRow = (existingRows || []).find((row) => !row.service_day);
+      const matchingRows = (existingRows || []).filter((row) =>
+        assignmentMatchesAnyMinistry(row.ministry_types, normalizedMinistryTypes),
+      );
+      const existingSpecificRow = matchingRows.find((row) => row.service_day === (serviceDay || null));
+      const existingWholeWeekendRow = matchingRows.find((row) => !row.service_day);
       const oppositeServiceDay =
         serviceDay === "saturday" ? "sunday" : serviceDay === "sunday" ? "saturday" : null;
 
@@ -783,7 +817,7 @@ export function useAssignMember() {
           if (error) throw error;
         }
 
-        const splitRowIds = (existingRows || [])
+        const splitRowIds = matchingRows
           .filter((row) => row.service_day)
           .map((row) => row.id);
 
@@ -861,26 +895,69 @@ export function useRemoveMember() {
       positionSlot,
       rotationPeriodId,
       serviceDay,
+      ministryType,
     }: {
       teamId: string;
       positionSlot: string;
       rotationPeriodId: string;
       serviceDay?: string | null;
+      ministryType?: string | null;
     }) => {
-      let query = supabase
+      const { data: existingRows, error: fetchError } = await supabase
         .from("team_members")
-        .delete()
+        .select("id, ministry_types, service_day")
         .eq("team_id", teamId)
         .eq("position_slot", positionSlot)
         .eq("rotation_period_id", rotationPeriodId);
 
-      query = serviceDay
-        ? query.eq("service_day", serviceDay)
-        : query.is("service_day", null);
+      if (fetchError) throw fetchError;
 
-      const { error } = await query;
+      const matchingRows = (existingRows || []).filter((row) => {
+        const matchesServiceDay = serviceDay ? row.service_day === serviceDay : !row.service_day;
+        if (!matchesServiceDay) return false;
+        if (!ministryType) return true;
+        return assignmentMatchesAnyMinistry(row.ministry_types, [ministryType]);
+      });
 
-      if (error) throw error;
+      const rowIdsToDelete: string[] = [];
+      const rowUpdates: Array<{ id: string; ministry_types: string[] }> = [];
+
+      matchingRows.forEach((row) => {
+        if (!ministryType) {
+          rowIdsToDelete.push(row.id);
+          return;
+        }
+
+        const remainingMinistryTypes = removeAssignmentMinistryTypes(
+          row.ministry_types,
+          [ministryType],
+        );
+
+        if (remainingMinistryTypes.length === 0) {
+          rowIdsToDelete.push(row.id);
+          return;
+        }
+
+        rowUpdates.push({ id: row.id, ministry_types: remainingMinistryTypes });
+      });
+
+      if (rowIdsToDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("team_members")
+          .delete()
+          .in("id", rowIdsToDelete);
+
+        if (deleteError) throw deleteError;
+      }
+
+      for (const rowUpdate of rowUpdates) {
+        const { error: updateError } = await supabase
+          .from("team_members")
+          .update({ ministry_types: rowUpdate.ministry_types })
+          .eq("id", rowUpdate.id);
+
+        if (updateError) throw updateError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
@@ -970,22 +1047,69 @@ export function useRemoveMemberDateOverride() {
       rotationPeriodId,
       scheduleDate,
       suppressToast,
+      ministryType,
     }: {
       teamId: string;
       positionSlot: string;
       rotationPeriodId: string;
       scheduleDate: string;
       suppressToast?: boolean;
+      ministryType?: string | null;
     }) => {
-      const { error } = await supabase
+      const { data: existingRows, error: fetchError } = await supabase
         .from("team_member_date_overrides")
-        .delete()
+        .select("id, ministry_types")
         .eq("team_id", teamId)
         .eq("position_slot", positionSlot)
         .eq("rotation_period_id", rotationPeriodId)
         .eq("schedule_date", scheduleDate);
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
+
+      const matchingRows = (existingRows || []).filter((row) => {
+        if (!ministryType) return true;
+        return assignmentMatchesAnyMinistry(row.ministry_types, [ministryType]);
+      });
+
+      const rowIdsToDelete: string[] = [];
+      const rowUpdates: Array<{ id: string; ministry_types: string[] }> = [];
+
+      matchingRows.forEach((row) => {
+        if (!ministryType) {
+          rowIdsToDelete.push(row.id);
+          return;
+        }
+
+        const remainingMinistryTypes = removeAssignmentMinistryTypes(
+          row.ministry_types,
+          [ministryType],
+        );
+
+        if (remainingMinistryTypes.length === 0) {
+          rowIdsToDelete.push(row.id);
+          return;
+        }
+
+        rowUpdates.push({ id: row.id, ministry_types: remainingMinistryTypes });
+      });
+
+      if (rowIdsToDelete.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("team_member_date_overrides")
+          .delete()
+          .in("id", rowIdsToDelete);
+
+        if (deleteError) throw deleteError;
+      }
+
+      for (const rowUpdate of rowUpdates) {
+        const { error: updateError } = await supabase
+          .from("team_member_date_overrides")
+          .update({ ministry_types: rowUpdate.ministry_types })
+          .eq("id", rowUpdate.id);
+
+        if (updateError) throw updateError;
+      }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides"] });

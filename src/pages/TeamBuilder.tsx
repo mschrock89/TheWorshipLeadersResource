@@ -145,7 +145,6 @@ export default function TeamBuilder() {
     selectedMinistryType,
     assigningSlot?.slot,
   );
-
   const { data: campuses = [], isLoading: campusesLoading } = useAllCampuses();
   const { data: adminCampusInfo, isLoading: adminCampusLoading } = useAdminCampusId();
   const { data: periods = [], isLoading: periodsLoading } = useRotationPeriodsForCampus(selectedCampusId);
@@ -154,7 +153,7 @@ export default function TeamBuilder() {
   const { data: dateOverrides = [] } = useTeamMemberDateOverrides(selectedPeriodId);
   const { data: availableMembers = [] } = useAvailableMembers(
     selectedCampusId,
-    assigningSlot ? assigningMinistryType : selectedMinistryType,
+    null,
   );
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds();
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
@@ -936,6 +935,7 @@ export default function TeamBuilder() {
     serviceDay?: "saturday" | "sunday" | null,
   ) => {
     if (!selectedPeriodId || !canEditCampus || isTeamLocked(teamId)) return;
+    const targetMinistryType = resolveTeamBuilderSlotMinistryType(selectedMinistryType, slot);
 
     if (scheduleDate) {
       const matchingBucketDates =
@@ -950,6 +950,7 @@ export default function TeamBuilder() {
             positionSlot: slot,
             rotationPeriodId: selectedPeriodId,
             scheduleDate: bucketDate,
+            ministryType: targetMinistryType,
             suppressToast: index < matchingBucketDates.length - 1,
           }),
         ),
@@ -962,6 +963,7 @@ export default function TeamBuilder() {
       positionSlot: slot,
       rotationPeriodId: selectedPeriodId,
       serviceDay: serviceDay || null,
+      ministryType: targetMinistryType,
     });
   };
 
