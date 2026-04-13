@@ -25,6 +25,7 @@ interface TeamTemplateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamName: string;
+  ministryType?: string;
   initialConfig?: TeamTemplateConfig | null;
   onSave: (config: TeamTemplateConfig) => Promise<void> | void;
   isSaving?: boolean;
@@ -39,8 +40,16 @@ const BAND_FIELDS = [
   { key: "eg", label: "Electric Guitars", max: 2 },
   { key: "ag", label: "Acoustic Guitars", max: 2 },
 ] as const;
+const VIDEO_FIELDS = [
+  { key: "tri_pod_camera", label: "Tri-Pod Camera" },
+  { key: "hand_held_camera", label: "Hand-Held Camera" },
+  { key: "director", label: "Director" },
+  { key: "graphics", label: "Graphics" },
+  { key: "switcher", label: "Switcher" },
+] as const;
 
 type BandFieldKey = (typeof BAND_FIELDS)[number]["key"];
+type VideoFieldKey = (typeof VIDEO_FIELDS)[number]["key"];
 
 function getBandCounts(config: Required<TeamTemplateConfig>) {
   return {
@@ -56,6 +65,7 @@ export function TeamTemplateDialog({
   open,
   onOpenChange,
   teamName,
+  ministryType,
   initialConfig,
   onSave,
   isSaving = false,
@@ -72,6 +82,14 @@ export function TeamTemplateDialog({
     eg: 2,
     ag: 2,
   });
+  const [videoSelections, setVideoSelections] = useState<Record<VideoFieldKey, boolean>>({
+    tri_pod_camera: true,
+    hand_held_camera: true,
+    director: true,
+    graphics: true,
+    switcher: true,
+  });
+  const isVideoTemplate = ministryType === "video";
 
   useEffect(() => {
     if (!open) return;
@@ -84,12 +102,29 @@ export function TeamTemplateDialog({
 
     setVocalSelections(nextVocalSelections);
     setBandCounts(getBandCounts(normalizedInitial));
+    setVideoSelections({
+      tri_pod_camera: normalizedInitial.videoSlots.includes("tri_pod_camera"),
+      hand_held_camera: normalizedInitial.videoSlots.includes("hand_held_camera"),
+      director: normalizedInitial.videoSlots.includes("director"),
+      graphics: normalizedInitial.videoSlots.includes("graphics"),
+      switcher: normalizedInitial.videoSlots.includes("switcher"),
+    });
   }, [normalizedInitial, open]);
 
   const totalVocalists = Object.values(vocalSelections).filter((value) => value !== "none").length;
   const totalInstruments = Object.values(bandCounts).reduce((sum, count) => sum + count, 0);
+  const totalVideoSlots = Object.values(videoSelections).filter(Boolean).length;
 
   const handleSave = async () => {
+    if (isVideoTemplate) {
+      const videoSlots = VIDEO_FIELDS.flatMap((field) => (videoSelections[field.key] ? [field.key] : []));
+      await onSave({
+        ...normalizedInitial,
+        videoSlots: videoSlots.length > 0 ? videoSlots : normalizedInitial.videoSlots,
+      });
+      return;
+    }
+
     const vocalSlots = VOCAL_SLOT_IDS.flatMap((slotId) => {
       const selection = vocalSelections[slotId];
       if (selection === "none") return [];
@@ -105,6 +140,7 @@ export function TeamTemplateDialog({
     ];
 
     await onSave({
+      ...normalizedInitial,
       vocalSlots: vocalSlots.length > 0 ? vocalSlots : DEFAULT_TEAM_TEMPLATE.vocalSlots,
       bandSlots: bandSlots.length > 0 ? bandSlots : DEFAULT_TEAM_TEMPLATE.bandSlots,
     });
@@ -118,73 +154,113 @@ export function TeamTemplateDialog({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-            {totalVocalists} vocalist{totalVocalists === 1 ? "" : "s"} and {totalInstruments} instrument{totalInstruments === 1 ? "" : "s"} configured for this team.
-          </div>
+          {isVideoTemplate ? (
+            <>
+              <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                {totalVideoSlots} video slot{totalVideoSlots === 1 ? "" : "s"} configured for this team.
+              </div>
 
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium">Vocalists</h4>
-              <p className="text-sm text-muted-foreground">
-                Choose how many vocal slots this team uses and whether each one should be male or female.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {VOCAL_SLOT_IDS.map((slotId, index) => (
-                <div key={slotId} className="space-y-2">
-                  <Label>Vocal Slot {index + 1}</Label>
-                  <Select
-                    value={vocalSelections[slotId] || "none"}
-                    onValueChange={(value: "male" | "female" | "none") =>
-                      setVocalSelections((prev) => ({ ...prev, [slotId]: value }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Not used</SelectItem>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-medium">Video Positions</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Choose which Video positions should be available for this team.
+                  </p>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {VIDEO_FIELDS.map((field) => (
+                    <div key={field.key} className="space-y-2">
+                      <Label>{field.label}</Label>
+                      <Select
+                        value={videoSelections[field.key] ? "1" : "0"}
+                        onValueChange={(value) =>
+                          setVideoSelections((prev) => ({ ...prev, [field.key]: value === "1" }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Not used</SelectItem>
+                          <SelectItem value="1">Used</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                {totalVocalists} vocalist{totalVocalists === 1 ? "" : "s"} and {totalInstruments} instrument{totalInstruments === 1 ? "" : "s"} configured for this team.
+              </div>
 
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium">Instruments</h4>
-              <p className="text-sm text-muted-foreground">
-                Choose how many of each instrument slot this team should have.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {BAND_FIELDS.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <Label>{field.label}</Label>
-                  <Select
-                    value={String(bandCounts[field.key])}
-                    onValueChange={(value) =>
-                      setBandCounts((prev) => ({ ...prev, [field.key]: Number(value) }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: field.max + 1 }, (_, index) => (
-                        <SelectItem key={index} value={String(index)}>
-                          {index}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-medium">Vocalists</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Choose how many vocal slots this team uses and whether each one should be male or female.
+                  </p>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {VOCAL_SLOT_IDS.map((slotId, index) => (
+                    <div key={slotId} className="space-y-2">
+                      <Label>Vocal Slot {index + 1}</Label>
+                      <Select
+                        value={vocalSelections[slotId] || "none"}
+                        onValueChange={(value: "male" | "female" | "none") =>
+                          setVocalSelections((prev) => ({ ...prev, [slotId]: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not used</SelectItem>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-medium">Instruments</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Choose how many of each instrument slot this team should have.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {BAND_FIELDS.map((field) => (
+                    <div key={field.key} className="space-y-2">
+                      <Label>{field.label}</Label>
+                      <Select
+                        value={String(bandCounts[field.key])}
+                        onValueChange={(value) =>
+                          setBandCounts((prev) => ({ ...prev, [field.key]: Number(value) }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: field.max + 1 }, (_, index) => (
+                            <SelectItem key={index} value={String(index)}>
+                              {index}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
