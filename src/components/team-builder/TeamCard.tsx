@@ -42,6 +42,7 @@ interface TeamCardProps {
   slotScheduleDates?: string[];
   slotDateOverrides?: Record<string, Record<string, TeamMemberAssignment>>;
   slotDateOverrideConflictDates?: Record<string, Record<string, string[]>>;
+  titleOverride?: string;
 }
 
 export function TeamCard({
@@ -62,6 +63,7 @@ export function TeamCard({
   slotScheduleDates = [],
   slotDateOverrides = {},
   slotDateOverrideConflictDates = {},
+  titleOverride,
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -192,7 +194,7 @@ export function TeamCard({
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-5 w-5" />}
           </span>
-          <span>{team.name}</span>
+          <span>{titleOverride || team.name}</span>
           
           <div className="ml-auto flex items-center gap-1">
             {onEditTemplate && (

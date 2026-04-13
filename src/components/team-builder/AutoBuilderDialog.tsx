@@ -29,6 +29,7 @@ interface AutoBuilderDialogProps {
   rotationPeriodId: string;
   campusName?: string | null;
   campusWorshipPastorIds?: string[];
+  allowMultiTeamUserIds?: string[];
   teams: WorshipTeam[];
   members: AvailableMember[];
   ministryType: string;
@@ -191,6 +192,7 @@ function findBestCandidateForTeam(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
   preferZeroConflicts = false,
@@ -199,7 +201,7 @@ function findBestCandidateForTeam(
   let bestConflictCount = Number.POSITIVE_INFINITY;
 
   for (const member of pool) {
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
 
@@ -365,7 +367,7 @@ function assignCampusPastorsToVocalSlots(
 }
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string) {
-  return ministryType === "weekend" || ministryType === "weekend_team";
+  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
 }
 
 function countsAsTrimesterRosterAssignment(
@@ -415,6 +417,7 @@ export function AutoBuilderDialog({
   rotationPeriodId,
   campusName,
   campusWorshipPastorIds = [],
+  allowMultiTeamUserIds = [],
   teams,
   members,
   ministryType,
@@ -429,9 +432,9 @@ export function AutoBuilderDialog({
   const [isBuilding, setIsBuilding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewAssignment[] | null>(null);
-  const allowMultiTeamUserIds = useMemo(
-    () => new Set(campusWorshipPastorIds),
-    [campusWorshipPastorIds],
+  const multiTeamUserIds = useMemo(
+    () => new Set(allowMultiTeamUserIds),
+    [allowMultiTeamUserIds],
   );
 
   const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
@@ -568,7 +571,7 @@ export function AutoBuilderDialog({
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
       if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
+      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, multiTeamUserIds)) return false;
 
       filledSlots.add(targetSlot);
       trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -723,6 +726,7 @@ export function AutoBuilderDialog({
               targetSlot,
               userAssignedSlotsByTeam,
               blockedTeammateIdsByTeam,
+              multiTeamUserIds,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
               true,
@@ -735,6 +739,7 @@ export function AutoBuilderDialog({
                 targetSlot,
                 userAssignedSlotsByTeam,
                 blockedTeammateIdsByTeam,
+                multiTeamUserIds,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
                 true,
@@ -821,7 +826,7 @@ export function AutoBuilderDialog({
                   blockedTeammateIdsByTeam,
                   blackoutDatesByUser,
                   teamScheduledDatesByTeam,
-                  allowMultiTeamUserIds,
+                  multiTeamUserIds,
                 );
 
                 if (!option) continue;
@@ -900,7 +905,7 @@ export function AutoBuilderDialog({
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
-              allowMultiTeamUserIds,
+              multiTeamUserIds,
             );
             const bBest = findBestTeamForMemberSlot(
               b,
@@ -911,7 +916,7 @@ export function AutoBuilderDialog({
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
-              allowMultiTeamUserIds,
+              multiTeamUserIds,
             );
             const aScore = aBest?.conflictCount ?? Number.POSITIVE_INFINITY;
             const bScore = bBest?.conflictCount ?? Number.POSITIVE_INFINITY;
@@ -931,7 +936,7 @@ export function AutoBuilderDialog({
             blockedTeammateIdsByTeam,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
-            allowMultiTeamUserIds,
+            multiTeamUserIds,
           );
 
           if (bestOption) {
@@ -956,6 +961,7 @@ export function AutoBuilderDialog({
           targetSlot,
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
           true,
@@ -969,6 +975,7 @@ export function AutoBuilderDialog({
             targetSlot,
             userAssignedSlotsByTeam,
             blockedTeammateIdsByTeam,
+            multiTeamUserIds,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
             true,
@@ -1005,6 +1012,7 @@ export function AutoBuilderDialog({
           "ag_2",
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
           true,
@@ -1026,6 +1034,7 @@ export function AutoBuilderDialog({
         rotationPeriodId,
         campusName,
         campusWorshipPastorIds,
+        allowMultiTeamUserIds,
         teams,
         members,
         ministryType,
@@ -1117,6 +1126,7 @@ export function AutoBuilderDialog({
         const candidateBreakdown = positionCandidates.map((member) => {
           const assignedTeams = [...(assignedTeamsByUser.get(member.id) || new Set<string>())]
             .filter((assignedTeamName) => assignedTeamName !== team.name);
+          const assignedElsewhere = assignedTeams.length > 0 && !multiTeamUserIds.has(member.id);
           const hasWrongGender = !memberMatchesSlotGender(member, requiredGender);
           const blackoutConflicts = getBlackoutConflictDatesForTeam(
             member,
@@ -1128,7 +1138,7 @@ export function AutoBuilderDialog({
           let status = "available";
           if (hasWrongGender) {
             status = "wrong gender";
-          } else if (assignedTeams.length > 0) {
+          } else if (assignedElsewhere) {
             status = `assigned to ${assignedTeams[0]}`;
           } else if (blackoutConflicts.length > 0) {
             status = `blackout ${blackoutConflicts[0]}`;
@@ -1139,7 +1149,7 @@ export function AutoBuilderDialog({
             name: member.full_name,
             status,
             isAvailable: status === "available",
-            assignedElsewhere: assignedTeams.length > 0,
+            assignedElsewhere,
             blackoutConflict: blackoutConflicts.length > 0,
             wrongGender: hasWrongGender,
           };
@@ -1176,6 +1186,7 @@ export function AutoBuilderDialog({
     availablePool,
     blackoutDatesByUser,
     teamScheduledDatesByTeam,
+    multiTeamUserIds,
   ]);
 
   return (

@@ -8,6 +8,29 @@ import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 
+const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
+  const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
+  if (dayOfWeek === 6) return "saturday";
+  if (dayOfWeek === 0) return "sunday";
+  return null;
+};
+
+const assignmentMatchesServiceDay = (
+  assignment: { service_day?: string | null } | { serviceDay?: string | null },
+  dateStr: string,
+) => {
+  const rawServiceDay = "service_day" in assignment ? assignment.service_day : assignment.serviceDay;
+  if (!rawServiceDay) return true;
+
+  const serviceDay = rawServiceDay.toLowerCase();
+  if (serviceDay === "both" || serviceDay === "weekend") return true;
+
+  const dateServiceDay = getServiceDayForDate(dateStr);
+  if (!dateServiceDay) return true;
+
+  return serviceDay === dateServiceDay;
+};
+
 const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefined, ministryType?: string) => {
   if (!ministryType) return true;
   if (!memberMinistries || memberMinistries.length === 0) return true;
@@ -144,7 +167,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v9"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v10"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -212,7 +235,9 @@ export function useTeamRosterForDate(
           if (!m.rotation_period_id) return false;
           if (!validRotationPeriodIdSet.has(m.rotation_period_id)) return false;
         }
-        
+
+        if (!assignmentMatchesServiceDay(m, dateStr)) return false;
+
         // If ministryType is specified, filter by ministry_types array
         return ministryMatchesRosterFilter(m.ministry_types, ministryType);
       });
@@ -247,6 +272,10 @@ export function useTeamRosterForDate(
         const fallbackCandidates = ((fallbackMembers || []) as TeamMemberWithPeriodRow[])
           .filter((member) => {
             if (!ministryMatchesRosterFilter(member.ministry_types, ministryType)) {
+              return false;
+            }
+
+            if (!assignmentMatchesServiceDay(member, dateStr)) {
               return false;
             }
 

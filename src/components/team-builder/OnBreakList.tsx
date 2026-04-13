@@ -95,7 +95,7 @@ const POSITION_GROUPS = [
 ];
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string | undefined) {
-  return ministryType === "weekend" || ministryType === "weekend_team";
+  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
 }
 
 function countsAsTrimesterRosterAssignment(

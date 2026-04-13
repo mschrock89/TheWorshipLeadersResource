@@ -35,6 +35,26 @@ export interface WorshipTeam {
   template_config?: TeamTemplateConfig | null;
 }
 
+interface TeamTemplateConfigRow {
+  id: string;
+  team_id: string;
+  campus_id: string | null;
+  template_config: TeamTemplateConfig | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function isMissingTeamTemplateConfigsTable(error: { message?: string; code?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "PGRST205" ||
+    error.message?.includes("team_template_configs") ||
+    error.message?.includes("Could not find the table") ||
+    error.message?.includes("does not exist") ||
+    false
+  );
+}
+
 const WORSHIP_TEAM_DISPLAY_ORDER = [
   "Team 1",
   "Team 2",
@@ -145,6 +165,10 @@ export interface CampusWorshipPastor {
   full_name: string;
 }
 
+export interface MultiTeamAssignableMember {
+  id: string;
+}
+
 interface CampusMinistryPositionAssignment {
   user_id: string;
   ministry_type: string;
@@ -199,22 +223,63 @@ export function useAdminCampusId() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("admin_campus_id, role")
-        .eq("user_id", user.id);
+      const [
+        { data: roleRows, error: rolesError },
+        { data: campusRows, error: campusesError },
+        { data: profileRow, error: profileError },
+      ] = await Promise.all([
+        supabase
+          .from("user_roles")
+          .select("admin_campus_id, role")
+          .eq("user_id", user.id),
+        supabase
+          .from("user_campuses")
+          .select("campus_id")
+          .eq("user_id", user.id),
+        supabase
+          .from("profiles")
+          .select("default_campus_id")
+          .eq("id", user.id)
+          .maybeSingle(),
+      ]);
 
-      if (error) throw error;
-      
+      if (rolesError) throw rolesError;
+      if (campusesError) throw campusesError;
+      if (profileError) throw profileError;
+
+      const data = roleRows || [];
+      const assignedCampusIds = (campusRows || []).map((row) => row.campus_id).filter(Boolean);
+      const fallbackCampusId = profileRow?.default_campus_id || assignedCampusIds[0] || null;
+
       // Check if user is org admin
       const isOrgAdmin = data?.some(r => r.role === "admin");
       if (isOrgAdmin) return { isOrgAdmin: true, campusId: null };
-      
-      // Get campus admin's campus
-      const campusAdminRole = data?.find(r => r.role === "campus_admin");
+
+      // Prefer a campus-scoped admin assignment when a user has multiple
+      // campus_admin rows so Team Builder opens in management mode.
+      const campusAdminRole =
+        data?.find((r) => r.role === "campus_admin" && !!r.admin_campus_id) ??
+        data?.find((r) => r.role === "campus_admin");
+
+      if (campusAdminRole?.admin_campus_id) {
+        return {
+          isOrgAdmin: false,
+          campusId: campusAdminRole.admin_campus_id,
+        };
+      }
+
+      const hasCampusScopedBuilderRole = data?.some((row) =>
+        [
+          "campus_worship_pastor",
+          "student_worship_pastor",
+          "video_director",
+          "production_manager",
+        ].includes(row.role),
+      );
+
       return { 
         isOrgAdmin: false, 
-        campusId: campusAdminRole?.admin_campus_id || null 
+        campusId: campusAdminRole?.admin_campus_id || (hasCampusScopedBuilderRole ? fallbackCampusId : null),
       };
     },
   });
@@ -308,17 +373,60 @@ export function usePreviousPeriodMembers(
   });
 }
 
-export function useWorshipTeams() {
+export function useWorshipTeams(campusId: string | null) {
   return useQuery({
-    queryKey: ["worship-teams"],
+    queryKey: ["worship-teams", campusId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: teams, error: teamsError } = await supabase
         .from("worship_teams")
         .select("*")
         .order("name");
 
-      if (error) throw error;
-      return sortWorshipTeams((data || []) as WorshipTeam[]);
+      if (teamsError) throw teamsError;
+
+      let templateQuery = supabase
+        .from("team_template_configs")
+        .select("id, team_id, campus_id, template_config, created_at, updated_at")
+        .order("updated_at", { ascending: false });
+
+      if (campusId) {
+        templateQuery = templateQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
+      } else {
+        templateQuery = templateQuery.is("campus_id", null);
+      }
+
+      const { data: templateConfigs, error: templateConfigsError } = await templateQuery;
+      if (templateConfigsError) {
+        if (isMissingTeamTemplateConfigsTable(templateConfigsError)) {
+          return sortWorshipTeams((teams || []) as WorshipTeam[]);
+        }
+
+        throw templateConfigsError;
+      }
+
+      const bestTemplateByTeamId = new Map<string, TeamTemplateConfigRow>();
+      for (const row of (templateConfigs || []) as TeamTemplateConfigRow[]) {
+        const existing = bestTemplateByTeamId.get(row.team_id);
+        if (!existing) {
+          bestTemplateByTeamId.set(row.team_id, row);
+          continue;
+        }
+
+        const rowPriority = row.campus_id === campusId ? 2 : row.campus_id === null ? 1 : 0;
+        const existingPriority =
+          existing.campus_id === campusId ? 2 : existing.campus_id === null ? 1 : 0;
+
+        if (rowPriority > existingPriority) {
+          bestTemplateByTeamId.set(row.team_id, row);
+        }
+      }
+
+      return sortWorshipTeams(
+        ((teams || []) as WorshipTeam[]).map((team) => ({
+          ...team,
+          template_config: bestTemplateByTeamId.get(team.id)?.template_config ?? team.template_config ?? null,
+        })),
+      );
     },
   });
 }
@@ -333,31 +441,62 @@ export function useCampusWorshipPastors(campusId: string | null) {
       const { data: roleRows, error: roleError } = await supabase
         .from("user_roles")
         .select("user_id")
-        .eq("role", "campus_worship_pastor");
+        .in("role", ["campus_worship_pastor", "student_worship_pastor"]);
 
       if (roleError) throw roleError;
 
-      const pastorUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
-      if (pastorUserIds.length === 0) return [];
+      const leaderUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (leaderUserIds.length === 0) return [];
 
       const { data: campusRows, error: campusError } = await supabase
         .from("user_campuses")
         .select("user_id")
         .eq("campus_id", campusId)
-        .in("user_id", pastorUserIds);
+        .in("user_id", leaderUserIds);
 
       if (campusError) throw campusError;
 
-      const campusPastorIds = [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))];
-      if (campusPastorIds.length === 0) return [];
+      const campusLeaderIds = [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (campusLeaderIds.length === 0) return [];
 
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id, full_name")
-        .in("id", campusPastorIds);
+        .in("id", campusLeaderIds);
 
       if (profilesError) throw profilesError;
       return (profiles || []) as CampusWorshipPastor[];
+    },
+  });
+}
+
+export function useMultiTeamAssignableMembers(campusId: string | null) {
+  return useQuery({
+    queryKey: ["multi-team-assignable-members", campusId],
+    enabled: !!campusId,
+    queryFn: async () => {
+      if (!campusId) return [];
+
+      const { data: roleRows, error: roleError } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["campus_worship_pastor", "student_worship_pastor", "production_manager"]);
+
+      if (roleError) throw roleError;
+
+      const eligibleUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      if (eligibleUserIds.length === 0) return [];
+
+      const { data: campusRows, error: campusError } = await supabase
+        .from("user_campuses")
+        .select("user_id")
+        .eq("campus_id", campusId)
+        .in("user_id", eligibleUserIds);
+
+      if (campusError) throw campusError;
+
+      return [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))]
+        .map((id) => ({ id })) as MultiTeamAssignableMember[];
     },
   });
 }
@@ -962,6 +1101,14 @@ function assignmentAppliesToScheduleDate(
   return true;
 }
 
+function getConflictBucketKey(scheduleDate: string, ministryType: string) {
+  if (isWeekend(scheduleDate) && ministryType !== "video") {
+    return getWeekendKey(scheduleDate);
+  }
+
+  return scheduleDate;
+}
+
 export function useSaveRotationDraft() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -1261,7 +1408,7 @@ export function useCrossCheckRotationAssignments() {
           );
 
           applicableSchedules.forEach((entry) => {
-            const weekendKey = isWeekend(entry.schedule_date) ? getWeekendKey(entry.schedule_date) : entry.schedule_date;
+            const weekendKey = getConflictBucketKey(entry.schedule_date, ministryType);
             const conflictKey = `${member.user_id}:${weekendKey}`;
             const existing = conflictsByUserWeekend.get(conflictKey);
             const assignment: RotationConflictAssignment = {
@@ -1300,9 +1447,7 @@ export function useCrossCheckRotationAssignments() {
 
           if (!matchingSchedule) return;
 
-          const weekendKey = isWeekend(override.schedule_date)
-            ? getWeekendKey(override.schedule_date)
-            : override.schedule_date;
+          const weekendKey = getConflictBucketKey(override.schedule_date, ministryType);
           const conflictKey = `${override.user_id}:${weekendKey}`;
           const existing = conflictsByUserWeekend.get(conflictKey);
           const assignment: RotationConflictAssignment = {
@@ -1523,6 +1668,7 @@ function findBestCandidateForTeam(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
   preferZeroConflicts = false,
@@ -1531,7 +1677,7 @@ function findBestCandidateForTeam(
   let bestConflictCount = Number.POSITIVE_INFINITY;
 
   for (const member of pool) {
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
 
@@ -1705,7 +1851,7 @@ function assignCampusPastorsToVocalSlots(
 }
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string) {
-  return ministryType === "weekend" || ministryType === "weekend_team";
+  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
 }
 
 function countsAsTrimesterRosterAssignment(
@@ -1732,6 +1878,7 @@ export function useAutoBuildTeams() {
       ministryType,
       campusName,
       campusWorshipPastorIds,
+      allowMultiTeamUserIds,
       previousPeriodMembers,
       breakExcludedUserIds,
       previousApprovedBreakUserIds,
@@ -1744,6 +1891,7 @@ export function useAutoBuildTeams() {
       ministryType: string;
       campusName?: string | null;
       campusWorshipPastorIds?: string[];
+      allowMultiTeamUserIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
       breakExcludedUserIds: string[];
       previousApprovedBreakUserIds: string[];
@@ -1882,7 +2030,7 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
-      const allowMultiTeamUserIds = new Set(campusWorshipPastorIds || []);
+      const multiTeamUserIds = new Set(allowMultiTeamUserIds || campusWorshipPastorIds || []);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
@@ -1896,7 +2044,7 @@ export function useAutoBuildTeams() {
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
+        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, multiTeamUserIds)) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -2026,6 +2174,7 @@ export function useAutoBuildTeams() {
                 targetSlot,
                 userAssignedSlotsByTeam,
                 blockedTeammateIdsByTeam,
+                multiTeamUserIds,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
                 true,
@@ -2038,6 +2187,7 @@ export function useAutoBuildTeams() {
                   targetSlot,
                   userAssignedSlotsByTeam,
                   blockedTeammateIdsByTeam,
+                  multiTeamUserIds,
                   blackoutDatesByUser,
                   teamScheduledDatesByTeam,
                   true,
@@ -2124,7 +2274,7 @@ export function useAutoBuildTeams() {
                     blockedTeammateIdsByTeam,
                     blackoutDatesByUser,
                     teamScheduledDatesByTeam,
-                    allowMultiTeamUserIds,
+                    multiTeamUserIds,
                   );
 
                   if (!option) continue;
@@ -2213,7 +2363,7 @@ export function useAutoBuildTeams() {
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
-                allowMultiTeamUserIds,
+                multiTeamUserIds,
               );
               const bBest = findBestTeamForMemberSlot(
                 b,
@@ -2224,7 +2374,7 @@ export function useAutoBuildTeams() {
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
-                allowMultiTeamUserIds,
+                multiTeamUserIds,
               );
               const aScore = aBest?.conflictCount ?? Number.POSITIVE_INFINITY;
               const bScore = bBest?.conflictCount ?? Number.POSITIVE_INFINITY;
@@ -2244,7 +2394,7 @@ export function useAutoBuildTeams() {
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
-              allowMultiTeamUserIds,
+              multiTeamUserIds,
             );
 
             if (bestOption) {
@@ -2272,6 +2422,7 @@ export function useAutoBuildTeams() {
             targetSlot,
             userAssignedSlotsByTeam,
             blockedTeammateIdsByTeam,
+            multiTeamUserIds,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
             true,
@@ -2286,6 +2437,7 @@ export function useAutoBuildTeams() {
               targetSlot,
               userAssignedSlotsByTeam,
               blockedTeammateIdsByTeam,
+              multiTeamUserIds,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
               true,
@@ -2323,6 +2475,7 @@ export function useAutoBuildTeams() {
           "ag_2",
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
           true,
@@ -2465,20 +2618,62 @@ export function useUpdateTeamTemplate() {
   return useMutation({
     mutationFn: async ({
       teamId,
+      campusId,
       templateConfig,
     }: {
       teamId: string;
+      campusId: string;
       templateConfig: TeamTemplateConfig;
     }) => {
-      const { error } = await supabase
-        .from("worship_teams")
-        .update({ template_config: templateConfig })
-        .eq("id", teamId);
+      const { data: existingConfig, error: existingConfigError } = await supabase
+        .from("team_template_configs")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("campus_id", campusId)
+        .maybeSingle();
+
+      if (isMissingTeamTemplateConfigsTable(existingConfigError)) {
+        const { error: fallbackError } = await supabase
+          .from("worship_teams")
+          .update({ template_config: templateConfig })
+          .eq("id", teamId);
+
+        if (fallbackError) throw fallbackError;
+        return;
+      }
+
+      if (existingConfigError) throw existingConfigError;
+
+      const payload = {
+        team_id: teamId,
+        campus_id: campusId,
+        template_config: templateConfig,
+      };
+
+      const { error } = existingConfig?.id
+        ? await supabase
+            .from("team_template_configs")
+            .update({ template_config: templateConfig })
+            .eq("id", existingConfig.id)
+        : await supabase
+            .from("team_template_configs")
+            .insert(payload);
+
+      if (isMissingTeamTemplateConfigsTable(error)) {
+        const { error: fallbackError } = await supabase
+          .from("worship_teams")
+          .update({ template_config: templateConfig })
+          .eq("id", teamId);
+
+        if (fallbackError) throw fallbackError;
+        return;
+      }
 
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["worship-teams"] });
+      queryClient.invalidateQueries({ queryKey: ["worship-teams", variables.campusId] });
       toast({ title: "Team template updated" });
     },
     onError: (error) => {
