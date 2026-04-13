@@ -1563,11 +1563,11 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   audio_shadow: ["audio_shadow"],
   lighting: ["lighting"],
   media: ["propresenter"],
-  graphics: ["propresenter"], // Graphics maps to Lyrics/ProPresenter slot
+  graphics: ["propresenter", "graphics"], // Graphics can serve ProPresenter or dedicated video graphics.
   producer: ["producer"],
   // Video
-  tri_pod_camera: ["tri_pod_camera"],
-  hand_held_camera: ["hand_held_camera"],
+  tri_pod_camera: ["tri_pod_camera_1", "tri_pod_camera_2", "tri_pod_camera_3", "tri_pod_camera_4"],
+  hand_held_camera: ["hand_held_camera_1", "hand_held_camera_2"],
   director: ["director"],
   switcher: ["switcher"],
 };

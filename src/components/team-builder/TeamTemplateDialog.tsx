@@ -41,11 +41,11 @@ const BAND_FIELDS = [
   { key: "ag", label: "Acoustic Guitars", max: 2 },
 ] as const;
 const VIDEO_FIELDS = [
-  { key: "tri_pod_camera", label: "Tri-Pod Camera" },
-  { key: "hand_held_camera", label: "Hand-Held Camera" },
-  { key: "director", label: "Director" },
-  { key: "graphics", label: "Graphics" },
-  { key: "switcher", label: "Switcher" },
+  { key: "tri_pod_camera", label: "Tri-Pod Camera", max: 4, slots: ["tri_pod_camera_1", "tri_pod_camera_2", "tri_pod_camera_3", "tri_pod_camera_4"] },
+  { key: "hand_held_camera", label: "Hand-Held Camera", max: 2, slots: ["hand_held_camera_1", "hand_held_camera_2"] },
+  { key: "director", label: "Director", max: 1, slots: ["director"] },
+  { key: "graphics", label: "Graphics", max: 1, slots: ["graphics"] },
+  { key: "switcher", label: "Switcher", max: 1, slots: ["switcher"] },
 ] as const;
 
 type BandFieldKey = (typeof BAND_FIELDS)[number]["key"];
@@ -59,6 +59,13 @@ function getBandCounts(config: Required<TeamTemplateConfig>) {
     eg: config.bandSlots.filter((slot) => slot.startsWith("eg_")).length,
     ag: config.bandSlots.filter((slot) => slot.startsWith("ag_")).length,
   };
+}
+
+function getVideoCounts(config: Required<TeamTemplateConfig>) {
+  return VIDEO_FIELDS.reduce<Record<VideoFieldKey, number>>((acc, field) => {
+    acc[field.key] = config.videoSlots.filter((slot) => field.slots.includes(slot)).length;
+    return acc;
+  }, {} as Record<VideoFieldKey, number>);
 }
 
 export function TeamTemplateDialog({
@@ -82,12 +89,12 @@ export function TeamTemplateDialog({
     eg: 2,
     ag: 2,
   });
-  const [videoSelections, setVideoSelections] = useState<Record<VideoFieldKey, boolean>>({
-    tri_pod_camera: true,
-    hand_held_camera: true,
-    director: true,
-    graphics: true,
-    switcher: true,
+  const [videoCounts, setVideoCounts] = useState<Record<VideoFieldKey, number>>({
+    tri_pod_camera: 1,
+    hand_held_camera: 1,
+    director: 1,
+    graphics: 1,
+    switcher: 1,
   });
   const isVideoTemplate = ministryType === "video";
 
@@ -102,22 +109,16 @@ export function TeamTemplateDialog({
 
     setVocalSelections(nextVocalSelections);
     setBandCounts(getBandCounts(normalizedInitial));
-    setVideoSelections({
-      tri_pod_camera: normalizedInitial.videoSlots.includes("tri_pod_camera"),
-      hand_held_camera: normalizedInitial.videoSlots.includes("hand_held_camera"),
-      director: normalizedInitial.videoSlots.includes("director"),
-      graphics: normalizedInitial.videoSlots.includes("graphics"),
-      switcher: normalizedInitial.videoSlots.includes("switcher"),
-    });
+    setVideoCounts(getVideoCounts(normalizedInitial));
   }, [normalizedInitial, open]);
 
   const totalVocalists = Object.values(vocalSelections).filter((value) => value !== "none").length;
   const totalInstruments = Object.values(bandCounts).reduce((sum, count) => sum + count, 0);
-  const totalVideoSlots = Object.values(videoSelections).filter(Boolean).length;
+  const totalVideoSlots = Object.values(videoCounts).reduce((sum, count) => sum + count, 0);
 
   const handleSave = async () => {
     if (isVideoTemplate) {
-      const videoSlots = VIDEO_FIELDS.flatMap((field) => (videoSelections[field.key] ? [field.key] : []));
+      const videoSlots = VIDEO_FIELDS.flatMap((field) => field.slots.slice(0, videoCounts[field.key]));
       await onSave({
         ...normalizedInitial,
         videoSlots: videoSlots.length > 0 ? videoSlots : normalizedInitial.videoSlots,
@@ -164,7 +165,7 @@ export function TeamTemplateDialog({
                 <div>
                   <h4 className="font-medium">Video Positions</h4>
                   <p className="text-sm text-muted-foreground">
-                    Choose which Video positions should be available for this team.
+                    Choose how many of each video position this team should have.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -172,17 +173,20 @@ export function TeamTemplateDialog({
                     <div key={field.key} className="space-y-2">
                       <Label>{field.label}</Label>
                       <Select
-                        value={videoSelections[field.key] ? "1" : "0"}
+                        value={String(videoCounts[field.key])}
                         onValueChange={(value) =>
-                          setVideoSelections((prev) => ({ ...prev, [field.key]: value === "1" }))
+                          setVideoCounts((prev) => ({ ...prev, [field.key]: Number(value) }))
                         }
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="0">Not used</SelectItem>
-                          <SelectItem value="1">Used</SelectItem>
+                          {Array.from({ length: field.max + 1 }, (_, index) => (
+                            <SelectItem key={index} value={String(index)}>
+                              {index}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
