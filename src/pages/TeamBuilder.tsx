@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing } from "lucide-react";
+import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -75,12 +75,13 @@ import { useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
+  MINISTRY_SLOT_CATEGORIES,
   isTeamVisibleForMinistry,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
 } from "@/lib/constants";
-import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
+import { getRequiredGenderForSlot, getTeamTemplateSlotConfigs, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { formatPositionLabel, getWeekendKey, isWeekend } from "@/lib/utils";
 
 const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
@@ -112,6 +113,62 @@ function formatPreviewDate(date: string) {
 function shouldCollapseWeekendIntoSingleBucket(ministryType: string) {
   return ministryType !== "video";
 }
+
+function normalizeMemberPosition(position: string) {
+  return position.toLowerCase().replace(/\s+/g, "_");
+}
+
+const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
+  "11111111-1111-1111-1111-111111111111": {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Team 1",
+    color: "#3B82F6",
+    icon: "star",
+    template_config: null,
+  },
+  "22222222-2222-2222-2222-222222222222": {
+    id: "22222222-2222-2222-2222-222222222222",
+    name: "Team 2",
+    color: "#EAB308",
+    icon: "heart",
+    template_config: null,
+  },
+  "33333333-3333-3333-3333-333333333333": {
+    id: "33333333-3333-3333-3333-333333333333",
+    name: "Team 3",
+    color: "#8B5CF6",
+    icon: "zap",
+    template_config: null,
+  },
+  "44444444-4444-4444-4444-444444444444": {
+    id: "44444444-4444-4444-4444-444444444444",
+    name: "Team 4",
+    color: "#22C55E",
+    icon: "diamond",
+    template_config: null,
+  },
+  "6be20864-f29a-4bf3-bc99-dd2c79f603f7": {
+    id: "6be20864-f29a-4bf3-bc99-dd2c79f603f7",
+    name: "Combined",
+    color: "#38bdf8",
+    icon: "users",
+    template_config: null,
+  },
+  "0d3c2c8f-c2bc-4d97-96e2-3de7e54ba79c": {
+    id: "0d3c2c8f-c2bc-4d97-96e2-3de7e54ba79c",
+    name: "Simple Worship",
+    color: "#22c55e",
+    icon: "heart",
+    template_config: null,
+  },
+  "cbe76f54-8af5-49bf-b5db-ae4c7cff7220": {
+    id: "cbe76f54-8af5-49bf-b5db-ae4c7cff7220",
+    name: "5th Sunday",
+    color: "#f59e0b",
+    icon: "diamond",
+    template_config: null,
+  },
+};
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
@@ -148,7 +205,7 @@ export default function TeamBuilder() {
   const { data: campuses = [], isLoading: campusesLoading } = useAllCampuses();
   const { data: adminCampusInfo, isLoading: adminCampusLoading } = useAdminCampusId();
   const { data: periods = [], isLoading: periodsLoading } = useRotationPeriodsForCampus(selectedCampusId);
-  const { data: teams = [], isLoading: teamsLoading } = useWorshipTeams(selectedCampusId);
+  const { data: teams = [], isLoading: teamsLoading } = useWorshipTeams(selectedCampusId, selectedMinistryType);
   const { data: members = [], isLoading: membersLoading } = useTeamMembersForPeriod(selectedPeriodId);
   const { data: dateOverrides = [] } = useTeamMemberDateOverrides(selectedPeriodId);
   const { data: availableMembers = [] } = useAvailableMembers(
@@ -236,12 +293,16 @@ export default function TeamBuilder() {
   // Auto-select active period when campus changes
   useEffect(() => {
     if (periods.length > 0) {
+      if (selectedPeriodId && periods.some((period) => period.id === selectedPeriodId)) {
+        return;
+      }
+
       const active = periods.find(p => p.is_active);
       setSelectedPeriodId(active?.id || periods[0].id);
     } else {
       setSelectedPeriodId(null);
     }
-  }, [periods]);
+  }, [periods, selectedPeriodId]);
 
   // Normalize legacy weekend aliases to the Weekend Worship value used by Team Builder.
   useEffect(() => {
@@ -344,6 +405,68 @@ export default function TeamBuilder() {
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
   }, [teams, selectedMinistryType]);
+
+  const displayTeams = useMemo(() => {
+    if (filteredTeams.length > 0) {
+      return filteredTeams;
+    }
+
+    const fallbackTeams = Array.from(new Set(
+      members
+        .filter((member) => selectedMinistryType === "all" || memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType))
+        .map((member) => member.team_id),
+    ))
+      .map((teamId) => {
+        return (
+          teams.find((team) => team.id === teamId) ||
+          FALLBACK_TEAM_DEFINITIONS[teamId] ||
+          {
+            id: teamId,
+            name: `Team ${teamId.slice(0, 4)}`,
+            color: "#64748b",
+            icon: "star",
+            template_config: null,
+          }
+        );
+      })
+      .filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
+
+    return fallbackTeams;
+  }, [filteredTeams, members, selectedMinistryType, teams]);
+
+  const onBreakEligibleMembers = useMemo(() => {
+    const allowedCategories =
+      MINISTRY_SLOT_CATEGORIES[selectedMinistryType] || MINISTRY_SLOT_CATEGORIES.all;
+    const visiblePositionKeys = new Set<string>();
+
+    for (const slot of POSITION_SLOTS) {
+      if (!allowedCategories.includes(slot.category)) {
+        continue;
+      }
+
+      if (slot.category === "Vocalists" || slot.category === "Band" || slot.category === "Video") {
+        const slotIsVisibleOnAnyTeam = displayTeams.some((team) =>
+          getTeamTemplateSlotConfigs(team.template_config).visibleSlotIds.has(slot.slot),
+        );
+
+        if (!slotIsVisibleOnAnyTeam) {
+          continue;
+        }
+      }
+
+      visiblePositionKeys.add(slot.position);
+    }
+
+    return availableMembers.filter((member) => {
+      if (!memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)) {
+        return false;
+      }
+
+      return member.positions.some((position) =>
+        visiblePositionKeys.has(normalizeMemberPosition(position)),
+      );
+    });
+  }, [availableMembers, displayTeams, selectedMinistryType]);
 
   const teamById = useMemo(() => {
     return teams.reduce<Record<string, WorshipTeam>>((acc, team) => {
@@ -536,7 +659,7 @@ export default function TeamBuilder() {
   const effectiveTeamSnapshotByBucket = useMemo(() => {
     const snapshots: Record<string, Record<string, Record<string, string>>> = {};
 
-    filteredTeams.forEach((team) => {
+    displayTeams.forEach((team) => {
       const teamMembers = members.filter((member) => member.team_id === team.id);
       const bucketKeys = scheduleDatesByTeam[team.id] || [];
 
@@ -563,7 +686,7 @@ export default function TeamBuilder() {
     });
 
     return snapshots;
-  }, [dateOverridesByTeamSlot, filteredTeams, members, scheduleDatesByTeam]);
+  }, [dateOverridesByTeamSlot, displayTeams, members, scheduleDatesByTeam]);
 
   const rotationPushPreviewRecipients = useMemo(() => {
     const recipientMap = new Map<
@@ -796,7 +919,11 @@ export default function TeamBuilder() {
       }
     }
 
-    const assignmentsByUser = new Map<string, Array<{ teamId: string; positionSlot: string | null }>>();
+    const targetMinistryType = assigningMinistryType || selectedMinistryType;
+    const assignmentsByUser = new Map<
+      string,
+      Array<{ teamId: string; positionSlot: string | null; ministryTypes: string[] }>
+    >();
 
     members.forEach((member) => {
       if (!member.user_id || allowedCurrentUserIds.has(member.user_id)) return;
@@ -805,6 +932,7 @@ export default function TeamBuilder() {
       existingAssignments.push({
         teamId: member.team_id,
         positionSlot: member.position_slot,
+        ministryTypes: member.ministry_types?.length ? member.ministry_types : ["weekend"],
       });
       assignmentsByUser.set(member.user_id, existingAssignments);
     });
@@ -816,6 +944,7 @@ export default function TeamBuilder() {
       existingAssignments.push({
         teamId: override.team_id,
         positionSlot: override.position_slot,
+        ministryTypes: override.ministry_types?.length ? override.ministry_types : ["weekend"],
       });
       assignmentsByUser.set(override.user_id, existingAssignments);
     });
@@ -826,7 +955,11 @@ export default function TeamBuilder() {
       }
 
       const existingAssignments = assignmentsByUser.get(member.id) || [];
-      if (existingAssignments.length === 0) {
+      const conflictingAssignments = existingAssignments.filter((assignment) =>
+        memberMatchesMinistryFilter(assignment.ministryTypes, targetMinistryType),
+      );
+
+      if (conflictingAssignments.length === 0) {
         return true;
       }
 
@@ -835,9 +968,9 @@ export default function TeamBuilder() {
       }
 
       if (
-        existingAssignments.length === 1 &&
-        existingAssignments[0].teamId === assigningSlot.teamId &&
-        isVocalAndGuitarPair(existingAssignments[0].positionSlot, assigningSlot.slot)
+        conflictingAssignments.length === 1 &&
+        conflictingAssignments[0].teamId === assigningSlot.teamId &&
+        isVocalAndGuitarPair(conflictingAssignments[0].positionSlot, assigningSlot.slot)
       ) {
         return true;
       }
@@ -851,6 +984,8 @@ export default function TeamBuilder() {
     dateOverrides,
     dateOverridesByTeamSlot,
     members,
+    assigningMinistryType,
+    selectedMinistryType,
     selectedPeriodBreakUserIds,
   ]);
 
@@ -969,6 +1104,7 @@ export default function TeamBuilder() {
 
   const handleSelectMember = (member: AvailableMember, ministryTypes: string[]) => {
     if (!assigningSlot || !selectedPeriodId) return;
+    const targetMinistryType = assigningMinistryType || selectedMinistryType;
 
     if (assigningSlot.scheduleDate) {
       const matchingBucketDates =
@@ -1002,6 +1138,7 @@ export default function TeamBuilder() {
       positionSlot: assigningSlot.slot,
       rotationPeriodId: selectedPeriodId,
       ministryTypes: ministryTypes,
+      matchMinistryType: targetMinistryType,
       serviceDay: assigningSlot.serviceDay || null,
     });
     setAssigningSlot(null);
@@ -1009,7 +1146,7 @@ export default function TeamBuilder() {
 
   const teamCards = useMemo(() => {
     if (selectedMinistryType !== "video") {
-      return filteredTeams.map((team) => ({
+      return displayTeams.map((team) => ({
         key: team.id,
         team,
         title: team.name,
@@ -1022,7 +1159,7 @@ export default function TeamBuilder() {
       selectedCampus?.has_sunday_service ? ("sunday" as const) : null,
     ].filter((value): value is "saturday" | "sunday" => Boolean(value));
 
-    return filteredTeams.flatMap((team) =>
+    return displayTeams.flatMap((team) =>
       serviceDays.map((serviceDay) => ({
         key: `${team.id}-${serviceDay}`,
         team,
@@ -1030,7 +1167,7 @@ export default function TeamBuilder() {
         serviceDay,
       })),
     );
-  }, [filteredTeams, selectedCampus, selectedMinistryType]);
+  }, [displayTeams, selectedCampus, selectedMinistryType]);
 
   const handleEditMinistry = (member: TeamMemberAssignment) => {
     if (!canEditCampus) return;
@@ -1065,6 +1202,7 @@ export default function TeamBuilder() {
     await updateTeamTemplate.mutateAsync({
       teamId: editingTemplateTeam.id,
       campusId: selectedCampusId,
+      ministryType: selectedMinistryType,
       templateConfig,
     });
     setEditingTemplateTeam(null);
@@ -1158,8 +1296,8 @@ export default function TeamBuilder() {
               <TabsContent value="my-team" className="space-y-6">
                 <MyTeamView
                   userId={user?.id || ""}
-                  teams={teams}
-                  members={members}
+                  teams={displayTeams}
+                  members={visibleAssignments}
                   isLoading={membersLoading}
                   periodName={selectedPeriod?.name}
                   isAdmin={true}
@@ -1170,7 +1308,7 @@ export default function TeamBuilder() {
                 />
                 
                 <OnBreakList
-                  allMembers={availableMembers}
+                  allMembers={onBreakEligibleMembers}
                   assignedMembers={members}
                   previousPeriodMembers={previousPeriodMembers}
                   historicalMemberIds={historicalMemberIds}
@@ -1352,7 +1490,7 @@ export default function TeamBuilder() {
                 />
 
                 <OnBreakList
-                  allMembers={availableMembers}
+                  allMembers={onBreakEligibleMembers}
                   assignedMembers={members}
                   previousPeriodMembers={previousPeriodMembers}
                   historicalMemberIds={historicalMemberIds}
@@ -1374,8 +1512,8 @@ export default function TeamBuilder() {
             <>
               <MyTeamView
                 userId={user?.id || ""}
-                teams={teams}
-                members={members}
+                teams={displayTeams}
+                members={visibleAssignments}
                 isLoading={membersLoading}
                 periodName={selectedPeriod?.name}
                 periods={periods}
@@ -1386,7 +1524,7 @@ export default function TeamBuilder() {
               
               
               <OnBreakList
-                allMembers={availableMembers}
+                allMembers={onBreakEligibleMembers}
                 assignedMembers={members}
                 previousPeriodMembers={previousPeriodMembers}
                 historicalMemberIds={historicalMemberIds}

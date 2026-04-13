@@ -122,6 +122,7 @@ export function AssignMemberDialog({
       // Audio slots
       if (slotType === "foh") return pLower === "sound_tech" || pLower.includes("foh") || pLower.includes("sound");
       if (slotType === "mon") return pLower === "mon" || pLower.includes("monitor") || pLower.includes("sound");
+      if (slotType === "broadcast") return pLower === "broadcast" || pLower === "switcher";
       if (slotType === "audio_shadow") return pLower === "audio_shadow" || pLower.includes("shadow") || pLower.includes("sound");
       if (slotType === "lighting") return pLower === "lighting" || pLower.includes("light");
       if (slotType === "propresenter") return pLower === "media" || pLower.includes("propresenter") || pLower.includes("pro presenter") || pLower.includes("lyrics");
@@ -178,23 +179,12 @@ export function AssignMemberDialog({
   const otherCount = relevantMembers.length - matchingMinistryCount;
 
   const handleMemberClick = (member: AvailableMember) => {
-    if (effectiveMinistryFilter) {
-      onSelect(member, [normalizeSelectedMinistry(effectiveMinistryFilter)]);
-      onOpenChange(false);
-      setSearch("");
-      setSelectedMember(null);
-      setSelectedMinistries([]);
-      return;
-    }
-
     setSelectedMember(member);
-    // Pre-select the current ministry filter, and any ministries the member already has
-    const initialMinistries = new Set<string>();
+    const initialMinistries: string[] = [];
     if (effectiveMinistryFilter) {
-      initialMinistries.add(normalizeSelectedMinistry(effectiveMinistryFilter));
+      initialMinistries.push(normalizeSelectedMinistry(effectiveMinistryFilter));
     }
-    member.ministry_types?.forEach(mt => initialMinistries.add(normalizeSelectedMinistry(mt)));
-    setSelectedMinistries(Array.from(initialMinistries));
+    setSelectedMinistries(initialMinistries);
   };
 
   const handleConfirm = () => {

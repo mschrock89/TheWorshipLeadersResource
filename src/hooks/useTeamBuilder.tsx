@@ -39,6 +39,7 @@ interface TeamTemplateConfigRow {
   id: string;
   team_id: string;
   campus_id: string | null;
+  ministry_type: string;
   template_config: TeamTemplateConfig | null;
   created_at: string;
   updated_at: string;
@@ -64,6 +65,90 @@ const WORSHIP_TEAM_DISPLAY_ORDER = [
   "Simple Worship",
   "5th Sunday",
 ] as const;
+
+const DEFAULT_WORSHIP_TEAMS: WorshipTeam[] = [
+  {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Team 1",
+    color: "#3B82F6",
+    icon: "star",
+    template_config: {
+      bandSlots: ["drums", "bass", "keys", "eg_1", "eg_2", "ag_1"],
+      vocalSlots: [
+        { slot: "vocalist_1", gender: "male" },
+        { slot: "vocalist_2", gender: "male" },
+        { slot: "vocalist_3", gender: "female" },
+        { slot: "vocalist_4", gender: "female" },
+      ],
+    },
+  },
+  {
+    id: "22222222-2222-2222-2222-222222222222",
+    name: "Team 2",
+    color: "#EAB308",
+    icon: "heart",
+    template_config: {
+      bandSlots: ["drums", "bass", "keys", "eg_1", "ag_1", "ag_2"],
+      vocalSlots: [
+        { slot: "vocalist_1", gender: "male" },
+        { slot: "vocalist_2", gender: "female" },
+        { slot: "vocalist_3", gender: "female" },
+        { slot: "vocalist_4", gender: "female" },
+      ],
+    },
+  },
+  {
+    id: "33333333-3333-3333-3333-333333333333",
+    name: "Team 3",
+    color: "#8B5CF6",
+    icon: "zap",
+    template_config: {
+      bandSlots: ["drums", "bass", "keys", "eg_1", "ag_1"],
+      vocalSlots: [
+        { slot: "vocalist_1", gender: "male" },
+        { slot: "vocalist_2", gender: "female" },
+        { slot: "vocalist_3", gender: "female" },
+        { slot: "vocalist_4", gender: "female" },
+      ],
+    },
+  },
+  {
+    id: "44444444-4444-4444-4444-444444444444",
+    name: "Team 4",
+    color: "#22C55E",
+    icon: "diamond",
+    template_config: {
+      bandSlots: ["drums", "bass", "keys", "eg_1", "ag_1"],
+      vocalSlots: [
+        { slot: "vocalist_1", gender: "male" },
+        { slot: "vocalist_2", gender: "male" },
+        { slot: "vocalist_3", gender: "female" },
+        { slot: "vocalist_4", gender: "female" },
+      ],
+    },
+  },
+  {
+    id: "6be20864-f29a-4bf3-bc99-dd2c79f603f7",
+    name: "Combined",
+    color: "#38bdf8",
+    icon: "users",
+    template_config: {},
+  },
+  {
+    id: "0d3c2c8f-c2bc-4d97-96e2-3de7e54ba79c",
+    name: "Simple Worship",
+    color: "#22c55e",
+    icon: "heart",
+    template_config: {},
+  },
+  {
+    id: "cbe76f54-8af5-49bf-b5db-ae4c7cff7220",
+    name: "5th Sunday",
+    color: "#f59e0b",
+    icon: "diamond",
+    template_config: {},
+  },
+];
 
 function sortWorshipTeams(teams: WorshipTeam[]) {
   const orderMap = new Map(
@@ -424,9 +509,9 @@ export function usePreviousPeriodMembers(
   });
 }
 
-export function useWorshipTeams(campusId: string | null) {
+export function useWorshipTeams(campusId: string | null, ministryType: string | null) {
   return useQuery({
-    queryKey: ["worship-teams", campusId],
+    queryKey: ["worship-teams", campusId, ministryType],
     queryFn: async () => {
       const { data: teams, error: teamsError } = await supabase
         .from("worship_teams")
@@ -435,24 +520,31 @@ export function useWorshipTeams(campusId: string | null) {
 
       if (teamsError) throw teamsError;
 
+      const baseTeams = (teams || []).length > 0
+        ? ((teams || []) as WorshipTeam[])
+        : DEFAULT_WORSHIP_TEAMS;
+
+      const templateMinistryType =
+        normalizeWeekendWorshipMinistryType(
+          ministryType && ministryType !== "all" ? ministryType : "weekend",
+        ) || "weekend";
+
       let templateQuery = supabase
         .from("team_template_configs")
-        .select("id, team_id, campus_id, template_config, created_at, updated_at")
+        .select("id, team_id, campus_id, ministry_type, template_config, created_at, updated_at")
+        .eq("ministry_type", templateMinistryType)
         .order("updated_at", { ascending: false });
 
       if (campusId) {
-        templateQuery = templateQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
+        templateQuery = templateQuery.eq("campus_id", campusId);
       } else {
         templateQuery = templateQuery.is("campus_id", null);
       }
 
       const { data: templateConfigs, error: templateConfigsError } = await templateQuery;
       if (templateConfigsError) {
-        if (isMissingTeamTemplateConfigsTable(templateConfigsError)) {
-          return sortWorshipTeams((teams || []) as WorshipTeam[]);
-        }
-
-        throw templateConfigsError;
+        console.warn("Falling back to default worship team templates", templateConfigsError);
+        return sortWorshipTeams(baseTeams);
       }
 
       const bestTemplateByTeamId = new Map<string, TeamTemplateConfigRow>();
@@ -463,9 +555,8 @@ export function useWorshipTeams(campusId: string | null) {
           continue;
         }
 
-        const rowPriority = row.campus_id === campusId ? 2 : row.campus_id === null ? 1 : 0;
-        const existingPriority =
-          existing.campus_id === campusId ? 2 : existing.campus_id === null ? 1 : 0;
+        const rowPriority = row.campus_id === campusId ? 1 : 0;
+        const existingPriority = existing.campus_id === campusId ? 1 : 0;
 
         if (rowPriority > existingPriority) {
           bestTemplateByTeamId.set(row.team_id, row);
@@ -473,7 +564,7 @@ export function useWorshipTeams(campusId: string | null) {
       }
 
       return sortWorshipTeams(
-        ((teams || []) as WorshipTeam[]).map((team) => ({
+        baseTeams.map((team) => ({
           ...team,
           template_config: bestTemplateByTeamId.get(team.id)?.template_config ?? team.template_config ?? null,
         })),
@@ -748,6 +839,7 @@ export function useAssignMember() {
       rotationPeriodId,
       serviceDay,
       ministryTypes,
+      matchMinistryType,
     }: {
       teamId: string;
       userId: string | null;
@@ -756,6 +848,7 @@ export function useAssignMember() {
       rotationPeriodId: string;
       serviceDay?: string | null;
       ministryTypes?: string[];
+      matchMinistryType?: string | null;
     }) => {
       // IMPORTANT: team display filters depend on ministry_types including the active ministry.
       // If we ever insert/update with an empty array, the assignment can disappear when filtering.
@@ -775,8 +868,13 @@ export function useAssignMember() {
 
       if (existingError) throw existingError;
 
+      const ministryTypesToMatch =
+        matchMinistryType && matchMinistryType !== "all"
+          ? [matchMinistryType]
+          : normalizedMinistryTypes;
+
       const matchingRows = (existingRows || []).filter((row) =>
-        assignmentMatchesAnyMinistry(row.ministry_types, normalizedMinistryTypes),
+        assignmentMatchesAnyMinistry(row.ministry_types, ministryTypesToMatch),
       );
       const existingSpecificRow = matchingRows.find((row) => row.service_day === (serviceDay || null));
       const existingWholeWeekendRow = matchingRows.find((row) => !row.service_day);
@@ -2775,27 +2873,27 @@ export function useUpdateTeamTemplate() {
     mutationFn: async ({
       teamId,
       campusId,
+      ministryType,
       templateConfig,
     }: {
       teamId: string;
       campusId: string;
+      ministryType: string;
       templateConfig: TeamTemplateConfig;
     }) => {
+      const normalizedMinistryType =
+        normalizeWeekendWorshipMinistryType(ministryType) || "weekend";
+
       const { data: existingConfig, error: existingConfigError } = await supabase
         .from("team_template_configs")
         .select("id")
         .eq("team_id", teamId)
         .eq("campus_id", campusId)
+        .eq("ministry_type", normalizedMinistryType)
         .maybeSingle();
 
       if (isMissingTeamTemplateConfigsTable(existingConfigError)) {
-        const { error: fallbackError } = await supabase
-          .from("worship_teams")
-          .update({ template_config: templateConfig })
-          .eq("id", teamId);
-
-        if (fallbackError) throw fallbackError;
-        return;
+        throw new Error("Team template isolation requires the team_template_configs table. Run the latest database migration before editing templates.");
       }
 
       if (existingConfigError) throw existingConfigError;
@@ -2803,6 +2901,7 @@ export function useUpdateTeamTemplate() {
       const payload = {
         team_id: teamId,
         campus_id: campusId,
+        ministry_type: normalizedMinistryType,
         template_config: templateConfig,
       };
 
@@ -2816,13 +2915,7 @@ export function useUpdateTeamTemplate() {
             .insert(payload);
 
       if (isMissingTeamTemplateConfigsTable(error)) {
-        const { error: fallbackError } = await supabase
-          .from("worship_teams")
-          .update({ template_config: templateConfig })
-          .eq("id", teamId);
-
-        if (fallbackError) throw fallbackError;
-        return;
+        throw new Error("Team template isolation requires the team_template_configs table. Run the latest database migration before editing templates.");
       }
 
       if (error) throw error;
