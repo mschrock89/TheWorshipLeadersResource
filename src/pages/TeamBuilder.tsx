@@ -75,13 +75,12 @@ import { useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
-  MINISTRY_SLOT_CATEGORIES,
   isTeamVisibleForMinistry,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
 } from "@/lib/constants";
-import { getRequiredGenderForSlot, getTeamTemplateSlotConfigs, TeamTemplateConfig } from "@/lib/teamTemplates";
+import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { formatPositionLabel, getWeekendKey, isWeekend } from "@/lib/utils";
 
 const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
@@ -112,10 +111,6 @@ function formatPreviewDate(date: string) {
 
 function shouldCollapseWeekendIntoSingleBucket(ministryType: string) {
   return ministryType !== "video";
-}
-
-function normalizeMemberPosition(position: string) {
-  return position.toLowerCase().replace(/\s+/g, "_");
 }
 
 const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
@@ -212,7 +207,6 @@ export default function TeamBuilder() {
     selectedCampusId,
     null,
   );
-  const { data: historicalMemberIds } = useHistoricalTeamMemberIds();
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
@@ -434,39 +428,22 @@ export default function TeamBuilder() {
     return fallbackTeams;
   }, [filteredTeams, members, selectedMinistryType, teams]);
 
+  const displayTeamIds = useMemo(() => displayTeams.map((team) => team.id), [displayTeams]);
+  const { data: historicalMemberIds } = useHistoricalTeamMemberIds(
+    selectedCampusId,
+    selectedMinistryType,
+    displayTeamIds,
+  );
+
   const onBreakEligibleMembers = useMemo(() => {
-    const allowedCategories =
-      MINISTRY_SLOT_CATEGORIES[selectedMinistryType] || MINISTRY_SLOT_CATEGORIES.all;
-    const visiblePositionKeys = new Set<string>();
-
-    for (const slot of POSITION_SLOTS) {
-      if (!allowedCategories.includes(slot.category)) {
-        continue;
-      }
-
-      if (slot.category === "Vocalists" || slot.category === "Band" || slot.category === "Video") {
-        const slotIsVisibleOnAnyTeam = displayTeams.some((team) =>
-          getTeamTemplateSlotConfigs(team.template_config).visibleSlotIds.has(slot.slot),
-        );
-
-        if (!slotIsVisibleOnAnyTeam) {
-          continue;
-        }
-      }
-
-      visiblePositionKeys.add(slot.position);
-    }
-
     return availableMembers.filter((member) => {
       if (!memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType)) {
         return false;
       }
 
-      return member.positions.some((position) =>
-        visiblePositionKeys.has(normalizeMemberPosition(position)),
-      );
+      return historicalMemberIds?.has(member.id) ?? false;
     });
-  }, [availableMembers, displayTeams, selectedMinistryType]);
+  }, [availableMembers, historicalMemberIds, selectedMinistryType]);
 
   const teamById = useMemo(() => {
     return teams.reduce<Record<string, WorshipTeam>>((acc, team) => {
