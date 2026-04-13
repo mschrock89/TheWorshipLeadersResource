@@ -258,7 +258,7 @@ export function TeamScheduleWidget({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Team Schedule</CardTitle>
@@ -276,7 +276,21 @@ export function TeamScheduleWidget({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Select value={activeScheduleMinistry} onValueChange={setScheduleMinistryFilter}>
+              <SelectTrigger className="w-full sm:w-[190px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekend">Weekend</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="video">Video</SelectItem>
+                <SelectItem value="encounter">Encounter</SelectItem>
+                <SelectItem value="eon">EON</SelectItem>
+                <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
+                <SelectItem value="student">Student</SelectItem>
+              </SelectContent>
+            </Select>
             {showPublishNetworkWide && (
               <Button
                 size="sm"
@@ -285,7 +299,10 @@ export function TeamScheduleWidget({
                 disabled={publishNetworkWide.isPending}
               >
                 <Globe2 className="h-4 w-4 mr-1" />
-                Publish Network Wide
+                {activeScheduleMinistry === "encounter" || activeScheduleMinistry === "eon"
+                || activeScheduleMinistry === ENCOUNTER_EON_COMBINED
+                  ? "Publish Combined"
+                  : "Publish Network Wide"}
               </Button>
             )}
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -354,6 +371,8 @@ export function TeamScheduleWidget({
                         <SelectItem value="weekend">Weekend</SelectItem>
                         <SelectItem value="encounter">Encounter</SelectItem>
                         <SelectItem value="eon">EON</SelectItem>
+                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
+                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
                     </Select>
