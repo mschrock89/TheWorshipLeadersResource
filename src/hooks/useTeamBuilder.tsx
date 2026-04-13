@@ -203,22 +203,63 @@ export function useAdminCampusId() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("admin_campus_id, role")
-        .eq("user_id", user.id);
+      const [
+        { data: roleRows, error: rolesError },
+        { data: campusRows, error: campusesError },
+        { data: profileRow, error: profileError },
+      ] = await Promise.all([
+        supabase
+          .from("user_roles")
+          .select("admin_campus_id, role")
+          .eq("user_id", user.id),
+        supabase
+          .from("user_campuses")
+          .select("campus_id")
+          .eq("user_id", user.id),
+        supabase
+          .from("profiles")
+          .select("default_campus_id")
+          .eq("id", user.id)
+          .maybeSingle(),
+      ]);
 
-      if (error) throw error;
-      
+      if (rolesError) throw rolesError;
+      if (campusesError) throw campusesError;
+      if (profileError) throw profileError;
+
+      const data = roleRows || [];
+      const assignedCampusIds = (campusRows || []).map((row) => row.campus_id).filter(Boolean);
+      const fallbackCampusId = profileRow?.default_campus_id || assignedCampusIds[0] || null;
+
       // Check if user is org admin
       const isOrgAdmin = data?.some(r => r.role === "admin");
       if (isOrgAdmin) return { isOrgAdmin: true, campusId: null };
-      
-      // Get campus admin's campus
-      const campusAdminRole = data?.find(r => r.role === "campus_admin");
+
+      // Prefer a campus-scoped admin assignment when a user has multiple
+      // campus_admin rows so Team Builder opens in management mode.
+      const campusAdminRole =
+        data?.find((r) => r.role === "campus_admin" && !!r.admin_campus_id) ??
+        data?.find((r) => r.role === "campus_admin");
+
+      if (campusAdminRole?.admin_campus_id) {
+        return {
+          isOrgAdmin: false,
+          campusId: campusAdminRole.admin_campus_id,
+        };
+      }
+
+      const hasCampusScopedBuilderRole = data?.some((row) =>
+        [
+          "campus_worship_pastor",
+          "student_worship_pastor",
+          "video_director",
+          "production_manager",
+        ].includes(row.role),
+      );
+
       return { 
         isOrgAdmin: false, 
-        campusId: campusAdminRole?.admin_campus_id || null 
+        campusId: campusAdminRole?.admin_campus_id || (hasCampusScopedBuilderRole ? fallbackCampusId : null),
       };
     },
   });

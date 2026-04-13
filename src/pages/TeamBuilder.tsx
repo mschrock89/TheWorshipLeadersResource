@@ -193,6 +193,8 @@ export default function TeamBuilder() {
     return adminCampusInfo.campusId === selectedCampusId;
   }, [adminCampusInfo, selectedCampusId]);
 
+  const hasFullTeamBuilderAccess = canEditCampus && (isVideoDirector || isAdmin);
+
   const isAdminUser = adminCampusInfo?.isOrgAdmin || !!adminCampusInfo?.campusId;
 
   // Auto-select campus on load
@@ -1072,8 +1074,8 @@ export default function TeamBuilder() {
                   isAdmin={true}
                   periods={periods}
                   ministryFilter={selectedMinistryType}
-                  canEditAudio={isProductionManager || isAdmin}
-                  canEditBroadcast={isVideoDirector || isAdmin}
+                  canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
+                  canEditBroadcast={hasFullTeamBuilderAccess}
                 />
                 
                 <OnBreakList
@@ -1235,8 +1237,8 @@ export default function TeamBuilder() {
                       isLocked={isTeamLocked(team.id)}
                       onToggleLock={() => handleToggleLock(team.id)}
                       canLock={canEditCampus}
-                      canEditBroadcast={isVideoDirector || isAdmin}
-                      canEditAudio={isProductionManager || isAdmin}
+                      canEditBroadcast={hasFullTeamBuilderAccess}
+                      canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
                       ministryFilter={selectedMinistryType}
                       slotConflictDates={combinedConflictDatesByTeamSlot[team.id] || {}}
                       slotScheduleDates={scheduleDatesByTeam[team.id] || []}
@@ -1282,8 +1284,8 @@ export default function TeamBuilder() {
                 periodName={selectedPeriod?.name}
                 periods={periods}
                 ministryFilter={selectedMinistryType}
-                canEditAudio={isProductionManager || isAdmin}
-                canEditBroadcast={isVideoDirector || isAdmin}
+                canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
+                canEditBroadcast={hasFullTeamBuilderAccess}
               />
               
               
