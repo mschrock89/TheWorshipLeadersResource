@@ -805,14 +805,37 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
   });
 }
 
-// Get set of user IDs who have ever been assigned to a team
-export function useHistoricalTeamMemberIds() {
+// Get set of user IDs who have historical assignments for the selected campus/ministry/team pool
+export function useHistoricalTeamMemberIds(
+  campusId?: string | null,
+  ministryType?: string | null,
+  teamIds: string[] = [],
+) {
   return useQuery({
-    queryKey: ["historical-team-member-ids"],
+    queryKey: ["historical-team-member-ids", campusId, ministryType, [...teamIds].sort().join(",")],
+    enabled: !!campusId && teamIds.length > 0,
     queryFn: async () => {
+      if (!campusId || teamIds.length === 0) {
+        return new Set<string>();
+      }
+
+      const { data: periodRows, error: periodError } = await supabase
+        .from("rotation_periods")
+        .select("id")
+        .eq("campus_id", campusId);
+
+      if (periodError) throw periodError;
+
+      const rotationPeriodIds = (periodRows || []).map((period) => period.id);
+      if (rotationPeriodIds.length === 0) {
+        return new Set<string>();
+      }
+
       const { data, error } = await supabase
         .from("team_members")
-        .select("user_id")
+        .select("user_id, ministry_types")
+        .in("rotation_period_id", rotationPeriodIds)
+        .in("team_id", teamIds)
         .not("user_id", "is", null);
 
       if (error) throw error;
@@ -820,7 +843,11 @@ export function useHistoricalTeamMemberIds() {
       // Return unique user IDs
       const uniqueIds = new Set<string>();
       (data || []).forEach(m => {
-        if (m.user_id) uniqueIds.add(m.user_id);
+        if (!m.user_id) return;
+        if (ministryType && ministryType !== "all" && !memberMatchesMinistryFilter(m.ministry_types || [], ministryType)) {
+          return;
+        }
+        uniqueIds.add(m.user_id);
       });
       return uniqueIds;
     },
