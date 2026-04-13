@@ -70,6 +70,8 @@ interface DisplayScheduleEntry {
 
 const MINISTRY_COLORS: Record<string, string> = {
   weekend: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  video: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
   encounter: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   eon: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   student: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -406,6 +408,8 @@ export function TeamScheduleWidget({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weekend">Weekend</SelectItem>
+                        <SelectItem value="production">Production</SelectItem>
+                        <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">Encounter</SelectItem>
                         <SelectItem value="eon">EON</SelectItem>
                         <SelectItem value="student">Student</SelectItem>

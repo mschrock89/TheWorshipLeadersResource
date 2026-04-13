@@ -1070,11 +1070,14 @@ function resolveConflictScheduleMinistries(ministryType: string) {
     return null;
   }
 
+  if (ministryType === "video") {
+    return ["video"];
+  }
+
   if (
     ministryType === "weekend" ||
     ministryType === "weekend_team" ||
-    ministryType === "production" ||
-    ministryType === "video"
+    ministryType === "production"
   ) {
     return ["weekend", "sunday_am"];
   }

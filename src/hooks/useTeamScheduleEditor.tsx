@@ -139,8 +139,10 @@ export function useTeamScheduleForCampus(
       if (ministryFilter && ministryFilter !== "all") {
         if (ministryFilter === "weekend_team") {
           query = query.in("ministry_type", ["weekend", "sunday_am", "production", "video"]);
-        } else if (ministryFilter === "production" || ministryFilter === "video") {
+        } else if (ministryFilter === "production") {
           query = query.in("ministry_type", ["weekend", "sunday_am"]);
+        } else if (ministryFilter === "video") {
+          query = query.eq("ministry_type", "video");
         } else {
           query = query.eq("ministry_type", ministryFilter);
         }
