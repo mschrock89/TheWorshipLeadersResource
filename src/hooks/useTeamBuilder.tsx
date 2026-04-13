@@ -484,7 +484,20 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
 
       if (roleError) throw roleError;
 
-      const eligibleUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      const { data: videoRows, error: videoError } = await supabase
+        .from("user_ministry_campuses")
+        .select("user_id")
+        .eq("campus_id", campusId)
+        .eq("ministry_type", "video");
+
+      if (videoError) throw videoError;
+
+      const eligibleUserIds = [
+        ...new Set([
+          ...(roleRows || []).map((row) => row.user_id).filter(Boolean),
+          ...(videoRows || []).map((row) => row.user_id).filter(Boolean),
+        ]),
+      ];
       if (eligibleUserIds.length === 0) return [];
 
       const { data: campusRows, error: campusError } = await supabase
