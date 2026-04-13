@@ -71,6 +71,14 @@ interface DisplayScheduleEntry {
 const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
 const ENCOUNTER_EON_MINISTRY_TYPES = ["encounter", "eon"] as const;
 
+function normalizeScheduleMinistryFilter(ministryFilter: string | null) {
+  if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
+    return "weekend";
+  }
+
+  return ministryFilter;
+}
+
 const MINISTRY_COLORS: Record<string, string> = {
   weekend: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
@@ -94,11 +102,14 @@ export function TeamScheduleWidget({
   const [newDate, setNewDate] = useState("");
   const [newTeamId, setNewTeamId] = useState("");
   const [newMinistryType, setNewMinistryType] = useState("weekend");
+  const [scheduleMinistryFilter, setScheduleMinistryFilter] = useState(() =>
+    normalizeScheduleMinistryFilter(ministryFilter),
+  );
 
   const { data: scheduleEntries = [], isLoading } = useTeamScheduleForCampus(
     campusId,
     rotationPeriodName,
-    ministryFilter
+    scheduleMinistryFilter
   );
   const { data: campuses = [] } = useCampuses();
   const { data: teams = [] } = useWorshipTeams();
@@ -108,12 +119,16 @@ export function TeamScheduleWidget({
   );
 
   const activeScheduleMinistry = useMemo(() => {
-    if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
-      return "weekend";
-    }
+    return normalizeScheduleMinistryFilter(scheduleMinistryFilter);
+  }, [scheduleMinistryFilter]);
 
-    return ministryFilter;
+  useEffect(() => {
+    setScheduleMinistryFilter(normalizeScheduleMinistryFilter(ministryFilter));
   }, [ministryFilter]);
+
+  useEffect(() => {
+    setNewMinistryType(activeScheduleMinistry);
+  }, [activeScheduleMinistry]);
 
   const preloadableDates = useMemo(() => {
     if (!selectedCampus || !rotationPeriodStartDate || !rotationPeriodEndDate) {
@@ -343,6 +358,20 @@ export function TeamScheduleWidget({
             </TooltipProvider>
           </div>
           <div className="flex items-center gap-2">
+            <Select value={activeScheduleMinistry} onValueChange={setScheduleMinistryFilter}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekend">Weekend</SelectItem>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="video">Video</SelectItem>
+                <SelectItem value="encounter">Encounter</SelectItem>
+                <SelectItem value="eon">EON</SelectItem>
+                <SelectItem value={ENCOUNTER_EON_COMBINED}>Encounter + EON</SelectItem>
+                <SelectItem value="student">Student</SelectItem>
+              </SelectContent>
+            </Select>
             {showPublishNetworkWide && (
               <Button
                 size="sm"
