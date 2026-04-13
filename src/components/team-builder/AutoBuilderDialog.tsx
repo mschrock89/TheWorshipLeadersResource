@@ -367,7 +367,7 @@ function assignCampusPastorsToVocalSlots(
 }
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string) {
-  return ministryType === "weekend" || ministryType === "weekend_team";
+  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
 }
 
 function countsAsTrimesterRosterAssignment(
