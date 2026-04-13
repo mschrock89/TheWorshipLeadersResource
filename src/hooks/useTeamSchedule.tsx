@@ -62,6 +62,7 @@ const WORSHIP_TEAM_DISPLAY_ORDER = [
   "Team 2",
   "Team 3",
   "Team 4",
+  "Combined",
   "Simple Worship",
   "5th Sunday",
 ] as const;

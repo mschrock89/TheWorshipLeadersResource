@@ -197,6 +197,9 @@ export default function TeamBuilder() {
   const canEditCampus = useMemo(() => {
     if (!adminCampusInfo) return false;
     if (adminCampusInfo.isOrgAdmin) return true;
+    if (adminCampusInfo.campusIds.length > 0) {
+      return adminCampusInfo.campusIds.includes(selectedCampusId ?? "");
+    }
     return adminCampusInfo.campusId === selectedCampusId;
   }, [adminCampusInfo, selectedCampusId]);
 

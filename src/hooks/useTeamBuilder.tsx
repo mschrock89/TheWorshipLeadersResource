@@ -60,6 +60,7 @@ const WORSHIP_TEAM_DISPLAY_ORDER = [
   "Team 2",
   "Team 3",
   "Team 4",
+  "Combined",
   "Simple Worship",
   "5th Sunday",
 ] as const;
@@ -216,6 +217,12 @@ export function useAllCampuses() {
 }
 
 // Get admin campus ID for campus_admin role
+export interface AdminCampusScope {
+  isOrgAdmin: boolean;
+  campusId: string | null;
+  campusIds: string[];
+}
+
 export function useAdminCampusId() {
   return useQuery({
     queryKey: ["admin-campus-id"],
@@ -253,10 +260,21 @@ export function useAdminCampusId() {
 
       // Check if user is org admin
       const isOrgAdmin = data?.some(r => r.role === "admin");
-      if (isOrgAdmin) return { isOrgAdmin: true, campusId: null };
+      if (isOrgAdmin) {
+        return {
+          isOrgAdmin: true,
+          campusId: null,
+          campusIds: [],
+        } satisfies AdminCampusScope;
+      }
 
-      // Prefer a campus-scoped admin assignment when a user has multiple
-      // campus_admin rows so Team Builder opens in management mode.
+      const campusAdminIds = data
+        ?.filter((row) => row.role === "campus_admin" && !!row.admin_campus_id)
+        .map((row) => row.admin_campus_id)
+        .filter((campusId): campusId is string => Boolean(campusId)) ?? [];
+
+      // Preserve the legacy single-campus field while also exposing all
+      // assigned campus_admin scopes for Team Builder edit access.
       const campusAdminRole =
         data?.find((r) => r.role === "campus_admin" && !!r.admin_campus_id) ??
         data?.find((r) => r.role === "campus_admin");
@@ -265,6 +283,7 @@ export function useAdminCampusId() {
         return {
           isOrgAdmin: false,
           campusId: campusAdminRole.admin_campus_id,
+          campusIds: campusAdminIds,
         };
       }
 
@@ -277,10 +296,11 @@ export function useAdminCampusId() {
         ].includes(row.role),
       );
 
-      return { 
-        isOrgAdmin: false, 
+      return {
+        isOrgAdmin: false,
         campusId: campusAdminRole?.admin_campus_id || (hasCampusScopedBuilderRole ? fallbackCampusId : null),
-      };
+        campusIds: campusAdminIds,
+      } satisfies AdminCampusScope;
     },
   });
 }
