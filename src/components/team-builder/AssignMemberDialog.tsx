@@ -179,6 +179,12 @@ export function AssignMemberDialog({
   const otherCount = relevantMembers.length - matchingMinistryCount;
 
   const handleMemberClick = (member: AvailableMember) => {
+    if (effectiveMinistryFilter && effectiveMinistryFilter !== "all") {
+      onSelect(member, [normalizeSelectedMinistry(effectiveMinistryFilter)]);
+      handleClose(false);
+      return;
+    }
+
     setSelectedMember(member);
     const initialMinistries: string[] = [];
     if (effectiveMinistryFilter) {

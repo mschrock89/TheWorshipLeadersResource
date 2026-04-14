@@ -3,7 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "@/hooks/use-toast";
-import { MINISTRY_SLOT_CATEGORIES, POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
+import {
+  MINISTRY_SLOT_CATEGORIES,
+  POSITION_SLOTS,
+  memberMatchesMinistryFilter,
+  normalizeWeekendWorshipMinistryType,
+} from "@/lib/constants";
 import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
 import { getWeekendKey, isWeekend } from "@/lib/utils";

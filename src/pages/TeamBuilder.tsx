@@ -165,6 +165,35 @@ const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
   },
 };
 
+const TEAM_DISPLAY_ORDER = [
+  "Team 1",
+  "Team 2",
+  "Team 3",
+  "Team 4",
+  "Combined",
+  "Simple Worship",
+  "5th Sunday",
+] as const;
+
+function sortTeamsForDisplay(sourceTeams: WorshipTeam[]) {
+  const orderMap = new Map(
+    TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+  );
+
+  return [...sourceTeams].sort((a, b) => {
+    const aIndex = orderMap.get(a.name.toLowerCase());
+    const bIndex = orderMap.get(b.name.toLowerCase());
+
+    if (aIndex !== undefined || bIndex !== undefined) {
+      if (aIndex === undefined) return 1;
+      if (bIndex === undefined) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
   const { data: currentUserRoles = [] } = useUserRoles(user?.id);
@@ -401,8 +430,20 @@ export default function TeamBuilder() {
   }, [teams, selectedMinistryType]);
 
   const displayTeams = useMemo(() => {
+    const canonicalVisibleFallbackTeams = Object.values(FALLBACK_TEAM_DEFINITIONS).filter((team) =>
+      isTeamVisibleForMinistry(team.name, selectedMinistryType),
+    );
+
+    const mergeMissingTeams = (sourceTeams: WorshipTeam[]) => {
+      const existingTeamIds = new Set(sourceTeams.map((team) => team.id));
+      return sortTeamsForDisplay([
+        ...sourceTeams,
+        ...canonicalVisibleFallbackTeams.filter((team) => !existingTeamIds.has(team.id)),
+      ]);
+    };
+
     if (filteredTeams.length > 0) {
-      return filteredTeams;
+      return mergeMissingTeams(filteredTeams);
     }
 
     const fallbackTeams = Array.from(new Set(
@@ -425,7 +466,7 @@ export default function TeamBuilder() {
       })
       .filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
 
-    return fallbackTeams;
+    return mergeMissingTeams(fallbackTeams);
   }, [filteredTeams, members, selectedMinistryType, teams]);
 
   const displayTeamIds = useMemo(() => displayTeams.map((team) => team.id), [displayTeams]);
