@@ -160,9 +160,18 @@ export default function Team() {
   const filteredProfiles = useMemo(() => {
     const campusScopedPositionMap = new Map<string, TeamPosition[]>();
     const campusScopedMinistryMap = new Map<string, string[]>();
+    const allCampusMinistryMap = new Map<string, string[]>();
 
     const getProfileMinistries = (profile: Profile) =>
       Array.isArray(profile.ministry_types) ? profile.ministry_types : [];
+
+    campusMinistryPositions.forEach(({ user_id, ministry_type }) => {
+      const existingMinistries = allCampusMinistryMap.get(user_id) || [];
+      const normalizedMinistry = normalizeWeekendWorshipMinistryType(ministry_type) || ministry_type;
+      if (normalizedMinistry && !existingMinistries.includes(normalizedMinistry)) {
+        allCampusMinistryMap.set(user_id, [...existingMinistries, normalizedMinistry]);
+      }
+    });
 
     if (campusFilter !== "all") {
       campusMinistryPositions.forEach(({ user_id, campus_id, position, ministry_type }) => {
@@ -184,7 +193,7 @@ export default function Team() {
     const getMinistrySortValue = (profile: Profile) => {
       const profileMinistryTypes = (
         campusFilter === "all"
-          ? getProfileMinistries(profile)
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
           : campusScopedMinistryMap.get(profile.id) || []
       )
         .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
@@ -204,7 +213,7 @@ export default function Team() {
     const getNormalizedProfileMinistries = (profile: Profile) =>
       (
         campusFilter === "all"
-          ? getProfileMinistries(profile)
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
           : campusScopedMinistryMap.get(profile.id) || []
       )
         .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
@@ -249,6 +258,10 @@ export default function Team() {
 
         return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender;
       })
+      .map((profile) => ({
+        ...profile,
+        ministry_types: getNormalizedProfileMinistries(profile),
+      }))
       .sort((a, b) => {
         const nameA = (a.full_name || a.email || "").toLowerCase();
         const nameB = (b.full_name || b.email || "").toLowerCase();
