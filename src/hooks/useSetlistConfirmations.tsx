@@ -336,8 +336,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         })
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
 
-      // Guard against invalid weekend dates for a campus (e.g. Saturday at campuses with no Saturday service).
-      // This keeps My Setlists consistent with campus service-day rules.
+      // Guard against invalid single-day service dates for a campus.
+      // Weekend setlists are stored on a shared weekend anchor date, so a Sunday-only
+      // campus can still have a valid "weekend" setlist saved on Saturday.
       if (setlists.length > 0) {
         const campusIds = [...new Set(setlists.map((s) => s.campus_id).filter(Boolean))];
         if (campusIds.length > 0) {
@@ -353,6 +354,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           setlists = setlists.filter((s) => {
             const config = campusMap.get(s.campus_id);
             if (!config) return true;
+            if (WEEKEND_MINISTRY_ALIASES.has(s.ministry_type)) {
+              return config.has_saturday_service || config.has_sunday_service;
+            }
             const day = new Date(`${s.plan_date}T00:00:00`).getDay(); // 0 Sun, 6 Sat
             if (day === 6 && !config.has_saturday_service) return false;
             if (day === 0 && !config.has_sunday_service) return false;
