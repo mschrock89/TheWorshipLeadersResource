@@ -1429,6 +1429,8 @@ export function useSaveRotationDraft() {
         ministry_type: ministryType,
         assignments: snapshot,
         saved_by: user?.id || null,
+        published_at: null,
+        published_by: null,
       };
 
       const { error } = await supabase

@@ -79,7 +79,7 @@ export function TeamCard({
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
-  const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
+  const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
 
   // Filter members by ministry type when a specific ministry is selected
