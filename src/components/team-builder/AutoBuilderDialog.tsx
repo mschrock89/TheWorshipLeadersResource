@@ -1111,8 +1111,8 @@ export function AutoBuilderDialog({
         ...visibleTeamSlots.vocalSlots,
         ...POSITION_SLOTS.filter((slot) => slot.category === "Speaker"),
         ...visibleTeamSlots.bandSlots,
-        ...POSITION_SLOTS.filter((slot) => slot.category === "Production"),
-        ...POSITION_SLOTS.filter((slot) => slot.category === "Video"),
+        ...visibleTeamSlots.productionSlots,
+        ...visibleTeamSlots.videoSlots,
       ].filter((slot) => allowedCategories.includes(slot.category));
 
       slots.forEach((slotConfig) => {
