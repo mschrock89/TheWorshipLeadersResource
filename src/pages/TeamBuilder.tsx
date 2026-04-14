@@ -165,6 +165,35 @@ const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
   },
 };
 
+const TEAM_DISPLAY_ORDER = [
+  "Team 1",
+  "Team 2",
+  "Team 3",
+  "Team 4",
+  "Combined",
+  "Simple Worship",
+  "5th Sunday",
+] as const;
+
+function sortTeamsForDisplay(sourceTeams: WorshipTeam[]) {
+  const orderMap = new Map(
+    TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+  );
+
+  return [...sourceTeams].sort((a, b) => {
+    const aIndex = orderMap.get(a.name.toLowerCase());
+    const bIndex = orderMap.get(b.name.toLowerCase());
+
+    if (aIndex !== undefined || bIndex !== undefined) {
+      if (aIndex === undefined) return 1;
+      if (bIndex === undefined) return -1;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
   const { data: currentUserRoles = [] } = useUserRoles(user?.id);
@@ -401,8 +430,20 @@ export default function TeamBuilder() {
   }, [teams, selectedMinistryType]);
 
   const displayTeams = useMemo(() => {
+    const canonicalVisibleFallbackTeams = Object.values(FALLBACK_TEAM_DEFINITIONS).filter((team) =>
+      isTeamVisibleForMinistry(team.name, selectedMinistryType),
+    );
+
+    const mergeMissingTeams = (sourceTeams: WorshipTeam[]) => {
+      const existingTeamIds = new Set(sourceTeams.map((team) => team.id));
+      return sortTeamsForDisplay([
+        ...sourceTeams,
+        ...canonicalVisibleFallbackTeams.filter((team) => !existingTeamIds.has(team.id)),
+      ]);
+    };
+
     if (filteredTeams.length > 0) {
-      return filteredTeams;
+      return mergeMissingTeams(filteredTeams);
     }
 
     const fallbackTeams = Array.from(new Set(
@@ -425,7 +466,7 @@ export default function TeamBuilder() {
       })
       .filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
 
-    return fallbackTeams;
+    return mergeMissingTeams(fallbackTeams);
   }, [filteredTeams, members, selectedMinistryType, teams]);
 
   const displayTeamIds = useMemo(() => displayTeams.map((team) => team.id), [displayTeams]);
@@ -927,6 +968,14 @@ export default function TeamBuilder() {
     });
 
     return availableMembers.filter((member) => {
+      if (
+        targetMinistryType &&
+        targetMinistryType !== "all" &&
+        !memberMatchesMinistryFilter(member.ministry_types, targetMinistryType)
+      ) {
+        return false;
+      }
+
       if (selectedPeriodBreakUserIds.includes(member.id)) {
         return false;
       }
@@ -937,6 +986,10 @@ export default function TeamBuilder() {
       );
 
       if (conflictingAssignments.length === 0) {
+        return true;
+      }
+
+      if (conflictingAssignments.every((assignment) => assignment.teamId === assigningSlot.teamId)) {
         return true;
       }
 
@@ -1225,6 +1278,10 @@ export default function TeamBuilder() {
   };
 
   const isLoading = periodsLoading || teamsLoading || membersLoading || authLoading || campusesLoading || adminCampusLoading;
+  const utilityActionButtonClassName =
+    "border-blue-500/60 bg-black text-white hover:bg-blue-500/10 hover:border-blue-400 hover:text-white";
+  const primaryAutoBuildButtonClassName =
+    "border-0 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-black shadow-[0_10px_30px_rgba(250,204,21,0.24)] hover:from-amber-300 hover:via-yellow-200 hover:to-amber-400";
 
   return (
     <RefreshableContainer queryKeys={[["rotation-periods"], ["worship-teams"], ["team-members"], ["break-requests"]]}>
@@ -1323,6 +1380,7 @@ export default function TeamBuilder() {
                       variant="default"
                       onClick={() => setShowAutoBuilder(true)}
                       disabled={!selectedPeriodId}
+                      className={primaryAutoBuildButtonClassName}
                     >
                       <Wand2 className="mr-2 h-4 w-4" />
                       Auto-Build
@@ -1331,6 +1389,7 @@ export default function TeamBuilder() {
                       variant="outline"
                       onClick={handleSaveDraft}
                       disabled={!selectedPeriodId || !selectedCampusId || visibleAssignments.length === 0 || saveRotationDraft.isPending}
+                      className={utilityActionButtonClassName}
                     >
                       {saveRotationDraft.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1340,7 +1399,7 @@ export default function TeamBuilder() {
                       Save as Draft
                     </Button>
                     <Button
-                      variant="default"
+                      variant="outline"
                       onClick={() => setPublishConfirmOpen(true)}
                       disabled={
                         !selectedPeriodId ||
@@ -1348,6 +1407,7 @@ export default function TeamBuilder() {
                         (visibleAssignments.length === 0 && breakPushPreviewRecipients.length === 0) ||
                         publishRotation.isPending
                       }
+                      className={utilityActionButtonClassName}
                     >
                       {publishRotation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1360,6 +1420,7 @@ export default function TeamBuilder() {
                       variant="outline"
                       onClick={handleCrossCheck}
                       disabled={!selectedPeriodId || !selectedPeriod || visibleAssignments.length === 0 || crossCheckRotationAssignments.isPending}
+                      className={utilityActionButtonClassName}
                     >
                       {crossCheckRotationAssignments.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1372,6 +1433,7 @@ export default function TeamBuilder() {
                       variant="outline"
                       onClick={() => setRotationPushPreviewOpen(true)}
                       disabled={rotationPushPreviewRecipients.length === 0 && breakPushPreviewRecipients.length === 0}
+                      className={utilityActionButtonClassName}
                     >
                       <BellRing className="mr-2 h-4 w-4" />
                       Preview Rotation Push
@@ -1380,6 +1442,7 @@ export default function TeamBuilder() {
                       variant="outline"
                       onClick={handleCopyFromPrevious}
                       disabled={!selectedPeriodId || copyFromPrevious.isPending}
+                      className={utilityActionButtonClassName}
                     >
                       {copyFromPrevious.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1392,7 +1455,7 @@ export default function TeamBuilder() {
                       variant="outline"
                       onClick={() => setShowClearConfirm(true)}
                       disabled={!selectedPeriodId || members.length === 0}
-                      className="text-destructive hover:text-destructive"
+                      className={utilityActionButtonClassName}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Clear All
@@ -1828,9 +1891,12 @@ export default function TeamBuilder() {
       <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Publish rotation?</AlertDialogTitle>
+            <AlertDialogTitle>Warning: Publish this rotation live?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will make the current rotation live and send {publishNotifications.length} push notification{publishNotifications.length === 1 ? "" : "s"} for assignments and breaks.
+              This will make the current rotation live for users at{" "}
+              <strong>{selectedCampus?.name || "this campus"}</strong> and send{" "}
+              {publishNotifications.length} push notification{publishNotifications.length === 1 ? "" : "s"} for assignments and breaks.
+              {" "}Saved drafts stay hidden from non-managers until you publish.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1849,10 +1915,13 @@ export default function TeamBuilder() {
       <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear all assignments?</AlertDialogTitle>
+            <AlertDialogTitle>Warning: Clear all assignments?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all team member assignments for{" "}
-              {selectedPeriod?.name}. This action cannot be undone.
+              This will permanently remove all team member assignments for{" "}
+              <strong>{selectedCampus?.name || "this campus"}</strong>
+              {" "}during <strong>{selectedPeriod?.name || "this period"}</strong>
+              {" "}for <strong>{selectedMinistryType === "all" ? "all ministries" : selectedMinistryType}</strong>.
+              {" "}This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1861,7 +1930,7 @@ export default function TeamBuilder() {
               onClick={handleClear}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Clear All
+              Yes, Clear All
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

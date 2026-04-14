@@ -61,6 +61,27 @@ export function usePushNotifications() {
     return navigator.serviceWorker.register("/sw.js");
   }, []);
 
+  const deleteSubscriptionRecord = useCallback(async (endpoint: string) => {
+    const { error } = await supabase
+      .from("push_subscriptions")
+      .delete()
+      .eq("endpoint", endpoint);
+
+    if (error) {
+      throw error;
+    }
+  }, []);
+
+  const hasCurrentVapidKey = useCallback((subscription: PushSubscription) => {
+    if (!VAPID_PUBLIC_KEY) return false;
+
+    const currentServerKey = subscription.options.applicationServerKey;
+    if (!currentServerKey) return false;
+
+    const expectedServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+    return uint8ArraysEqual(new Uint8Array(currentServerKey), expectedServerKey);
+  }, []);
+
   const saveSubscription = useCallback(async (subscription: PushSubscription) => {
     if (!user) return false;
 
@@ -82,6 +103,56 @@ export function usePushNotifications() {
 
     return true;
   }, [user]);
+
+  const refreshSubscriptionState = useCallback(async () => {
+    if (!isSupported || !user) {
+      setIsSubscribed(false);
+      setIsLoading(false);
+      return false;
+    }
+
+    try {
+      setPermission(Notification.permission);
+
+      const registration = await ensureRegistration();
+      const subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        setIsSubscribed(false);
+        return false;
+      }
+
+      if (!hasCurrentVapidKey(subscription)) {
+        await subscription.unsubscribe();
+        await deleteSubscriptionRecord(subscription.endpoint);
+        setIsSubscribed(false);
+        return false;
+      }
+
+      setIsSubscribed(true);
+
+      const { data, error } = await supabase
+        .from("push_subscriptions")
+        .select("id, user_id")
+        .eq("endpoint", subscription.endpoint)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data || data.user_id !== user.id) {
+        await saveSubscription(subscription);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error checking push subscription:", error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [deleteSubscriptionRecord, ensureRegistration, hasCurrentVapidKey, isSupported, saveSubscription, user]);
 
   // Check if push notifications are supported
   useEffect(() => {
@@ -127,44 +198,22 @@ export function usePushNotifications() {
       return;
     }
 
-    async function checkSubscription() {
-      try {
-        const registration = await ensureRegistration();
-        const subscription = await registration.pushManager.getSubscription();
-        
-        if (subscription) {
-          // The browser subscription is the real source of truth for the device toggle.
-          setIsSubscribed(true);
+    void refreshSubscriptionState();
 
-          // Verify subscription exists in database
-          const { data, error } = await supabase
-            .from("push_subscriptions")
-            .select("id")
-            .eq("user_id", user!.id)
-            .eq("endpoint", subscription.endpoint)
-            .maybeSingle();
-
-          if (error) {
-            throw error;
-          }
-
-          if (!data) {
-            // Self-heal if the browser has an active subscription but the database row is missing.
-            await saveSubscription(subscription);
-            return;
-          }
-        } else {
-          setIsSubscribed(false);
-        }
-      } catch (error) {
-        console.error("Error checking push subscription:", error);
-      } finally {
-        setIsLoading(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSubscriptionState();
       }
-    }
+    };
 
-    checkSubscription();
-  }, [ensureRegistration, isSupported, saveSubscription, user]);
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isSupported, refreshSubscriptionState, user]);
 
   const subscribe = useCallback(async () => {
     if (!isSupported) {
@@ -184,7 +233,6 @@ export function usePushNotifications() {
     try {
       setIsLoading(true);
 
-      // Request permission
       const permissionResult = await Notification.requestPermission();
       setPermission(permissionResult);
 
@@ -194,22 +242,12 @@ export function usePushNotifications() {
       }
 
       const registration = await ensureRegistration();
-
       let subscription = await registration.pushManager.getSubscription();
 
-      if (subscription) {
-        const currentServerKey = subscription.options.applicationServerKey;
-        const expectedServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-
-        if (currentServerKey && !uint8ArraysEqual(new Uint8Array(currentServerKey), expectedServerKey)) {
-          await subscription.unsubscribe();
-          await supabase
-            .from("push_subscriptions")
-            .delete()
-            .eq("user_id", user.id)
-            .eq("endpoint", subscription.endpoint);
-          subscription = null;
-        }
+      if (subscription && !hasCurrentVapidKey(subscription)) {
+        await subscription.unsubscribe();
+        await deleteSubscriptionRecord(subscription.endpoint);
+        subscription = null;
       }
 
       if (!subscription) {
@@ -232,7 +270,67 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [ensureRegistration, isSupported, saveSubscription, supportMessage, user]);
+  }, [deleteSubscriptionRecord, ensureRegistration, hasCurrentVapidKey, isSupported, saveSubscription, supportMessage, user]);
+
+  const resync = useCallback(async () => {
+    if (!isSupported) {
+      toast.error(supportMessage || "Push notifications are not supported in this browser");
+      return false;
+    }
+    if (!user) {
+      toast.error("You must be logged in to sync push notifications");
+      return false;
+    }
+    if (!VAPID_PUBLIC_KEY) {
+      toast.error("Push notifications are not configured. Please contact support.");
+      return false;
+    }
+
+    try {
+      setIsLoading(true);
+      setPermission(Notification.permission);
+
+      const registration = await ensureRegistration();
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (subscription && !hasCurrentVapidKey(subscription)) {
+        // Rotate subscriptions only when the device is tied to an outdated VAPID key pair.
+        await subscription.unsubscribe();
+        await deleteSubscriptionRecord(subscription.endpoint);
+        subscription = null;
+      }
+
+      if (!subscription) {
+        const permissionResult = Notification.permission === "granted"
+          ? "granted"
+          : await Notification.requestPermission();
+        setPermission(permissionResult);
+
+        if (permissionResult !== "granted") {
+          toast.error("Notification permission denied");
+          setIsSubscribed(false);
+          return false;
+        }
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+
+      await saveSubscription(subscription);
+      setIsSubscribed(true);
+      toast.success("Push subscription synced!");
+      return true;
+    } catch (error) {
+      console.error("Error syncing push subscription:", error);
+      const message = error instanceof Error ? error.message : "Failed to sync push notifications";
+      toast.error(message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [deleteSubscriptionRecord, ensureRegistration, hasCurrentVapidKey, isSupported, saveSubscription, supportMessage, user]);
 
   const unsubscribe = useCallback(async () => {
     if (!user) return false;
@@ -245,13 +343,7 @@ export function usePushNotifications() {
 
       if (subscription) {
         await subscription.unsubscribe();
-
-        // Remove from database
-        await supabase
-          .from("push_subscriptions")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("endpoint", subscription.endpoint);
+        await deleteSubscriptionRecord(subscription.endpoint);
       }
 
       setIsSubscribed(false);
@@ -264,7 +356,7 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [ensureRegistration, user]);
+  }, [deleteSubscriptionRecord, ensureRegistration, user]);
 
   return {
     isSupported,
@@ -273,6 +365,7 @@ export function usePushNotifications() {
     permission,
     supportMessage,
     subscribe,
+    resync,
     unsubscribe,
   };
 }

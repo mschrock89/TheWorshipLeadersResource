@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { Loader2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,39 @@ interface CreateTeamMemberDialogProps {
   campuses: CampusOption[];
   onCreated: () => void;
 }
+
+const getFunctionErrorMessage = async (
+  error: unknown,
+  response: { error: { message?: string } | null; data?: { error?: string; hint?: string } | null },
+  fallback: string,
+) => {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const payload = await error.context.json();
+      const errorMessage =
+        typeof payload?.error === "string" && payload.error.trim()
+          ? payload.error.trim()
+          : fallback;
+      const hintMessage =
+        typeof payload?.hint === "string" && payload.hint.trim()
+          ? payload.hint.trim()
+          : "";
+
+      return hintMessage ? `${errorMessage} ${hintMessage}` : errorMessage;
+    } catch {
+      // Fall through to the response payload and generic error message.
+    }
+  }
+
+  const hint = response.data?.hint?.trim();
+  const message =
+    response.data?.error?.trim() ||
+    (error instanceof Error ? error.message.trim() : "") ||
+    response.error?.message?.trim() ||
+    fallback;
+
+  return hint ? `${message} ${hint}` : message;
+};
 
 export function CreateTeamMemberDialog({
   open,
@@ -75,7 +109,15 @@ export function CreateTeamMemberDialog({
 
     setIsCreating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-team-member", {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("You must be logged in");
+      }
+
+      const response = await supabase.functions.invoke("create-team-member", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -86,13 +128,17 @@ export function CreateTeamMemberDialog({
         },
       });
 
-      if (error) {
-        throw new Error(error.message || "Failed to create member");
+      if (response.error) {
+        throw new Error(await getFunctionErrorMessage(response.error, response, "Failed to create member"));
+      }
+
+      if (response.data?.error) {
+        throw new Error(await getFunctionErrorMessage(response.error, response, "Failed to create member"));
       }
 
       toast({
         title: "Team member created",
-        description: `${data.email} created as ${ROLE_LABELS[role] || role}. Temporary password is ${data.temporaryPassword}.`,
+        description: `${response.data.email} created as ${ROLE_LABELS[role] || role}. Temporary password is ${response.data.temporaryPassword}.`,
       });
       onCreated();
       close();

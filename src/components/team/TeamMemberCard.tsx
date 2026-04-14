@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
 import { Phone, Cake, Heart, MapPin, Mail, CheckCircle, MessageCircle, KeyRound, Trash2 } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { parseLocalDate } from "@/lib/utils";
@@ -91,9 +90,6 @@ export function TeamMemberCard({
     e.stopPropagation();
     onDelete?.(member);
   };
-
-  // Get primary position (first one)
-  const primaryPosition = member.positions?.[0];
   return (
     <div onClick={handleCardClick} className="cursor-pointer">
       <Card className="group h-full transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 animate-fade-in border-0 shadow-lg bg-card">
@@ -199,39 +195,6 @@ export function TeamMemberCard({
             <h3 className="font-display text-xl font-bold text-foreground group-hover:text-primary transition-colors">
               {member.full_name || "Unnamed"}
             </h3>
-            
-            {/* Primary role badge */}
-            {primaryPosition && (
-              <div className="mt-2">
-                <Badge variant="secondary" className="text-sm font-medium px-3 py-1">
-                  {POSITION_LABELS[primaryPosition]}
-                </Badge>
-              </div>
-            )}
-            
-            {/* Additional positions count */}
-            {member.positions && member.positions.length > 1 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                +{member.positions.length - 1} more role{member.positions.length > 2 ? 's' : ''}
-              </p>
-            )}
-
-            {/* Ministry badges */}
-            {member.ministry_types && member.ministry_types.length > 0 && (
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {member.ministry_types.map((mt) => {
-                  const ministry = MINISTRY_TYPES.find(m => m.value === mt);
-                  return ministry ? (
-                    <Badge
-                      key={mt}
-                      className={`${ministry.color} text-white text-xs font-semibold px-3 py-1 rounded-full border-0`}
-                    >
-                      {ministry.label}
-                    </Badge>
-                  ) : null;
-                })}
-              </div>
-            )}
 
             {/* Divider */}
             <div className="my-4 h-px bg-border" />

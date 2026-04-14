@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 const REMOTE_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_URL = import.meta.env.DEV
+const USE_SUPABASE_DEV_PROXY = import.meta.env.DEV && import.meta.env.VITE_USE_SUPABASE_DEV_PROXY === "true";
+const SUPABASE_URL = USE_SUPABASE_DEV_PROXY
   ? `${window.location.origin}/supabase`
   : REMOTE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
