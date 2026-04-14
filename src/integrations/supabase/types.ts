@@ -2378,6 +2378,60 @@ export type Database = {
           },
         ]
       }
+      team_member_date_overrides: {
+        Row: {
+          created_at: string
+          id: string
+          member_name: string
+          ministry_types: string[] | null
+          position: string
+          position_slot: string
+          rotation_period_id: string
+          schedule_date: string
+          team_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_name: string
+          ministry_types?: string[] | null
+          position: string
+          position_slot: string
+          rotation_period_id: string
+          schedule_date: string
+          team_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_name?: string
+          ministry_types?: string[] | null
+          position?: string
+          position_slot?: string
+          rotation_period_id?: string
+          schedule_date?: string
+          team_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_member_date_overrides_rotation_period_id_fkey"
+            columns: ["rotation_period_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_member_date_overrides_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "worship_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_rotation_drafts: {
         Row: {
           assignments: Json
@@ -2385,6 +2439,8 @@ export type Database = {
           created_at: string
           id: string
           ministry_type: string
+          published_at: string | null
+          published_by: string | null
           rotation_period_id: string
           saved_by: string | null
           updated_at: string
@@ -2395,6 +2451,8 @@ export type Database = {
           created_at?: string
           id?: string
           ministry_type: string
+          published_at?: string | null
+          published_by?: string | null
           rotation_period_id: string
           saved_by?: string | null
           updated_at?: string
@@ -2405,6 +2463,8 @@ export type Database = {
           created_at?: string
           id?: string
           ministry_type?: string
+          published_at?: string | null
+          published_by?: string | null
           rotation_period_id?: string
           saved_by?: string | null
           updated_at?: string
@@ -2803,6 +2863,51 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_template_configs: {
+        Row: {
+          campus_id: string | null
+          created_at: string
+          id: string
+          ministry_type: string
+          team_id: string
+          template_config: Json
+          updated_at: string
+        }
+        Insert: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string
+          team_id: string
+          template_config?: Json
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string
+          team_id?: string
+          template_config?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_template_configs_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_template_configs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "worship_teams"
             referencedColumns: ["id"]
           },
         ]

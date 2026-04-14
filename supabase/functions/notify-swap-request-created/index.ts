@@ -46,11 +46,13 @@ serve(async (req: Request): Promise<Response> => {
       .select(`
         id,
         original_date,
+        swap_date,
         position,
         team_id,
         requester_id,
         target_user_id,
         message,
+        request_type,
         worship_teams!inner(name)
       `)
       .eq("id", swapRequestId)
@@ -80,10 +82,14 @@ serve(async (req: Request): Promise<Response> => {
     let notificationMessage = "";
 
     if (swapRequest.target_user_id) {
-      // Direct swap request - notify the target user
+      const isDirectCoverRequest =
+        swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
+
       userIdsToNotify = [swapRequest.target_user_id];
-      notificationTitle = "Swap Request";
-      notificationMessage = `${requesterName} wants to swap ${swapRequest.position} with you on ${dateStr}`;
+      notificationTitle = isDirectCoverRequest ? "Cover Request" : "Swap Request";
+      notificationMessage = isDirectCoverRequest
+        ? `${requesterName} asked you to cover ${swapRequest.position} on ${dateStr} for ${teamName}`
+        : `${requesterName} wants to swap ${swapRequest.position} with you on ${dateStr}`;
     } else {
       // Open swap request - notify team members with same position AND same campus as requester
       const isVocalistPosition = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"].includes(swapRequest.position);
@@ -223,9 +229,20 @@ serve(async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         title: notificationTitle,
         message: notificationMessage,
-        url: "/swap-requests",
-        tag: "swap-request-new",
+        url: "/swaps",
+        tag: `swap-request-${swapRequest.id}`,
         userIds: userIdsToNotify,
+        contextType: "swap-request",
+        contextId: swapRequest.id,
+        createdBy: swapRequest.requester_id,
+        metadata: {
+          swapRequestId: swapRequest.id,
+          requestType: swapRequest.request_type,
+          directRequest: Boolean(swapRequest.target_user_id),
+          teamId: swapRequest.team_id,
+          originalDate: swapRequest.original_date,
+          swapDate: swapRequest.swap_date,
+        },
       }),
     });
 

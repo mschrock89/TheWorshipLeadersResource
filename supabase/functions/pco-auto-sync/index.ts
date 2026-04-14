@@ -11,6 +11,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const MAX_ARRANGEMENT_SONGS_PER_SYNC = 20;
+const CRON_SECRET = Deno.env.get('CRON_SECRET') || Deno.env.get('PCO_AUTO_SYNC_SECRET');
 
 // Token refresh is now handled by refreshTokenIfNeededEncrypted from shared module
 
@@ -156,6 +157,20 @@ serve(async (req) => {
   console.log('=== PCO Auto-Sync Started ===');
 
   try {
+    const authHeader = req.headers.get('Authorization');
+    const expectedAuthHeaders = new Set<string>();
+
+    if (SUPABASE_SERVICE_ROLE_KEY) {
+      expectedAuthHeaders.add(`Bearer ${SUPABASE_SERVICE_ROLE_KEY}`);
+    }
+    if (CRON_SECRET) {
+      expectedAuthHeaders.add(`Bearer ${CRON_SECRET}`);
+    }
+
+    if (!authHeader || !expectedAuthHeaders.has(authHeader)) {
+      throw new Error('Unauthorized');
+    }
+
     // Parse request body for lookback_days (default 14)
     let lookbackDays = 14;
     try {

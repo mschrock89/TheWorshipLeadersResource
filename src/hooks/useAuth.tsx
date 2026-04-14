@@ -135,7 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await supabase
             .from("push_subscriptions")
             .delete()
-            .eq("user_id", user.id)
             .eq("endpoint", subscription.endpoint);
         }
       } catch (error) {

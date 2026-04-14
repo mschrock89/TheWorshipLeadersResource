@@ -5,6 +5,7 @@ import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
 import { useAllCampusMinistryPositions } from "@/hooks/useCampusMinistryPositions";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { TeamMemberCard } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
@@ -39,6 +40,7 @@ import {
 import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 const normalizePositionFilterValue = (value: string) =>
   value
@@ -90,6 +92,7 @@ export default function Team() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const search = searchParams.get("search") ?? "";
+  const sortBy = searchParams.get("sort") ?? "name";
   const positionFilter = searchParams.get("position") ?? "all";
   const campusFilter = searchParams.get("campus") ?? "all";
   const genderFilter = searchParams.get("gender") ?? "all";
@@ -156,17 +159,67 @@ export default function Team() {
 
   const filteredProfiles = useMemo(() => {
     const campusScopedPositionMap = new Map<string, TeamPosition[]>();
+    const campusScopedMinistryMap = new Map<string, string[]>();
+    const allCampusMinistryMap = new Map<string, string[]>();
+
+    const getProfileMinistries = (profile: Profile) =>
+      Array.isArray(profile.ministry_types) ? profile.ministry_types : [];
+
+    campusMinistryPositions.forEach(({ user_id, ministry_type }) => {
+      const existingMinistries = allCampusMinistryMap.get(user_id) || [];
+      const normalizedMinistry = normalizeWeekendWorshipMinistryType(ministry_type) || ministry_type;
+      if (normalizedMinistry && !existingMinistries.includes(normalizedMinistry)) {
+        allCampusMinistryMap.set(user_id, [...existingMinistries, normalizedMinistry]);
+      }
+    });
 
     if (campusFilter !== "all") {
-      campusMinistryPositions.forEach(({ user_id, campus_id, position }) => {
+      campusMinistryPositions.forEach(({ user_id, campus_id, position, ministry_type }) => {
         if (campus_id !== campusFilter) return;
 
         const existing = campusScopedPositionMap.get(user_id) || [];
         if (!existing.includes(position as TeamPosition)) {
           campusScopedPositionMap.set(user_id, [...existing, position as TeamPosition]);
         }
+
+        const existingMinistries = campusScopedMinistryMap.get(user_id) || [];
+        const normalizedMinistry = normalizeWeekendWorshipMinistryType(ministry_type) || ministry_type;
+        if (normalizedMinistry && !existingMinistries.includes(normalizedMinistry)) {
+          campusScopedMinistryMap.set(user_id, [...existingMinistries, normalizedMinistry]);
+        }
       });
     }
+
+    const getMinistrySortValue = (profile: Profile) => {
+      const profileMinistryTypes = (
+        campusFilter === "all"
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
+          : campusScopedMinistryMap.get(profile.id) || []
+      )
+        .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
+        .filter(Boolean);
+
+      if (profileMinistryTypes.length === 0) {
+        return "zzz";
+      }
+
+      const labels = Array.from(
+        new Set(profileMinistryTypes.map((ministryType) => getMinistryLabel(ministryType)))
+      ).sort((a, b) => a.localeCompare(b));
+
+      return labels[0]?.toLowerCase() || "zzz";
+    };
+
+    const getNormalizedProfileMinistries = (profile: Profile) =>
+      (
+        campusFilter === "all"
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
+          : campusScopedMinistryMap.get(profile.id) || []
+      )
+        .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
+        .filter(Boolean);
+
+    const selectedMinistrySort = sortBy.startsWith("ministry:") ? sortBy.replace("ministry:", "") : null;
 
     return profiles
       .filter((profile) => {
@@ -193,20 +246,53 @@ export default function Team() {
         // Position filter
         const matchesPosition = matchesPositionFilter(positionsForFilter, positionFilter);
 
+        const normalizedProfileMinistries = getNormalizedProfileMinistries(profile);
+        const matchesSelectedMinistry =
+          !selectedMinistrySort || normalizedProfileMinistries.includes(selectedMinistrySort);
+
         // Gender filter
         const matchesGender =
           genderFilter === "all" ||
           (genderFilter === "not_set" && !profile.gender) ||
           profile.gender === genderFilter;
 
-        return matchesSearch && matchesPosition && matchesCampus && matchesGender;
+        return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender;
       })
+      .map((profile) => ({
+        ...profile,
+        ministry_types: getNormalizedProfileMinistries(profile),
+      }))
       .sort((a, b) => {
         const nameA = (a.full_name || a.email || "").toLowerCase();
         const nameB = (b.full_name || b.email || "").toLowerCase();
+
+        if (selectedMinistrySort) {
+          const ministriesA = new Set(getNormalizedProfileMinistries(a));
+          const ministriesB = new Set(getNormalizedProfileMinistries(b));
+          const aMatchesSelected = ministriesA.has(selectedMinistrySort);
+          const bMatchesSelected = ministriesB.has(selectedMinistrySort);
+
+          if (aMatchesSelected !== bMatchesSelected) {
+            return aMatchesSelected ? -1 : 1;
+          }
+
+          const ministryCompare = getMinistrySortValue(a).localeCompare(getMinistrySortValue(b));
+          if (ministryCompare !== 0) {
+            return ministryCompare;
+          }
+        } else if (sortBy === "ministry") {
+          const ministryA = getMinistrySortValue(a);
+          const ministryB = getMinistrySortValue(b);
+          const ministryCompare = ministryA.localeCompare(ministryB);
+
+          if (ministryCompare !== 0) {
+            return ministryCompare;
+          }
+        }
+
         return nameA.localeCompare(nameB);
       });
-  }, [profiles, search, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions]);
+  }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions]);
 
   const handleEmailSent = () => {
     refetch();
@@ -226,6 +312,39 @@ export default function Team() {
     setDeleteMember(member);
   };
 
+  const getFunctionErrorMessage = async (
+    error: unknown,
+    response: { error: { message?: string } | null; data?: { error?: string; hint?: string } | null },
+    fallback: string,
+  ) => {
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const payload = await error.context.json();
+        const errorMessage =
+          typeof payload?.error === "string" && payload.error.trim()
+            ? payload.error.trim()
+            : fallback;
+        const hintMessage =
+          typeof payload?.hint === "string" && payload.hint.trim()
+            ? payload.hint.trim()
+            : "";
+
+        return hintMessage ? `${errorMessage} ${hintMessage}` : errorMessage;
+      } catch {
+        // Fall through to the response payload and generic error message.
+      }
+    }
+
+    const hint = response.data?.hint?.trim();
+    const message =
+      response.data?.error?.trim() ||
+      (error instanceof Error ? error.message.trim() : "") ||
+      response.error?.message?.trim() ||
+      fallback;
+
+    return hint ? `${message} ${hint}` : message;
+  };
+
   const confirmResetPassword = async () => {
     if (!resetPasswordMember) return;
     
@@ -238,11 +357,18 @@ export default function Team() {
       }
 
       const response = await supabase.functions.invoke('reset-user-password', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: { email: resetPasswordMember.email }
       });
 
       if (response.error) {
-        throw new Error(response.error.message || 'Failed to reset password');
+        throw new Error(await getFunctionErrorMessage(response.error, response, 'Failed to reset password'));
+      }
+
+      if (response.data?.error) {
+        throw new Error(await getFunctionErrorMessage(response.error, response, 'Failed to reset password'));
       }
 
       toast({ 
@@ -274,15 +400,18 @@ export default function Team() {
       }
 
       const response = await supabase.functions.invoke('delete-profile', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: { profileId: deleteMember.id }
       });
 
       if (response.error) {
-        throw new Error(response.error.message || 'Failed to delete profile');
+        throw new Error(await getFunctionErrorMessage(response.error, response, 'Failed to delete profile'));
       }
 
       if (response.data?.error) {
-        throw new Error(response.data.error);
+        throw new Error(await getFunctionErrorMessage(response.error, response, 'Failed to delete profile'));
       }
 
       toast({ 
@@ -305,8 +434,8 @@ export default function Team() {
     }
   };
 
-  const notYetEmailedCount = profiles.filter(p => !p.welcome_email_sent_at).length;
-  const alreadyEmailedCount = profiles.filter(p => p.welcome_email_sent_at).length;
+  const notYetEmailedCount = filteredProfiles.filter((profile) => !profile.welcome_email_sent_at).length;
+  const alreadyEmailedCount = filteredProfiles.filter((profile) => !!profile.welcome_email_sent_at).length;
 
   return (
     <RefreshableContainer queryKeys={[["profiles"]]}>
@@ -388,6 +517,8 @@ export default function Team() {
         <TeamFilters
           search={search}
           onSearchChange={(value) => updateDirectoryParam("search", value, "")}
+          sortBy={sortBy}
+          onSortByChange={(value) => updateDirectoryParam("sort", value, "name")}
           positionFilter={positionFilter}
           onPositionFilterChange={(value) => updateDirectoryParam("position", value)}
           campusFilter={campusFilter}
@@ -455,7 +586,7 @@ export default function Team() {
       <WelcomeEmailDialog
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
-        profiles={profiles}
+        profiles={filteredProfiles}
         mode={emailDialogMode}
         selectedMember={selectedMemberForEmail}
         onEmailSent={handleEmailSent}

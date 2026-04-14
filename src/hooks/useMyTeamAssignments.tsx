@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { parseLocalDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -32,6 +33,38 @@ export interface MyScheduledDate {
   ministryType: string;
   /** Whether this date came from an accepted swap (user accepted someone else's date) */
   isSwappedIn?: boolean;
+}
+
+const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
+
+function assignmentMatchesMinistryTypes(
+  memberMinistryTypes: string[],
+  scheduleMinistryType: string,
+): boolean {
+  if (memberMinistryTypes.length === 0 || !scheduleMinistryType) {
+    return true;
+  }
+
+  const normalizedScheduleMinistry =
+    normalizeWeekendWorshipMinistryType(scheduleMinistryType) || scheduleMinistryType;
+
+  if (
+    memberMinistryTypes.some((memberMinistry) => {
+      const normalizedMemberMinistry =
+        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+      return normalizedMemberMinistry === normalizedScheduleMinistry;
+    })
+  ) {
+    return true;
+  }
+
+  if (normalizedScheduleMinistry === "weekend") {
+    return memberMinistryTypes.some((memberMinistry) =>
+      WEEKEND_SUPPORTING_MINISTRIES.has(memberMinistry),
+    );
+  }
+
+  return false;
 }
 
 
@@ -273,6 +306,13 @@ export function useMyTeamAssignments() {
         const scheduleMinistryType = (entry as any).ministry_type || 'weekend';
         const scheduleCampusId = (entry as any).campus_id || null;
         const scheduleCampusName = (entry as any)?.campuses?.name || null;
+        const hasCampusSpecificSibling = (data || []).some((other: any) =>
+          other !== entry &&
+          other.schedule_date === entry.schedule_date &&
+          other.team_id === entry.team_id &&
+          (other.ministry_type || "weekend") === scheduleMinistryType &&
+          !!other.campus_id
+        );
         
         // Skip dates user has swapped out
         if (swappedOutDates.has(entry.schedule_date)) continue;
@@ -292,16 +332,17 @@ export function useMyTeamAssignments() {
               const hasCampusMembership = userCampuses.some((uc: any) => uc.campus_id === scheduleCampusId);
               if (!hasCampusMembership) return false;
             }
+          } else if (assignmentCampusId && hasCampusSpecificSibling) {
+            // Some schedules include a generic network row plus campus-specific rows for the same
+            // service. For personal calendar highlights, prefer the campus-specific row so a
+            // volunteer's dates don't light up for another campus's weekend.
+            return false;
           }
           
           // Get the user's ministry types for this assignment
           const userMinistryTypes = (a as any)?.ministryTypes || [];
-          
-          // If user has no ministry types set, show all dates for their team
-          if (userMinistryTypes.length === 0) return true;
-          
-          // Otherwise, only include if the schedule's ministry type matches
-          return userMinistryTypes.includes(scheduleMinistryType);
+
+          return assignmentMatchesMinistryTypes(userMinistryTypes, scheduleMinistryType);
         });
         
         // Skip this schedule entry if no matching assignments

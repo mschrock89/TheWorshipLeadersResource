@@ -136,6 +136,21 @@ function normalizeCsvHeader(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
 
+function normalizeParsedCsvRow(row: string[]): string[] {
+  if (row.length !== 1) return row;
+
+  const onlyCell = row[0] || "";
+  if (onlyCell.includes("\t")) {
+    return onlyCell.split("\t");
+  }
+
+  if (onlyCell.includes(";")) {
+    return onlyCell.split(";");
+  }
+
+  return row;
+}
+
 function formatDateParts(year: number, month: number, day: number): string | null {
   if (
     !Number.isInteger(year) ||
@@ -283,25 +298,46 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
       header: false,
       skipEmptyLines: true,
       complete: (results) => {
-        const rows: TeachingScheduleImportRow[] = [];
+        const rowMap = new Map<string, TeachingScheduleImportRow>();
         const errors: string[] = [];
-        const allRows = (results.data || []).filter((row) => row.some((cell) => cell?.trim()));
+        const allRows = (results.data || [])
+          .map((row) => normalizeParsedCsvRow(row))
+          .filter((row) => row.some((cell) => cell?.trim()));
+        const dateHeaderAliases = [
+          "weekend_date",
+          "date",
+          "service_date",
+          "weekend",
+          "teaching_date",
+          "week_of",
+          "weekend_of",
+        ];
         const headerIndex = allRows.findIndex((row) => {
           const normalizedCells = row.map((cell) => normalizeCsvHeader(cell || ""));
-          return normalizedCells.includes("weekend_date")
-            || normalizedCells.includes("date")
-            || normalizedCells.includes("service_date");
+          return normalizedCells.some((cell) => {
+            if (dateHeaderAliases.includes(cell)) return true;
+            return (
+              cell.includes("date") ||
+              cell.includes("week_of") ||
+              cell.includes("weekend_of") ||
+              cell.includes("weekend")
+            );
+          });
         });
 
         if (headerIndex === -1) {
-          reject(new Error("Could not find a header row with a date column."));
+          reject(
+            new Error(
+              "Could not find a header row with a date column. Supported date headers include date, weekend_date, service_date, weekend, teaching_date, week_of, and weekend_of."
+            )
+          );
           return;
         }
 
         const headerRow = allRows[headerIndex].map((cell) => normalizeCsvHeader(cell || ""));
         const dataRows = allRows.slice(headerIndex + 1);
         const baseYear = new Date().getFullYear();
-        const seenDates = new Set<string>();
+        let lastResolvedDate: string | null = null;
 
         for (const [index, rawValues] of dataRows.entries()) {
           const row = Object.fromEntries(
@@ -315,7 +351,8 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             row.weekend ||
             row.teaching_date ||
             "";
-          const normalizedDate = parseWeekendDateRange(dateValue, baseYear) || normalizeDateInput(dateValue);
+          const parsedDate = parseWeekendDateRange(dateValue, baseYear) || normalizeDateInput(dateValue);
+          const normalizedDate = parsedDate || lastResolvedDate;
 
           const referenceValue =
             row.book_and_chapter ||
@@ -350,6 +387,10 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             null;
           const announcerName =
             row.announcer ||
+            row.announcer_name ||
+            row.announcement ||
+            row.announcement_name ||
+            row.announcements ||
             row.annoucer ||
             row.announcement_host ||
             row.host ||
@@ -361,6 +402,7 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             errors.push(`Row ${index + headerIndex + 2}: missing or invalid date`);
             continue;
           }
+          lastResolvedDate = normalizedDate;
 
           if (!hasTeachingData && !hasAnnouncementData) {
             errors.push(`Row ${index + headerIndex + 2}: missing teaching and announcer data`);
@@ -373,20 +415,21 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
           }
 
           const strictWeekendDate = normalizeTeachingWeekDateForMinistry(normalizedDate, "weekend") || normalizedDate;
-          if (seenDates.has(strictWeekendDate)) {
-            errors.push(`Row ${index + headerIndex + 2}: duplicate weekend date ${strictWeekendDate}`);
-            continue;
-          }
-          seenDates.add(strictWeekendDate);
+          const existingRow = rowMap.get(strictWeekendDate);
+          const mergedThemes = Array.from(
+            new Set([...(existingRow?.themes_manual || []), ...themes])
+          );
 
-          rows.push({
+          rowMap.set(strictWeekendDate, {
             weekend_date: strictWeekendDate,
-            book: hasTeachingData ? book : null,
-            chapter: hasTeachingData ? parsedChapter : null,
-            chapter_reference: hasTeachingData ? (referenceValue.trim() || `${book} ${parsedChapter}`) : null,
-            themes_manual: themes,
-            psa_highlight: psaHighlight?.trim() || null,
-            announcer_name: announcerName?.trim() || null,
+            book: hasTeachingData ? (book as string) : (existingRow?.book || null),
+            chapter: hasTeachingData ? (parsedChapter as number) : (existingRow?.chapter || null),
+            chapter_reference: hasTeachingData
+              ? (referenceValue.trim() || `${book} ${parsedChapter}`)
+              : (existingRow?.chapter_reference || null),
+            themes_manual: mergedThemes,
+            psa_highlight: psaHighlight?.trim() || existingRow?.psa_highlight || null,
+            announcer_name: announcerName?.trim() || existingRow?.announcer_name || null,
           });
         }
 
@@ -395,7 +438,7 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
           return;
         }
 
-        resolve(rows);
+        resolve(Array.from(rowMap.values()).sort((a, b) => a.weekend_date.localeCompare(b.weekend_date)));
       },
       error: (error) => reject(error),
     });
@@ -1792,7 +1835,7 @@ export default function AdminTools() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Supported headers: `date`, `weekend_date`, `service_date`, `book`, `chapter`, `reference`, `passage`, `themes`, `psa_nonprofit_highlight`, `psa`, `announcer`. Duplicate weekend dates in the CSV are rejected.
+              Supported headers: `date`, `weekend_date`, `service_date`, `weekend`, `teaching_date`, `week_of`, `weekend_of`, `book`, `chapter`, `reference`, `passage`, `themes`, `psa_nonprofit_highlight`, `psa`, `announcer`, `announcer_name`, `announcement`, `announcement_name`. Duplicate weekend dates in the CSV are rejected.
             </p>
           </div>
 

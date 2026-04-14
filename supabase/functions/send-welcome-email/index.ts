@@ -47,9 +47,6 @@ interface EmailResult {
 // Email HTML template generator - ECC Brand Style
 function generateWelcomeEmailHtml(firstName: string, campusName: string | undefined, loginUrl: string, userEmail: string, isResend: boolean): string {
   // ECC Brand Colors: Blue #35B0E5, Dark Blue #27749D, Yellow #FFB838
-  // Logo hosted in public assets
-  const logoUrl = "https://worshipleadersresource.lovable.app/em-badge.png";
-  
   return `
 <!DOCTYPE html>
 <html style="background-color: #000000;">
@@ -63,10 +60,12 @@ function generateWelcomeEmailHtml(firstName: string, campusName: string | undefi
     <tr>
       <td align="center" bgcolor="#000000" style="background-color: #000000; padding: 0;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="width: 600px; max-width: 600px; background-color: #000000;">
-    <!-- Logo Header -->
+    <!-- Brand Header -->
     <tr>
       <td style="padding: 32px 48px 16px; text-align: center;">
-        <img src="${logoUrl}" alt="Experience Music" style="height: 60px; width: auto;" />
+        <div style="color: #ffffff; font-size: 34px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.1; margin: 0;">
+          Experience Music
+        </div>
       </td>
     </tr>
     

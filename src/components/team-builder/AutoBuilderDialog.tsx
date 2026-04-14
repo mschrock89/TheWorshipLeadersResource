@@ -29,6 +29,7 @@ interface AutoBuilderDialogProps {
   rotationPeriodId: string;
   campusName?: string | null;
   campusWorshipPastorIds?: string[];
+  allowMultiTeamUserIds?: string[];
   teams: WorshipTeam[];
   members: AvailableMember[];
   ministryType: string;
@@ -191,6 +192,7 @@ function findBestCandidateForTeam(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
   preferZeroConflicts = false,
@@ -199,7 +201,7 @@ function findBestCandidateForTeam(
   let bestConflictCount = Number.POSITIVE_INFINITY;
 
   for (const member of pool) {
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam)) {
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
 
@@ -225,6 +227,61 @@ function findBestCandidateForTeam(
   }
 
   return bestCandidate;
+}
+
+function memberHasBlackoutDates(
+  member: AvailableMember,
+  blackoutDatesByUser?: Record<string, string[]>,
+) {
+  return (blackoutDatesByUser?.[member.id] || []).length > 0;
+}
+
+function findBestTeamForMemberSlot(
+  member: AvailableMember,
+  targetTeams: WorshipTeam[],
+  targetSlot: string,
+  assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
+  slotFilledPerTeam: Map<string, Set<string>>,
+  blockedTeammateIdsByTeam?: Map<string, Set<string>>,
+  blackoutDatesByUser?: Record<string, string[]>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
+  allowMultiTeamUserIds?: Set<string>,
+) {
+  let bestTeam: WorshipTeam | undefined;
+  let bestConflictCount = Number.POSITIVE_INFINITY;
+
+  for (const team of targetTeams) {
+    const filledSlots = slotFilledPerTeam.get(team.id);
+    if (filledSlots?.has(targetSlot)) continue;
+    if (exceedsGuitarFamilyLimit(filledSlots || new Set<string>(), targetSlot)) continue;
+    if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
+    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
+      continue;
+    }
+
+    const conflictCount = getBlackoutConflictDatesForTeam(
+      member,
+      team.id,
+      blackoutDatesByUser,
+      teamScheduledDatesByTeam,
+    ).length;
+
+    if (conflictCount < bestConflictCount) {
+      bestTeam = team;
+      bestConflictCount = conflictCount;
+
+      if (conflictCount === 0) {
+        break;
+      }
+    }
+  }
+
+  if (!bestTeam) return null;
+
+  return {
+    team: bestTeam,
+    conflictCount: bestConflictCount,
+  };
 }
 
 function trackMemberAssignment(
@@ -310,7 +367,7 @@ function assignCampusPastorsToVocalSlots(
 }
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string) {
-  return ministryType === "weekend" || ministryType === "weekend_team";
+  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
 }
 
 function countsAsTrimesterRosterAssignment(
@@ -337,12 +394,30 @@ interface PreviewAssignment {
   blackout_conflict_dates?: string[];
 }
 
+interface PreviewGap {
+  teamId: string;
+  teamName: string;
+  slotId: string;
+  slotLabel: string;
+  candidateCount: number;
+  availableCount: number;
+  assignedElsewhereCount: number;
+  blackoutCount: number;
+  wrongGenderCount: number;
+  sampleCandidates: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
+}
+
 export function AutoBuilderDialog({
   open,
   onOpenChange,
   rotationPeriodId,
   campusName,
   campusWorshipPastorIds = [],
+  allowMultiTeamUserIds = [],
   teams,
   members,
   ministryType,
@@ -357,9 +432,9 @@ export function AutoBuilderDialog({
   const [isBuilding, setIsBuilding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewAssignment[] | null>(null);
-  const allowMultiTeamUserIds = useMemo(
-    () => new Set(campusWorshipPastorIds),
-    [campusWorshipPastorIds],
+  const multiTeamUserIds = useMemo(
+    () => new Set(allowMultiTeamUserIds),
+    [allowMultiTeamUserIds],
   );
 
   const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
@@ -474,13 +549,8 @@ export function AutoBuilderDialog({
   }, [availablePool, teams]);
 
   // Generate preview without saving
-  const handlePreview = () => {
-    setIsPreviewing(true);
-    
-    // Run the same algorithm locally to generate preview
-    const preview = generatePreview();
-    setPreviewData(preview);
-    setIsPreviewing(false);
+  const handlePreview = async () => {
+    await handleConfirm();
   };
 
   const generatePreview = (): PreviewAssignment[] => {
@@ -501,7 +571,7 @@ export function AutoBuilderDialog({
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
       if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) return false;
+      if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, multiTeamUserIds)) return false;
 
       filledSlots.add(targetSlot);
       trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
@@ -535,6 +605,24 @@ export function AutoBuilderDialog({
         previousApprovedBreakUserIdSet.has(member.id),
     );
     const otherMembers = availablePool.filter(m => previousRosterUserIds.has(m.id));
+    const membersWithBlackoutDates = availablePool.filter((member) =>
+      memberHasBlackoutDates(member, blackoutDatesByUser),
+    );
+    const membersWithoutBlackoutDates = availablePool.filter((member) =>
+      !memberHasBlackoutDates(member, blackoutDatesByUser),
+    );
+    const wasOffRosterWithBlackoutDates = wasOffRosterLastPeriod.filter((member) =>
+      membersWithBlackoutDates.some((candidate) => candidate.id === member.id),
+    );
+    const returningWithBlackoutDates = otherMembers.filter((member) =>
+      membersWithBlackoutDates.some((candidate) => candidate.id === member.id),
+    );
+    const wasOffRosterWithoutBlackoutDates = wasOffRosterLastPeriod.filter((member) =>
+      membersWithoutBlackoutDates.some((candidate) => candidate.id === member.id),
+    );
+    const returningWithoutBlackoutDates = otherMembers.filter((member) =>
+      membersWithoutBlackoutDates.some((candidate) => candidate.id === member.id),
+    );
 
     const isWeekendWorshipBuild =
       ministryType === "weekend" || ministryType === "weekend_team";
@@ -638,8 +726,10 @@ export function AutoBuilderDialog({
               targetSlot,
               userAssignedSlotsByTeam,
               blockedTeammateIdsByTeam,
+              multiTeamUserIds,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
+              true,
             );
 
             if (!candidate) {
@@ -649,8 +739,10 @@ export function AutoBuilderDialog({
                 targetSlot,
                 userAssignedSlotsByTeam,
                 blockedTeammateIdsByTeam,
+                multiTeamUserIds,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
+                true,
               );
             }
 
@@ -669,6 +761,104 @@ export function AutoBuilderDialog({
           }
         }
       };
+
+      const assignBlackoutPriorityVocalists = (
+        targetTeams: WorshipTeam[],
+        targetGender: "male" | "female",
+        mustServePool: AvailableMember[],
+        returningPool: AvailableMember[],
+      ) => {
+        const assignPool = (pool: AvailableMember[]) => {
+          const prioritizedMembers = [...pool]
+            .sort(() => Math.random() - 0.5)
+            .sort((a, b) => {
+              const aBest = Math.min(
+                ...targetTeams
+                  .filter((team) =>
+                    (visibleSlotsByTeam.get(team.id)?.vocalSlots || []).some(
+                      (slot) => slot.vocalGender === targetGender && getMemberAvailableSlots(a.positions).includes(slot.slot),
+                    ),
+                  )
+                  .map((team) =>
+                    getBlackoutConflictDatesForTeam(a, team.id, blackoutDatesByUser, teamScheduledDatesByTeam).length,
+                  ),
+              );
+              const bBest = Math.min(
+                ...targetTeams
+                  .filter((team) =>
+                    (visibleSlotsByTeam.get(team.id)?.vocalSlots || []).some(
+                      (slot) => slot.vocalGender === targetGender && getMemberAvailableSlots(b.positions).includes(slot.slot),
+                    ),
+                  )
+                  .map((team) =>
+                    getBlackoutConflictDatesForTeam(b, team.id, blackoutDatesByUser, teamScheduledDatesByTeam).length,
+                  ),
+              );
+              const aHasZero = Number.isFinite(aBest) && aBest === 0 ? 1 : 0;
+              const bHasZero = Number.isFinite(bBest) && bBest === 0 ? 1 : 0;
+              if (aHasZero !== bHasZero) return aHasZero - bHasZero;
+              return aBest - bBest;
+            });
+
+          for (const member of prioritizedMembers) {
+            const eligibleTeams = targetTeams.filter((team) =>
+              (visibleSlotsByTeam.get(team.id)?.vocalSlots || []).some(
+                (slot) => slot.vocalGender === targetGender && getMemberAvailableSlots(member.positions).includes(slot.slot),
+              ),
+            );
+            let bestOption:
+              | { team: WorshipTeam; conflictCount: number; slot: string }
+              | null = null;
+
+            for (const team of eligibleTeams) {
+              const candidateSlots = (visibleSlotsByTeam.get(team.id)?.vocalSlots || [])
+                .filter((slot) => slot.vocalGender === targetGender)
+                .map((slot) => slot.slot)
+                .filter((slot) => getMemberAvailableSlots(member.positions).includes(slot));
+
+              for (const slot of candidateSlots) {
+                const option = findBestTeamForMemberSlot(
+                  member,
+                  [team],
+                  slot,
+                  userAssignedSlotsByTeam,
+                  slotFilledPerTeam,
+                  blockedTeammateIdsByTeam,
+                  blackoutDatesByUser,
+                  teamScheduledDatesByTeam,
+                  multiTeamUserIds,
+                );
+
+                if (!option) continue;
+                if (!bestOption || option.conflictCount < bestOption.conflictCount) {
+                  bestOption = { ...option, slot };
+                  if (option.conflictCount === 0) break;
+                }
+              }
+
+              if (bestOption?.conflictCount === 0) break;
+            }
+
+            if (bestOption) {
+              assignMemberToSlot(member, bestOption.team, bestOption.slot);
+            }
+          }
+        };
+
+        assignPool(mustServePool);
+        assignPool(returningPool);
+      };
+
+      assignBlackoutPriorityVocalists(teams, "male", maleMustServeVocalists.filter((member) =>
+        memberHasBlackoutDates(member, blackoutDatesByUser),
+      ), maleReturningVocalists.filter((member) =>
+        memberHasBlackoutDates(member, blackoutDatesByUser),
+      ));
+      assignBlackoutPriorityVocalists(teams, "female", femaleMustServeVocalists.filter((member) =>
+        memberHasBlackoutDates(member, blackoutDatesByUser),
+      ), femaleReturningVocalists.filter((member) =>
+        memberHasBlackoutDates(member, blackoutDatesByUser),
+      ));
 
       assignGenderedVocalists(teams, "male", maleMustServeVocalists, maleReturningVocalists);
       assignGenderedVocalists(teams, "female", femaleMustServeVocalists, femaleReturningVocalists);
@@ -689,8 +879,8 @@ export function AutoBuilderDialog({
       const getCandidates = (pool: AvailableMember[]) => 
         pool.filter(m => getMemberAvailableSlots(m.positions).includes(targetSlot));
 
-      const shuffleMustServe = [...getCandidates(wasOffRosterLastPeriod)].sort(() => Math.random() - 0.5);
-      const shuffleCanServe = [...getCandidates(otherMembers)].sort(() => Math.random() - 0.5);
+      const shuffleMustServe = [...getCandidates(wasOffRosterWithoutBlackoutDates)].sort(() => Math.random() - 0.5);
+      const shuffleCanServe = [...getCandidates(returningWithoutBlackoutDates)].sort(() => Math.random() - 0.5);
 
       const sortByTeamVariety = (pool: AvailableMember[], team: WorshipTeam) => {
         return [...pool].sort((a, b) => {
@@ -701,6 +891,62 @@ export function AutoBuilderDialog({
           return aWasOnSameTeam - bWasOnSameTeam;
         });
       };
+
+      const assignBlackoutPriorityPool = (pool: AvailableMember[]) => {
+        const prioritizedMembers = [...getCandidates(pool)]
+          .sort(() => Math.random() - 0.5)
+          .sort((a, b) => {
+            const aBest = findBestTeamForMemberSlot(
+              a,
+              teams,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              slotFilledPerTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
+              multiTeamUserIds,
+            );
+            const bBest = findBestTeamForMemberSlot(
+              b,
+              teams,
+              targetSlot,
+              userAssignedSlotsByTeam,
+              slotFilledPerTeam,
+              blockedTeammateIdsByTeam,
+              blackoutDatesByUser,
+              teamScheduledDatesByTeam,
+              multiTeamUserIds,
+            );
+            const aScore = aBest?.conflictCount ?? Number.POSITIVE_INFINITY;
+            const bScore = bBest?.conflictCount ?? Number.POSITIVE_INFINITY;
+            const aHasZero = aScore === 0 ? 1 : 0;
+            const bHasZero = bScore === 0 ? 1 : 0;
+            if (aHasZero !== bHasZero) return aHasZero - bHasZero;
+            return aScore - bScore;
+          });
+
+        for (const member of prioritizedMembers) {
+          const bestOption = findBestTeamForMemberSlot(
+            member,
+            teams,
+            targetSlot,
+            userAssignedSlotsByTeam,
+            slotFilledPerTeam,
+            blockedTeammateIdsByTeam,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+            multiTeamUserIds,
+          );
+
+          if (bestOption) {
+            assignMemberToSlot(member, bestOption.team, targetSlot);
+          }
+        }
+      };
+
+      assignBlackoutPriorityPool(wasOffRosterWithBlackoutDates);
+      assignBlackoutPriorityPool(returningWithBlackoutDates);
 
       for (const team of teams) {
         if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
@@ -715,6 +961,7 @@ export function AutoBuilderDialog({
           targetSlot,
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
           true,
@@ -728,40 +975,14 @@ export function AutoBuilderDialog({
             targetSlot,
             userAssignedSlotsByTeam,
             blockedTeammateIdsByTeam,
+            multiTeamUserIds,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
             true,
           );
         }
 
-        if (!assigned) {
-          assigned = findBestCandidateForTeam(
-            shuffleMustServe,
-            team,
-            targetSlot,
-            userAssignedSlotsByTeam,
-            blockedTeammateIdsByTeam,
-            blackoutDatesByUser,
-            teamScheduledDatesByTeam,
-          );
-        }
-
-        if (!assigned) {
-          const sortedCanServe = sortByTeamVariety(shuffleCanServe, team);
-          assigned = findBestCandidateForTeam(
-            sortedCanServe,
-            team,
-            targetSlot,
-            userAssignedSlotsByTeam,
-            blockedTeammateIdsByTeam,
-            blackoutDatesByUser,
-            teamScheduledDatesByTeam,
-          );
-        }
-
-        if (assigned) {
-          assignMemberToSlot(assigned, team, targetSlot);
-
+        if (assigned && assignMemberToSlot(assigned, team, targetSlot)) {
           const mustServeIdx = shuffleMustServe.indexOf(assigned);
           if (mustServeIdx > -1) shuffleMustServe.splice(mustServeIdx, 1);
           const canServeIdx = shuffleCanServe.indexOf(assigned);
@@ -791,8 +1012,10 @@ export function AutoBuilderDialog({
           "ag_2",
           userAssignedSlotsByTeam,
           blockedTeammateIdsByTeam,
+          multiTeamUserIds,
           blackoutDatesByUser,
           teamScheduledDatesByTeam,
+          true,
         );
 
         if (candidate) {
@@ -811,6 +1034,7 @@ export function AutoBuilderDialog({
         rotationPeriodId,
         campusName,
         campusWorshipPastorIds,
+        allowMultiTeamUserIds,
         teams,
         members,
         ministryType,
@@ -862,19 +1086,119 @@ export function AutoBuilderDialog({
     return (previewData || []).filter((assignment) => (assignment.blackout_conflict_dates?.length || 0) > 0);
   }, [previewData]);
 
+  const unfilledSlotPreview = useMemo(() => {
+    if (!previewData) return [];
+
+    const assignmentsByTeamSlot = new Set(
+      previewData.map((assignment) => `${assignment.team_id}:${assignment.position_slot}`),
+    );
+    const assignedTeamsByUser = new Map<string, Set<string>>();
+
+    previewData.forEach((assignment) => {
+      if (!assignedTeamsByUser.has(assignment.user_id)) {
+        assignedTeamsByUser.set(assignment.user_id, new Set());
+      }
+      assignedTeamsByUser.get(assignment.user_id)!.add(assignment.team_name);
+    });
+
+    const gaps: PreviewGap[] = [];
+
+    teams.forEach((team) => {
+      const visibleTeamSlots = visibleSlotsByTeam.get(team.id);
+      if (!visibleTeamSlots) return;
+
+      const slots = [
+        ...visibleTeamSlots.vocalSlots,
+        ...POSITION_SLOTS.filter((slot) => slot.category === "Speaker"),
+        ...visibleTeamSlots.bandSlots,
+        ...visibleTeamSlots.productionSlots,
+        ...visibleTeamSlots.videoSlots,
+      ].filter((slot) => allowedCategories.includes(slot.category));
+
+      slots.forEach((slotConfig) => {
+        if (assignmentsByTeamSlot.has(`${team.id}:${slotConfig.slot}`)) return;
+
+        const requiredGender = getRequiredGenderForSlot(team.template_config, slotConfig.slot);
+        const positionCandidates = availablePool.filter((member) =>
+          getMemberAvailableSlots(member.positions).includes(slotConfig.slot),
+        );
+
+        const candidateBreakdown = positionCandidates.map((member) => {
+          const assignedTeams = [...(assignedTeamsByUser.get(member.id) || new Set<string>())]
+            .filter((assignedTeamName) => assignedTeamName !== team.name);
+          const assignedElsewhere = assignedTeams.length > 0 && !multiTeamUserIds.has(member.id);
+          const hasWrongGender = !memberMatchesSlotGender(member, requiredGender);
+          const blackoutConflicts = getBlackoutConflictDatesForTeam(
+            member,
+            team.id,
+            blackoutDatesByUser,
+            teamScheduledDatesByTeam,
+          );
+
+          let status = "available";
+          if (hasWrongGender) {
+            status = "wrong gender";
+          } else if (assignedElsewhere) {
+            status = `assigned to ${assignedTeams[0]}`;
+          } else if (blackoutConflicts.length > 0) {
+            status = `blackout ${blackoutConflicts[0]}`;
+          }
+
+          return {
+            id: member.id,
+            name: member.full_name,
+            status,
+            isAvailable: status === "available",
+            assignedElsewhere,
+            blackoutConflict: blackoutConflicts.length > 0,
+            wrongGender: hasWrongGender,
+          };
+        });
+
+        gaps.push({
+          teamId: team.id,
+          teamName: team.name,
+          slotId: slotConfig.slot,
+          slotLabel: slotConfig.label,
+          candidateCount: candidateBreakdown.length,
+          availableCount: candidateBreakdown.filter((candidate) => candidate.isAvailable).length,
+          assignedElsewhereCount: candidateBreakdown.filter((candidate) => candidate.assignedElsewhere).length,
+          blackoutCount: candidateBreakdown.filter((candidate) => candidate.blackoutConflict).length,
+          wrongGenderCount: candidateBreakdown.filter((candidate) => candidate.wrongGender).length,
+          sampleCandidates: candidateBreakdown
+            .sort((a, b) => {
+              if (a.isAvailable && !b.isAvailable) return -1;
+              if (!a.isAvailable && b.isAvailable) return 1;
+              return a.name.localeCompare(b.name);
+            })
+            .slice(0, 4)
+            .map(({ id, name, status }) => ({ id, name, status })),
+        });
+      });
+    });
+
+    return gaps;
+  }, [
+    previewData,
+    teams,
+    visibleSlotsByTeam,
+    allowedCategories,
+    availablePool,
+    blackoutDatesByUser,
+    teamScheduledDatesByTeam,
+    multiTeamUserIds,
+  ]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg h-[85vh] max-h-[85vh] overflow-hidden grid grid-rows-[auto_minmax(0,1fr)_auto]">
         <DialogHeader className="min-h-0">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5 text-primary" />
-            {previewData ? "Preview Build" : `Auto-Build ${ministryType !== "all" ? ministryLabel : ""} Teams`}
+            {`Auto-Build ${ministryType !== "all" ? ministryLabel : ""} Teams`}
           </DialogTitle>
           <DialogDescription>
-            {previewData 
-              ? `Review ${previewData.length} proposed assignments across ${teams.length} teams`
-              : `Automatically distribute members across ${teams.length} teams`
-            }
+            Automatically place members into team slots across {teams.length} teams and flag any blackout conflicts inline.
           </DialogDescription>
         </DialogHeader>
 
@@ -905,6 +1229,7 @@ export function AutoBuilderDialog({
                 <li>Fill hardest positions first (drums, bass, keys)</li>
                 <li>Prioritize members who were off the previous trimester roster</li>
                 <li>Rotate members to different teams for variety</li>
+                <li>Place assignments directly into team slots</li>
                 <li>Filter by {ministryType === "all" ? "all ministries" : ministryLabel}</li>
               </ul>
             </div>
@@ -952,6 +1277,65 @@ export function AutoBuilderDialog({
                     {blackoutConflictPreview.length} assignment{blackoutConflictPreview.length === 1 ? "" : "s"} still conflict with blackout dates. Review these before confirming.
                   </AlertDescription>
                 </Alert>
+              )}
+              {unfilledSlotPreview.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="px-3 py-2 font-medium text-sm flex items-center justify-between bg-amber-50 text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Unfilled Slots
+                    </span>
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 dark:text-amber-200">
+                      {unfilledSlotPreview.length}
+                    </Badge>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {unfilledSlotPreview.map((gap) => (
+                      <div key={`${gap.teamId}:${gap.slotId}`} className="px-3 py-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{gap.teamName} · {gap.slotLabel}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {gap.availableCount} clean option{gap.availableCount === 1 ? "" : "s"} out of {gap.candidateCount} qualified member{gap.candidateCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {gap.assignedElsewhereCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.assignedElsewhereCount} already placed
+                              </Badge>
+                            )}
+                            {gap.blackoutCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.blackoutCount} blackout
+                              </Badge>
+                            )}
+                            {gap.wrongGenderCount > 0 && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {gap.wrongGenderCount} wrong gender
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {gap.sampleCandidates.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {gap.sampleCandidates.map((candidate) => (
+                              <Badge
+                                key={candidate.id}
+                                variant={candidate.status === "available" ? "secondary" : "outline"}
+                                className="text-[10px]"
+                              >
+                                {candidate.name.split(" ")[0]}: {candidate.status}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No one in the current pool can cover this slot.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               {teams.map(team => {
                 const teamAssignments = previewByTeam?.get(team.id) || [];
@@ -1065,16 +1449,16 @@ export function AutoBuilderDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={handlePreview} disabled={isPreviewing || availablePool.length === 0}>
-                {isPreviewing ? (
+              <Button onClick={handlePreview} disabled={isBuilding || availablePool.length === 0}>
+                {isBuilding ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
+                    Building...
                   </>
                 ) : (
                   <>
                     <Wand2 className="mr-2 h-4 w-4" />
-                    Preview Build
+                    Build Teams
                   </>
                 )}
               </Button>

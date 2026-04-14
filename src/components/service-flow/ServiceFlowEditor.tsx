@@ -36,6 +36,7 @@ import {
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { ServiceFlowItem } from "./ServiceFlowItem";
+import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewData } from "./ServiceFlow";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ interface ServiceFlowEditorProps {
   initialMinistryType?: string;
   initialDraftSetId?: string;
   initialCustomServiceId?: string;
+  mode?: "editor" | "view";
 }
 
 export function ServiceFlowEditor({ 
@@ -55,7 +57,8 @@ export function ServiceFlowEditor({
   initialCampusId, 
   initialMinistryType,
   initialDraftSetId,
-  initialCustomServiceId
+  initialCustomServiceId,
+  mode = "editor",
 }: ServiceFlowEditorProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -628,51 +631,112 @@ export function ServiceFlowEditor({
 
   const isLoading = campusesLoading || flowLoading || itemsLoading || isAutoGenerating;
 
-  const renderPrintSheet = (copyKey: string) => (
-    <div key={copyKey} className="service-flow-print-sheet">
-      <div className="service-flow-copy-header">
-        <h2 className="service-flow-copy-title">Service Flow</h2>
-        <p className="service-flow-copy-date">{printDateRange}</p>
-      </div>
+  const servicePreview = useMemo<ServiceFlowPreviewData>(() => {
+    const campusName = campuses?.find((campus) => campus.id === effectiveCampusId)?.name;
+    const ministryLabel =
+      availableMinistryOptions.find((option) => option.value === ministryType)?.label ||
+      MINISTRY_TYPES.find((option) => option.value === ministryType)?.label ||
+      "Service";
 
-      {teachingWeek ? (
-        <div className="service-flow-copy-teaching rounded-lg border border-border bg-muted/20 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              Teaching
-            </span>
-            <span className="text-xs font-medium">
-              {formatTeachingReference(teachingWeek)}
-            </span>
-          </div>
-          {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              {teachingWeek.themes_manual.join(", ")}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+    const sections: ServiceFlowPreviewData["sections"] = [];
+    let currentSection: ServiceFlowPreviewData["sections"][number] | null = null;
 
-      <div className="service-flow-print-items space-y-2">
-        {localItems.map((item) => (
-          <div key={`${copyKey}-${item.id}`} className="transition-transform">
-            <ServiceFlowItem
-              item={item}
-              onUpdate={() => undefined}
-              onDelete={() => undefined}
-            />
-          </div>
-        ))}
-      </div>
+    const ensureSection = () => {
+      if (!currentSection) {
+        currentSection = {
+          id: "section-overview",
+          title: "Service",
+          items: [],
+        };
+        sections.push(currentSection);
+      }
+      return currentSection;
+    };
 
-      <div className="service-flow-print-total flex items-center justify-end pt-4 border-t">
-        <div className="text-sm font-medium">
-          <span className="text-muted-foreground">Total: </span>
-          <span>{formatTotalDuration(totalDuration)}</span>
-        </div>
-      </div>
-    </div>
-  );
+    const inferItemType = (item: ServiceFlowItemType): "song" | "video" | "announcement" | "message" | "other" => {
+      if (item.item_type === "song") return "song";
+
+      const title = item.title.toLowerCase();
+      if (title.includes("video")) return "video";
+      if (title.includes("announcement") || title.includes("welcome") || title.includes("host")) return "announcement";
+      if (title.includes("message") || title.includes("sermon") || title.includes("teaching")) return "message";
+      return "other";
+    };
+
+    const formatItemDuration = (seconds: number | null) => {
+      if (!seconds || seconds <= 0) return "TBD";
+      const minutes = Math.floor(seconds / 60);
+      const remainder = seconds % 60;
+      return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+    };
+
+    const formatLeader = (item: ServiceFlowItemType) => {
+      if (item.vocalists && item.vocalists.length > 0) {
+        return item.vocalists
+          .map((vocalist) => vocalist.full_name || "")
+          .filter(Boolean)
+          .join(", ");
+      }
+      return item.vocalist?.full_name || undefined;
+    };
+
+    const resolvePreviewTitle = (
+      item: ServiceFlowItemType,
+      activeSection: ServiceFlowPreviewData["sections"][number] | null
+    ) => {
+      const rawTitle = item.song?.title || item.title;
+      const normalizedTitle = rawTitle.trim().toLowerCase();
+      const normalizedSectionTitle = activeSection?.title.trim().toLowerCase() || "";
+
+      const isAnnouncementsPlaceholder =
+        normalizedTitle === "name place holder" &&
+        normalizedSectionTitle.includes("announcement");
+
+      if (isAnnouncementsPlaceholder && teachingWeek?.announcer_name?.trim()) {
+        return teachingWeek.announcer_name.trim();
+      }
+
+      return rawTitle;
+    };
+
+    localItems.forEach((item) => {
+      if (item.item_type === "header") {
+        currentSection = {
+          id: item.id,
+          title: item.title,
+          items: [],
+        };
+        sections.push(currentSection);
+        return;
+      }
+
+      ensureSection().items.push({
+        id: item.id,
+        title: resolvePreviewTitle(item, currentSection),
+        type: inferItemType(item),
+        duration: formatItemDuration(item.duration_seconds),
+        bpm: item.song?.bpm || undefined,
+        key: item.song_key || undefined,
+        leader: formatLeader(item),
+      });
+    });
+
+    return {
+      title: [campusName, ministryLabel].filter(Boolean).join(" ") || "Service Flow",
+      date: serviceDateStr,
+      totalTime: formatTotalDuration(totalDuration),
+      sections: sections.filter((section) => section.items.length > 0),
+    };
+  }, [
+    campuses,
+    effectiveCampusId,
+    availableMinistryOptions,
+    ministryType,
+    localItems,
+    serviceDateStr,
+    teachingWeek?.announcer_name,
+    totalDuration,
+  ]);
 
   return (
     <div className="service-flow-editor space-y-4">
@@ -756,63 +820,88 @@ export function ServiceFlowEditor({
       ) : null}
 
       {/* Items List */}
-      <div className="service-flow-screen-layout space-y-2 min-h-[200px] print:hidden">
+      <div className="service-flow-screen-layout print:hidden">
         {isLoading ? (
-          <>
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </>
-        ) : localItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-            <p>No items in this service flow yet.</p>
-            <p className="text-sm">Click the + button to add items.</p>
-          </div>
-        ) : (
-          localItems.map((item, index) => (
-            <div
-              key={item.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, item)}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragEnd={handleDragEnd}
-              className={cn(
-                "transition-transform",
-                draggedItem?.id === item.id && "opacity-50"
-              )}
-            >
-              <ServiceFlowItem
-                item={item}
-                onUpdate={(updates) => handleUpdateItem(item.id, updates)}
-                onDelete={() => handleDeleteItem(item.id)}
-                isDragging={draggedItem?.id === item.id}
-              />
+          mode === "view" ? (
+            <div className="space-y-3">
+              <Skeleton className="h-32 w-full rounded-[28px]" />
+              <Skeleton className="h-24 w-full rounded-[24px]" />
+              <Skeleton className="h-24 w-full rounded-[24px]" />
             </div>
-          ))
+          ) : (
+            <>
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </>
+          )
+        ) : localItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border bg-card/40 py-16 text-center text-muted-foreground">
+            <p>No items in this service flow yet.</p>
+            <p className="text-sm">
+              {mode === "view" ? "Switch to edit mode to add items." : "Click the + button to add items."}
+            </p>
+          </div>
+        ) : mode === "view" ? (
+          <ServiceFlowPreview service={servicePreview} />
+        ) : (
+          <div className="space-y-2 min-h-[200px]">
+            {localItems.map((item, index) => (
+              <div
+                key={item.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                className={cn(
+                  "transition-transform",
+                  draggedItem?.id === item.id && "opacity-50"
+                )}
+              >
+                <ServiceFlowItem
+                  item={item}
+                  onUpdate={(updates) => handleUpdateItem(item.id, updates)}
+                  onDelete={() => handleDeleteItem(item.id)}
+                  isDragging={draggedItem?.id === item.id}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="service-flow-screen-layout service-flow-total-footer flex items-center justify-between pt-4 border-t print:hidden">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsAddDialogOpen(true)}
-          disabled={!effectiveCampusId}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Add Item
-        </Button>
-        <div className="text-sm font-medium">
-          <span className="text-muted-foreground">Total: </span>
-          <span>{formatTotalDuration(totalDuration)}</span>
+      {mode === "editor" ? (
+        <div className="service-flow-screen-layout service-flow-total-footer flex items-center justify-between pt-4 border-t print:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAddDialogOpen(true)}
+            disabled={!effectiveCampusId}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Item
+          </Button>
+          <div className="text-sm font-medium">
+            <span className="text-muted-foreground">Total: </span>
+            <span>{formatTotalDuration(totalDuration)}</span>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {!isLoading && localItems.length > 0 ? (
-        <div className="service-flow-print-dual hidden print:grid">
-          {renderPrintSheet("left")}
-          {renderPrintSheet("right")}
+        <div className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.08in]">
+          <ServiceFlowPreview
+            service={servicePreview}
+            compactMode
+            showProgressBar={false}
+            printFitHalfSheet
+          />
+          <ServiceFlowPreview
+            service={servicePreview}
+            compactMode
+            showProgressBar={false}
+            printFitHalfSheet
+          />
         </div>
       ) : null}
 

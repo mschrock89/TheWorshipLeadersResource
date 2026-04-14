@@ -12,8 +12,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Users, AlertTriangle, Clock } from "lucide-react";
-import { useIsApprover, useSubmitForApproval } from "@/hooks/useSetlistApprovals";
+import { Send, Loader2, Users, AlertTriangle, Clock, Undo2 } from "lucide-react";
+import { useIsApprover, useSubmitForApproval, useWithdrawSetlistSubmission } from "@/hooks/useSetlistApprovals";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -44,6 +44,7 @@ export function PublishSetlistDialog({
   const [checkingExisting, setCheckingExisting] = useState(false);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
   const submitForApproval = useSubmitForApproval();
+  const withdrawSubmission = useWithdrawSetlistSubmission();
   const { data: isApprover = false } = useIsApprover();
 
   // Get scheduled team for this date (campus-specific)
@@ -127,6 +128,14 @@ export function PublishSetlistDialog({
     onPublished?.();
   };
 
+  const handleUndoSubmission = async () => {
+    if (!draftSetId) return;
+
+    await withdrawSubmission.mutateAsync(draftSetId);
+    setIsPendingApproval(false);
+    onPublished?.();
+  };
+
   if (!draftSetId || songs.length === 0) {
     return (
       <Button
@@ -144,15 +153,36 @@ export function PublishSetlistDialog({
   // Show pending state if already submitted for approval
   if (isPendingApproval) {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        disabled
-        className="gap-2 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-      >
-        <Clock className="h-4 w-4" />
-        Pending Approval
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          className="gap-2 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+        >
+          <Clock className="h-4 w-4" />
+          Pending Approval
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleUndoSubmission}
+          disabled={withdrawSubmission.isPending}
+          className="gap-2"
+        >
+          {withdrawSubmission.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Undoing...
+            </>
+          ) : (
+            <>
+              <Undo2 className="h-4 w-4" />
+              Undo Submission
+            </>
+          )}
+        </Button>
+      </div>
     );
   }
 

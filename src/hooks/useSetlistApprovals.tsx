@@ -397,6 +397,49 @@ export function useSubmitForApproval() {
   });
 }
 
+// Withdraw a pending approval submission and return the set to draft state
+export function useWithdrawSetlistSubmission() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (draftSetId: string) => {
+      if (!user?.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("draft_sets")
+        .update({
+          status: "draft",
+          submitted_for_approval_at: null,
+        })
+        .eq("id", draftSetId)
+        .eq("status", "pending_approval");
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
+      queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
+      queryClient.invalidateQueries({ queryKey: ["approver-published-setlists"] });
+
+      toast({
+        title: "Submission undone",
+        description: "The set is back in draft mode and can be edited again.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error undoing submission",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 // Approve a setlist
 export function useApproveSetlist() {
   const queryClient = useQueryClient();

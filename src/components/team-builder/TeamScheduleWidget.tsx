@@ -24,6 +24,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -31,6 +41,7 @@ import {
   useUpdateScheduleTeam,
   useCreateScheduleEntry,
   useDeleteScheduleEntry,
+  useClearScheduleEntries,
   usePublishScheduleNetworkWide,
 } from "@/hooks/useTeamScheduleEditor";
 import { useWorshipTeams } from "@/hooks/useTeamSchedule";
@@ -57,8 +68,21 @@ interface DisplayScheduleEntry {
   isVirtual: boolean;
 }
 
+const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
+const ENCOUNTER_EON_MINISTRY_TYPES = ["encounter", "eon"] as const;
+
+function normalizeScheduleMinistryFilter(ministryFilter: string | null) {
+  if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
+    return "weekend";
+  }
+
+  return ministryFilter;
+}
+
 const MINISTRY_COLORS: Record<string, string> = {
   weekend: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  video: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
   encounter: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   eon: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   student: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -74,14 +98,18 @@ export function TeamScheduleWidget({
 }: TeamScheduleWidgetProps) {
   const { isAdmin } = useAuth();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [newTeamId, setNewTeamId] = useState("");
   const [newMinistryType, setNewMinistryType] = useState("weekend");
+  const [scheduleMinistryFilter, setScheduleMinistryFilter] = useState(() =>
+    normalizeScheduleMinistryFilter(ministryFilter),
+  );
 
   const { data: scheduleEntries = [], isLoading } = useTeamScheduleForCampus(
     campusId,
     rotationPeriodName,
-    ministryFilter
+    scheduleMinistryFilter
   );
   const { data: campuses = [] } = useCampuses();
   const { data: teams = [] } = useWorshipTeams();
@@ -90,10 +118,29 @@ export function TeamScheduleWidget({
     [campusId, campuses],
   );
 
+  const activeScheduleMinistry = useMemo(() => {
+    return normalizeScheduleMinistryFilter(scheduleMinistryFilter);
+  }, [scheduleMinistryFilter]);
+
+  useEffect(() => {
+    setScheduleMinistryFilter(normalizeScheduleMinistryFilter(ministryFilter));
+  }, [ministryFilter]);
+
+  useEffect(() => {
+    setNewMinistryType(activeScheduleMinistry);
+  }, [activeScheduleMinistry]);
+
   const preloadableDates = useMemo(() => {
     if (!selectedCampus || !rotationPeriodStartDate || !rotationPeriodEndDate) {
       return [];
     }
+
+    const preloadWeekday =
+      activeScheduleMinistry === "encounter" ||
+      activeScheduleMinistry === "eon" ||
+      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
+        ? 3
+        : null;
 
     return eachDayOfInterval({
       start: parseISO(rotationPeriodStartDate),
@@ -101,20 +148,15 @@ export function TeamScheduleWidget({
     })
       .filter((date) => {
         const dayOfWeek = getDay(date);
+        if (preloadWeekday !== null) {
+          return dayOfWeek === preloadWeekday;
+        }
         if (dayOfWeek === 6) return selectedCampus.has_saturday_service;
         if (dayOfWeek === 0) return selectedCampus.has_sunday_service;
         return false;
       })
       .map((date) => format(date, "yyyy-MM-dd"));
-  }, [rotationPeriodEndDate, rotationPeriodStartDate, selectedCampus]);
-
-  const activeScheduleMinistry = useMemo(() => {
-    if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
-      return "weekend";
-    }
-
-    return ministryFilter;
-  }, [ministryFilter]);
+  }, [activeScheduleMinistry, rotationPeriodEndDate, rotationPeriodStartDate, selectedCampus]);
 
   // Filter out Saturday/Sunday entries for campuses that don't have service on those days
   // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
@@ -134,7 +176,15 @@ export function TeamScheduleWidget({
   const availableDates = useMemo(() => {
     const usedDates = new Set(
       filteredEntries
-        .filter((entry) => (entry.ministry_type || "weekend") === newMinistryType)
+        .filter((entry) => {
+          const entryMinistryType = entry.ministry_type || "weekend";
+          if (newMinistryType === ENCOUNTER_EON_COMBINED) {
+            return ENCOUNTER_EON_MINISTRY_TYPES.includes(
+              entryMinistryType as (typeof ENCOUNTER_EON_MINISTRY_TYPES)[number],
+            );
+          }
+          return entryMinistryType === newMinistryType;
+        })
         .map((entry) => entry.schedule_date),
     );
 
@@ -189,8 +239,20 @@ export function TeamScheduleWidget({
   const updateTeam = useUpdateScheduleTeam();
   const createEntry = useCreateScheduleEntry();
   const deleteEntry = useDeleteScheduleEntry();
+  const clearScheduleEntries = useClearScheduleEntries();
   const publishNetworkWide = usePublishScheduleNetworkWide();
   const showPublishNetworkWide = canPublishNetworkWide && isAdmin;
+  const clearableEntryIds = useMemo(
+    () =>
+      filteredEntries
+        .filter(
+          (entry) =>
+            entry.campus_id !== null &&
+            (entry.ministry_type || "weekend") === activeScheduleMinistry,
+        )
+        .map((entry) => entry.id),
+    [activeScheduleMinistry, filteredEntries],
+  );
 
   const handleTeamChange = (entry: DisplayScheduleEntry, teamId: string) => {
     if (!campusId || !rotationPeriodName) return;
@@ -211,36 +273,55 @@ export function TeamScheduleWidget({
 
   const handleAddEntry = () => {
     if (!campusId || !newDate || !newTeamId || !rotationPeriodName) return;
-    createEntry.mutate(
-      {
-        campusId,
-        date: newDate,
-        teamId: newTeamId,
-        ministryType: newMinistryType,
-        rotationPeriod: rotationPeriodName,
-      },
-      {
-        onSuccess: () => {
-          setAddDialogOpen(false);
-          setNewDate("");
-          setNewTeamId("");
-          setNewMinistryType("weekend");
-        },
-      }
-    );
+
+    const ministryTypes =
+      newMinistryType === ENCOUNTER_EON_COMBINED
+        ? [...ENCOUNTER_EON_MINISTRY_TYPES]
+        : [newMinistryType];
+
+    Promise.all(
+      ministryTypes.map((ministryType, index) =>
+        createEntry.mutateAsync({
+          campusId,
+          date: newDate,
+          teamId: newTeamId,
+          ministryType,
+          rotationPeriod: rotationPeriodName,
+          suppressToast: index < ministryTypes.length - 1,
+        }),
+      ),
+    ).then(() => {
+      setAddDialogOpen(false);
+      setNewDate("");
+      setNewTeamId("");
+      setNewMinistryType("weekend");
+    });
   };
 
   const handleDeleteEntry = (scheduleId: string) => {
     deleteEntry.mutate(scheduleId);
   };
 
+  const handleClearAllDates = () => {
+    clearScheduleEntries.mutate(clearableEntryIds, {
+      onSuccess: () => setClearAllOpen(false),
+    });
+  };
+
   const handlePublishNetworkWide = () => {
     if (!campusId || !rotationPeriodName) return;
+
+    const ministryTypes =
+      activeScheduleMinistry === "encounter" ||
+      activeScheduleMinistry === "eon" ||
+      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
+        ? ["encounter", "eon"]
+        : [activeScheduleMinistry];
 
     publishNetworkWide.mutate({
       campusId,
       rotationPeriod: rotationPeriodName,
-      ministryType: activeScheduleMinistry,
+      ministryTypes,
     });
   };
 
@@ -305,6 +386,15 @@ export function TeamScheduleWidget({
                   : "Publish Network Wide"}
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setClearAllOpen(true)}
+              disabled={clearScheduleEntries.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Clear All Dates
+            </Button>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline">
@@ -369,9 +459,10 @@ export function TeamScheduleWidget({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weekend">Weekend</SelectItem>
+                        <SelectItem value="production">Production</SelectItem>
+                        <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">Encounter</SelectItem>
                         <SelectItem value="eon">EON</SelectItem>
-                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
                         <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
@@ -391,6 +482,32 @@ export function TeamScheduleWidget({
         </div>
       </CardHeader>
       <CardContent>
+        <AlertDialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear all dates?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {clearableEntryIds.length > 0
+                  ? "This will remove all campus-specific schedule dates currently shown for this period and ministry. Shared network-wide dates will stay untouched."
+                  : "There are no saved campus-specific dates to clear yet. The rows you see right now are trimester placeholders, so there is nothing to delete."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={clearScheduleEntries.isPending}>
+                {clearableEntryIds.length > 0 ? "Cancel" : "Close"}
+              </AlertDialogCancel>
+              {clearableEntryIds.length > 0 && (
+                <AlertDialogAction
+                  onClick={handleClearAllDates}
+                  disabled={clearScheduleEntries.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {clearScheduleEntries.isPending ? "Clearing..." : "Clear Dates"}
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {isLoading ? (
           <div className="text-center text-muted-foreground py-8">
             Loading schedule...

@@ -3,6 +3,7 @@ import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
 import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
 
@@ -10,7 +11,8 @@ export default function ServiceFlow() {
   const { isLeader } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "editor";
+  const requestedTab = searchParams.get("tab");
+  const activeTab = requestedTab === "view" ? "view" : "editor";
   
   // Get initial values from URL query params (from Calendar LIVE button)
   const initialDate = searchParams.get("date") || undefined;
@@ -61,41 +63,84 @@ export default function ServiceFlow() {
   };
 
   const printWithExportMode = () => {
-    const html = document.documentElement;
-    const body = document.body;
-    html.classList.add(EXPORT_MODE_CLASS);
-    body.classList.add(EXPORT_MODE_CLASS);
+    const printableNode = document.querySelector(".service-flow-print-render");
+    if (!printableNode) {
+      window.print();
+      return;
+    }
 
-    let didCleanup = false;
-    const cleanup = () => {
-      if (didCleanup) return;
-      didCleanup = true;
-      html.classList.remove(EXPORT_MODE_CLASS);
-      body.classList.remove(EXPORT_MODE_CLASS);
-      window.removeEventListener("afterprint", cleanup);
-      window.removeEventListener("focus", cleanup);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((node) => node.outerHTML)
+      .join("\n");
+
+    const printMarkup = printableNode.outerHTML;
+    const existingFrame = document.getElementById("service-flow-print-frame");
+    if (existingFrame) {
+      existingFrame.remove();
+    }
+
+    const printFrame = document.createElement("iframe");
+    printFrame.id = "service-flow-print-frame";
+    printFrame.setAttribute("aria-hidden", "true");
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "0";
+    printFrame.style.height = "0";
+    printFrame.style.border = "0";
+    printFrame.style.visibility = "hidden";
+    document.body.appendChild(printFrame);
+
+    const frameDocument = printFrame.contentDocument;
+    const frameWindow = printFrame.contentWindow;
+    if (!frameDocument || !frameWindow) {
+      printFrame.remove();
+      window.print();
+      return;
+    }
+
+    frameDocument.open();
+    frameDocument.write(`
+      <!DOCTYPE html>
+      <html class="${EXPORT_MODE_CLASS}">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Service Flow Print</title>
+          ${styles}
+          <style>
+            html.${EXPORT_MODE_CLASS} body {
+              margin: 0;
+              background: white;
+            }
+
+            html.${EXPORT_MODE_CLASS} .service-flow-print-render {
+              display: grid !important;
+            }
+          </style>
+        </head>
+        <body class="${EXPORT_MODE_CLASS}">
+          ${printMarkup}
+        </body>
+      </html>
+    `);
+    frameDocument.close();
+
+    const runPrint = () => {
+      frameWindow.focus();
+      frameWindow.print();
+      window.setTimeout(() => {
+        printFrame.remove();
+      }, 1000);
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        cleanup();
-      }
-    };
-
-    window.addEventListener("afterprint", cleanup, { once: true });
-    window.addEventListener("focus", cleanup, { once: true });
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // iOS Safari can skip afterprint in some share-sheet flows.
-    // Keep export mode active long enough for PDF/share generation.
-    window.setTimeout(cleanup, 60000);
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.print();
-      });
-    });
+    if (frameDocument.readyState === "complete") {
+      window.setTimeout(runPrint, 150);
+    } else {
+      printFrame.addEventListener("load", () => {
+        window.setTimeout(runPrint, 150);
+      }, { once: true });
+    }
   };
 
   const handlePrint = () => {
@@ -138,6 +183,32 @@ export default function ServiceFlow() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="hidden rounded-full border border-border bg-muted/40 p-1 sm:flex">
+            <button
+              type="button"
+              onClick={() => handleTabChange("view")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                activeTab === "view"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              View
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange("editor")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                activeTab === "editor"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Edit
+            </button>
+          </div>
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
             <span className="hidden sm:inline">Export</span>
@@ -155,6 +226,7 @@ export default function ServiceFlow() {
         initialMinistryType={initialMinistry}
         initialDraftSetId={initialDraftSetId}
         initialCustomServiceId={initialCustomServiceId}
+        mode={activeTab}
       />
     </div>
   );

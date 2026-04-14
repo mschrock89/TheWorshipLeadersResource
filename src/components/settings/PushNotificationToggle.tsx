@@ -7,7 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export function PushNotificationToggle() {
-  const { isSupported, isSubscribed, isLoading, permission, supportMessage, subscribe, unsubscribe } = usePushNotifications();
+  const { isSupported, isSubscribed, isLoading, permission, supportMessage, subscribe, resync, unsubscribe } = usePushNotifications();
   const [isResyncing, setIsResyncing] = useState(false);
 
   if (!isSupported) {
@@ -49,10 +49,10 @@ export function PushNotificationToggle() {
   const handleResync = async () => {
     setIsResyncing(true);
     try {
-      // Unsubscribe and resubscribe to refresh the subscription
-      await unsubscribe();
-      await subscribe();
-      toast.success("Push subscription refreshed!");
+      const success = await resync();
+      if (!success) {
+        toast.error("Failed to sync subscription");
+      }
     } catch (error) {
       console.error("Failed to resync:", error);
       toast.error("Failed to sync subscription");

@@ -45,6 +45,7 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
 
 const queryClient = new QueryClient();
 
@@ -53,11 +54,6 @@ if ("serviceWorker" in navigator) {
   if (import.meta.env.PROD) {
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.error("Service worker registration failed:", error);
-    });
-  } else {
-    // Prevent stale SW-cached bundles from interfering with local development.
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      registrations.forEach((registration) => registration.unregister());
     });
   }
 }
@@ -86,6 +82,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+function PublicPage({ children }: { children: ReactNode }) {
+  return <AnimatedPage>{children}</AnimatedPage>;
+}
+
+function ProtectedPage({ children }: { children: ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <ProtectedLayout>
+        <AnimatedPage>{children}</AnimatedPage>
+      </ProtectedLayout>
+    </ProtectedRoute>
+  );
 }
 
 function AnimatedPage({ children }: { children: React.ReactNode }) {
@@ -120,298 +130,83 @@ function MainContent({ children }: { children: React.ReactNode }) {
   );
 }
 
+type RouteDefinition = {
+  path: string;
+  component: ComponentType;
+};
+
+const publicRoutes: RouteDefinition[] = [
+  { path: "/", component: Home },
+  { path: "/auth", component: Auth },
+  { path: "/privacy", component: Privacy },
+  { path: "/terms", component: Terms },
+];
+
+const protectedRoutes: RouteDefinition[] = [
+  { path: "/chat", component: Chat },
+  { path: "/calendar", component: Calendar },
+  { path: "/schedule", component: Schedule },
+  { path: "/dashboard", component: Dashboard },
+  { path: "/team", component: Team },
+  { path: "/team/:id", component: Profile },
+  { path: "/profile", component: Profile },
+  { path: "/settings/planning-center", component: PlanningCenter },
+  { path: "/swaps", component: SwapRequests },
+  { path: "/songs", component: Songs },
+  { path: "/my-setlists", component: MySetlists },
+  { path: "/set-planner", component: SetPlanner },
+  { path: "/weekend-rundown", component: WeekendRundown },
+  { path: "/auditions", component: Auditions },
+  { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner },
+  { path: "/manage-sets", component: ManageSets },
+  { path: "/team-builder", component: TeamBuilder },
+  { path: "/approvals", component: Approvals },
+  { path: "/admin-tools", component: AdminTools },
+  { path: "/resources", component: Resources },
+  { path: "/feed", component: Feed },
+  { path: "/drum-tech", component: DrumTech },
+  { path: "/bible", component: Bible },
+  { path: "/service-flow", component: ServiceFlow },
+  { path: "/snake", component: Snake },
+  { path: "/pong", component: Pong },
+  { path: "/galaga", component: Galaga },
+  { path: "/games", component: Games },
+];
+
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public routes - no header */}
-      <Route path="/" element={<AnimatedPage><Home /></AnimatedPage>} />
-      <Route path="/auth" element={<AnimatedPage><Auth /></AnimatedPage>} />
-      <Route path="/privacy" element={<AnimatedPage><Privacy /></AnimatedPage>} />
-      <Route path="/terms" element={<AnimatedPage><Terms /></AnimatedPage>} />
-      
-      {/* Protected routes with MainHeader */}
-      <Route
-        path="/chat"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Chat /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/calendar"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Calendar /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/schedule"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Schedule /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Dashboard /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/team"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Team /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/team/:id"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Profile /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Profile /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings/planning-center"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><PlanningCenter /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
+      {publicRoutes.map(({ path, component: Component }) => (
+        <Route
+          key={path}
+          path={path}
+          element={
+            <PublicPage>
+              <Component />
+            </PublicPage>
+          }
+        />
+      ))}
       <Route path="/planning-center" element={<Navigate to="/settings/planning-center" replace />} />
+      {protectedRoutes.map(({ path, component: Component }) => (
+        <Route
+          key={path}
+          path={path}
+          element={
+            <ProtectedPage>
+              <Component />
+            </ProtectedPage>
+          }
+        />
+      ))}
       <Route
-        path="/swaps"
+        path="*"
         element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><SwapRequests /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
+          <PublicPage>
+            <NotFound />
+          </PublicPage>
         }
       />
-      <Route
-        path="/songs"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Songs /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/my-setlists"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><MySetlists /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/set-planner"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><SetPlanner /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/weekend-rundown"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><WeekendRundown /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/auditions"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Auditions /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/set-planner/audition/:candidateId"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><AuditionSetPlanner /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/manage-sets"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><ManageSets /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/team-builder"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><TeamBuilder /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/approvals"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Approvals /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin-tools"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><AdminTools /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/resources"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Resources /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/feed"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Feed /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/drum-tech"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><DrumTech /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/bible"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Bible /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/service-flow"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><ServiceFlow /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/snake"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Snake /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/pong"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Pong /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/galaga"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Galaga /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/games"
-        element={
-          <ProtectedRoute>
-            <ProtectedLayout>
-              <AnimatedPage><Games /></AnimatedPage>
-            </ProtectedLayout>
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<AnimatedPage><NotFound /></AnimatedPage>} />
     </Routes>
   );
 }

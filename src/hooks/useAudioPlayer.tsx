@@ -73,10 +73,24 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     }
   }, []);
 
+  const startPlayback = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    try {
+      await audio.play();
+    } catch (error) {
+      console.warn("Audio play() was blocked or failed:", error);
+    }
+  }, []);
+
   // Initialize audio element
   useEffect(() => {
     audioRef.current = new Audio();
     audioRef.current.preload = "auto";
+    audioRef.current.playsInline = true;
+    audioRef.current.setAttribute("playsinline", "true");
+    audioRef.current.setAttribute("webkit-playsinline", "true");
 
     const audio = audioRef.current;
 
@@ -93,7 +107,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       
       if (repeatMode === 'one') {
         audio.currentTime = 0;
-        audio.play().catch(console.error);
+        startPlayback();
         return;
       }
       
@@ -107,12 +121,14 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       if (nextIndex < playlist.length) {
         const nextTrack = playlist[nextIndex];
         audio.src = nextTrack.audioUrl;
-        audio.play().catch(console.error);
+        audio.load();
+        startPlayback();
         setState(prev => ({ ...prev, currentTrack: nextTrack, currentTime: 0 }));
       } else if (repeatMode === 'all' && playlist.length > 0) {
         const firstTrack = playlist[0];
         audio.src = firstTrack.audioUrl;
-        audio.play().catch(console.error);
+        audio.load();
+        startPlayback();
         setState(prev => ({ ...prev, currentTrack: firstTrack, currentTime: 0 }));
       } else {
         setState(prev => ({ ...prev, isPlaying: false, currentTime: 0, audioLevel: 0 }));
@@ -136,7 +152,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         setTimeout(() => {
           audio.load();
           if (stateRef.current.isPlaying) {
-            audio.play().catch(console.error);
+            startPlayback();
           }
         }, 1000);
       }
@@ -146,7 +162,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     const handleStalled = () => {
       console.warn('Audio stalled, attempting recovery');
       if (stateRef.current.isPlaying && audio.paused) {
-        audio.play().catch(console.error);
+        startPlayback();
       }
     };
 
@@ -164,7 +180,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       if (document.visibilityState === 'visible') {
         // If we were playing but audio got paused, try to resume
         if (stateRef.current.isPlaying && audio.paused) {
-          audio.play().catch(console.error);
+          startPlayback();
         }
       }
     };
@@ -187,7 +203,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [startPlayback]);
 
   // Update audio level animation
   useEffect(() => {
@@ -210,21 +226,29 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (!audio) return;
 
     if (track) {
-      audio.src = track.audioUrl;
+      const isNewSource = audio.src !== track.audioUrl;
+      if (isNewSource) {
+        audio.src = track.audioUrl;
+        audio.load();
+      }
       setState(prev => ({ ...prev, currentTrack: track, currentTime: startTime || 0 }));
       
       // If startTime provided, seek after audio is ready
       if (startTime && startTime > 0) {
-        const handleCanPlay = () => {
+        const handleReady = () => {
           audio.currentTime = startTime;
-          audio.removeEventListener('canplay', handleCanPlay);
+          audio.removeEventListener('loadedmetadata', handleReady);
+          audio.removeEventListener('canplay', handleReady);
         };
-        audio.addEventListener('canplay', handleCanPlay);
+        audio.addEventListener('loadedmetadata', handleReady);
+        audio.addEventListener('canplay', handleReady);
+      } else if (isNewSource) {
+        audio.currentTime = 0;
       }
     }
     
-    audio.play().catch(console.error);
-  }, []);
+    startPlayback();
+  }, [startPlayback]);
 
   const pause = useCallback(() => {
     audioRef.current?.pause();
@@ -234,9 +258,9 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (stateRef.current.isPlaying) {
       pause();
     } else if (stateRef.current.currentTrack) {
-      audioRef.current?.play().catch(console.error);
+      startPlayback();
     }
-  }, [pause]);
+  }, [pause, startPlayback]);
 
   const setPlaylist = useCallback((tracks: Track[], startIndex = 0) => {
     setState(prev => ({ ...prev, playlist: tracks }));

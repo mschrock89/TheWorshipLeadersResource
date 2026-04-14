@@ -47,6 +47,7 @@ function CondensedTeamCard({
   ministryFilter,
   canEditAudio = false,
   canEditBroadcast = false,
+  titleOverride,
 }: {
   team: WorshipTeam;
   members: TeamMemberAssignment[];
@@ -54,6 +55,7 @@ function CondensedTeamCard({
   ministryFilter: string;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
+  titleOverride?: string;
 }) {
   const allowedCategories =
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -74,8 +76,8 @@ function CondensedTeamCard({
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
-  const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
-  const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
+  const productionSlots = templateSlots.productionSlots;
+  const videoSlots = templateSlots.videoSlots;
 
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
@@ -87,7 +89,6 @@ function CondensedTeamCard({
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-
   const renderSlot = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -139,7 +140,7 @@ function CondensedTeamCard({
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-4 w-4" />}
           </span>
-          <span>{team.name}</span>
+          <span>{titleOverride || team.name}</span>
           <span className="ml-auto text-xs font-normal text-muted-foreground">
             {filledCount}/{totalSlots}
           </span>
@@ -151,68 +152,7 @@ function CondensedTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && (() => {
-          const saturdayMembers = visibleMembers.filter(m => m.service_day === 'saturday');
-          const sundayMembers = visibleMembers.filter(m => m.service_day === 'sunday');
-          const hasSplitDays = saturdayMembers.length > 0 || sundayMembers.length > 0;
-
-          const renderSlotForDay = (slotConfig: (typeof POSITION_SLOTS)[0], dayMembers: typeof visibleMembers) => {
-            const member = dayMembers.find(m => m.position_slot === slotConfig.slot);
-            if (!member) return null;
-            const isMe = member.user_id === userId;
-
-            return (
-              <div
-                key={slotConfig.slot}
-                className={cn(
-                  "flex items-center gap-2 text-xs py-1 px-2 rounded",
-                  isMe ? "bg-primary/10" : "",
-                )}
-              >
-                <span className="text-muted-foreground w-12 shrink-0 truncate">{slotConfig.label}:</span>
-                <span className={cn("truncate", isMe && "font-medium text-primary")}>
-                  {member.member_name}
-                  {isMe && " (You)"}
-                </span>
-              </div>
-            );
-          };
-
-          if (hasSplitDays) {
-            return (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Video className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-bold text-primary">Video</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Saturday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Saturday</h5>
-                    <div className="space-y-0.5">
-                      {videoSlots.map(s => renderSlotForDay(s, saturdayMembers))}
-                      {videoSlots.every(s => !saturdayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic px-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                  {/* Sunday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-1 text-center border-b pb-1">Sunday</h5>
-                    <div className="space-y-0.5">
-                      {videoSlots.map(s => renderSlotForDay(s, sundayMembers))}
-                      {videoSlots.every(s => !sundayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic px-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          return renderSection("Video", Video, videoSlots);
-        })()}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );
@@ -228,6 +168,7 @@ function FullTeamCard({
   ministryFilter,
   canEditAudio = false,
   canEditBroadcast = false,
+  titleOverride,
 }: {
   team: WorshipTeam;
   members: TeamMemberAssignment[];
@@ -237,6 +178,7 @@ function FullTeamCard({
   ministryFilter: string;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
+  titleOverride?: string;
 }) {
   const allowedCategories =
     MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
@@ -257,12 +199,11 @@ function FullTeamCard({
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
-  const productionSlots = POSITION_SLOTS.filter(s => s.category === "Production");
-  const videoSlots = POSITION_SLOTS.filter(s => s.category === "Video");
+  const productionSlots = templateSlots.productionSlots;
+  const videoSlots = templateSlots.videoSlots;
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
-
   const renderMember = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
     const member = getMemberForSlot(slotConfig.slot);
     if (!member) return null;
@@ -319,7 +260,7 @@ function FullTeamCard({
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-5 w-5" />}
           </span>
-          <span>Your Team: {team.name}</span>
+          <span>Your Team: {titleOverride || team.name}</span>
           {myPosition && (
             <Badge variant="secondary" className="ml-auto">
               {myPosition}
@@ -339,81 +280,7 @@ function FullTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
-        {showVideo && (() => {
-          const saturdayMembers = visibleMembers.filter(m => m.service_day === 'saturday');
-          const sundayMembers = visibleMembers.filter(m => m.service_day === 'sunday');
-          const hasSplitDays = saturdayMembers.length > 0 || sundayMembers.length > 0;
-
-          const renderMemberForDay = (slotConfig: (typeof POSITION_SLOTS)[0], dayMembers: typeof visibleMembers) => {
-            const member = dayMembers.find(m => m.position_slot === slotConfig.slot);
-            if (!member) return null;
-            const isMe = member.user_id === userId;
-
-            return (
-              <div
-                key={slotConfig.slot}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg border p-2",
-                  isMe ? "border-primary bg-primary/5" : "border-border bg-card",
-                )}
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                    {member.member_name?.
-                      split(" ")
-                      .map(n => n[0])
-                      .join("")
-                      .slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium truncate">
-                      {member.member_name}
-                      {isMe && <span className="text-primary ml-1">(You)</span>}
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{slotConfig.label}</p>
-                </div>
-              </div>
-            );
-          };
-
-          if (hasSplitDays) {
-            return (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Video className="h-4 w-4 text-muted-foreground" />
-                  <h4 className="text-sm font-medium text-muted-foreground">Video</h4>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Saturday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Saturday</h5>
-                    <div className="grid gap-2">
-                      {videoSlots.map(s => renderMemberForDay(s, saturdayMembers))}
-                      {videoSlots.every(s => !saturdayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic text-center py-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                  {/* Sunday Column */}
-                  <div>
-                    <h5 className="text-xs font-medium text-muted-foreground mb-2 text-center border-b pb-1">Sunday</h5>
-                    <div className="grid gap-2">
-                      {videoSlots.map(s => renderMemberForDay(s, sundayMembers))}
-                      {videoSlots.every(s => !sundayMembers.find(m => m.position_slot === s.slot)) && (
-                        <p className="text-xs text-muted-foreground italic text-center py-2">No assignments</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          return renderSection("Video", Video, videoSlots);
-        })()}
+        {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
     </Card>
   );
@@ -433,8 +300,26 @@ export function MyTeamView({
 }: MyTeamViewProps) {
   const [showBreakDialog, setShowBreakDialog] = useState(false);
   const { data: myBreakRequests = [] } = useMyBreakRequests();
-  // Find user's assignment
-  const myAssignment = members.find(m => m.user_id === userId);
+  const isVideoSplitView = ministryFilter === "video";
+  const visibleTeamIds = new Set(teams.map((team) => team.id));
+  const visibleMembers = members.filter((member) => {
+    if (!visibleTeamIds.has(member.team_id)) {
+      return false;
+    }
+
+    return ministryFilter === "all"
+      ? true
+      : memberMatchesMinistryFilter(member.ministry_types, ministryFilter);
+  });
+
+  const getMembersForServiceDay = (
+    teamMembers: TeamMemberAssignment[],
+    serviceDay: "saturday" | "sunday" | null,
+  ) => {
+    if (!serviceDay) return teamMembers;
+    return teamMembers.filter((member) => member.service_day === serviceDay);
+  };
+  const myAssignments = visibleMembers.filter((member) => member.user_id === userId);
   
   if (isLoading) {
     return (
@@ -454,38 +339,58 @@ export function MyTeamView({
     );
   }
 
-  // Admin view: Show all teams in condensed format
-  if (isAdmin) {
-    return (
-      <div className="space-y-4">
-        {periodName && (
-          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5" />
-            {periodName}
-          </p>
-        )}
-        <div className="grid gap-4 md:grid-cols-2">
-          {teams.map(team => {
-            const teamMembers = members.filter(m => m.team_id === team.id);
-            return (
-              <CondensedTeamCard
-                key={team.id}
-                team={team}
-                members={teamMembers}
-                userId={userId}
-                ministryFilter={ministryFilter}
-                canEditAudio={canEditAudio}
-                canEditBroadcast={canEditBroadcast}
-              />
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  if (myAssignments.length === 0) {
+    if (isAdmin) {
+      return (
+        <div className="space-y-4">
+          {periodName && (
+            <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" />
+              {periodName}
+            </p>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            {teams.flatMap((team) => {
+              const teamMembers = visibleMembers.filter((member) => member.team_id === team.id);
+              const cards = isVideoSplitView
+                ? [
+                    {
+                      key: `${team.id}-saturday`,
+                      title: `${team.name} Saturday`,
+                      members: getMembersForServiceDay(teamMembers, "saturday"),
+                    },
+                    {
+                      key: `${team.id}-sunday`,
+                      title: `${team.name} Sunday`,
+                      members: getMembersForServiceDay(teamMembers, "sunday"),
+                    },
+                  ]
+                : [
+                    {
+                      key: team.id,
+                      title: team.name,
+                      members: teamMembers,
+                    },
+                  ];
 
-  // Volunteer view: Show only their team (or on-break message)
-  if (!myAssignment) {
+              return cards.map((card) => (
+                <CondensedTeamCard
+                  key={card.key}
+                  team={team}
+                  members={card.members}
+                  userId={userId}
+                  ministryFilter={ministryFilter}
+                  canEditAudio={canEditAudio}
+                  canEditBroadcast={canEditBroadcast}
+                  titleOverride={card.title}
+                />
+              ));
+            })}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6">
         <Card className="border-dashed">
@@ -519,23 +424,106 @@ export function MyTeamView({
     );
   }
 
-  const myTeam = teams.find(t => t.id === myAssignment.team_id);
-  const teammates = members.filter(m => m.team_id === myAssignment.team_id);
-  
-  if (!myTeam) return null;
+  if (isAdmin) {
+    return (
+      <div className="space-y-4">
+        {periodName && (
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            {periodName}
+          </p>
+        )}
+        <div className="grid gap-4 md:grid-cols-2">
+          {teams.flatMap((team) => {
+            const teamMembers = visibleMembers.filter((member) => member.team_id === team.id);
+            const cards = isVideoSplitView
+              ? [
+                  {
+                    key: `${team.id}-saturday`,
+                    title: `${team.name} Saturday`,
+                    members: getMembersForServiceDay(teamMembers, "saturday"),
+                  },
+                  {
+                    key: `${team.id}-sunday`,
+                    title: `${team.name} Sunday`,
+                    members: getMembersForServiceDay(teamMembers, "sunday"),
+                  },
+                ]
+              : [
+                  {
+                    key: team.id,
+                    title: team.name,
+                    members: teamMembers,
+                  },
+                ];
+
+            return cards.map((card) => (
+              <CondensedTeamCard
+                key={card.key}
+                team={team}
+                members={card.members}
+                userId={userId}
+                ministryFilter={ministryFilter}
+                canEditAudio={canEditAudio}
+                canEditBroadcast={canEditBroadcast}
+                titleOverride={card.title}
+              />
+            ));
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const myTeamCards = Array.from(
+    myAssignments.reduce((acc, assignment) => {
+      const serviceDay =
+        isVideoSplitView && (assignment.service_day === "saturday" || assignment.service_day === "sunday")
+          ? assignment.service_day
+          : null;
+      const key = `${assignment.team_id}:${serviceDay || "all"}`;
+      if (!acc.has(key)) {
+        acc.set(key, {
+          teamId: assignment.team_id,
+          serviceDay,
+          myPositions: new Set<string>(),
+        });
+      }
+      acc.get(key)!.myPositions.add(assignment.position);
+      return acc;
+    }, new Map<string, { teamId: string; serviceDay: "saturday" | "sunday" | null; myPositions: Set<string> }>()),
+  );
 
   return (
     <div className="space-y-6">
-      <FullTeamCard
-        team={myTeam}
-        members={teammates}
-        userId={userId}
-        periodName={periodName}
-        myPosition={myAssignment.position}
-        ministryFilter={ministryFilter}
-        canEditAudio={canEditAudio}
-        canEditBroadcast={canEditBroadcast}
-      />
+      {myTeamCards.map(([key, card]) => {
+        const myTeam = teams.find((team) => team.id === card.teamId);
+        if (!myTeam) return null;
+
+        const teammates = visibleMembers.filter((member) => member.team_id === card.teamId);
+        const visibleTeammates = getMembersForServiceDay(teammates, card.serviceDay);
+        const teamTitle =
+          card.serviceDay === "saturday"
+            ? `${myTeam.name} Saturday`
+            : card.serviceDay === "sunday"
+              ? `${myTeam.name} Sunday`
+              : myTeam.name;
+
+        return (
+          <FullTeamCard
+            key={key}
+            team={myTeam}
+            members={visibleTeammates}
+            userId={userId}
+            periodName={periodName}
+            myPosition={Array.from(card.myPositions).join(", ")}
+            ministryFilter={ministryFilter}
+            canEditAudio={canEditAudio}
+            canEditBroadcast={canEditBroadcast}
+            titleOverride={teamTitle}
+          />
+        );
+      })}
 
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => setShowBreakDialog(true)}>

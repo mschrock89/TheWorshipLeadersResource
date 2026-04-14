@@ -8,12 +8,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, X } from "lucide-react";
-import { POSITION_LABELS, POSITION_CATEGORIES } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { useCampuses } from "@/hooks/useCampuses";
 
 interface TeamFiltersProps {
   search: string;
   onSearchChange: (value: string) => void;
+  sortBy: string;
+  onSortByChange: (value: string) => void;
   positionFilter: string;
   onPositionFilterChange: (value: string) => void;
   campusFilter: string;
@@ -26,6 +28,8 @@ interface TeamFiltersProps {
 export function TeamFilters({
   search,
   onSearchChange,
+  sortBy,
+  onSortByChange,
   positionFilter,
   onPositionFilterChange,
   campusFilter,
@@ -35,6 +39,14 @@ export function TeamFilters({
   showGenderFilter = false,
 }: TeamFiltersProps) {
   const { data: campuses = [] } = useCampuses();
+  const ministrySortOptions = Array.from(
+    new Map(
+      MINISTRY_TYPES.map((ministry) => {
+        const normalizedValue = normalizeWeekendWorshipMinistryType(ministry.value) || ministry.value;
+        return [normalizedValue, ministry.label];
+      }),
+    ).entries(),
+  ).sort((a, b) => a[1].localeCompare(b[1]));
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -69,6 +81,21 @@ export function TeamFilters({
           {campuses.map((campus) => (
             <SelectItem key={campus.id} value={campus.id}>
               {campus.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={sortBy} onValueChange={onSortByChange}>
+        <SelectTrigger className="w-full sm:w-[160px]">
+        <SelectValue placeholder="Sort by" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="name">Sort: Name</SelectItem>
+          <SelectItem value="ministry">Sort: Ministry (A-Z)</SelectItem>
+          {ministrySortOptions.map(([value, label]) => (
+            <SelectItem key={value} value={`ministry:${value}`}>
+              {label}
             </SelectItem>
           ))}
         </SelectContent>

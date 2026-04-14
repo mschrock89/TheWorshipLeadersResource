@@ -186,6 +186,7 @@ export function useProfiles() {
         return {
           ...profile,
           positions: Array.from(mergedPositions),
+          ministry_types: Array.isArray(profile.ministry_types) ? profile.ministry_types : [],
         };
       });
     },
