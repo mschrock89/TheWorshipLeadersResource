@@ -160,6 +160,18 @@ export default function Team() {
   const filteredProfiles = useMemo(() => {
     const campusScopedPositionMap = new Map<string, TeamPosition[]>();
     const campusScopedMinistryMap = new Map<string, string[]>();
+    const allCampusMinistryMap = new Map<string, string[]>();
+
+    const getProfileMinistries = (profile: Profile) =>
+      Array.isArray(profile.ministry_types) ? profile.ministry_types : [];
+
+    campusMinistryPositions.forEach(({ user_id, ministry_type }) => {
+      const existingMinistries = allCampusMinistryMap.get(user_id) || [];
+      const normalizedMinistry = normalizeWeekendWorshipMinistryType(ministry_type) || ministry_type;
+      if (normalizedMinistry && !existingMinistries.includes(normalizedMinistry)) {
+        allCampusMinistryMap.set(user_id, [...existingMinistries, normalizedMinistry]);
+      }
+    });
 
     if (campusFilter !== "all") {
       campusMinistryPositions.forEach(({ user_id, campus_id, position, ministry_type }) => {
@@ -181,7 +193,7 @@ export default function Team() {
     const getMinistrySortValue = (profile: Profile) => {
       const profileMinistryTypes = (
         campusFilter === "all"
-          ? profile.ministry_types
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
           : campusScopedMinistryMap.get(profile.id) || []
       )
         .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
@@ -201,7 +213,7 @@ export default function Team() {
     const getNormalizedProfileMinistries = (profile: Profile) =>
       (
         campusFilter === "all"
-          ? profile.ministry_types
+          ? allCampusMinistryMap.get(profile.id) || getProfileMinistries(profile)
           : campusScopedMinistryMap.get(profile.id) || []
       )
         .map((ministryType) => normalizeWeekendWorshipMinistryType(ministryType) || ministryType)
@@ -234,14 +246,22 @@ export default function Team() {
         // Position filter
         const matchesPosition = matchesPositionFilter(positionsForFilter, positionFilter);
 
+        const normalizedProfileMinistries = getNormalizedProfileMinistries(profile);
+        const matchesSelectedMinistry =
+          !selectedMinistrySort || normalizedProfileMinistries.includes(selectedMinistrySort);
+
         // Gender filter
         const matchesGender =
           genderFilter === "all" ||
           (genderFilter === "not_set" && !profile.gender) ||
           profile.gender === genderFilter;
 
-        return matchesSearch && matchesPosition && matchesCampus && matchesGender;
+        return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender;
       })
+      .map((profile) => ({
+        ...profile,
+        ministry_types: getNormalizedProfileMinistries(profile),
+      }))
       .sort((a, b) => {
         const nameA = (a.full_name || a.email || "").toLowerCase();
         const nameB = (b.full_name || b.email || "").toLowerCase();
@@ -414,8 +434,8 @@ export default function Team() {
     }
   };
 
-  const notYetEmailedCount = profiles.filter(p => !p.welcome_email_sent_at).length;
-  const alreadyEmailedCount = profiles.filter(p => p.welcome_email_sent_at).length;
+  const notYetEmailedCount = filteredProfiles.filter((profile) => !profile.welcome_email_sent_at).length;
+  const alreadyEmailedCount = filteredProfiles.filter((profile) => !!profile.welcome_email_sent_at).length;
 
   return (
     <RefreshableContainer queryKeys={[["profiles"]]}>
@@ -566,7 +586,7 @@ export default function Team() {
       <WelcomeEmailDialog
         open={emailDialogOpen}
         onOpenChange={setEmailDialogOpen}
-        profiles={profiles}
+        profiles={filteredProfiles}
         mode={emailDialogMode}
         selectedMember={selectedMemberForEmail}
         onEmailSent={handleEmailSent}
