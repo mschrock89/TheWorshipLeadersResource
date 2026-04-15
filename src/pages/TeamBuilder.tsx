@@ -110,7 +110,15 @@ function formatPreviewDate(date: string) {
 }
 
 function shouldCollapseWeekendIntoSingleBucket(ministryType: string) {
-  return ministryType !== "video";
+  return ministryType !== "video" && ministryType !== "eon_weekend";
+}
+
+function shouldUseSplitTeamCards(ministryType: string, campusName?: string | null) {
+  if (ministryType === "video") {
+    return true;
+  }
+
+  return ministryType === "eon_weekend" && campusName === "Murfreesboro Central";
 }
 
 const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
@@ -234,7 +242,7 @@ export default function TeamBuilder() {
   const { data: dateOverrides = [] } = useTeamMemberDateOverrides(selectedPeriodId);
   const { data: availableMembers = [] } = useAvailableMembers(
     selectedCampusId,
-    null,
+    selectedMinistryType,
   );
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
@@ -938,6 +946,7 @@ export default function TeamBuilder() {
     }
 
     const targetMinistryType = assigningMinistryType || selectedMinistryType;
+    const allowMultiTeamForAllMembers = targetMinistryType === "worship_night";
     const assignmentsByUser = new Map<
       string,
       Array<{ teamId: string; positionSlot: string | null; ministryTypes: string[] }>
@@ -990,6 +999,10 @@ export default function TeamBuilder() {
       }
 
       if (conflictingAssignments.every((assignment) => assignment.teamId === assigningSlot.teamId)) {
+        return true;
+      }
+
+      if (allowMultiTeamForAllMembers) {
         return true;
       }
 
@@ -1087,7 +1100,10 @@ export default function TeamBuilder() {
       teamId: team.id,
       teamName: team.name,
       slot,
-      requiredGender: getRequiredGenderForSlot(team.template_config, slot),
+      requiredGender: getRequiredGenderForSlot(team.template_config, slot, {
+        campusName: selectedCampus?.name,
+        ministryType: selectedMinistryType,
+      }),
       scheduleDate,
       serviceDay: serviceDay || null,
     });
@@ -1175,7 +1191,7 @@ export default function TeamBuilder() {
   };
 
   const teamCards = useMemo(() => {
-    if (selectedMinistryType !== "video") {
+    if (!shouldUseSplitTeamCards(selectedMinistryType, selectedCampus?.name)) {
       return displayTeams.map((team) => ({
         key: team.id,
         team,
@@ -1513,6 +1529,7 @@ export default function TeamBuilder() {
                       canEditBroadcast={hasFullTeamBuilderAccess}
                       canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
                       ministryFilter={selectedMinistryType}
+                      campusName={selectedCampus?.name}
                       slotConflictDates={combinedConflictDatesByTeamSlot[team.id] || {}}
                       slotScheduleDates={serviceDay ? [] : scheduleDatesByTeam[team.id] || []}
                       slotDateOverrides={serviceDay ? {} : dateOverridesByTeamSlot[team.id] || {}}
@@ -1558,6 +1575,7 @@ export default function TeamBuilder() {
                 periodName={selectedPeriod?.name}
                 periods={periods}
                 ministryFilter={selectedMinistryType}
+                campusName={selectedCampus?.name}
                 canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
                 canEditBroadcast={hasFullTeamBuilderAccess}
               />
@@ -1641,6 +1659,7 @@ export default function TeamBuilder() {
           onOpenChange={(open) => !open && setEditingTemplateTeam(null)}
           teamName={editingTemplateTeam.name}
           ministryType={selectedMinistryType}
+          campusName={selectedCampus?.name}
           initialConfig={editingTemplateTeam.template_config}
           onSave={handleSaveTemplate}
           isSaving={updateTeamTemplate.isPending}

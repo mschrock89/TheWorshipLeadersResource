@@ -37,11 +37,15 @@ export function ProtectedLayout({
   // Use external state if provided, otherwise use internal
   const selectedCampusId = externalCampusId ?? internalCampusId;
   
-  const setSelectedCampusId = (campusId: string) => {
-    // Persist to localStorage
-    localStorage.setItem(CAMPUS_STORAGE_KEY, campusId);
+  const setSelectedCampusId = (campusId: string | null) => {
+    if (campusId) {
+      localStorage.setItem(CAMPUS_STORAGE_KEY, campusId);
+    } else {
+      localStorage.removeItem(CAMPUS_STORAGE_KEY);
+    }
+
     if (externalOnSelectCampus) {
-      externalOnSelectCampus(campusId);
+      externalOnSelectCampus(campusId || "");
     } else {
       setInternalCampusId(campusId);
     }
@@ -65,7 +69,14 @@ export function ProtectedLayout({
 
   // Set default campus when campuses load, validate stored campus still exists
   useEffect(() => {
-    if (availableCampuses.length === 0) return;
+    if (userCampusesLoading || allCampusesLoading) return;
+
+    if (availableCampuses.length === 0) {
+      if (selectedCampusId !== null) {
+        setSelectedCampusId(null);
+      }
+      return;
+    }
     
     // Check if stored campus is still valid
     const storedIsValid = selectedCampusId && availableCampuses.some(c => c.campus_id === selectedCampusId);
@@ -82,7 +93,7 @@ export function ProtectedLayout({
       // Use first available campus (assigned first for leaders)
       setSelectedCampusId(availableCampuses[0].campus_id);
     }
-  }, [availableCampuses, selectedCampusId, isAdmin, isLeader, profile?.default_campus_id]);
+  }, [availableCampuses, selectedCampusId, isAdmin, isLeader, profile?.default_campus_id, userCampusesLoading, allCampusesLoading]);
 
   const isOnChatPage = location.pathname === "/chat";
   
@@ -99,4 +110,3 @@ export function ProtectedLayout({
     </CampusSelectionProvider>
   );
 }
-

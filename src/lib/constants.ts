@@ -28,10 +28,13 @@ export const POSITION_LABELS: Record<string, string> = {
   electric_guitar: "EG 1",
   electric_1: "EG 1",
   electric_2: "EG 2",
+  electric_3: "EG 3",
+  electric_4: "EG 4",
   bass: "Bass",
   drums: "Drums",
   drum_tech: "Drum Tech",
   keys: "Keys",
+  pad: "Pad",
   piano: "Piano",
   violin: "Violin",
   cello: "Cello",
@@ -81,10 +84,13 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   electric_guitar: "EG 1",
   electric_1: "EG 1",
   electric_2: "EG 2",
+  electric_3: "EG 3",
+  electric_4: "EG 4",
   bass: "Bass",
   drums: "Drums",
   drum_tech: "Drum Tech",
   keys: "Keys",
+  pad: "Pad",
   piano: "Piano",
   violin: "Violin",
   cello: "Cello",
@@ -126,7 +132,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
 export const POSITION_CATEGORIES = {
   vocals: ["vocalist"],
   speaker: ["teacher", "announcement", "closing_prayer"],
-  instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "bass", "drums", "keys"],
+  instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass", "drums", "keys", "pad"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
 };
@@ -142,14 +148,21 @@ export const POSITION_SLOTS: {
   { slot: "vocalist_2", label: "Vocalist 2", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_3", label: "Vocalist 3", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_4", label: "Vocalist 4", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_5", label: "Vocalist 5", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_6", label: "Vocalist 6", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_7", label: "Vocalist 7", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_8", label: "Vocalist 8", category: "Vocalists", position: "vocalist" },
   { slot: "teacher", label: "Teacher", category: "Speaker", position: "teacher" },
   { slot: "announcement", label: "Announcements", category: "Speaker", position: "announcement" },
   { slot: "closing_prayer", label: "Closing Prayer", category: "Speaker", position: "closing_prayer" },
   { slot: "drums", label: "Drums", category: "Band", position: "drums" },
   { slot: "bass", label: "Bass", category: "Band", position: "bass" },
   { slot: "keys", label: "Keys", category: "Band", position: "keys" },
+  { slot: "pad", label: "Pad", category: "Band", position: "pad" },
   { slot: "eg_1", label: "EG 1", category: "Band", position: "electric_guitar" },
   { slot: "eg_2", label: "EG 2", category: "Band", position: "electric_guitar" },
+  { slot: "eg_3", label: "EG 3", category: "Band", position: "electric_guitar" },
+  { slot: "eg_4", label: "EG 4", category: "Band", position: "electric_guitar" },
   { slot: "ag_1", label: "AG 1", category: "Band", position: "acoustic_guitar" },
   { slot: "ag_2", label: "AG 2", category: "Band", position: "acoustic_guitar" },
   // Production slots
@@ -186,6 +199,7 @@ export const POSITION_SLOTS: {
 export const MINISTRY_TYPES = [
   { value: "weekend_team", label: "Weekend Worship", shortLabel: "WKDT", color: "bg-blue-600" },
   { value: "weekend", label: "Weekend Worship", shortLabel: "WKD", color: "bg-blue-500", hidden: true },
+  { value: "worship_night", label: "Worship Night", shortLabel: "WN", color: "bg-indigo-600" },
   { value: "prayer_night", label: "Prayer Night", shortLabel: "PRAY", color: "bg-cyan-600" },
   { value: "encounter", label: "Encounter", shortLabel: "EN", color: "bg-accent" },
   { value: "eon", label: "EON", shortLabel: "EON", color: "bg-purple-500" },
@@ -200,6 +214,7 @@ export const MINISTRY_TYPES = [
 
 export const SET_PLANNER_MINISTRY_OPTIONS = [
   { value: "weekend", label: "Weekend Services" },
+  { value: "worship_night", label: "Worship Night" },
   { value: "prayer_night", label: "Prayer Night" },
   { value: "encounter", label: "Encounter" },
   { value: "eon", label: "EON" },
@@ -220,6 +235,7 @@ export const SERVICE_FLOW_ITEM_TYPES = {
 export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   weekend_team: ["Vocalists", "Band"],
   weekend: ["Vocalists", "Band"],
+  worship_night: ["Vocalists", "Band"],
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],
@@ -235,8 +251,9 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
 // Which teams are visible for each ministry type
 // Maps ministry values to team name patterns - configure team count per ministry
 export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
-  weekend_team: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Weekend Team (combined)
-  weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Experience Music
+  weekend_team: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
+  weekend: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
+  worship_night: ["Team 1", "Team 2", "Team 3", "Team 4"], // Worship Night follows the same 4-team campus rotation
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Encounter
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // EON uses the full 4-team rotation
