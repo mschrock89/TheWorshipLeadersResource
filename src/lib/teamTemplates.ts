@@ -1,6 +1,10 @@
 import { POSITION_SLOTS } from "@/lib/constants";
 
 export type VocalSlotGender = "male" | "female";
+export interface TeamTemplateContext {
+  campusName?: string | null;
+  ministryType?: string | null;
+}
 
 export interface TeamTemplateConfig {
   vocalSlots?: Array<{
@@ -12,15 +16,45 @@ export interface TeamTemplateConfig {
   videoSlots?: string[];
 }
 
+const DEFAULT_VOCAL_SLOT_IDS = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"] as const;
+const EXTENDED_VOCAL_SLOT_IDS = [
+  ...DEFAULT_VOCAL_SLOT_IDS,
+  "vocalist_5",
+  "vocalist_6",
+  "vocalist_7",
+  "vocalist_8",
+] as const;
+
 const DEFAULT_VOCAL_SLOTS: TeamTemplateConfig["vocalSlots"] = [
   { slot: "vocalist_1", gender: "male" },
   { slot: "vocalist_2", gender: "male" },
   { slot: "vocalist_3", gender: "female" },
   { slot: "vocalist_4", gender: "female" },
 ];
+const MURFREESBORO_CENTRAL_WORSHIP_NIGHT_VOCAL_SLOTS: TeamTemplateConfig["vocalSlots"] = [
+  { slot: "vocalist_1", gender: "male" },
+  { slot: "vocalist_2", gender: "male" },
+  { slot: "vocalist_3", gender: "female" },
+  { slot: "vocalist_4", gender: "female" },
+  { slot: "vocalist_5", gender: "male" },
+  { slot: "vocalist_6", gender: "male" },
+  { slot: "vocalist_7", gender: "female" },
+  { slot: "vocalist_8", gender: "female" },
+];
 
 const DEFAULT_BAND_SLOTS = ["drums", "bass", "keys", "eg_1", "eg_2", "ag_1", "ag_2"];
 const EXTENDED_BAND_SLOTS = [...DEFAULT_BAND_SLOTS, "pad", "eg_3", "eg_4"];
+const MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_SLOTS = [
+  "drums",
+  "bass",
+  "keys",
+  "eg_1",
+  "eg_2",
+  "eg_3",
+  "ag_1",
+  "ag_2",
+  "pad",
+] as const;
 const DEFAULT_PRODUCTION_SLOTS = [
   "foh",
   "mon",
@@ -37,7 +71,6 @@ const DEFAULT_VIDEO_SLOTS = [
   "graphics",
   "switcher",
 ];
-const VALID_VOCAL_SLOTS = new Set(DEFAULT_VOCAL_SLOTS.map((slot) => slot.slot));
 const VALID_BAND_SLOTS = new Set(EXTENDED_BAND_SLOTS);
 const VALID_PRODUCTION_SLOTS = new Set(DEFAULT_PRODUCTION_SLOTS);
 const VALID_VIDEO_SLOTS = new Set([
@@ -70,13 +103,50 @@ export const DEFAULT_TEAM_TEMPLATE: Required<TeamTemplateConfig> = {
   videoSlots: DEFAULT_VIDEO_SLOTS,
 };
 
-export function normalizeTeamTemplateConfig(config: TeamTemplateConfig | null | undefined): Required<TeamTemplateConfig> {
+export function isMurfreesboroCentralWorshipNightTemplateContext(context?: TeamTemplateContext | null) {
+  return (
+    context?.ministryType === "worship_night" &&
+    context?.campusName === "Murfreesboro Central"
+  );
+}
+
+export function getSupportedVocalSlotIds(context?: TeamTemplateContext | null) {
+  return isMurfreesboroCentralWorshipNightTemplateContext(context)
+    ? EXTENDED_VOCAL_SLOT_IDS
+    : DEFAULT_VOCAL_SLOT_IDS;
+}
+
+function getDefaultVocalSlotsForContext(context?: TeamTemplateContext | null) {
+  return isMurfreesboroCentralWorshipNightTemplateContext(context)
+    ? MURFREESBORO_CENTRAL_WORSHIP_NIGHT_VOCAL_SLOTS
+    : DEFAULT_VOCAL_SLOTS;
+}
+
+function getDefaultBandSlotsForContext(context?: TeamTemplateContext | null) {
+  return isMurfreesboroCentralWorshipNightTemplateContext(context)
+    ? [...MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_SLOTS]
+    : DEFAULT_BAND_SLOTS;
+}
+
+function orderBandSlotsForContext(slots: string[], context?: TeamTemplateContext | null) {
+  const orderedBandSlots = isMurfreesboroCentralWorshipNightTemplateContext(context)
+    ? MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_SLOTS
+    : EXTENDED_BAND_SLOTS;
+
+  return orderedBandSlots.filter((slot) => slots.includes(slot));
+}
+
+export function normalizeTeamTemplateConfig(
+  config: TeamTemplateConfig | null | undefined,
+  context?: TeamTemplateContext | null,
+): Required<TeamTemplateConfig> {
+  const validVocalSlots = new Set(getSupportedVocalSlotIds(context));
   const normalizedVocalSlots = Array.isArray(config?.vocalSlots)
     ? config.vocalSlots
         .filter(
           (slot): slot is { slot: string; gender: VocalSlotGender } =>
             !!slot &&
-            VALID_VOCAL_SLOTS.has(slot.slot) &&
+            validVocalSlots.has(slot.slot as (typeof EXTENDED_VOCAL_SLOT_IDS)[number]) &&
             (slot.gender === "male" || slot.gender === "female"),
         )
         .sort((a, b) => a.slot.localeCompare(b.slot))
@@ -93,8 +163,12 @@ export function normalizeTeamTemplateConfig(config: TeamTemplateConfig | null | 
     : [];
 
   return {
-    vocalSlots: normalizedVocalSlots.length > 0 ? normalizedVocalSlots : DEFAULT_TEAM_TEMPLATE.vocalSlots,
-    bandSlots: normalizedBandSlots.length > 0 ? normalizedBandSlots : DEFAULT_TEAM_TEMPLATE.bandSlots,
+    vocalSlots:
+      normalizedVocalSlots.length > 0 ? normalizedVocalSlots : getDefaultVocalSlotsForContext(context),
+    bandSlots:
+      normalizedBandSlots.length > 0
+        ? orderBandSlotsForContext(normalizedBandSlots, context)
+        : getDefaultBandSlotsForContext(context),
     productionSlots:
       normalizedProductionSlots.length > 0
         ? normalizedProductionSlots
@@ -103,8 +177,11 @@ export function normalizeTeamTemplateConfig(config: TeamTemplateConfig | null | 
   };
 }
 
-export function getTeamTemplateSlotConfigs(teamTemplateConfig: TeamTemplateConfig | null | undefined) {
-  const template = normalizeTeamTemplateConfig(teamTemplateConfig);
+export function getTeamTemplateSlotConfigs(
+  teamTemplateConfig: TeamTemplateConfig | null | undefined,
+  context?: TeamTemplateContext | null,
+) {
+  const template = normalizeTeamTemplateConfig(teamTemplateConfig, context);
   const vocalGenderCounts: Record<VocalSlotGender, number> = { male: 0, female: 0 };
 
   const vocalSlots = template.vocalSlots
@@ -155,12 +232,17 @@ export function getTeamTemplateSlotConfigs(teamTemplateConfig: TeamTemplateConfi
 export function getRequiredGenderForSlot(
   teamTemplateConfig: TeamTemplateConfig | null | undefined,
   slotId: string,
+  context?: TeamTemplateContext | null,
 ): VocalSlotGender | null {
-  const template = normalizeTeamTemplateConfig(teamTemplateConfig);
+  const template = normalizeTeamTemplateConfig(teamTemplateConfig, context);
   return template.vocalSlots.find((slot) => slot.slot === slotId)?.gender || null;
 }
 
-export function isTeamSlotVisible(teamTemplateConfig: TeamTemplateConfig | null | undefined, slotId: string) {
+export function isTeamSlotVisible(
+  teamTemplateConfig: TeamTemplateConfig | null | undefined,
+  slotId: string,
+  context?: TeamTemplateContext | null,
+) {
   const slotConfig = POSITION_SLOTS.find((slot) => slot.slot === slotId);
   if (!slotConfig) return false;
   if (
@@ -170,6 +252,6 @@ export function isTeamSlotVisible(teamTemplateConfig: TeamTemplateConfig | null 
     slotConfig.category !== "Video"
   ) return true;
 
-  const { visibleSlotIds } = getTeamTemplateSlotConfigs(teamTemplateConfig);
+  const { visibleSlotIds } = getTeamTemplateSlotConfigs(teamTemplateConfig, context);
   return visibleSlotIds.has(slotId);
 }

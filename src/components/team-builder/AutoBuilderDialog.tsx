@@ -42,7 +42,7 @@ interface AutoBuilderDialogProps {
 
 // Position mapping from profile positions to slot names
 const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
-  vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"],
+  vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"],
   teacher: ["teacher"],
   announcement: ["announcement"],
   annoucement: ["announcement"],
@@ -77,7 +77,7 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
 const AUTO_BUILD_SLOT_PRIORITY = [
   "drums", "bass", "keys",
   "eg_1", "eg_2", "eg_3", "eg_4", "ag_1", "ag_2", "pad",
-  "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
+  "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8",
   "teacher", "announcement", "closing_prayer",
   "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
   "tri_pod_camera", "hand_held_camera",
@@ -113,7 +113,7 @@ function canDoubleUpMaleVocalGuitarist(member: AvailableMember, targetSlot: stri
   if (normalizeGender(member.gender) !== "male") return false;
 
   const memberSlots = new Set(getMemberAvailableSlots(member.positions));
-  const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"].some((slot) => memberSlots.has(slot));
+  const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"].some((slot) => memberSlots.has(slot));
   const hasGuitarSlot =
     memberSlots.has("ag_1") ||
     memberSlots.has("eg_2") ||
@@ -257,6 +257,7 @@ function findBestTeamForMemberSlot(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   slotFilledPerTeam: Map<string, Set<string>>,
+  templateContext?: { campusName?: string | null; ministryType?: string | null },
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
@@ -269,7 +270,7 @@ function findBestTeamForMemberSlot(
     const filledSlots = slotFilledPerTeam.get(team.id);
     if (filledSlots?.has(targetSlot)) continue;
     if (exceedsGuitarFamilyLimit(filledSlots || new Set<string>(), targetSlot)) continue;
-    if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
+    if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) continue;
     if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
@@ -453,15 +454,22 @@ export function AutoBuilderDialog({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewAssignment[] | null>(null);
   const multiTeamUserIds = useMemo(
-    () => new Set(allowMultiTeamUserIds),
-    [allowMultiTeamUserIds],
+    () =>
+      ministryType === "worship_night"
+        ? new Set(members.map((member) => member.id))
+        : new Set(allowMultiTeamUserIds),
+    [allowMultiTeamUserIds, members, ministryType],
+  );
+  const templateContext = useMemo(
+    () => ({ campusName, ministryType }),
+    [campusName, ministryType],
   );
 
   const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
   const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
   const visibleSlotsByTeam = useMemo(
-    () => new Map(teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)])),
-    [teams],
+    () => new Map(teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config, templateContext)])),
+    [teams, templateContext],
   );
   const teamScheduledDatesByTeam = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -479,11 +487,11 @@ export function AutoBuilderDialog({
         AUTO_BUILD_SLOT_PRIORITY.filter((slot) => {
           const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
           if (!slotConfig || !allowedCategories.includes(slotConfig.category)) return false;
-          return isTeamSlotVisible(team.template_config, slot);
+          return isTeamSlotVisible(team.template_config, slot, templateContext);
         }),
       ),
     );
-  }, [allowedCategories, teams]);
+  }, [allowedCategories, teams, templateContext]);
 
   // Filter members by ministry
   const eligibleMembers = useMemo(() => {
@@ -585,8 +593,8 @@ export function AutoBuilderDialog({
       const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === targetSlot);
       if (!slotConfig) return false;
       if (!allowedCategories.includes(slotConfig.category)) return false;
-      if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
-      if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
+      if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) return false;
+      if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot, templateContext))) return false;
 
       const filledSlots = slotFilledPerTeam.get(team.id)!;
       if (filledSlots.has(targetSlot)) return false;
@@ -843,6 +851,7 @@ export function AutoBuilderDialog({
                   slot,
                   userAssignedSlotsByTeam,
                   slotFilledPerTeam,
+                  templateContext,
                   blockedTeammateIdsByTeam,
                   blackoutDatesByUser,
                   teamScheduledDatesByTeam,
@@ -922,6 +931,7 @@ export function AutoBuilderDialog({
               targetSlot,
               userAssignedSlotsByTeam,
               slotFilledPerTeam,
+              templateContext,
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
@@ -933,6 +943,7 @@ export function AutoBuilderDialog({
               targetSlot,
               userAssignedSlotsByTeam,
               slotFilledPerTeam,
+              templateContext,
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
@@ -953,6 +964,7 @@ export function AutoBuilderDialog({
             targetSlot,
             userAssignedSlotsByTeam,
             slotFilledPerTeam,
+            templateContext,
             blockedTeammateIdsByTeam,
             blackoutDatesByUser,
             teamScheduledDatesByTeam,
@@ -969,7 +981,7 @@ export function AutoBuilderDialog({
       assignBlackoutPriorityPool(returningWithBlackoutDates);
 
       for (const team of teams) {
-        if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
+        if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) continue;
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) continue;
 
@@ -1138,7 +1150,7 @@ export function AutoBuilderDialog({
       slots.forEach((slotConfig) => {
         if (assignmentsByTeamSlot.has(`${team.id}:${slotConfig.slot}`)) return;
 
-        const requiredGender = getRequiredGenderForSlot(team.template_config, slotConfig.slot);
+        const requiredGender = getRequiredGenderForSlot(team.template_config, slotConfig.slot, templateContext);
         const positionCandidates = availablePool.filter((member) =>
           getMemberAvailableSlots(member.positions).includes(slotConfig.slot),
         );

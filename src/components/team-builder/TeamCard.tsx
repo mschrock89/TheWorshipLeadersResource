@@ -38,6 +38,7 @@ interface TeamCardProps {
   canEditBroadcast?: boolean;
   canEditAudio?: boolean;
   ministryFilter?: string;
+  campusName?: string | null;
   onEditTemplate?: () => void;
   slotConflictDates?: Record<string, string[]>;
   slotScheduleDates?: string[];
@@ -59,6 +60,7 @@ export function TeamCard({
   canEditBroadcast = false,
   canEditAudio = false,
   ministryFilter = "all",
+  campusName,
   onEditTemplate,
   slotConflictDates = {},
   slotScheduleDates = [],
@@ -76,23 +78,13 @@ export function TeamCard({
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
 
-  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
+    campusName,
+    ministryType: ministryFilter,
+  });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = useMemo(() => {
-    if (ministryFilter !== "worship_night") {
-      return templateSlots.bandSlots;
-    }
-
-    const worshipNightSlotIds = ["pad", "eg_3", "eg_4"];
-    const existingSlotIds = new Set(templateSlots.bandSlots.map((slot) => slot.slot));
-    const additionalSlots = worshipNightSlotIds
-      .filter((slotId) => !existingSlotIds.has(slotId))
-      .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
-      .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
-
-    return [...templateSlots.bandSlots, ...additionalSlots];
-  }, [ministryFilter, templateSlots.bandSlots]);
+  const bandSlots = useMemo(() => templateSlots.bandSlots, [templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
 

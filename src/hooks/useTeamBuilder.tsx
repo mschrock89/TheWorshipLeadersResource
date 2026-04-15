@@ -627,35 +627,32 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
       const { data: roleRows, error: roleError } = await supabase
         .from("user_roles")
         .select("user_id")
-        .in("role", ["campus_worship_pastor", "student_worship_pastor", "production_manager"]);
+        .in("role", [
+          "network_worship_pastor",
+          "campus_worship_pastor",
+          "student_worship_pastor",
+          "video_director",
+          "production_manager",
+        ]);
 
       if (roleError) throw roleError;
-
-      const { data: videoRows, error: videoError } = await supabase
-        .from("user_ministry_campuses")
-        .select("user_id")
-        .eq("campus_id", campusId)
-        .eq("ministry_type", "video");
-
-      if (videoError) throw videoError;
 
       const eligibleUserIds = [
         ...new Set([
           ...(roleRows || []).map((row) => row.user_id).filter(Boolean),
-          ...(videoRows || []).map((row) => row.user_id).filter(Boolean),
         ]),
       ];
       if (eligibleUserIds.length === 0) return [];
 
-      const { data: campusRows, error: campusError } = await supabase
-        .from("user_campuses")
+      const { data: scopedRows, error: scopedError } = await supabase
+        .from("user_ministry_campuses")
         .select("user_id")
         .eq("campus_id", campusId)
         .in("user_id", eligibleUserIds);
 
-      if (campusError) throw campusError;
+      if (scopedError) throw scopedError;
 
-      return [...new Set((campusRows || []).map((row) => row.user_id).filter(Boolean))]
+      return [...new Set((scopedRows || []).map((row) => row.user_id).filter(Boolean))]
         .map((id) => ({ id })) as MultiTeamAssignableMember[];
     },
   });
@@ -1821,7 +1818,7 @@ export function useUpdateMinistryTypes() {
 // Position mapping from profile positions to slot names
 const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   // Vocals
-  vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"],
+  vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"],
   // Instruments
   // Instruments
   drums: ["drums"],
@@ -1883,7 +1880,7 @@ function canDoubleUpMaleVocalGuitarist(member: AvailableMember, targetSlot: stri
   if (normalizeGender(member.gender) !== "male") return false;
 
   const memberSlots = new Set(getMemberAvailableSlots(member.positions));
-  const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"].some((slot) => memberSlots.has(slot));
+  const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"].some((slot) => memberSlots.has(slot));
   const hasGuitarSlot =
     memberSlots.has("ag_1") ||
     memberSlots.has("eg_2") ||
@@ -2027,6 +2024,7 @@ function findBestTeamForMemberSlot(
   targetSlot: string,
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   slotFilledPerTeam: Map<string, Set<string>>,
+  templateContext?: { campusName?: string | null; ministryType?: string | null },
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
   blackoutDatesByUser?: Record<string, string[]>,
   teamScheduledDatesByTeam?: Map<string, Set<string>>,
@@ -2039,7 +2037,7 @@ function findBestTeamForMemberSlot(
     const filledSlots = slotFilledPerTeam.get(team.id);
     if (filledSlots?.has(targetSlot)) continue;
     if (exceedsGuitarFamilyLimit(filledSlots || new Set<string>(), targetSlot)) continue;
-    if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
+    if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) continue;
     if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
       continue;
     }
@@ -2212,10 +2210,11 @@ export function useAutoBuildTeams() {
       blackoutDatesByUser: Record<string, string[]>;
       scheduleEntries: Array<{ team_id: string; schedule_date: string }>;
     }) => {
+      const templateContext = { campusName, ministryType };
       const slotPriority = [
         "drums", "bass", "keys",
-        "eg_1", "eg_2", "ag_1", "ag_2",
-        "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
+        "eg_1", "eg_2", "eg_3", "eg_4", "ag_1", "ag_2", "pad",
+        "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8",
         "teacher", "announcement", "closing_prayer",
         "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
         "tri_pod_camera", "hand_held_camera",
@@ -2224,7 +2223,7 @@ export function useAutoBuildTeams() {
       const allowedCategories =
         MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
       const visibleSlotsByTeam = new Map(
-        teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config)]),
+        teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config, templateContext)]),
       );
       const teamScheduledDatesByTeam = new Map<string, Set<string>>();
       for (const entry of scheduleEntries) {
@@ -2238,7 +2237,7 @@ export function useAutoBuildTeams() {
           slotPriority.filter((slot) => {
             const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
             if (!slotConfig || !allowedCategories.includes(slotConfig.category)) return false;
-            return isTeamSlotVisible(team.template_config, slot);
+            return isTeamSlotVisible(team.template_config, slot, templateContext);
           }),
         ),
       );
@@ -2344,7 +2343,10 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
-      const multiTeamUserIds = new Set(allowMultiTeamUserIds || campusWorshipPastorIds || []);
+      const multiTeamUserIds =
+        ministryType === "worship_night"
+          ? new Set(members.map((member) => member.id))
+          : new Set(allowMultiTeamUserIds || campusWorshipPastorIds || []);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
@@ -2352,8 +2354,8 @@ export function useAutoBuildTeams() {
         const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === targetSlot);
         if (!slotConfig) return false;
         if (!allowedCategories.includes(slotConfig.category)) return false;
-        if (!isTeamSlotVisible(team.template_config, targetSlot)) return false;
-        if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot))) return false;
+        if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) return false;
+        if (!memberMatchesSlotGender(member, getRequiredGenderForSlot(team.template_config, targetSlot, templateContext))) return false;
 
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
@@ -2585,6 +2587,7 @@ export function useAutoBuildTeams() {
                     slot,
                     userAssignedSlotsByTeam,
                     slotFilledPerTeam,
+                    templateContext,
                     blockedTeammateIdsByTeam,
                     blackoutDatesByUser,
                     teamScheduledDatesByTeam,
@@ -2674,6 +2677,7 @@ export function useAutoBuildTeams() {
                 targetSlot,
                 userAssignedSlotsByTeam,
                 slotFilledPerTeam,
+                templateContext,
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
@@ -2685,6 +2689,7 @@ export function useAutoBuildTeams() {
                 targetSlot,
                 userAssignedSlotsByTeam,
                 slotFilledPerTeam,
+                templateContext,
                 blockedTeammateIdsByTeam,
                 blackoutDatesByUser,
                 teamScheduledDatesByTeam,
@@ -2705,6 +2710,7 @@ export function useAutoBuildTeams() {
               targetSlot,
               userAssignedSlotsByTeam,
               slotFilledPerTeam,
+              templateContext,
               blockedTeammateIdsByTeam,
               blackoutDatesByUser,
               teamScheduledDatesByTeam,
@@ -2722,7 +2728,7 @@ export function useAutoBuildTeams() {
 
         // Assign to each team
         for (const team of teams) {
-          if (!isTeamSlotVisible(team.template_config, targetSlot)) continue;
+          if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) continue;
           const filledSlots = slotFilledPerTeam.get(team.id)!;
           if (filledSlots.has(targetSlot)) continue;
 

@@ -28,6 +28,8 @@ export const POSITION_LABELS: Record<string, string> = {
   electric_guitar: "EG 1",
   electric_1: "EG 1",
   electric_2: "EG 2",
+  electric_3: "EG 3",
+  electric_4: "EG 4",
   bass: "Bass",
   drums: "Drums",
   drum_tech: "Drum Tech",
@@ -82,6 +84,8 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   electric_guitar: "EG 1",
   electric_1: "EG 1",
   electric_2: "EG 2",
+  electric_3: "EG 3",
+  electric_4: "EG 4",
   bass: "Bass",
   drums: "Drums",
   drum_tech: "Drum Tech",
@@ -128,7 +132,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
 export const POSITION_CATEGORIES = {
   vocals: ["vocalist"],
   speaker: ["teacher", "announcement", "closing_prayer"],
-  instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "bass", "drums", "keys"],
+  instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass", "drums", "keys", "pad"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
 };
@@ -144,6 +148,10 @@ export const POSITION_SLOTS: {
   { slot: "vocalist_2", label: "Vocalist 2", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_3", label: "Vocalist 3", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_4", label: "Vocalist 4", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_5", label: "Vocalist 5", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_6", label: "Vocalist 6", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_7", label: "Vocalist 7", category: "Vocalists", position: "vocalist" },
+  { slot: "vocalist_8", label: "Vocalist 8", category: "Vocalists", position: "vocalist" },
   { slot: "teacher", label: "Teacher", category: "Speaker", position: "teacher" },
   { slot: "announcement", label: "Announcements", category: "Speaker", position: "announcement" },
   { slot: "closing_prayer", label: "Closing Prayer", category: "Speaker", position: "closing_prayer" },
@@ -243,8 +251,8 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
 // Which teams are visible for each ministry type
 // Maps ministry values to team name patterns - configure team count per ministry
 export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
-  weekend_team: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Weekend Team (combined)
-  weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Experience Music
+  weekend_team: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
+  weekend: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
   worship_night: ["Team 1", "Team 2", "Team 3", "Team 4"], // Worship Night follows the same 4-team campus rotation
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Encounter
