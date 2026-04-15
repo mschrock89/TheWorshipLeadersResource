@@ -110,7 +110,15 @@ function formatPreviewDate(date: string) {
 }
 
 function shouldCollapseWeekendIntoSingleBucket(ministryType: string) {
-  return ministryType !== "video";
+  return ministryType !== "video" && ministryType !== "eon_weekend";
+}
+
+function shouldUseSplitTeamCards(ministryType: string, campusName?: string | null) {
+  if (ministryType === "video") {
+    return true;
+  }
+
+  return ministryType === "eon_weekend" && campusName === "Murfreesboro Central";
 }
 
 const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
@@ -1175,7 +1183,7 @@ export default function TeamBuilder() {
   };
 
   const teamCards = useMemo(() => {
-    if (selectedMinistryType !== "video") {
+    if (!shouldUseSplitTeamCards(selectedMinistryType, selectedCampus?.name)) {
       return displayTeams.map((team) => ({
         key: team.id,
         team,
