@@ -35,6 +35,7 @@ interface MyTeamViewProps {
     end_date: string;
   }>;
   ministryFilter?: string;
+  campusName?: string | null;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
 }
@@ -45,6 +46,7 @@ function CondensedTeamCard({
   members,
   userId,
   ministryFilter,
+  campusName,
   canEditAudio = false,
   canEditBroadcast = false,
   titleOverride,
@@ -53,6 +55,7 @@ function CondensedTeamCard({
   members: TeamMemberAssignment[];
   userId: string;
   ministryFilter: string;
+  campusName?: string | null;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
   titleOverride?: string;
@@ -72,7 +75,10 @@ function CondensedTeamCard({
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
   );
 
-  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
+    campusName,
+    ministryType: ministryFilter,
+  });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
@@ -166,6 +172,7 @@ function FullTeamCard({
   periodName,
   myPosition,
   ministryFilter,
+  campusName,
   canEditAudio = false,
   canEditBroadcast = false,
   titleOverride,
@@ -176,6 +183,7 @@ function FullTeamCard({
   periodName?: string;
   myPosition?: string;
   ministryFilter: string;
+  campusName?: string | null;
   canEditAudio?: boolean;
   canEditBroadcast?: boolean;
   titleOverride?: string;
@@ -195,7 +203,10 @@ function FullTeamCard({
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
   );
 
-  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
+    campusName,
+    ministryType: ministryFilter,
+  });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
   const bandSlots = templateSlots.bandSlots;
@@ -295,6 +306,7 @@ export function MyTeamView({
   isAdmin = false,
   periods = [],
   ministryFilter = "all",
+  campusName,
   canEditAudio = false,
   canEditBroadcast = false,
 }: MyTeamViewProps) {
@@ -380,6 +392,7 @@ export function MyTeamView({
                   members={card.members}
                   userId={userId}
                   ministryFilter={ministryFilter}
+                  campusName={campusName}
                   canEditAudio={canEditAudio}
                   canEditBroadcast={canEditBroadcast}
                   titleOverride={card.title}
@@ -464,6 +477,7 @@ export function MyTeamView({
                 members={card.members}
                 userId={userId}
                 ministryFilter={ministryFilter}
+                campusName={campusName}
                 canEditAudio={canEditAudio}
                 canEditBroadcast={canEditBroadcast}
                 titleOverride={card.title}
@@ -518,6 +532,7 @@ export function MyTeamView({
             periodName={periodName}
             myPosition={Array.from(card.myPositions).join(", ")}
             ministryFilter={ministryFilter}
+            campusName={campusName}
             canEditAudio={canEditAudio}
             canEditBroadcast={canEditBroadcast}
             titleOverride={teamTitle}

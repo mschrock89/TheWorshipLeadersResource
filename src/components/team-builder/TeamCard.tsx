@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ interface TeamCardProps {
   canEditBroadcast?: boolean;
   canEditAudio?: boolean;
   ministryFilter?: string;
+  campusName?: string | null;
   onEditTemplate?: () => void;
   slotConflictDates?: Record<string, string[]>;
   slotScheduleDates?: string[];
@@ -58,6 +60,7 @@ export function TeamCard({
   canEditBroadcast = false,
   canEditAudio = false,
   ministryFilter = "all",
+  campusName,
   onEditTemplate,
   slotConflictDates = {},
   slotScheduleDates = [],
@@ -75,10 +78,13 @@ export function TeamCard({
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
 
-  const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
+  const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
+    campusName,
+    ministryType: ministryFilter,
+  });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = templateSlots.bandSlots;
+  const bandSlots = useMemo(() => templateSlots.bandSlots, [templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
 

@@ -39,6 +39,7 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 
 const PROFILE_MINISTRY_ORDER = [
   "weekend_team",
+  "worship_night",
   "production",
   "video",
   "encounter",
@@ -81,8 +82,8 @@ export default function Profile() {
   const isOwnProfile = profileId === user?.id;
   const canEdit = isOwnProfile || canManageTeam;
   const canManageAssignments = canManageTeam;
-  const bandTopRowPositions = ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "bass"];
-  const bandBottomRowPositions = ["drums", "keys"];
+  const bandTopRowPositions = ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass"];
+  const bandBottomRowPositions = ["drums", "keys", "pad"];
 
   const { data: profile, isLoading } = useProfile(profileId);
   const { data: campuses = [] } = useCampuses();
@@ -1224,8 +1225,8 @@ export default function Profile() {
                                 // Determine which position categories to show based on ministry type.
                                 // Weekend Worship should only show worship positions here; Production
                                 // and Video are managed through their own ministry assignments.
-                                const showMusicPositions = ['weekend', 'weekend_team', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
-                                const showDrumTechSupport = ['weekend', 'weekend_team', 'encounter', 'eon', 'evident'].includes(ministryType);
+                                const showMusicPositions = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
+                                const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 const showVideoPositions = ministryType === 'video';

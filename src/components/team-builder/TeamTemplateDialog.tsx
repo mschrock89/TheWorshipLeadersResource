@@ -16,8 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DEFAULT_TEAM_TEMPLATE,
   TeamTemplateConfig,
+  getSupportedVocalSlotIds,
+  isMurfreesboroCentralWorshipNightTemplateContext,
   normalizeTeamTemplateConfig,
 } from "@/lib/teamTemplates";
 
@@ -26,12 +27,11 @@ interface TeamTemplateDialogProps {
   onOpenChange: (open: boolean) => void;
   teamName: string;
   ministryType?: string;
+  campusName?: string | null;
   initialConfig?: TeamTemplateConfig | null;
   onSave: (config: TeamTemplateConfig) => Promise<void> | void;
   isSaving?: boolean;
 }
-
-const VOCAL_SLOT_IDS = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"] as const;
 
 const BAND_FIELDS = [
   { key: "drums", label: "Drums", max: 1 },
@@ -39,6 +39,14 @@ const BAND_FIELDS = [
   { key: "keys", label: "Keys", max: 1 },
   { key: "eg", label: "Electric Guitars", max: 2 },
   { key: "ag", label: "Acoustic Guitars", max: 2 },
+] as const;
+const MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_FIELDS = [
+  { key: "drums", label: "Drums", max: 1 },
+  { key: "bass", label: "Bass", max: 1 },
+  { key: "keys", label: "Keys", max: 1 },
+  { key: "eg", label: "Electric Guitars", max: 3 },
+  { key: "ag", label: "Acoustic Guitars", max: 2 },
+  { key: "pad", label: "Pad", max: 1 },
 ] as const;
 
 const PRODUCTION_FIELDS = [
@@ -59,7 +67,9 @@ const VIDEO_FIELDS = [
   { key: "switcher", label: "Switcher", max: 4, slots: ["switcher", "switcher_2", "switcher_3", "switcher_4"] },
 ] as const;
 
-type BandFieldKey = (typeof BAND_FIELDS)[number]["key"];
+type BandFieldKey =
+  | (typeof BAND_FIELDS)[number]["key"]
+  | (typeof MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_FIELDS)[number]["key"];
 type ProductionFieldKey = (typeof PRODUCTION_FIELDS)[number]["key"];
 type VideoFieldKey = (typeof VIDEO_FIELDS)[number]["key"];
 
@@ -70,6 +80,7 @@ function getBandCounts(config: Required<TeamTemplateConfig>) {
     keys: config.bandSlots.includes("keys") ? 1 : 0,
     eg: config.bandSlots.filter((slot) => slot.startsWith("eg_")).length,
     ag: config.bandSlots.filter((slot) => slot.startsWith("ag_")).length,
+    pad: config.bandSlots.includes("pad") ? 1 : 0,
   };
 }
 
@@ -92,13 +103,26 @@ export function TeamTemplateDialog({
   onOpenChange,
   teamName,
   ministryType,
+  campusName,
   initialConfig,
   onSave,
   isSaving = false,
 }: TeamTemplateDialogProps) {
+  const templateContext = useMemo(
+    () => ({ campusName, ministryType }),
+    [campusName, ministryType],
+  );
   const normalizedInitial = useMemo(
-    () => normalizeTeamTemplateConfig(initialConfig),
-    [initialConfig],
+    () => normalizeTeamTemplateConfig(initialConfig, templateContext),
+    [initialConfig, templateContext],
+  );
+  const vocalSlotIds = useMemo(() => [...getSupportedVocalSlotIds(templateContext)], [templateContext]);
+  const bandFields = useMemo(
+    () =>
+      isMurfreesboroCentralWorshipNightTemplateContext(templateContext)
+        ? [...MURFREESBORO_CENTRAL_WORSHIP_NIGHT_BAND_FIELDS]
+        : [...BAND_FIELDS],
+    [templateContext],
   );
   const [vocalSelections, setVocalSelections] = useState<Record<string, "male" | "female" | "none">>({});
   const [bandCounts, setBandCounts] = useState<Record<BandFieldKey, number>>({
@@ -107,6 +131,7 @@ export function TeamTemplateDialog({
     keys: 1,
     eg: 2,
     ag: 2,
+    pad: 0,
   });
   const [productionCounts, setProductionCounts] = useState<Record<ProductionFieldKey, number>>({
     foh: 1,
@@ -134,7 +159,7 @@ export function TeamTemplateDialog({
     if (!open) return;
 
     const nextVocalSelections: Record<string, "male" | "female" | "none"> = {};
-    VOCAL_SLOT_IDS.forEach((slotId) => {
+    vocalSlotIds.forEach((slotId) => {
       nextVocalSelections[slotId] =
         normalizedInitial.vocalSlots.find((slot) => slot.slot === slotId)?.gender || "none";
     });
@@ -143,7 +168,7 @@ export function TeamTemplateDialog({
     setBandCounts(getBandCounts(normalizedInitial));
     setProductionCounts(getProductionCounts(normalizedInitial));
     setVideoCounts(getVideoCounts(normalizedInitial));
-  }, [normalizedInitial, open]);
+  }, [normalizedInitial, open, vocalSlotIds]);
 
   const totalVocalists = Object.values(vocalSelections).filter((value) => value !== "none").length;
   const totalInstruments = Object.values(bandCounts).reduce((sum, count) => sum + count, 0);
@@ -173,7 +198,7 @@ export function TeamTemplateDialog({
       return;
     }
 
-    const vocalSlots = VOCAL_SLOT_IDS.flatMap((slotId) => {
+    const vocalSlots = vocalSlotIds.flatMap((slotId) => {
       const selection = vocalSelections[slotId];
       if (selection === "none") return [];
       return [{ slot: slotId, gender: selection }];
@@ -185,12 +210,13 @@ export function TeamTemplateDialog({
       ...(bandCounts.keys ? ["keys"] : []),
       ...Array.from({ length: bandCounts.eg }, (_, index) => `eg_${index + 1}`),
       ...Array.from({ length: bandCounts.ag }, (_, index) => `ag_${index + 1}`),
+      ...(bandCounts.pad ? ["pad"] : []),
     ];
 
     await onSave({
       ...normalizedInitial,
-      vocalSlots: vocalSlots.length > 0 ? vocalSlots : DEFAULT_TEAM_TEMPLATE.vocalSlots,
-      bandSlots: bandSlots.length > 0 ? bandSlots : DEFAULT_TEAM_TEMPLATE.bandSlots,
+      vocalSlots: vocalSlots.length > 0 ? vocalSlots : normalizedInitial.vocalSlots,
+      bandSlots: bandSlots.length > 0 ? bandSlots : normalizedInitial.bandSlots,
       productionSlots:
         productionSlots.length > 0 ? productionSlots : normalizedInitial.productionSlots,
     });
@@ -268,7 +294,7 @@ export function TeamTemplateDialog({
                       </p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {VOCAL_SLOT_IDS.map((slotId, index) => (
+                      {vocalSlotIds.map((slotId, index) => (
                         <div key={slotId} className="space-y-2">
                           <Label>Vocal Slot {index + 1}</Label>
                           <Select
@@ -299,7 +325,7 @@ export function TeamTemplateDialog({
                       </p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {BAND_FIELDS.map((field) => (
+                      {bandFields.map((field) => (
                         <div key={field.key} className="space-y-2">
                           <Label>{field.label}</Label>
                           <Select
