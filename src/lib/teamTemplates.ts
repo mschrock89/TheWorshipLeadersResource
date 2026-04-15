@@ -20,6 +20,7 @@ const DEFAULT_VOCAL_SLOTS: TeamTemplateConfig["vocalSlots"] = [
 ];
 
 const DEFAULT_BAND_SLOTS = ["drums", "bass", "keys", "eg_1", "eg_2", "ag_1", "ag_2"];
+const EXTENDED_BAND_SLOTS = [...DEFAULT_BAND_SLOTS, "pad", "eg_3", "eg_4"];
 const DEFAULT_PRODUCTION_SLOTS = [
   "foh",
   "mon",
@@ -37,7 +38,7 @@ const DEFAULT_VIDEO_SLOTS = [
   "switcher",
 ];
 const VALID_VOCAL_SLOTS = new Set(DEFAULT_VOCAL_SLOTS.map((slot) => slot.slot));
-const VALID_BAND_SLOTS = new Set(DEFAULT_BAND_SLOTS);
+const VALID_BAND_SLOTS = new Set(EXTENDED_BAND_SLOTS);
 const VALID_PRODUCTION_SLOTS = new Set(DEFAULT_PRODUCTION_SLOTS);
 const VALID_VIDEO_SLOTS = new Set([
   "tri_pod_camera_1",

@@ -234,7 +234,7 @@ export default function TeamBuilder() {
   const { data: dateOverrides = [] } = useTeamMemberDateOverrides(selectedPeriodId);
   const { data: availableMembers = [] } = useAvailableMembers(
     selectedCampusId,
-    null,
+    selectedMinistryType,
   );
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
@@ -1891,9 +1891,12 @@ export default function TeamBuilder() {
       <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Publish rotation?</AlertDialogTitle>
+            <AlertDialogTitle>Warning: Publish this rotation live?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will make the current rotation live and send {publishNotifications.length} push notification{publishNotifications.length === 1 ? "" : "s"} for assignments and breaks.
+              This will make the current rotation live for users at{" "}
+              <strong>{selectedCampus?.name || "this campus"}</strong> and send{" "}
+              {publishNotifications.length} push notification{publishNotifications.length === 1 ? "" : "s"} for assignments and breaks.
+              {" "}Saved drafts stay hidden from non-managers until you publish.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

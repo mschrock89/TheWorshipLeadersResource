@@ -50,10 +50,13 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   drums: ["drums"],
   bass: ["bass"],
   keys: ["keys"],
+  pad: ["pad"],
   piano: ["keys"],
-  electric_guitar: ["eg_1", "eg_2"],
+  electric_guitar: ["eg_1", "eg_2", "eg_3", "eg_4"],
   electric_1: ["eg_1"],
   electric_2: ["eg_2"],
+  electric_3: ["eg_3"],
+  electric_4: ["eg_4"],
   acoustic_guitar: ["ag_1", "ag_2"],
   acoustic_1: ["ag_1"],
   acoustic_2: ["ag_2"],
@@ -73,7 +76,7 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
 
 const AUTO_BUILD_SLOT_PRIORITY = [
   "drums", "bass", "keys",
-  "eg_1", "eg_2", "ag_1", "ag_2",
+  "eg_1", "eg_2", "eg_3", "eg_4", "ag_1", "ag_2", "pad",
   "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4",
   "teacher", "announcement", "closing_prayer",
   "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
@@ -111,13 +114,25 @@ function canDoubleUpMaleVocalGuitarist(member: AvailableMember, targetSlot: stri
 
   const memberSlots = new Set(getMemberAvailableSlots(member.positions));
   const hasVocalSlot = ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4"].some((slot) => memberSlots.has(slot));
-  const hasGuitarSlot = memberSlots.has("ag_1") || memberSlots.has("eg_2");
+  const hasGuitarSlot =
+    memberSlots.has("ag_1") ||
+    memberSlots.has("eg_2") ||
+    memberSlots.has("eg_3") ||
+    memberSlots.has("eg_4");
   if (!hasVocalSlot || !hasGuitarSlot) return false;
 
   const targetIsVocal = targetSlot.startsWith("vocalist_");
-  const targetIsDoubleUpGuitar = targetSlot === "ag_1" || targetSlot === "eg_2";
+  const targetIsDoubleUpGuitar =
+    targetSlot === "ag_1" ||
+    targetSlot === "eg_2" ||
+    targetSlot === "eg_3" ||
+    targetSlot === "eg_4";
   const alreadyHasVocal = [...existingSlots].some((slot) => slot.startsWith("vocalist_"));
-  const alreadyHasDoubleUpGuitar = existingSlots.has("ag_1") || existingSlots.has("eg_2");
+  const alreadyHasDoubleUpGuitar =
+    existingSlots.has("ag_1") ||
+    existingSlots.has("eg_2") ||
+    existingSlots.has("eg_3") ||
+    existingSlots.has("eg_4");
 
   if (targetIsVocal) {
     return !alreadyHasVocal && alreadyHasDoubleUpGuitar;
@@ -136,9 +151,9 @@ function exceedsGuitarFamilyLimit(filledSlots: Set<string>, targetSlot: string) 
     return acousticCount >= 2;
   }
 
-  if (targetSlot === "eg_1" || targetSlot === "eg_2") {
-    const electricCount = ["eg_1", "eg_2"].filter((slot) => filledSlots.has(slot)).length;
-    return electricCount >= 2;
+  if (targetSlot === "eg_1" || targetSlot === "eg_2" || targetSlot === "eg_3" || targetSlot === "eg_4") {
+    const electricCount = ["eg_1", "eg_2", "eg_3", "eg_4"].filter((slot) => filledSlots.has(slot)).length;
+    return electricCount >= 4;
   }
 
   return false;
@@ -625,7 +640,7 @@ export function AutoBuilderDialog({
     );
 
     const isWeekendWorshipBuild =
-      ministryType === "weekend" || ministryType === "weekend_team";
+      ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "worship_night";
     const isMurfreesboroWeekendBuild =
       campusName === "Murfreesboro Central" && isWeekendWorshipBuild;
 

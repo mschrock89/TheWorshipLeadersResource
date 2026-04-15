@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,7 +79,20 @@ export function TeamCard({
   const templateSlots = getTeamTemplateSlotConfigs(team.template_config);
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
-  const bandSlots = templateSlots.bandSlots;
+  const bandSlots = useMemo(() => {
+    if (ministryFilter !== "worship_night") {
+      return templateSlots.bandSlots;
+    }
+
+    const worshipNightSlotIds = ["pad", "eg_3", "eg_4"];
+    const existingSlotIds = new Set(templateSlots.bandSlots.map((slot) => slot.slot));
+    const additionalSlots = worshipNightSlotIds
+      .filter((slotId) => !existingSlotIds.has(slotId))
+      .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
+      .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
+
+    return [...templateSlots.bandSlots, ...additionalSlots];
+  }, [ministryFilter, templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
 
