@@ -95,7 +95,12 @@ const POSITION_GROUPS = [
 ];
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string | undefined) {
-  return ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "video";
+  return (
+    ministryType === "weekend" ||
+    ministryType === "weekend_team" ||
+    ministryType === "video" ||
+    ministryType === "eon_weekend"
+  );
 }
 
 function countsAsTrimesterRosterAssignment(

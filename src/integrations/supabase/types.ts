@@ -312,6 +312,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          ministry_type: string
           service_date: string
           service_times: string[]
           updated_at: string
@@ -321,6 +322,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          ministry_type?: string
           service_date: string
           service_times: string[]
           updated_at?: string
@@ -330,6 +332,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          ministry_type?: string
           service_date?: string
           service_times?: string[]
           updated_at?: string

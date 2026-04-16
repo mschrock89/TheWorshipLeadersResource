@@ -103,12 +103,22 @@ export function AssignMemberDialog({
     return `${formatted.slice(0, 3).join(", ")} +${formatted.length - 3} more`;
   };
 
+  const normalizePositionValue = (value: string) =>
+    value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+  const normalizeGenderValue = (value: string | null | undefined): "male" | "female" | null => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return normalized === "male" || normalized === "female" ? normalized : null;
+  };
+
   // Check if a member's positions match the slot
   const matchesPosition = (positions: string[], slotType: string): boolean => {
     return positions.some(p => {
-      const pLower = p.toLowerCase();
+      const pLower = normalizePositionValue(p);
       // Vocalist slots
-      if (slotType === "vocalist") return pLower.includes("vocal");
+      if (slotType === "vocalist") {
+        return pLower === "vocalist" || pLower === "vocals";
+      }
       // Speaker slots
       if (slotType === "teacher") return pLower === "teacher";
       if (slotType === "announcement") return pLower === "announcement" || pLower === "annoucement";
@@ -117,6 +127,7 @@ export function AssignMemberDialog({
       if (slotType === "drums") return pLower === "drums";
       if (slotType === "bass") return pLower === "bass";
       if (slotType === "keys") return pLower === "keys" || pLower === "piano";
+      if (slotType === "pad") return pLower === "pad" || pLower === "keys" || pLower === "piano";
       if (slotType === "eg") return pLower.includes("electric");
       if (slotType === "ag") return pLower.includes("acoustic");
       // Audio slots
@@ -149,34 +160,47 @@ export function AssignMemberDialog({
           return false;
         }
         if (requiredGender) {
-          const memberGender = m.gender?.trim().toLowerCase();
-          if (memberGender !== requiredGender) {
+          const memberGender = normalizeGenderValue(m.gender);
+          if (memberGender && memberGender !== requiredGender) {
             return false;
           }
         }
         // Match position
-        return matchesPosition(m.positions, slotType);
+        if (!matchesPosition(m.positions, slotType)) {
+          return false;
+        }
+
+        if (effectiveMinistryFilter && effectiveMinistryFilter !== "all") {
+          return memberMatchesMinistryFilter(m.ministry_types, effectiveMinistryFilter);
+        }
+
+        return true;
       })
       .map(m => {
-        // Check if member has the ministry type
-        const hasMinistry = effectiveMinistryFilter
-          ? memberMatchesMinistryFilter(m.ministry_types, effectiveMinistryFilter)
-          : true;
         const conflictDates = blackoutConflictDatesByMember[m.id] || [];
-        return { ...m, hasMinistry, conflictDates };
+        const normalizedGender = normalizeGenderValue(m.gender);
+        return {
+          ...m,
+          hasMinistry: true,
+          conflictDates,
+          genderMatchRank: !requiredGender
+            ? 0
+            : normalizedGender === requiredGender
+            ? 0
+            : normalizedGender === null
+            ? 1
+            : 2,
+        };
       })
       .sort((a, b) => {
-        // Sort: members with matching ministry first, then alphabetically
-        if (a.hasMinistry && !b.hasMinistry) return -1;
-        if (!a.hasMinistry && b.hasMinistry) return 1;
+        if (a.genderMatchRank !== b.genderMatchRank) return a.genderMatchRank - b.genderMatchRank;
         if (a.conflictDates.length === 0 && b.conflictDates.length > 0) return -1;
         if (a.conflictDates.length > 0 && b.conflictDates.length === 0) return 1;
         return a.full_name.localeCompare(b.full_name);
       });
   }, [members, search, slot, effectiveMinistryFilter, requiredGender, blackoutConflictDatesByMember]);
 
-  const matchingMinistryCount = relevantMembers.filter(m => m.hasMinistry).length;
-  const otherCount = relevantMembers.length - matchingMinistryCount;
+  const eligibleMemberCount = relevantMembers.length;
 
   const handleMemberClick = (member: AvailableMember) => {
     if (effectiveMinistryFilter && effectiveMinistryFilter !== "all") {
@@ -261,10 +285,7 @@ export function AssignMemberDialog({
             {effectiveMinistryFilter && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="h-4 w-4" />
-                <span>{matchingMinistryCount} {ministryLabel} members</span>
-                {otherCount > 0 && (
-                  <span className="text-muted-foreground/60">• {otherCount} others</span>
-                )}
+                <span>{eligibleMemberCount} eligible for {slotLabel}</span>
                 {requiredGender && (
                   <span className="text-muted-foreground/60">
                     • {requiredGender === "male" ? "Male" : "Female"} only
@@ -276,21 +297,8 @@ export function AssignMemberDialog({
             <ScrollArea className="h-[300px]">
               <div className="space-y-1 pr-4">
                 {relevantMembers.map((member, index) => {
-                  // Add separator before "other" members
-                  const showSeparator = effectiveMinistryFilter &&
-                    index > 0 && 
-                    relevantMembers[index - 1].hasMinistry && 
-                    !member.hasMinistry;
-
                   return (
                     <div key={member.id}>
-                      {showSeparator && (
-                        <div className="flex items-center gap-2 py-2 mt-2">
-                          <div className="h-px flex-1 bg-border" />
-                          <span className="text-xs text-muted-foreground">Other available members</span>
-                          <div className="h-px flex-1 bg-border" />
-                        </div>
-                      )}
                       <Button
                         variant="ghost"
                         className="h-auto w-full justify-start rounded-xl px-3 py-3 hover:bg-muted/60"
@@ -315,6 +323,11 @@ export function AssignMemberDialog({
                                   {effectiveMinistryFilter && member.hasMinistry && (
                                     <Badge variant="secondary" className="h-5 rounded-md px-2 text-[10px] font-medium">
                                       {ministryLabel}
+                                    </Badge>
+                                  )}
+                                  {requiredGender && !normalizeGenderValue(member.gender) && (
+                                    <Badge variant="outline" className="h-5 rounded-md px-2 text-[10px] font-medium">
+                                      Gender not set
                                     </Badge>
                                   )}
                                   {member.positions.map(pos => (

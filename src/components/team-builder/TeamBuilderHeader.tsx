@@ -21,6 +21,7 @@ import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
 
 const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "weekend",
+  "worship_night",
   "production",
   "video",
   "encounter",
