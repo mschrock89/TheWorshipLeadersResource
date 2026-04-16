@@ -36,7 +36,7 @@ import { SwapsSheet } from "@/components/calendar/SwapsSheet";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
-import { POSITION_LABELS, MINISTRY_TYPES } from "@/lib/constants";
+import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
@@ -63,6 +63,7 @@ const EVENT_AUDIENCE_OPTIONS = [{
 }] as const;
 const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
+  "worship_night",
   "production",
   "video",
   "encounter",
@@ -89,6 +90,34 @@ const LEADER_SERVICE_OVERRIDE_ROLES = new Set([
   "network_worship_pastor",
   "network_worship_leader",
 ]);
+
+const SERVICE_OVERRIDE_MINISTRY_OPTIONS = MINISTRY_TYPES.filter(
+  (ministry) =>
+    ministry.value !== "weekend_team" &&
+    ministry.value !== "audition" &&
+    !("hidden" in ministry && ministry.hidden && ministry.value !== "weekend"),
+).map((ministry) => ({
+  value: ministry.value,
+  label: ministry.label,
+}));
+
+const WEEKEND_TEAM_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team", "production", "video"]);
+
+const serviceOverrideMatchesMinistryFilter = (
+  overrideMinistryType: string | null | undefined,
+  ministryFilter: string,
+) => {
+  const normalizedMinistryType = overrideMinistryType || "weekend";
+
+  if (ministryFilter === "all") return true;
+  if (ministryFilter === "weekend_team") {
+    return WEEKEND_TEAM_OVERRIDE_MINISTRIES.has(normalizedMinistryType);
+  }
+  if (ministryFilter === "weekend" || ministryFilter === "sunday_am") {
+    return normalizedMinistryType === "weekend" || normalizedMinistryType === "sunday_am";
+  }
+  return normalizedMinistryType === ministryFilter;
+};
 
 const formatDateForStorage = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -154,6 +183,7 @@ function StandardCalendar() {
   const [isServiceOverrideOpen, setIsServiceOverrideOpen] = useState(false);
   const [serviceOverrideForm, setServiceOverrideForm] = useState({
     campus_id: "",
+    ministry_type: "weekend",
     service_date: "",
     service_times: [""],
   });
@@ -183,6 +213,13 @@ function StandardCalendar() {
     startDate: monthStart,
     endDate: monthEnd,
   });
+  const filteredServiceTimeOverrides = useMemo(
+    () =>
+      serviceTimeOverrides.filter((override) =>
+        serviceOverrideMatchesMinistryFilter(override.ministry_type, ministryFilter),
+      ),
+    [serviceTimeOverrides, ministryFilter],
+  );
   const { data: auditions = [] } = useQuery({
     queryKey: ["calendar-auditions", monthStart, monthEnd, campusFilter, isAdmin],
     enabled: isAdmin,
@@ -245,8 +282,8 @@ function StandardCalendar() {
   });
   const customAssignedDateSet = useMemo(() => new Set(customAssignedDates), [customAssignedDates]);
   const serviceTimeOverrideDateSet = useMemo(
-    () => new Set(serviceTimeOverrides.map((override) => override.service_date)),
-    [serviceTimeOverrides],
+    () => new Set(filteredServiceTimeOverrides.map((override) => override.service_date)),
+    [filteredServiceTimeOverrides],
   );
   // Get campus schedule entries for the selected month. Calendar resolves the
   // active team per day, so pulling campus rows directly avoids missing dates
@@ -350,10 +387,13 @@ function StandardCalendar() {
         : availableServiceTimeCampuses[0]?.id || "";
     setServiceOverrideForm((prev) => ({
       campus_id: prev.campus_id || defaultCampusId,
+      ministry_type:
+        prev.ministry_type ||
+        (ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : "weekend"),
       service_date: prev.service_date || formatDateForStorage(selectedDate),
       service_times: prev.service_times.length > 0 ? prev.service_times : [""],
     }));
-  }, [selectedDate, campusFilter, availableServiceTimeCampuses]);
+  }, [selectedDate, campusFilter, availableServiceTimeCampuses, ministryFilter]);
 
   // Set default campus filter only if context is not available
   useEffect(() => {
@@ -388,7 +428,7 @@ function StandardCalendar() {
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
-    const relevantOverrides = serviceTimeOverrides.filter((override) => {
+    const relevantOverrides = filteredServiceTimeOverrides.filter((override) => {
       if (override.service_date !== dateStr) return false;
       if (isCampusAdmin && campusFilter !== "network-wide") {
         return override.campus_id === campusFilter;
@@ -425,13 +465,22 @@ function StandardCalendar() {
 
     relevantOverrides.forEach((override) => {
       const campusName = campuses.find((campus) => campus.id === override.campus_id)?.name || "Campus";
-      const existing = serviceTimesByCampus.get(override.campus_id);
+      const overrideMinistryType = override.ministry_type || "weekend";
+      const overrideKey =
+        overrideMinistryType === "weekend" || overrideMinistryType === "sunday_am"
+          ? override.campus_id
+          : `${override.campus_id}:${overrideMinistryType}`;
+      const existing = serviceTimesByCampus.get(overrideKey);
       const mergedTimes = Array.from(
         new Set([...(existing?.times || []), ...override.service_times]),
       ).sort();
 
-      serviceTimesByCampus.set(override.campus_id, {
-        campusName: existing?.campusName || campusName,
+      serviceTimesByCampus.set(overrideKey, {
+        campusName:
+          existing?.campusName ||
+          (overrideMinistryType === "weekend" || overrideMinistryType === "sunday_am"
+            ? campusName
+            : `${campusName} - ${getMinistryLabel(overrideMinistryType)}`),
         times: mergedTimes,
       });
     });
@@ -482,8 +531,8 @@ function StandardCalendar() {
   const selectedDateStr = selectedDate ? formatDateForStorage(selectedDate) : null;
   const selectedDateOverrides = useMemo(() => {
     if (!selectedDateStr) return [];
-    return serviceTimeOverrides.filter((override) => override.service_date === selectedDateStr);
-  }, [selectedDateStr, serviceTimeOverrides]);
+    return filteredServiceTimeOverrides.filter((override) => override.service_date === selectedDateStr);
+  }, [selectedDateStr, filteredServiceTimeOverrides]);
   const { data: selectedTeachingWeek } = useTeachingWeekForDate(
     teachingCampusId,
     teachingMinistryFilter,
@@ -498,6 +547,8 @@ function StandardCalendar() {
         : availableServiceTimeCampuses[0]?.id || "";
     setServiceOverrideForm({
       campus_id: defaultCampusId,
+      ministry_type:
+        ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : "weekend",
       service_date: formatDateForStorage(selectedDate),
       service_times: [""],
     });
@@ -547,6 +598,7 @@ function StandardCalendar() {
     try {
       await upsertServiceTimeOverride.mutateAsync({
         campus_id: serviceOverrideForm.campus_id,
+        ministry_type: serviceOverrideForm.ministry_type,
         service_date: serviceOverrideForm.service_date,
         service_times: normalizedTimes,
       });
@@ -1160,6 +1212,22 @@ function StandardCalendar() {
                                 </div>
                               </div>
                               <div className="space-y-2">
+                                <Label htmlFor="override-ministry">Specific Ministry</Label>
+                                <Select value={serviceOverrideForm.ministry_type} onValueChange={(value) => setServiceOverrideForm((prev) => ({
+                              ...prev,
+                              ministry_type: value
+                            }))}>
+                                  <SelectTrigger id="override-ministry">
+                                    <SelectValue placeholder="Choose a ministry" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SERVICE_OVERRIDE_MINISTRY_OPTIONS.map((ministry) => <SelectItem key={ministry.value} value={ministry.value}>
+                                        {ministry.label}
+                                      </SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
                                 <Label>Service Times</Label>
                                 <div className="space-y-2">
                                   {serviceOverrideForm.service_times.map((time, index) => <div key={`${index}-${serviceOverrideForm.service_date}`} className="flex items-center gap-2">
@@ -1211,6 +1279,7 @@ function StandardCalendar() {
                     return <div key={override.id} className="flex items-center justify-between gap-2 rounded-md bg-background/80 px-2 py-1.5">
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-foreground">{campusName}</p>
+                              <p className="text-xs text-muted-foreground">{getMinistryLabel(override.ministry_type || "weekend")}</p>
                               <p className="text-xs text-muted-foreground">{formatServiceTimes(override.service_times)}</p>
                             </div>
                             {canManageWeekendOverrides && <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => deleteServiceTimeOverride.mutate(override.id)} disabled={deleteServiceTimeOverride.isPending}>
@@ -1993,7 +2062,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'weekend_team', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -2015,25 +2084,29 @@ function BandRoster({
       label: "Weekend Worship",
       order: 0
     },
+    worship_night: {
+      label: "Worship Night",
+      order: 1
+    },
     eon_weekend: {
       label: "EON Weekend",
-      order: 1
+      order: 2
     },
     encounter: {
       label: "Encounter",
-      order: 2
+      order: 3
     },
     eon: {
       label: "EON",
-      order: 3
+      order: 4
     },
     sunday_am: {
       label: "Weekend Worship",
-      order: 4
+      order: 5
     },
     speaker: {
       label: "Speaker",
-      order: 5
+      order: 6
     }
   };
 

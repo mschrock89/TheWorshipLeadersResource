@@ -64,6 +64,24 @@ function ministryTypesMatch(left: string, right: string) {
   return normalizeProfileMinistryType(left) === normalizeProfileMinistryType(right);
 }
 
+const supabaseFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user-email`;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const getFunctionErrorMessage = async (
+  error: unknown,
+  response: { error: { message?: string } | null; data?: { error?: string; hint?: string } | null },
+  fallback: string,
+) => {
+  const hint = response.data?.hint?.trim();
+  const message =
+    response.data?.error?.trim() ||
+    (error instanceof Error ? error.message.trim() : "") ||
+    response.error?.message?.trim() ||
+    fallback;
+
+  return hint ? `${message} ${hint}` : message;
+};
+
 export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -404,22 +422,37 @@ export default function Profile() {
     setIsUpdatingEmail(true);
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      const activeSession = refreshData.session ?? (await supabase.auth.getSession()).data.session;
+
+      if (refreshError && !activeSession) {
+        throw refreshError;
+      }
+
+      if (!activeSession?.access_token) {
         toast({ title: "Error", description: "You must be logged in", variant: "destructive" });
         return;
       }
 
-      const response = await supabase.functions.invoke('update-user-email', {
-        body: { userId: profileId, newEmail: newEmail.trim() }
+      const response = await fetch(supabaseFunctionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${activeSession.access_token}`,
+        },
+        body: JSON.stringify({ userId: profileId, newEmail: newEmail.trim() }),
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || 'Failed to update email');
-      }
-
-      if (response.data?.error) {
-        throw new Error(response.data.error);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.error) {
+        throw new Error(
+          await getFunctionErrorMessage(
+            null,
+            { error: null, data: payload },
+            "Failed to update email",
+          ),
+        );
       }
 
       toast({ 

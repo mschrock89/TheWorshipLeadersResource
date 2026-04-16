@@ -6,6 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function findUserByEmail(
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 100) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw error;
+    }
+
+    const existingUser = data.users.find(
+      (candidate) => (candidate.email || '').trim().toLowerCase() === email,
+    );
+
+    if (existingUser) return existingUser;
+    if (data.users.length < perPage) return null;
+    page += 1;
+  }
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -13,7 +38,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('No authorization header provided');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -125,61 +150,37 @@ serve(async (req) => {
     // Normalize the new email
     const normalizedEmail = String(newEmail).trim().toLowerCase();
 
-    // Check if email is already in use
-    let page = 1;
-    const perPage = 1000;
-    let emailExists = false;
-
-    while (true) {
-      const { data: usersData, error: listError } = await adminClient.auth.admin.listUsers({
-        page,
-        perPage,
-      });
-
-      if (listError) {
-        console.error('Failed to list users:', listError);
-        break;
-      }
-
-      const existingUser = usersData.users.find(
-        u => (u.email || '').trim().toLowerCase() === normalizedEmail && u.id !== userId
-      );
-
-      if (existingUser) {
-        emailExists = true;
-        break;
-      }
-
-      if (usersData.users.length < perPage) {
-        break;
-      }
-
-      page++;
-      if (page > 100) break;
+    let targetAuthUser: { id: string; email?: string | null } | null = null;
+    const { data: userById, error: getUserError } = await adminClient.auth.admin.getUserById(userId);
+    if (!getUserError && userById?.user) {
+      targetAuthUser = userById.user;
+    } else {
+      console.log(`Auth user not found by id ${userId}, falling back to profile-only update`, getUserError);
     }
 
-    if (emailExists) {
+    const existingUser = await findUserByEmail(adminClient, normalizedEmail);
+    if (existingUser && existingUser.id !== userId) {
       return new Response(
         JSON.stringify({ error: 'This email address is already in use by another account' }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Update the auth user's email
-    const { error: updateError } = await adminClient.auth.admin.updateUserById(
-      userId,
-      { email: normalizedEmail }
-    );
-
-    if (updateError) {
-      console.error(`Failed to update email for ${userId}:`, updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update email in auth system' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    if (targetAuthUser) {
+      const { error: updateError } = await adminClient.auth.admin.updateUserById(
+        userId,
+        { email: normalizedEmail }
       );
+
+      if (updateError) {
+        console.error(`Failed to update email for ${userId}:`, updateError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to update email in auth system', hint: updateError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
-    // Update the profile email as well
     const { error: profileError } = await adminClient
       .from('profiles')
       .update({ email: normalizedEmail })
@@ -187,11 +188,13 @@ serve(async (req) => {
 
     if (profileError) {
       console.error(`Failed to update profile email for ${userId}:`, profileError);
-      // Auth was updated, but profile wasn't - this is a partial failure
       return new Response(
         JSON.stringify({ 
-          error: 'Email updated in auth but failed to update profile', 
-          partialSuccess: true 
+          error: targetAuthUser
+            ? 'Email updated in auth but failed to update profile'
+            : 'Failed to update profile email',
+          partialSuccess: Boolean(targetAuthUser),
+          hint: profileError.message,
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -200,7 +203,7 @@ serve(async (req) => {
     console.log(`Email update successful for ${userId} to ${normalizedEmail}`);
 
     return new Response(
-      JSON.stringify({ success: true, email: normalizedEmail }),
+      JSON.stringify({ success: true, email: normalizedEmail, authUserUpdated: Boolean(targetAuthUser) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

@@ -20,16 +20,7 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-
-// Ministry types that have their own chats
-const CHAT_MINISTRY_TYPES = [
-  { value: 'weekend', label: 'Weekend' },
-  { value: 'encounter', label: 'Encounter' },
-  { value: 'evident', label: 'Evident' },
-  { value: 'eon', label: 'EON' },
-  { value: 'production', label: 'Production' },
-  { value: 'video', label: 'Video' },
-] as const;
+import { CHAT_MINISTRY_TYPES, getUniqueNormalizedChatMinistries } from "@/lib/chat";
 
 // Hook to get ministries the user is assigned to at a specific campus
 function useUserMinistriesForCampus(userId: string | undefined, campusId: string | null) {
@@ -39,13 +30,14 @@ function useUserMinistriesForCampus(userId: string | undefined, campusId: string
       if (!userId || !campusId) return [];
       
       const { data, error } = await supabase
-        .from('user_ministry_campuses')
-        .select('ministry_type')
+        .from('user_campus_ministry_positions')
+        .select('ministry_type, position')
         .eq('user_id', userId)
-        .eq('campus_id', campusId);
+        .eq('campus_id', campusId)
+        .neq('position', 'drum_tech');
       
       if (error) throw error;
-      return data?.map(d => d.ministry_type) || [];
+      return getUniqueNormalizedChatMinistries((data || []).map((row) => row.ministry_type));
     },
     enabled: !!userId && !!campusId,
     staleTime: 2 * 60 * 1000,
