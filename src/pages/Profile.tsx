@@ -1063,7 +1063,7 @@ export default function Profile() {
                     value={birthday}
                     onChange={(e) => setBirthday(e.target.value)}
                     disabled={!canEdit}
-                    className="h-11 min-w-0 w-full rounded-lg pr-3 text-sm [color-scheme:dark] [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
+                    className="h-11 min-w-0 w-full appearance-none rounded-lg pr-3 text-left text-sm leading-normal [color-scheme:dark] [&::-webkit-date-and-time-value]:min-h-[1.25rem] [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:align-middle [&::-webkit-datetime-edit]:leading-normal [&::-webkit-datetime-edit-fields-wrapper]:flex [&::-webkit-datetime-edit-fields-wrapper]:min-h-[1.25rem] [&::-webkit-datetime-edit-fields-wrapper]:items-center [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
                   />
                 </div>
                 <div className="min-w-0 space-y-2">
@@ -1074,7 +1074,7 @@ export default function Profile() {
                     value={anniversary}
                     onChange={(e) => setAnniversary(e.target.value)}
                     disabled={!canEdit}
-                    className="h-11 min-w-0 w-full rounded-lg pr-3 text-sm [color-scheme:dark] [&::-webkit-date-and-time-value]:text-left [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
+                    className="h-11 min-w-0 w-full appearance-none rounded-lg pr-3 text-left text-sm leading-normal [color-scheme:dark] [&::-webkit-date-and-time-value]:min-h-[1.25rem] [&::-webkit-date-and-time-value]:text-left [&::-webkit-date-and-time-value]:align-middle [&::-webkit-datetime-edit]:leading-normal [&::-webkit-datetime-edit-fields-wrapper]:flex [&::-webkit-datetime-edit-fields-wrapper]:min-h-[1.25rem] [&::-webkit-datetime-edit-fields-wrapper]:items-center [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80"
                   />
                 </div>
               </div>
