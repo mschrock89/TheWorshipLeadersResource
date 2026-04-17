@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 const MINISTRY_EDIT_ORDER = [
   "weekend",
+  "worship_night",
   "production",
   "video",
   "encounter",

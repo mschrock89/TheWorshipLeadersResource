@@ -136,7 +136,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
-  const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(targetDate, campusId);
+  const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(targetDate, campusId, ministryType);
   
   // For "weekend_team", we want all weekend/production/video members
   // The hook now handles "weekend_team" expansion internally

@@ -58,7 +58,11 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
   const rejectSetlist = useRejectSetlist();
   
   const planDate = parseLocalDate(approval.draft_set.plan_date);
-  const { data: scheduledTeam } = useScheduledTeamForDate(planDate, approval.draft_set.campus_id);
+  const { data: scheduledTeam } = useScheduledTeamForDate(
+    planDate,
+    approval.draft_set.campus_id,
+    approval.draft_set.ministry_type,
+  );
   const { data: roster } = useTeamRosterForDate(
     planDate,
     scheduledTeam?.teamId,

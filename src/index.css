@@ -239,7 +239,7 @@ html.service-flow-export-mode [class*="min-h-["] {
   padding-bottom: 0 !important;
 }
 
-html.service-flow-export-mode header,
+html.service-flow-export-mode header:not(.service-flow-card-header),
 html.service-flow-export-mode nav,
 html.service-flow-export-mode aside,
 html.service-flow-export-mode footer,
@@ -320,7 +320,7 @@ html.service-flow-export-mode .print-header p {
 }
 
 html.service-flow-export-mode .print-title {
-  color: #35B0E5 !important;
+  color: #27749D !important;
 }
 
 html.service-flow-export-mode .print-date {
@@ -399,17 +399,17 @@ html.service-flow-export-mode .service-flow-page * {
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-header {
-  background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
-  color: #0f4160 !important;
+  background: linear-gradient(90deg, #27749D 0%, #1f5c7d 100%) !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
   height: 1.55rem !important;
   min-height: 1.55rem !important;
   padding: 0 3px !important;
-  border: 1px solid #35B0E5 !important;
+  border: 1px solid #27749D !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-header * {
-  color: #0f4160 !important;
+  color: #ffffff !important;
 }
 
 html.service-flow-export-mode .service-flow-page .bg-card {
@@ -606,18 +606,28 @@ html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
   font-size: 6.25pt !important;
 }
 
-html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-dual) {
+html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-dual):not(.service-flow-print-render) {
   display: none !important;
 }
 
 html.service-flow-export-mode .service-flow-editor,
-html.service-flow-export-mode .service-flow-print-dual {
+html.service-flow-export-mode .service-flow-print-dual,
+html.service-flow-export-mode .service-flow-print-render {
   margin: 0 !important;
   padding: 0 !important;
   height: auto !important;
   min-height: 0 !important;
   max-height: none !important;
   overflow: visible !important;
+}
+
+html.service-flow-export-mode .service-flow-print-pair {
+  width: fit-content !important;
+  max-width: 100% !important;
+  margin: 0.2in auto 0 !important;
+  grid-template-columns: repeat(2, minmax(0, 5.12in)) !important;
+  justify-content: center !important;
+  gap: 0.05in !important;
 }
 
 @media print {
@@ -627,7 +637,7 @@ html.service-flow-export-mode .service-flow-print-dual {
   }
 
   /* Hide navigation, header, sidebar, footer */
-  header,
+  header.sticky,
   nav,
   aside,
   footer,
@@ -644,18 +654,28 @@ html.service-flow-export-mode .service-flow-print-dual {
     display: none !important;
   }
 
-  .service-flow-editor > :not(.service-flow-print-dual) {
+  .service-flow-editor > :not(.service-flow-print-dual):not(.service-flow-print-render) {
     display: none !important;
   }
 
   .service-flow-editor,
-  .service-flow-print-dual {
+  .service-flow-print-dual,
+  .service-flow-print-render {
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
+  }
+
+  .service-flow-print-pair {
+    width: fit-content !important;
+    max-width: 100% !important;
+    margin: 0.2in auto 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 5.12in)) !important;
+    justify-content: center !important;
+    gap: 0.05in !important;
   }
 
   /* Reset body and html for print - compact for single page */
@@ -701,7 +721,7 @@ html.service-flow-export-mode .service-flow-print-dual {
     zoom: 1 !important;
     width: 100% !important;
     margin: 0 !important;
-    border: 2px solid #111 !important;
+    border: 2.5px solid #111 !important;
   }
 
   @supports not (zoom: 1) {
@@ -745,7 +765,7 @@ html.service-flow-export-mode .service-flow-print-dual {
   }
 
   .print-title {
-    color: #35B0E5 !important; /* ECC Blue */
+    color: #27749D !important; /* ECC Dark Blue */
   }
 
   .print-date {
@@ -778,19 +798,19 @@ html.service-flow-export-mode .service-flow-print-dual {
     transform: none !important;
     transition: none !important;
     background: white !important;
-    border: 1px solid #ddd !important;
+    border: 1.5px solid #cfcfcf !important;
     margin-bottom: -1px !important;
     padding: 0 !important;
-    border-radius: 1px !important;
+    border-radius: 3px !important;
   }
 
   .service-flow-page [data-flow-item-type="header"] {
-    height: 1.55rem !important;
-    min-height: 1.55rem !important;
+    height: 1.42rem !important;
+    min-height: 1.42rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    padding-left: 0.45rem !important;
-    padding-right: 0.45rem !important;
+    padding-left: 0.38rem !important;
+    padding-right: 0.38rem !important;
     align-items: center !important;
     box-sizing: border-box !important;
   }
@@ -799,12 +819,12 @@ html.service-flow-export-mode .service-flow-print-dual {
   .service-flow-page [data-flow-item-type="custom"],
   .service-flow-page [data-flow-item-type="element"],
   .service-flow-page [data-flow-item-type="video"] {
-    height: 1.55rem !important;
-    min-height: 1.55rem !important;
+    height: 1.42rem !important;
+    min-height: 1.42rem !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    padding-left: 0.45rem !important;
-    padding-right: 0.45rem !important;
+    padding-left: 0.38rem !important;
+    padding-right: 0.38rem !important;
     align-items: center !important;
     box-sizing: border-box !important;
   }
@@ -822,19 +842,19 @@ html.service-flow-export-mode .service-flow-print-dual {
     align-items: center !important;
   }
 
-  /* ECC Blue (#35B0E5) outline/border around header sections */
+  /* ECC Dark Blue (#27749D) outline/border around header sections */
   .service-flow-page .service-flow-header {
-    background: linear-gradient(90deg, #d8f1fb 0%, #eef9ff 100%) !important;
-    color: #0f4160 !important;
+    background: linear-gradient(90deg, #27749D 0%, #1f5c7d 100%) !important;
+    color: #ffffff !important;
     font-weight: 600 !important;
-    height: 1.55rem !important;
-    min-height: 1.55rem !important;
+    height: 1.42rem !important;
+    min-height: 1.42rem !important;
     padding: 0 3px !important;
-    border: 1px solid #35B0E5 !important;
+    border: 1.5px solid #27749D !important;
   }
 
   .service-flow-page .service-flow-header * {
-    color: #0f4160 !important;
+    color: #ffffff !important;
   }
 
   /* Song items */
@@ -898,7 +918,7 @@ html.service-flow-export-mode .service-flow-print-dual {
     flex-shrink: 0 !important;
     background: #111 !important;
     color: #fff !important;
-    border: 1px solid #111 !important;
+    border: 1.25px solid #111 !important;
     min-width: 30px !important;
     justify-content: center !important;
     font-weight: 700 !important;
@@ -921,6 +941,7 @@ html.service-flow-export-mode .service-flow-print-dual {
     color: white !important;
     padding: 0 2px !important;
     border-radius: 2px !important;
+    border: 1px solid #333 !important;
     font-size: 8pt !important;
   }
 
@@ -986,7 +1007,7 @@ html.service-flow-export-mode .service-flow-print-dual {
   }
 
   .service-flow-copy-title {
-    color: #35B0E5 !important;
+    color: #27749D !important;
     font-size: 11pt !important;
     font-weight: 700 !important;
     line-height: 1.05 !important;

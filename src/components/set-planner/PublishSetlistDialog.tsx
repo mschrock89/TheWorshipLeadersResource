@@ -48,7 +48,7 @@ export function PublishSetlistDialog({
   const { data: isApprover = false } = useIsApprover();
 
   // Get scheduled team for this date (campus-specific)
-  const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId);
+  const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId, ministryType);
   const { data: roster } = useTeamRosterForDate(
     targetDate,
     scheduledTeam?.teamId,

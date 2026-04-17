@@ -54,16 +54,50 @@ export function useSwapRequests() {
       const { data, error } = await supabase
         .from("swap_requests")
         .select(`
-          *,
-          requester:profiles!swap_requests_requester_id_fkey(id, full_name, avatar_url),
-          target_user:profiles!swap_requests_target_user_id_fkey(id, full_name, avatar_url),
-          accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name, avatar_url),
-          worship_teams(id, name, color, icon)
+          *
         `)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as SwapRequest[];
+
+      const swapRequests = (data || []) as SwapRequest[];
+      const profileIds = [...new Set(
+        swapRequests
+          .flatMap((request) => [request.requester_id, request.target_user_id, request.accepted_by_id])
+          .filter(Boolean)
+      )] as string[];
+      const teamIds = [...new Set(swapRequests.map((request) => request.team_id).filter(Boolean))];
+
+      const [profilesResult, teamsResult] = await Promise.all([
+        profileIds.length > 0
+          ? supabase.from("profiles").select("id, full_name, avatar_url").in("id", profileIds)
+          : Promise.resolve({ data: [], error: null }),
+        teamIds.length > 0
+          ? supabase.from("worship_teams").select("id, name, color, icon").in("id", teamIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (profilesResult.error) {
+        console.error("Failed to load swap request profiles:", profilesResult.error);
+      }
+      if (teamsResult.error) {
+        console.error("Failed to load swap request teams:", teamsResult.error);
+      }
+
+      const profilesById = new Map(
+        (profilesResult.data || []).map((profile) => [profile.id, profile]),
+      );
+      const teamsById = new Map(
+        (teamsResult.data || []).map((team) => [team.id, team]),
+      );
+
+      return swapRequests.map((request) => ({
+        ...request,
+        requester: request.requester_id ? profilesById.get(request.requester_id) || undefined : undefined,
+        target_user: request.target_user_id ? profilesById.get(request.target_user_id) || null : null,
+        accepted_by: request.accepted_by_id ? profilesById.get(request.accepted_by_id) || null : null,
+        worship_teams: teamsById.get(request.team_id) || undefined,
+      })) as SwapRequest[];
     },
     enabled: !!user,
   });

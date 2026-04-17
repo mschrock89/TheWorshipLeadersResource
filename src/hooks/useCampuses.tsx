@@ -105,6 +105,8 @@ export function useUpdateUserCampuses() {
 
   return useMutation({
     mutationFn: async ({ userId, campusIds }: { userId: string; campusIds: string[] }) => {
+      const campusIdFilter = `(${campusIds.map((campusId) => `"${campusId}"`).join(",")})`;
+
       // Delete existing assignments
       const { error: deleteError } = await supabase
         .from("user_campuses")
@@ -124,9 +126,36 @@ export function useUpdateUserCampuses() {
         
         if (insertError) throw insertError;
       }
+
+      // Remove stale ministry assignments for campuses that are no longer assigned.
+      const ministryCleanup = supabase
+        .from("user_ministry_campuses")
+        .delete()
+        .eq("user_id", userId);
+
+      const { error: ministryCleanupError } = campusIds.length > 0
+        ? await ministryCleanup.not("campus_id", "in", campusIdFilter)
+        : await ministryCleanup;
+
+      if (ministryCleanupError) throw ministryCleanupError;
+
+      // Remove stale position assignments for campuses that are no longer assigned.
+      const positionCleanup = supabase
+        .from("user_campus_ministry_positions")
+        .delete()
+        .eq("user_id", userId);
+
+      const { error: positionCleanupError } = campusIds.length > 0
+        ? await positionCleanup.not("campus_id", "in", campusIdFilter)
+        : await positionCleanup;
+
+      if (positionCleanupError) throw positionCleanupError;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["user-campuses", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["user-ministry-assignments", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["user-campus-ministry-positions", variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ["all-campus-ministry-positions"] });
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
       toast({ title: "Campus assignments updated" });
     },

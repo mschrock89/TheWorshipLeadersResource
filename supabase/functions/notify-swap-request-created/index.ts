@@ -468,9 +468,20 @@ serve(async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         title: notificationTitle,
         message: notificationMessage,
-        url: "/swap-requests",
-        tag: "swap-request-new",
+        url: "/swaps",
+        tag: `swap-request-${swapRequest.id}`,
         userIds: userIdsToNotify,
+        contextType: "swap-request",
+        contextId: swapRequest.id,
+        createdBy: swapRequest.requester_id,
+        metadata: {
+          swapRequestId: swapRequest.id,
+          requestType: swapRequest.request_type,
+          directRequest: Boolean(swapRequest.target_user_id),
+          teamId: swapRequest.team_id,
+          originalDate: swapRequest.original_date,
+          swapDate: swapRequest.swap_date,
+        },
       }),
     });
 

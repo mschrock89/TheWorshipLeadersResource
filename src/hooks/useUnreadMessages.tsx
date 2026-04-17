@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
-
-// Ministry types that have their own chats
-const CHAT_MINISTRY_TYPES = ['weekend', 'encounter', 'evident', 'eon'] as const;
+import { CHAT_MINISTRY_TYPES, normalizeChatMinistryType } from "@/lib/chat";
 
 interface UnreadCount {
   campusId: string;
@@ -46,7 +44,7 @@ export function useUnreadMessages() {
     // Build a map of campus_id:ministry_type -> last_read_at
     const readStatusMap: Record<string, string> = {};
     readStatuses?.forEach((rs) => {
-      const key = `${rs.campus_id}:${rs.ministry_type || 'weekend'}`;
+      const key = `${rs.campus_id}:${normalizeChatMinistryType(rs.ministry_type)}`;
       readStatusMap[key] = rs.last_read_at;
     });
 
@@ -54,7 +52,7 @@ export function useUnreadMessages() {
     const countPromises: Promise<UnreadCount>[] = [];
     
     for (const campusId of campusIds) {
-      for (const ministryType of CHAT_MINISTRY_TYPES) {
+      for (const { value: ministryType } of CHAT_MINISTRY_TYPES) {
         countPromises.push((async () => {
           const key = `${campusId}:${ministryType}`;
           const lastReadAt = readStatusMap[key];
@@ -83,8 +81,10 @@ export function useUnreadMessages() {
     setIsLoading(false);
   }, [user, userCampuses]);
 
-  const markAsRead = useCallback(async (campusId: string, ministryType: string = 'weekend') => {
+  const markAsRead = useCallback(async (campusId: string, ministryType: string = "weekend") => {
     if (!user) return;
+
+    const normalizedMinistryType = normalizeChatMinistryType(ministryType);
 
     const { error } = await supabase
       .from("message_read_status")
@@ -92,7 +92,7 @@ export function useUnreadMessages() {
         {
           user_id: user.id,
           campus_id: campusId,
-          ministry_type: ministryType,
+          ministry_type: normalizedMinistryType,
           last_read_at: new Date().toISOString(),
         },
         {
@@ -107,7 +107,7 @@ export function useUnreadMessages() {
 
     // Update local state to remove this campus+ministry from unread counts
     setUnreadCounts((prev) => 
-      prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === ministryType))
+      prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
     );
   }, [user]);
 
@@ -155,7 +155,7 @@ export function useUnreadMessages() {
             user_id: string;
           };
           
-          const msgMinistry = newMessage.ministry_type || 'weekend';
+          const msgMinistry = normalizeChatMinistryType(newMessage.ministry_type);
           
           // Only count if it's in user's campuses, not their own message,
           // AND they're not currently viewing that campus+ministry
@@ -232,12 +232,13 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
     }
 
     const fetchLastRead = async () => {
+      const normalizedMinistryType = normalizeChatMinistryType(ministryType);
       const { data, error } = await supabase
         .from("message_read_status")
         .select("last_read_at")
         .eq("user_id", user.id)
         .eq("campus_id", campusId)
-        .eq("ministry_type", ministryType)
+        .eq("ministry_type", normalizedMinistryType)
         .maybeSingle();
 
       if (error) {

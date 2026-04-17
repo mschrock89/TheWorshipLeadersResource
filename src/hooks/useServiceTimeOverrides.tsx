@@ -1,15 +1,68 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getMinistryLabel } from "@/lib/constants";
 
 export interface ServiceTimeOverride {
   id: string;
   campus_id: string;
+  ministry_type: string;
   service_date: string;
   service_times: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+const WEEKEND_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team"]);
+
+async function syncCustomServicesFromOverride(payload: {
+  campus_id: string;
+  ministry_type: string;
+  service_date: string;
+  service_times: string[];
+  created_by: string | null;
+}) {
+  if (WEEKEND_OVERRIDE_MINISTRIES.has(payload.ministry_type)) return;
+
+  const { data: existingServices, error: existingServicesError } = await supabase
+    .from("custom_services")
+    .select("start_time")
+    .eq("campus_id", payload.campus_id)
+    .eq("service_date", payload.service_date)
+    .eq("ministry_type", payload.ministry_type)
+    .eq("is_active", true)
+    .eq("repeats_weekly", false);
+
+  if (existingServicesError) throw existingServicesError;
+
+  const existingStartTimes = new Set(
+    (existingServices || [])
+      .map((service) => service.start_time?.slice(0, 5))
+      .filter(Boolean),
+  );
+
+  const missingTimes = payload.service_times.filter((time) => !existingStartTimes.has(time));
+  if (missingTimes.length === 0) return;
+
+  const serviceName = getMinistryLabel(payload.ministry_type);
+
+  const { error: insertError } = await supabase
+    .from("custom_services")
+    .insert(
+      missingTimes.map((time) => ({
+        campus_id: payload.campus_id,
+        ministry_type: payload.ministry_type,
+        service_name: serviceName,
+        service_date: payload.service_date,
+        start_time: time,
+        repeats_weekly: false,
+        is_active: true,
+        created_by: payload.created_by,
+      })),
+    );
+
+  if (insertError) throw insertError;
 }
 
 export function useServiceTimeOverrides({
@@ -50,6 +103,7 @@ export function useUpsertServiceTimeOverride() {
   return useMutation({
     mutationFn: async (payload: {
       campus_id: string;
+      ministry_type: string;
       service_date: string;
       service_times: string[];
     }) => {
@@ -57,6 +111,7 @@ export function useUpsertServiceTimeOverride() {
         .from("service_time_overrides")
         .select("service_times")
         .eq("campus_id", payload.campus_id)
+        .eq("ministry_type", payload.ministry_type)
         .eq("service_date", payload.service_date)
         .maybeSingle();
 
@@ -83,20 +138,32 @@ export function useUpsertServiceTimeOverride() {
         .upsert(
           {
             campus_id: payload.campus_id,
+            ministry_type: payload.ministry_type,
             service_date: payload.service_date,
             service_times: normalizedTimes,
             created_by: user?.id ?? null,
           },
-          { onConflict: "campus_id,service_date" },
+          { onConflict: "campus_id,service_date,ministry_type" },
         )
         .select()
         .single();
 
       if (error) throw error;
+
+      await syncCustomServicesFromOverride({
+        campus_id: payload.campus_id,
+        ministry_type: payload.ministry_type,
+        service_date: payload.service_date,
+        service_times: normalizedTimes,
+        created_by: user?.id ?? null,
+      });
+
       return data as ServiceTimeOverride;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["service-time-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-service-definitions"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-service-occurrences"] });
       toast({ title: "Service times updated" });
     },
     onError: (error) => {
