@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
+import { resolveScheduledTeamEntry } from "@/hooks/useScheduledTeamForDate";
 
 const WEEKEND_VOCAL_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 
@@ -56,31 +57,21 @@ export function useScheduledVocalists(
       const rotationPeriodIds = (rotationPeriods || []).map((rp) => rp.id);
       if (rotationPeriodIds.length === 0) return [];
 
-      // Scheduled team for the date - prioritize campus-specific, fall back to shared template
-      // First try to find a campus-specific schedule entry
-      const { data: campusSpecificSchedule, error: campusScheduleError } = await supabase
+      // Resolve the same scheduled team row the roster and publish flows use.
+      let scheduleQuery = supabase
         .from("team_schedule")
-        .select("team_id")
-        .eq("schedule_date", dateStr)
-        .eq("campus_id", campusId)
-        .maybeSingle();
+        .select("id, schedule_date, team_id, campus_id, ministry_type, created_at")
+        .eq("schedule_date", dateStr);
 
-      if (campusScheduleError) throw campusScheduleError;
-
-      let teamId = campusSpecificSchedule?.team_id;
-
-      // If no campus-specific entry, fall back to shared template (null campus_id)
-      if (!teamId) {
-        const { data: sharedSchedule, error: sharedScheduleError } = await supabase
-          .from("team_schedule")
-          .select("team_id")
-          .eq("schedule_date", dateStr)
-          .is("campus_id", null)
-          .maybeSingle();
-
-        if (sharedScheduleError) throw sharedScheduleError;
-        teamId = sharedSchedule?.team_id;
+      if (campusId) {
+        scheduleQuery = scheduleQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }
+
+      const { data: scheduleEntries, error: scheduleError } = await scheduleQuery;
+      if (scheduleError) throw scheduleError;
+
+      const scheduledEntry = resolveScheduledTeamEntry(scheduleEntries || [], campusId, ministryType);
+      const teamId = scheduledEntry?.team_id;
 
       if (!teamId) return [];
 
