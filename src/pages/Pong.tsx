@@ -384,6 +384,7 @@ export default function Pong() {
 
   const leaderboard = leaderboardQuery.data ?? [];
   const myBest = myBestQuery.data ?? 0;
+  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
     <div
@@ -396,27 +397,27 @@ export default function Pong() {
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-3 max-[400px]:gap-2">
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Pong</h1>
-          <p className="text-muted-foreground">Single-player pong against AI with a personal best leaderboard.</p>
+          <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Pong</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">Single-player pong against AI with a personal best leaderboard.</p>
         </div>
-        <CircleDot className="h-8 w-8 text-primary" />
+        <CircleDot className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
+          <CardHeader className="px-4 pb-2 pt-4 sm:px-6 sm:pb-3 sm:pt-6">
+            <CardTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>Game</span>
-              <div className="flex items-center gap-2 text-sm font-normal">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-normal sm:text-sm">
                 <Badge variant="secondary">You: {frame.playerScore}</Badge>
                 <Badge variant="secondary">AI: {frame.aiScore}</Badge>
                 <Badge variant="outline">Best: {myBest}</Badge>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <div className="relative w-full max-w-[560px] overflow-hidden rounded-md border bg-[linear-gradient(180deg,#05080f,#05070d)] aspect-[16/10] sm:max-w-[760px]">
               <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_49.5%,rgba(148,163,184,0.28)_49.5%,rgba(148,163,184,0.28)_50.5%,transparent_50.5%)]" />
 
@@ -457,7 +458,7 @@ export default function Pong() {
 
             <div className="grid w-full max-w-[560px] grid-cols-2 gap-2 sm:flex sm:max-w-[680px] sm:flex-wrap sm:items-center">
               <Button
-                className="col-span-1"
+                className="col-span-1 h-9 sm:h-10"
                 onClick={() => {
                   haptic("light");
                   if (isGameOver) {
@@ -479,7 +480,7 @@ export default function Pong() {
                 )}
               </Button>
 
-              <Button className="col-span-1" variant="outline" onClick={() => {
+              <Button className="col-span-1 h-9 sm:h-10" variant="outline" onClick={() => {
                 haptic("light");
                 resetMatch(false);
               }}>
@@ -497,7 +498,7 @@ export default function Pong() {
               <Button
                 variant="outline"
                 aria-label="Move paddle up"
-                className="h-20 touch-none select-none text-3xl"
+                className={`touch-none select-none text-3xl ${isCompactPhone ? "h-16" : "h-20"}`}
                 onPointerDown={() => {
                   haptic("selection");
                   keysRef.current.up = true;
@@ -517,7 +518,7 @@ export default function Pong() {
               <Button
                 variant="outline"
                 aria-label="Move paddle down"
-                className="h-20 touch-none select-none text-3xl"
+                className={`touch-none select-none text-3xl ${isCompactPhone ? "h-16" : "h-20"}`}
                 onPointerDown={() => {
                   haptic("selection");
                   keysRef.current.down = true;
@@ -537,7 +538,7 @@ export default function Pong() {
             </div>
 
             <p
-              className="select-none text-sm text-muted-foreground"
+              className="select-none text-xs text-muted-foreground sm:text-sm"
               style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
               onContextMenu={(event) => event.preventDefault()}
             >
@@ -569,13 +570,13 @@ export default function Pong() {
 
                 return (
                   <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
                         <AvatarFallback>{getInitials(name)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{name}</span>
+                      <span className="truncate text-sm font-medium">{name}</span>
                     </div>
                     <Badge>{row.score}</Badge>
                   </div>

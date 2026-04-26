@@ -620,6 +620,7 @@ export default function Galaga() {
   const setControl = useCallback((key: "left" | "right" | "shoot", value: boolean) => {
     controlsRef.current[key] = value;
   }, []);
+  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
     <div
@@ -632,20 +633,20 @@ export default function Galaga() {
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-3 max-[400px]:gap-2">
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Galager</h1>
-          <p className="text-muted-foreground">A Galaga-style wave shooter with formation attacks, lives, and a personal best leaderboard.</p>
+          <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Galager</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">A Galaga-style wave shooter with formation attacks, lives, and a personal best leaderboard.</p>
         </div>
-        <Rocket className="h-8 w-8 text-primary" />
+        <Rocket className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="px-4 pb-2 pt-4 sm:px-6 sm:pb-3 sm:pt-6">
             <CardTitle className="flex items-center justify-between gap-3">
               <span>Game</span>
-              <div className="flex flex-wrap items-center gap-2 text-sm font-normal">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-normal sm:text-sm">
                 <Badge variant="secondary">Score: {frame.score}</Badge>
                 <Badge variant="secondary">Lives: {frame.lives}</Badge>
                 <Badge variant="secondary">Level: {frame.level}</Badge>
@@ -653,7 +654,7 @@ export default function Galaga() {
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <div className="relative mx-auto w-full max-w-[760px] overflow-hidden rounded-md border bg-[radial-gradient(circle_at_top,rgba(24,58,130,0.45),rgba(2,6,23,0.98)_58%)] aspect-[4/3]">
               <div className="pointer-events-none absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.8)_0,transparent_1.2px),radial-gradient(circle_at_70%_30%,rgba(255,255,255,0.65)_0,transparent_1.2px),radial-gradient(circle_at_40%_75%,rgba(255,255,255,0.7)_0,transparent_1.4px),radial-gradient(circle_at_80%_80%,rgba(255,255,255,0.5)_0,transparent_1.2px)] [background-size:210px_210px]" />
 
@@ -757,7 +758,7 @@ export default function Galaga() {
 
             <div className="mx-auto grid w-full max-w-[760px] grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
               <Button
-                className="col-span-1"
+                className="col-span-1 h-9 sm:h-10"
                 onClick={() => {
                   haptic("light");
                   if (isGameOver) {
@@ -779,7 +780,7 @@ export default function Galaga() {
                 )}
               </Button>
 
-              <Button className="col-span-1" variant="outline" onClick={() => {
+              <Button className="col-span-1 h-9 sm:h-10" variant="outline" onClick={() => {
                 haptic("light");
                 resetGame(false);
               }}>
@@ -789,10 +790,10 @@ export default function Galaga() {
               {isGameOver && <Badge className="col-span-2 w-fit" variant="destructive">Game Over</Badge>}
             </div>
 
-            <div className="mx-auto grid w-full max-w-[760px] grid-cols-3 gap-3 sm:hidden">
+            <div className="mx-auto grid w-full max-w-[760px] grid-cols-3 gap-2 sm:hidden">
               <Button
                 variant="outline"
-                className="h-20 touch-none"
+                className={`touch-none ${isCompactPhone ? "h-16" : "h-20"}`}
                 aria-label="Move left"
                 onPointerDown={() => {
                   haptic("selection");
@@ -807,7 +808,7 @@ export default function Galaga() {
               </Button>
               <Button
                 variant="outline"
-                className="h-20 touch-none"
+                className={`touch-none ${isCompactPhone ? "h-16" : "h-20"}`}
                 aria-label="Fire"
                 onPointerDown={() => {
                   haptic("selection");
@@ -821,7 +822,7 @@ export default function Galaga() {
               </Button>
               <Button
                 variant="outline"
-                className="h-20 touch-none"
+                className={`touch-none ${isCompactPhone ? "h-16" : "h-20"}`}
                 aria-label="Move right"
                 onPointerDown={() => {
                   haptic("selection");
@@ -837,7 +838,7 @@ export default function Galaga() {
             </div>
 
             <p
-              className="mx-auto w-full max-w-[760px] text-sm text-muted-foreground"
+              className="mx-auto w-full max-w-[760px] text-xs text-muted-foreground sm:text-sm"
               style={{ userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
               onContextMenu={(event) => event.preventDefault()}
             >
@@ -879,13 +880,13 @@ export default function Galaga() {
 
                 return (
                   <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
                         <AvatarFallback>{getInitials(name)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{name}</span>
+                      <span className="truncate text-sm font-medium">{name}</span>
                     </div>
                     <Badge>{row.score}</Badge>
                   </div>

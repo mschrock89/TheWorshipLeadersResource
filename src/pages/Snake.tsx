@@ -64,13 +64,15 @@ function getInitials(name: string | null | undefined) {
 function DirectionPad({
   onDirection,
   onCenter,
+  compact = false,
 }: {
   onDirection: (next: Direction) => void;
   onCenter: () => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="relative mx-auto h-[250px] w-[250px] select-none sm:h-[320px] sm:w-[320px]">
-      <div className="absolute inset-6 rounded-full bg-[radial-gradient(circle,rgba(53,176,229,0.38),rgba(39,116,157,0)_72%)] blur-2xl sm:inset-8" />
+    <div className={`relative mx-auto select-none ${compact ? "h-[205px] w-[205px]" : "h-[250px] w-[250px] sm:h-[320px] sm:w-[320px]"}`}>
+      <div className={`absolute rounded-full bg-[radial-gradient(circle,rgba(53,176,229,0.38),rgba(39,116,157,0)_72%)] blur-2xl ${compact ? "inset-5" : "inset-6 sm:inset-8"}`} />
 
       <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
         <defs>
@@ -101,36 +103,36 @@ function DirectionPad({
           haptic("selection");
           onDirection({ x: 0, y: -1 });
         }}
-        className="absolute left-1/2 top-2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:top-4 sm:h-24 sm:w-28"
+        className={`absolute left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "top-1 h-16 w-20" : "top-2 h-20 w-24 sm:top-4 sm:h-24 sm:w-28"}`}
       >
-        <ChevronUp className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
+        <ChevronUp className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: -1, y: 0 });
         }}
-        className="absolute left-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:left-4 sm:h-28 sm:w-24"
+        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "left-1 h-20 w-16" : "left-2 h-24 w-20 sm:left-4 sm:h-28 sm:w-24"}`}
       >
-        <ChevronLeft className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
+        <ChevronLeft className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: 1, y: 0 });
         }}
-        className="absolute right-2 top-1/2 z-20 h-24 w-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] sm:right-4 sm:h-28 sm:w-24"
+        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "right-1 h-20 w-16" : "right-2 h-24 w-20 sm:right-4 sm:h-28 sm:w-24"}`}
       >
-        <ChevronRight className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
+        <ChevronRight className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: 0, y: 1 });
         }}
-        className="absolute bottom-2 left-1/2 z-20 h-20 w-24 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] sm:bottom-4 sm:h-24 sm:w-28"
+        className={`absolute bottom-0 left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "h-16 w-20" : "bottom-2 h-20 w-24 sm:bottom-4 sm:h-24 sm:w-28"}`}
       >
-        <ChevronDown className="mx-auto h-10 w-10 stroke-[2.6] sm:h-12 sm:w-12" />
+        <ChevronDown className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
       </button>
 
       <button
@@ -138,7 +140,7 @@ function DirectionPad({
           haptic("light");
           onCenter();
         }}
-        className="absolute left-1/2 top-1/2 z-30 h-[62px] w-[62px] -translate-x-1/2 -translate-y-1/2 rounded-full text-xl font-semibold leading-none text-white active:scale-[0.985] sm:h-[72px] sm:w-[72px] sm:text-2xl"
+        className={`absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full font-semibold leading-none text-white active:scale-[0.985] ${compact ? "h-[52px] w-[52px] text-lg" : "h-[62px] w-[62px] text-xl sm:h-[72px] sm:w-[72px] sm:text-2xl"}`}
       >
         <span className="relative -top-px">OK</span>
       </button>
@@ -397,31 +399,32 @@ export default function Snake() {
   );
   const myBest = myBestQuery.data ?? 0;
   const cellSizePercent = 100 / BOARD_SIZE;
+  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-start justify-between gap-3 max-[400px]:gap-2">
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Snake</h1>
-          <p className="text-muted-foreground">Simple arcade mode with a global top-10 leaderboard.</p>
+          <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Snake</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">Simple arcade mode with a global top-10 leaderboard.</p>
         </div>
-        <Gamepad2 className="h-8 w-8 text-primary" />
+        <Gamepad2 className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
+          <CardHeader className="px-4 pb-2 pt-4 sm:px-6 sm:pb-3 sm:pt-6">
+            <CardTitle className="flex flex-wrap items-center justify-between gap-2">
               <span>Game</span>
-              <div className="flex items-center gap-2 text-sm font-normal">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-normal sm:text-sm">
                 <Badge variant="secondary">Score: {score}</Badge>
                 <Badge variant="outline">Best: {myBest}</Badge>
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
             <div
-              className="relative mx-auto grid w-full max-w-[280px] overflow-hidden rounded-md border bg-muted/30 sm:max-w-[420px]"
+              className="relative mx-auto grid w-full max-w-[232px] overflow-hidden rounded-md border bg-muted/30 min-[401px]:max-w-[280px] sm:max-w-[420px]"
               style={{
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
                 aspectRatio: "1 / 1",
@@ -468,9 +471,9 @@ export default function Snake() {
               ))}
             </div>
 
-            <div className="mx-auto grid w-full max-w-[280px] grid-cols-2 gap-2 sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
+            <div className="mx-auto grid w-full max-w-[232px] grid-cols-2 gap-2 min-[401px]:max-w-[280px] sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
               <Button
-                className="col-span-1 h-10 text-sm sm:h-11 sm:text-base"
+                className="col-span-1 h-9 text-sm sm:h-11 sm:text-base"
                 onClick={() => {
                   haptic("light");
                   if (isGameOver) {
@@ -497,7 +500,7 @@ export default function Snake() {
                 )}
               </Button>
 
-              <Button className="col-span-1 h-10 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => {
+              <Button className="col-span-1 h-9 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => {
                 haptic("light");
                 resetGame(false);
               }}>
@@ -509,6 +512,7 @@ export default function Snake() {
 
             <div className="sm:hidden">
               <DirectionPad
+                compact={isCompactPhone}
                 onDirection={updateDirection}
                 onCenter={() => {
                   if (isGameOver) {
@@ -520,7 +524,7 @@ export default function Snake() {
               />
             </div>
 
-            <p className="text-sm text-muted-foreground">Use arrow keys or WASD. On mobile, use the Roku-style pad.</p>
+            <p className="text-xs text-muted-foreground sm:text-sm">Use arrow keys or WASD. On mobile, use the Roku-style pad.</p>
           </CardContent>
         </Card>
 
@@ -547,13 +551,13 @@ export default function Snake() {
 
                 return (
                   <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
                         <AvatarFallback>{getInitials(name)}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium">{name}</span>
+                      <span className="truncate text-sm font-medium">{name}</span>
                     </div>
                     <Badge>{row.score}</Badge>
                   </div>
