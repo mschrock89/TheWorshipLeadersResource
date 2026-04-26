@@ -439,6 +439,14 @@ export interface PositionMember {
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 
+interface SwapScheduleRow {
+  team_id: string;
+  schedule_date: string;
+  campus_id: string | null;
+  ministry_type?: string | null;
+  created_at?: string | null;
+}
+
 function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string): boolean {
   if (!memberMinistry || !targetMinistry) return false;
   if (memberMinistry === targetMinistry) return true;
@@ -446,6 +454,39 @@ function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string):
     return true;
   }
   return false;
+}
+
+function resolveSwapScheduleEntry(
+  entries: SwapScheduleRow[],
+  campusId?: string,
+  ministryType?: string,
+): SwapScheduleRow | null {
+  if (entries.length === 0) return null;
+
+  const sortedEntries = [...entries].sort((a, b) => {
+    const aCampusPriority = a.campus_id === campusId ? 2 : a.campus_id === null ? 1 : 0;
+    const bCampusPriority = b.campus_id === campusId ? 2 : b.campus_id === null ? 1 : 0;
+
+    if (aCampusPriority !== bCampusPriority) {
+      return bCampusPriority - aCampusPriority;
+    }
+
+    const aCreatedAt = new Date(a.created_at || 0).getTime();
+    const bCreatedAt = new Date(b.created_at || 0).getTime();
+    return bCreatedAt - aCreatedAt;
+  });
+
+  if (!ministryType) {
+    return sortedEntries[0] ?? null;
+  }
+
+  const matchingEntry = sortedEntries.find((entry) =>
+    entry.ministry_type
+      ? ministriesMatchForSwap(entry.ministry_type, ministryType)
+      : false,
+  );
+
+  return matchingEntry ?? null;
 }
 
 async function buildSyntheticCampusAssignmentMembers(args: {
@@ -646,18 +687,29 @@ export function usePositionMembersForDate(
 
       let scheduleQuery = supabase
         .from("team_schedule")
-        .select("team_id, schedule_date, ministry_type")
+        .select("team_id, schedule_date, campus_id, ministry_type, created_at")
         .in("schedule_date", dates);
 
-      if (ministryType) {
-        scheduleQuery = scheduleQuery.eq("ministry_type", ministryType);
+      if (campusId) {
+        scheduleQuery = scheduleQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }
 
       const { data: scheduledTeams, error: scheduleError } = await scheduleQuery;
       if (scheduleError) throw scheduleError;
 
+      const entriesByDate = new Map<string, SwapScheduleRow[]>();
+      for (const row of (scheduledTeams || []) as SwapScheduleRow[]) {
+        const existing = entriesByDate.get(row.schedule_date) || [];
+        existing.push(row);
+        entriesByDate.set(row.schedule_date, existing);
+      }
+
+      const resolvedTeams = dates
+        .map((date) => resolveSwapScheduleEntry(entriesByDate.get(date) || [], campusId, ministryType))
+        .filter((entry): entry is SwapScheduleRow => Boolean(entry));
+
       const teamIds = Array.from(
-        new Set((scheduledTeams || []).map((s: any) => s.team_id).filter(Boolean))
+        new Set(resolvedTeams.map((entry) => entry.team_id).filter(Boolean))
       );
 
       if (teamIds.length === 0) return [];
