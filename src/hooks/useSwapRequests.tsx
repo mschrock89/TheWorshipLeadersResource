@@ -571,6 +571,49 @@ async function buildSyntheticCampusAssignmentMembers(args: {
   }));
 }
 
+async function getCampusAssignmentEligibleUserIds(args: {
+  campusId: string;
+  position: string;
+  ministryType?: string;
+  candidateUserIds?: string[];
+}) {
+  const { campusId, position, ministryType, candidateUserIds } = args;
+
+  let assignmentQuery = supabase
+    .from("user_campus_ministry_positions")
+    .select("user_id, position, ministry_type")
+    .eq("campus_id", campusId);
+
+  if (candidateUserIds?.length) {
+    assignmentQuery = assignmentQuery.in("user_id", candidateUserIds);
+  }
+
+  if (VOCALIST_POSITIONS.includes(position)) {
+    assignmentQuery = assignmentQuery.in("position", VOCALIST_POSITIONS);
+  } else {
+    assignmentQuery = assignmentQuery.eq("position", position);
+  }
+
+  const { data: assignments, error: assignmentError } = await assignmentQuery;
+  if (assignmentError) throw assignmentError;
+
+  const eligibleUserIds = new Set<string>();
+  for (const assignment of assignments || []) {
+    if (!assignment.user_id) continue;
+    if (
+      ministryType &&
+      assignment.ministry_type &&
+      !ministriesMatchForSwap(assignment.ministry_type, ministryType)
+    ) {
+      continue;
+    }
+
+    eligibleUserIds.add(assignment.user_id);
+  }
+
+  return eligibleUserIds;
+}
+
 export function usePositionMembers(
   position: string,
   excludeUserId?: string,
@@ -794,6 +837,22 @@ async function hydrateAndFilterMembers(args: {
 
     const campusUserIds = new Set(campusUsers?.map((cu: any) => cu.user_id) || []);
     filteredMembers = members.filter((m) => m.user_id && campusUserIds.has(m.user_id));
+  }
+
+  // For swap/candidate lists, campus membership alone is not enough.
+  // Require an explicit campus+ministry+position assignment so we only show
+  // people who are actually assigned in that context.
+  if (campusId && ministryType) {
+    const assignmentEligibleUserIds = await getCampusAssignmentEligibleUserIds({
+      campusId,
+      position,
+      ministryType,
+      candidateUserIds: filteredMembers.map((member) => member.user_id).filter(Boolean),
+    });
+
+    filteredMembers = filteredMembers.filter(
+      (member) => member.user_id && assignmentEligibleUserIds.has(member.user_id),
+    );
   }
 
   // Filter by ministry type if provided
@@ -1170,9 +1229,25 @@ export function useOpenRequestRecipients(
             )
           );
 
+      let assignmentScopedMembers = ministryScopedMembers;
+      if (campusId) {
+        const eligibleAssignedUserIds = await getCampusAssignmentEligibleUserIds({
+          campusId,
+          position,
+          ministryType,
+          candidateUserIds: ministryScopedMembers
+            .map((member: any) => member.user_id)
+            .filter(Boolean),
+        });
+
+        assignmentScopedMembers = ministryScopedMembers.filter(
+          (member: any) => member.user_id && eligibleAssignedUserIds.has(member.user_id),
+        );
+      }
+
       // Get unique user IDs
       const uniqueUserIds = [
-        ...new Set(ministryScopedMembers.map((m: any) => m.user_id!).filter(Boolean)),
+        ...new Set(assignmentScopedMembers.map((m: any) => m.user_id!).filter(Boolean)),
       ];
       if (uniqueUserIds.length === 0) return [];
 
