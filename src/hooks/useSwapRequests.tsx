@@ -438,6 +438,36 @@ export interface PositionMember {
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const ELECTRIC_POSITION_VARIANTS = [
+  "electric_guitar",
+  "electric_1",
+  "electric_2",
+  "electric_3",
+  "electric_4",
+  "eg_1",
+  "eg_2",
+  "eg_3",
+  "eg_4",
+  "eg1",
+  "eg2",
+  "eg3",
+  "eg4",
+  "EG 1",
+  "EG 2",
+  "EG 3",
+  "EG 4",
+];
+const ACOUSTIC_POSITION_VARIANTS = [
+  "acoustic_guitar",
+  "acoustic_1",
+  "acoustic_2",
+  "ag_1",
+  "ag_2",
+  "ag1",
+  "ag2",
+  "AG 1",
+  "AG 2",
+];
 
 interface SwapScheduleRow {
   team_id: string;
@@ -454,6 +484,30 @@ function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string):
     return true;
   }
   return false;
+}
+
+function normalizeSwapPosition(position: string): string {
+  return position.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function getSwapPositionVariants(position: string): string[] {
+  const normalized = normalizeSwapPosition(position);
+  const normalizedElectricVariants = new Set(ELECTRIC_POSITION_VARIANTS.map(normalizeSwapPosition));
+  const normalizedAcousticVariants = new Set(ACOUSTIC_POSITION_VARIANTS.map(normalizeSwapPosition));
+
+  if (VOCALIST_POSITIONS.includes(normalized)) {
+    return VOCALIST_POSITIONS;
+  }
+
+  if (normalizedElectricVariants.has(normalized)) {
+    return ELECTRIC_POSITION_VARIANTS;
+  }
+
+  if (normalizedAcousticVariants.has(normalized)) {
+    return ACOUSTIC_POSITION_VARIANTS;
+  }
+
+  return [position];
 }
 
 function resolveSwapScheduleEntry(
@@ -513,11 +567,7 @@ async function buildSyntheticCampusAssignmentMembers(args: {
     assignmentQuery = assignmentQuery.in("user_id", candidateUserIds);
   }
 
-  if (VOCALIST_POSITIONS.includes(position)) {
-    assignmentQuery = assignmentQuery.in("position", VOCALIST_POSITIONS);
-  } else {
-    assignmentQuery = assignmentQuery.eq("position", position);
-  }
+  assignmentQuery = assignmentQuery.in("position", getSwapPositionVariants(position));
 
   const { data: assignments, error: assignmentError } = await assignmentQuery;
   if (assignmentError) throw assignmentError;
@@ -588,11 +638,7 @@ async function getCampusAssignmentEligibleUserIds(args: {
     assignmentQuery = assignmentQuery.in("user_id", candidateUserIds);
   }
 
-  if (VOCALIST_POSITIONS.includes(position)) {
-    assignmentQuery = assignmentQuery.in("position", VOCALIST_POSITIONS);
-  } else {
-    assignmentQuery = assignmentQuery.eq("position", position);
-  }
+  assignmentQuery = assignmentQuery.in("position", getSwapPositionVariants(position));
 
   const { data: assignments, error: assignmentError } = await assignmentQuery;
   if (assignmentError) throw assignmentError;
@@ -624,7 +670,7 @@ export function usePositionMembers(
   teamId?: string
 ) {
   // Check if this is a vocalist position - vocalists can swap across teams
-  const isVocalist = VOCALIST_POSITIONS.includes(position);
+  const isVocalist = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
 
   return useQuery({
     queryKey: [
@@ -653,11 +699,7 @@ export function usePositionMembers(
         `
         );
 
-      if (isVocalist) {
-        query = query.in("position", VOCALIST_POSITIONS);
-      } else {
-        query = query.eq("position", position);
-      }
+      query = query.in("position", getSwapPositionVariants(position));
 
       if (excludeUserId) {
         query = query.neq("user_id", excludeUserId);
@@ -708,7 +750,7 @@ export function usePositionMembersForDate(
   ministryType?: string,
   requesterGender?: string | null
 ) {
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
 
   return useQuery({
     queryKey: [
@@ -773,11 +815,7 @@ export function usePositionMembersForDate(
         )
         .in("team_id", teamIds);
 
-      if (isVocalistPosition) {
-        membersQuery = membersQuery.in("position", VOCALIST_POSITIONS);
-      } else {
-        membersQuery = membersQuery.eq("position", position);
-      }
+      membersQuery = membersQuery.in("position", getSwapPositionVariants(position));
 
       if (excludeUserId) {
         membersQuery = membersQuery.neq("user_id", excludeUserId);
@@ -903,7 +941,7 @@ async function hydrateAndFilterMembers(args: {
 
   // Get gender info for vocalist positions if requesterGender is provided
   let genderMap: Record<string, string | null> = {};
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
 
   if (isVocalistPosition && userIds.length > 0) {
     const { data: profiles } = await supabase
@@ -950,7 +988,7 @@ export function usePositionMembersForCover(
   ministryType?: string,
   requesterGender?: string | null
 ) {
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
 
   return useQuery({
     queryKey: [
@@ -980,11 +1018,7 @@ export function usePositionMembersForCover(
         `
         );
 
-      if (isVocalistPosition) {
-        query = query.in("position", VOCALIST_POSITIONS);
-      } else {
-        query = query.eq("position", position);
-      }
+      query = query.in("position", getSwapPositionVariants(position));
 
       if (excludeUserId) {
         query = query.neq("user_id", excludeUserId);
@@ -1127,7 +1161,7 @@ export function useOpenRequestRecipients(
       const sameCampusUserIds = [...new Set(sameCampusUsers?.map((u) => u.user_id) || [])];
       if (sameCampusUserIds.length === 0) return [];
 
-      const isVocalistPosition = VOCALIST_POSITIONS.includes(position);
+      const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
 
       // Get team members with the same position family who are in the same campus
       let membersQuery = supabase
@@ -1136,11 +1170,7 @@ export function useOpenRequestRecipients(
         .not("user_id", "is", null)
         .in("user_id", sameCampusUserIds);
 
-      if (isVocalistPosition) {
-        membersQuery = membersQuery.in("position", VOCALIST_POSITIONS);
-      } else {
-        membersQuery = membersQuery.eq("position", position);
-      }
+      membersQuery = membersQuery.in("position", getSwapPositionVariants(position));
 
       const { data: teamMembers, error: membersError } = await membersQuery;
 
@@ -1172,11 +1202,7 @@ export function useOpenRequestRecipients(
               .in("user_id", breakUserIds)
               .not("user_id", "is", null);
 
-            if (isVocalistPosition) {
-              breakMembersQuery = breakMembersQuery.in("position", VOCALIST_POSITIONS);
-            } else {
-              breakMembersQuery = breakMembersQuery.eq("position", position);
-            }
+            breakMembersQuery = breakMembersQuery.in("position", getSwapPositionVariants(position));
 
             const { data: breakMembers, error: breakMembersError } = await breakMembersQuery;
             if (breakMembersError) throw breakMembersError;
