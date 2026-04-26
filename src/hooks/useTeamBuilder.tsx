@@ -12,6 +12,11 @@ import {
 import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
 import { getWeekendKey, isWeekend } from "@/lib/utils";
+import {
+  applyEffectiveActiveRotationPeriods,
+  buildFirstScheduledDateByRotationName,
+  compareRotationPeriods,
+} from "@/lib/rotationPeriods";
 
 export interface TeamPeriodLock {
   id: string;
@@ -431,25 +436,28 @@ export function useRotationPeriodsForCampus(campusId: string | null) {
     queryKey: ["rotation-periods", campusId],
     enabled: !!campusId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("rotation_periods")
-        .select("*")
-        .eq("campus_id", campusId)
-        .order("year", { ascending: false })
-        .order("trimester", { ascending: true });
+      const [{ data, error }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
+        supabase
+          .from("rotation_periods")
+          .select("*")
+          .eq("campus_id", campusId)
+          .order("year", { ascending: false })
+          .order("trimester", { ascending: true }),
+        supabase
+          .from("team_schedule")
+          .select("rotation_period, schedule_date, campus_id")
+          .or(`campus_id.eq.${campusId},campus_id.is.null`),
+      ]);
 
       if (error) throw error;
-      return data as RotationPeriod[];
+      if (scheduleError) throw scheduleError;
+
+      return applyEffectiveActiveRotationPeriods(
+        (data as RotationPeriod[]) || [],
+        buildFirstScheduledDateByRotationName(scheduleRows || []),
+      );
     },
   });
-}
-
-function comparePeriods(a: Pick<RotationPeriod, "year" | "trimester">, b: Pick<RotationPeriod, "year" | "trimester">) {
-  if (a.year !== b.year) {
-    return a.year - b.year;
-  }
-
-  return a.trimester - b.trimester;
 }
 
 // Helper to get the chronologically previous period ID
@@ -460,12 +468,12 @@ export function getPreviousPeriodId(periods: RotationPeriod[], currentPeriodId: 
   if (!currentPeriod) return null;
 
   const previousPeriods = periods.filter(
-    (period) => comparePeriods(period, currentPeriod) < 0,
+    (period) => compareRotationPeriods(period, currentPeriod) < 0,
   );
 
   if (previousPeriods.length === 0) return null;
 
-  previousPeriods.sort((a, b) => comparePeriods(b, a));
+  previousPeriods.sort((a, b) => compareRotationPeriods(b, a));
   return previousPeriods[0].id;
 }
 
@@ -476,12 +484,12 @@ export function getNextPeriodId(periods: RotationPeriod[], currentPeriodId: stri
   if (!currentPeriod) return null;
 
   const nextPeriods = periods.filter(
-    (period) => comparePeriods(period, currentPeriod) > 0,
+    (period) => compareRotationPeriods(period, currentPeriod) > 0,
   );
 
   if (nextPeriods.length === 0) return null;
 
-  nextPeriods.sort((a, b) => comparePeriods(a, b));
+  nextPeriods.sort((a, b) => compareRotationPeriods(a, b));
   return nextPeriods[0].id;
 }
 

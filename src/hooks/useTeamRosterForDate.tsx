@@ -4,6 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import {
+  applyEffectiveActiveRotationPeriods,
+  buildFirstScheduledDateByRotationName,
+} from "@/lib/rotationPeriods";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
@@ -186,6 +190,45 @@ export function useTeamRosterForDate(
         activePeriodIds = (namedPeriods || []).map((period) => period.id);
       }
 
+      if (activePeriodIds.length === 0) {
+        const { data: datedPeriods, error: datedPeriodError } = await supabase
+          .from("rotation_periods")
+          .select("id")
+          .in("campus_id", campusIdsToFilter)
+          .lte("start_date", dateStr)
+          .gte("end_date", dateStr);
+
+        if (datedPeriodError) throw datedPeriodError;
+        activePeriodIds = (datedPeriods || []).map((period) => period.id);
+      }
+
+      if (campusId && activePeriodIds.length === 0) {
+        const [{ data: campusPeriods, error: campusPeriodsError }, { data: scheduleRows, error: scheduleError }] =
+          await Promise.all([
+            supabase
+              .from("rotation_periods")
+              .select("id, name, year, trimester, is_active")
+              .eq("campus_id", campusId),
+            supabase
+              .from("team_schedule")
+              .select("rotation_period, schedule_date, campus_id")
+              .or(`campus_id.eq.${campusId},campus_id.is.null`),
+          ]);
+
+        if (campusPeriodsError) throw campusPeriodsError;
+        if (scheduleError) throw scheduleError;
+
+        const effectivePeriods = applyEffectiveActiveRotationPeriods(
+          campusPeriods || [],
+          buildFirstScheduledDateByRotationName(scheduleRows || []),
+        );
+
+        const effectiveActivePeriods = effectivePeriods.filter((period) => period.is_active);
+        if (effectiveActivePeriods.length > 0) {
+          activePeriodIds = effectiveActivePeriods.map((period) => period.id);
+        }
+      }
+
       if (campusId && activePeriodIds.length === 0) {
         const { data: activePeriods, error: activePeriodError } = await supabase
           .from("rotation_periods")
@@ -197,18 +240,7 @@ export function useTeamRosterForDate(
         activePeriodIds = (activePeriods || []).map((period) => period.id);
       }
 
-      let rotationPeriodIds = activePeriodIds;
-      if (rotationPeriodIds.length === 0) {
-        const { data: rotationPeriods, error: rotationError } = await supabase
-          .from("rotation_periods")
-          .select("id, campus_id")
-          .lte("start_date", dateStr)
-          .gte("end_date", dateStr)
-          .in("campus_id", campusIdsToFilter);
-
-        if (rotationError) throw rotationError;
-        rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-      }
+      const rotationPeriodIds = activePeriodIds;
       
       // Create a set of valid rotation period IDs for quick lookup
       const validRotationPeriodIdSet = new Set(rotationPeriodIds);
