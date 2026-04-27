@@ -10,6 +10,182 @@ interface NotifyRequest {
   draftSetId: string;
 }
 
+const WEEKEND_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const SUPPORT_MINISTRIES = ["production", "video"] as const;
+const LEADERSHIP_ROLES = [
+  "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
+  "network_worship_pastor", "network_worship_leader", "leader",
+  "video_director", "production_manager", "campus_pastor",
+];
+
+function getServiceDates(planDate: string): string[] {
+  const serviceDates = new Set([planDate]);
+  const date = new Date(`${planDate}T12:00:00Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    return Array.from(serviceDates);
+  }
+
+  const dayOfWeek = date.getUTCDay();
+  if (dayOfWeek === 6) {
+    const sunday = new Date(date);
+    sunday.setUTCDate(sunday.getUTCDate() + 1);
+    serviceDates.add(sunday.toISOString().slice(0, 10));
+  } else if (dayOfWeek === 0) {
+    const saturday = new Date(date);
+    saturday.setUTCDate(saturday.getUTCDate() - 1);
+    serviceDates.add(saturday.toISOString().slice(0, 10));
+  }
+
+  return Array.from(serviceDates);
+}
+
+function getRelevantMinistryTypes(ministryType: string, includePrimaryMinistry = true): string[] {
+  const ministryTypes = new Set<string>(SUPPORT_MINISTRIES);
+
+  if (includePrimaryMinistry) {
+    ministryTypes.add(ministryType);
+    if (WEEKEND_ALIASES.has(ministryType)) {
+      for (const alias of WEEKEND_ALIASES) {
+        ministryTypes.add(alias);
+      }
+    }
+  }
+
+  return Array.from(ministryTypes);
+}
+
+function memberMatchesRelevantMinistries(
+  ministryTypes: string[] | null,
+  relevantMinistryTypes: Set<string>,
+): boolean {
+  if (!ministryTypes || ministryTypes.length === 0) {
+    return true;
+  }
+
+  return ministryTypes.some((ministryType) => relevantMinistryTypes.has(ministryType));
+}
+
+async function filterVolunteerMemberUserIds(
+  supabase: ReturnType<typeof createClient>,
+  userIds: string[],
+): Promise<string[]> {
+  const dedupedUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  if (dedupedUserIds.length === 0) {
+    return [];
+  }
+
+  const { data: userRoles, error: rolesError } = await supabase
+    .from("user_roles")
+    .select("user_id, role")
+    .in("user_id", dedupedUserIds);
+
+  if (rolesError) {
+    console.error("Error fetching user roles:", rolesError);
+    return [];
+  }
+
+  const userRolesMap = new Map<string, string[]>();
+  for (const userRole of userRoles || []) {
+    const existingRoles = userRolesMap.get(userRole.user_id) || [];
+    existingRoles.push(userRole.role);
+    userRolesMap.set(userRole.user_id, existingRoles);
+  }
+
+  return dedupedUserIds.filter((userId) => {
+    const roles = userRolesMap.get(userId) || [];
+    const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.includes(role));
+    const isVolunteer = roles.includes("volunteer") || roles.includes("member");
+    return isVolunteer && !hasLeadershipRole;
+  });
+}
+
+async function getScheduledRecipientUserIds(
+  supabase: ReturnType<typeof createClient>,
+  draftSet: { campus_id: string | null; plan_date: string; ministry_type: string },
+  includePrimaryMinistry = true,
+): Promise<string[]> {
+  if (!draftSet.campus_id) {
+    return [];
+  }
+
+  const serviceDates = getServiceDates(draftSet.plan_date);
+  const relevantMinistryTypes = new Set(
+    getRelevantMinistryTypes(draftSet.ministry_type, includePrimaryMinistry),
+  );
+
+  const { data: teamSchedules, error: scheduleError } = await supabase
+    .from("team_schedule")
+    .select("team_id, ministry_type, campus_id, schedule_date")
+    .in("schedule_date", serviceDates)
+    .or(`campus_id.eq.${draftSet.campus_id},campus_id.is.null`);
+
+  if (scheduleError) {
+    console.error("Error fetching team schedule:", scheduleError);
+    return [];
+  }
+
+  const matchingTeamIds = Array.from(
+    new Set(
+      (teamSchedules || [])
+        .filter((schedule) => {
+          if (!schedule.team_id) {
+            return false;
+          }
+
+          if (schedule.ministry_type == null) {
+            return includePrimaryMinistry;
+          }
+
+          return relevantMinistryTypes.has(schedule.ministry_type);
+        })
+        .map((schedule) => schedule.team_id),
+    ),
+  );
+
+  if (matchingTeamIds.length === 0) {
+    return [];
+  }
+
+  const { data: rotationPeriods, error: rotationError } = await supabase
+    .from("rotation_periods")
+    .select("id")
+    .eq("campus_id", draftSet.campus_id)
+    .lte("start_date", draftSet.plan_date)
+    .gte("end_date", draftSet.plan_date);
+
+  if (rotationError) {
+    console.error("Error fetching rotation periods:", rotationError);
+    return [];
+  }
+
+  const rotationPeriodIds = (rotationPeriods || []).map((rotationPeriod) => rotationPeriod.id);
+
+  const teamMembersQuery = supabase
+    .from("team_members")
+    .select("user_id, ministry_types")
+    .in("team_id", matchingTeamIds)
+    .not("user_id", "is", null);
+
+  const { data: teamMembers, error: membersError } = rotationPeriodIds.length > 0
+    ? await teamMembersQuery.or(
+        `rotation_period_id.is.null,rotation_period_id.in.(${rotationPeriodIds.join(",")})`,
+      )
+    : await teamMembersQuery.is("rotation_period_id", null);
+
+  if (membersError) {
+    console.error("Error fetching team members:", membersError);
+    return [];
+  }
+
+  const potentialUserIds = (teamMembers || [])
+    .filter((member) => memberMatchesRelevantMinistries(member.ministry_types, relevantMinistryTypes))
+    .map((member) => member.user_id)
+    .filter(Boolean) as string[];
+
+  return filterVolunteerMemberUserIds(supabase, potentialUserIds);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -97,141 +273,17 @@ serve(async (req) => {
         console.error("Error fetching custom service assignments:", assignmentsError);
       }
 
+      const supportUserIds = await getScheduledRecipientUserIds(supabase, draftSet, false);
+
       userIdsToNotify = Array.from(
         new Set((assignments || []).map((a) => a.user_id).filter(Boolean))
       ) as string[];
-
-      // Only notify volunteer/member accounts that are actually on this set's roster.
-      if (userIdsToNotify.length > 0) {
-        const { data: userRoles, error: rolesError } = await supabase
-          .from("user_roles")
-          .select("user_id, role")
-          .in("user_id", userIdsToNotify);
-
-        if (rolesError) {
-          console.error("Error fetching user roles:", rolesError);
-        }
-
-        const leadershipRoles = [
-          "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
-          "network_worship_pastor", "network_worship_leader", "leader",
-          "video_director", "production_manager", "campus_pastor"
-        ];
-
-        const userRolesMap = new Map<string, string[]>();
-        for (const ur of userRoles || []) {
-          const existing = userRolesMap.get(ur.user_id) || [];
-          existing.push(ur.role);
-          userRolesMap.set(ur.user_id, existing);
-        }
-
-        userIdsToNotify = userIdsToNotify.filter((userId) => {
-          const roles = userRolesMap.get(userId) || [];
-          const hasLeadershipRole = roles.some((r) => leadershipRoles.includes(r));
-          const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-          return isVolunteer && !hasLeadershipRole;
-        });
-      }
+      userIdsToNotify = await filterVolunteerMemberUserIds(
+        supabase,
+        [...userIdsToNotify, ...supportUserIds],
+      );
     } else {
-      // Fall back to standard scheduled-team recipient resolution
-      const { data: teamSchedule, error: scheduleError } = await supabase
-        .from("team_schedule")
-        .select("team_id")
-        .eq("schedule_date", draftSet.plan_date)
-        .limit(1)
-        .maybeSingle();
-
-      if (scheduleError) {
-        console.error("Error fetching team schedule:", scheduleError);
-      }
-
-      const { data: rotationPeriods, error: rotationError } = await supabase
-        .from("rotation_periods")
-        .select("id")
-        .eq("campus_id", draftSet.campus_id)
-        .lte("start_date", draftSet.plan_date)
-        .gte("end_date", draftSet.plan_date);
-
-      if (rotationError) {
-        console.error("Error fetching rotation periods:", rotationError);
-      }
-
-      const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-
-      if (teamSchedule?.team_id && rotationPeriodIds.length > 0) {
-        const { data: teamMembers, error: membersError } = await supabase
-          .from("team_members")
-          .select("user_id, ministry_types")
-          .eq("team_id", teamSchedule.team_id)
-          .in("rotation_period_id", rotationPeriodIds)
-          .not("user_id", "is", null);
-
-        if (membersError) {
-          console.error("Error fetching team members:", membersError);
-        }
-
-        // Filter by ministry type
-        const filteredMembers = (teamMembers || []).filter(m => {
-          if (!m.ministry_types || m.ministry_types.length === 0) return true;
-          return m.ministry_types.includes(draftSet.ministry_type);
-        });
-
-        const potentialUserIds = filteredMembers
-          .map(m => m.user_id)
-          .filter(Boolean) as string[];
-
-        // Filter to only include volunteers (exclude leadership roles)
-        if (potentialUserIds.length > 0) {
-          const { data: userRoles, error: rolesError } = await supabase
-            .from("user_roles")
-            .select("user_id, role")
-            .in("user_id", potentialUserIds);
-
-          if (rolesError) {
-            console.error("Error fetching user roles:", rolesError);
-          }
-
-          const leadershipRoles = [
-            "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
-            "network_worship_pastor", "network_worship_leader", "leader",
-            "video_director", "production_manager", "campus_pastor"
-          ];
-
-          // Build a map of user_id -> roles
-          const userRolesMap = new Map<string, string[]>();
-          for (const ur of userRoles || []) {
-            const existing = userRolesMap.get(ur.user_id) || [];
-            existing.push(ur.role);
-            userRolesMap.set(ur.user_id, existing);
-          }
-
-          // Only include users who are volunteers/members AND don't have leadership role
-          const volunteerUserIds = potentialUserIds.filter(userId => {
-            const roles = userRolesMap.get(userId) || [];
-            const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
-            const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-            return isVolunteer && !hasLeadershipRole;
-          });
-
-          // Final roster guard: only notify users who are actually on this set's roster.
-          // This uses the same source of truth as confirm permissions.
-          const rosterChecks = await Promise.all(
-            volunteerUserIds.map(async (userId) => {
-              const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
-                p_draft_set_id: draftSetId,
-                p_user_id: userId,
-              });
-              if (error) {
-                console.error("Roster check failed for user", userId, error);
-                return null;
-              }
-              return data ? userId : null;
-            })
-          );
-
-          userIdsToNotify = rosterChecks.filter(Boolean) as string[];
-        }
-      }
+      userIdsToNotify = await getScheduledRecipientUserIds(supabase, draftSet);
     }
 
     // Final guard across ALL set types:
