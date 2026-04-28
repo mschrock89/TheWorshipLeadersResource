@@ -219,6 +219,22 @@ export function ReferenceTrackUploadDialog({
         }
       }
 
+      try {
+        const { error: notifyError } = await supabase.functions.invoke("notify-weekend-track-uploaded", {
+          body: {
+            playlistId,
+            referenceTrackId: insertedTrack.id,
+            trackTitle: title.trim(),
+          },
+        });
+
+        if (notifyError) {
+          console.error("Failed to notify scheduled users about weekend track upload:", notifyError);
+        }
+      } catch (notifyInvocationError) {
+        console.error("Failed to invoke weekend track upload notification:", notifyInvocationError);
+      }
+
       setProgress(100);
 
       toast({
