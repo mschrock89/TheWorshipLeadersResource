@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -147,6 +147,14 @@ type CalendarAudition = {
   } | null;
 };
 
+type ScheduleNotificationTarget = {
+  campusId: string;
+  campusName: string;
+  ministryType: "production" | "video";
+  teamId: string;
+  teamName: string;
+};
+
 const defaultNewEventState = {
   event_type: "team_event" as "team_event" | "service",
   title: "",
@@ -171,6 +179,7 @@ function StandardCalendar() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
   const [isSwapsSheetOpen, setIsSwapsSheetOpen] = useState(false);
+  const [sendingScheduleNotificationKey, setSendingScheduleNotificationKey] = useState<string | null>(null);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -341,9 +350,11 @@ function StandardCalendar() {
   const {
     data: userCampuses = []
   } = useUserCampuses(user?.id);
+  const { data: roles = [] } = useUserRoles(user?.id);
   const {
     data: userRole
   } = useUserRole(user?.id);
+  const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
 
   // Users with cross-campus calendar oversight should be able to switch campuses here.
   const isCampusAdmin =
@@ -840,6 +851,94 @@ function StandardCalendar() {
 
   // Get team for selected date
   const selectedDayTeam = selectedDate ? getTeamForDay(selectedDate.getDate()) : null;
+  const selectedSupportNotificationTargets = useMemo<ScheduleNotificationTarget[]>(() => {
+    if (!selectedDateStr || !campusFilter || campusFilter === "network-wide") {
+      return [];
+    }
+
+    let entries = teamSchedule.filter((entry) =>
+      entry.schedule_date === selectedDateStr &&
+      (entry.campus_id === campusFilter || entry.campus_id == null) &&
+      (entry.ministry_type === "production" || entry.ministry_type === "video"),
+    );
+
+    if (activeRotationPeriodName) {
+      const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
+      if (activeEntries.length > 0) {
+        entries = activeEntries;
+      }
+    }
+
+    const canAccessCampus = isAdmin || userCampusIds.includes(campusFilter);
+    if (!canAccessCampus) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    return entries.flatMap((entry) => {
+      if (!entry.team_id || !entry.ministry_type) {
+        return [];
+      }
+
+      if (entry.ministry_type === "production" && !roleNames.includes("production_manager")) {
+        return [];
+      }
+
+      if (entry.ministry_type === "video" && !roleNames.includes("video_director")) {
+        return [];
+      }
+
+      const dedupeKey = `${entry.team_id}:${entry.ministry_type}`;
+      if (seen.has(dedupeKey)) {
+        return [];
+      }
+      seen.add(dedupeKey);
+
+      return [{
+        campusId: campusFilter,
+        campusName: campuses.find((campus) => campus.id === campusFilter)?.name || "Campus",
+        ministryType: entry.ministry_type,
+        teamId: entry.team_id,
+        teamName: entry.worship_teams?.name || "Team",
+      }];
+    });
+  }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
+
+  const handleSendScheduleNotification = async (target: ScheduleNotificationTarget) => {
+    const key = `${target.teamId}:${target.ministryType}:${selectedDateStr || ""}`;
+    setSendingScheduleNotificationKey(key);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-team-schedule-date", {
+        body: {
+          scheduleDate: selectedDateStr,
+          campusId: target.campusId,
+          ministryType: target.ministryType,
+          teamId: target.teamId,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const recipientCount =
+        data && typeof data === "object" && "recipients" in data && typeof data.recipients === "number"
+          ? data.recipients
+          : 0;
+
+      toast.success(
+        recipientCount > 0
+          ? `${recipientCount} ${target.teamName} member${recipientCount === 1 ? "" : "s"} notified.`
+          : `No ${target.teamName} team members were eligible to notify.`,
+      );
+    } catch (error) {
+      console.error("Failed to send team schedule notification:", error);
+      toast.error("Failed to send the schedule notification.");
+    } finally {
+      setSendingScheduleNotificationKey(null);
+    }
+  };
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));
     setSelectedDate(null);
@@ -1254,6 +1353,20 @@ function StandardCalendar() {
                           Add extra Friday, Saturday, or Sunday services for this specific weekend.
                         </span>
                       </div>}
+                    {selectedSupportNotificationTargets.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {selectedSupportNotificationTargets.map((target) => {
+                      const targetKey = `${target.teamId}:${target.ministryType}:${selectedDateStr || ""}`;
+                      const isSending = sendingScheduleNotificationKey === targetKey;
+                      const ministryLabel = getMinistryLabel(target.ministryType);
+                      return <Button key={targetKey} variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => handleSendScheduleNotification(target)} disabled={isSending}>
+                              {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Megaphone className="h-3 w-3" />}
+                              Notify {ministryLabel}
+                            </Button>;
+                    })}
+                        <span className="text-xs text-muted-foreground">
+                          Send a reminder to the scheduled Production or Video team for this date.
+                        </span>
+                      </div>}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button variant="outline" size="sm" className="gap-1.5 h-7 px-2 relative border-ecc-yellow hover:bg-ecc-yellow/10" onClick={() => setIsSwapsSheetOpen(true)}>
@@ -1410,7 +1523,7 @@ function StandardCalendar() {
                       <BandRoster
                         date={selectedDate}
                         teamId={selectedDayTeam?.team_id}
-                        showAudioVideo={canManageTeam}
+                        showAudioVideo
                         ministryFilter={ministryFilter}
                         rotationPeriodName={selectedDayTeam?.rotation_period || null}
                         scheduledMinistries={(() => {
