@@ -11,83 +11,409 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format } from "date-fns";
 import { Music, ChevronDown, CheckCircle2, Clock, Users, ArrowRightLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MINISTRY_TYPES } from "@/lib/constants";
-import { POSITION_CATEGORIES } from "@/lib/constants";
-import { getWeekendPairDate, isWeekend } from "@/lib/utils";
+import { MINISTRY_TYPES, POSITION_CATEGORIES } from "@/lib/constants";
+import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
+import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
 
-interface SetlistWithConfirmations {
+interface SetlistMember {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  isSwappedIn: boolean;
+}
+
+interface ConfirmedSetlistMember extends SetlistMember {
+  confirmedAt: string;
+}
+
+interface SetlistDetails {
+  confirmed: ConfirmedSetlistMember[];
+  unconfirmed: SetlistMember[];
+  totalScheduled: number;
+  audition_start_time?: string | null;
+  audition_end_time?: string | null;
+}
+
+interface PublishedSetlist {
   id: string;
+  campus_id: string;
   plan_date: string;
   ministry_type: string;
   custom_service_id: string | null;
   published_at: string;
   campuses: { name: string } | null;
-  audition_start_time?: string | null;
-  audition_end_time?: string | null;
-  confirmed: Array<{
-    userId: string;
-    name: string;
-    avatarUrl: string | null;
-    confirmedAt: string;
-    isSwappedIn?: boolean;
-  }>;
-  unconfirmed: Array<{
-    userId: string;
-    name: string;
-    avatarUrl: string | null;
-    isSwappedIn?: boolean;
-  }>;
-  totalScheduled: number;
 }
 
 interface SetlistConfirmationWidgetProps {
   selectedCampusId: string;
 }
 
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
-function ministryMatchesFilter(memberMinistry: string, filterMinistry: string): boolean {
-  if (!memberMinistry || !filterMinistry) return false;
-  if (memberMinistry === filterMinistry) return true;
-  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(filterMinistry)) {
-    return true;
-  }
-  return false;
+function getTargetRosterMinistry(ministryFilter: string, setlistMinistry: string) {
+  return ministryFilter === "all" ? setlistMinistry : ministryFilter;
 }
 
-function memberMatchesMinistryFilter(
-  memberMinistries: string[] | null | undefined,
-  memberPosition: string | null | undefined,
-  filterMinistry: string,
-): boolean {
-  if (filterMinistry === "all") return true;
+function getMinistryLabel(type: string) {
+  return MINISTRY_TYPES.find((ministry) => ministry.value === type)?.label || type;
+}
 
-  const ministries = memberMinistries || [];
-  if (ministries.length > 0) {
-    return ministries.some((memberMinistry) => ministryMatchesFilter(memberMinistry, filterMinistry));
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function isAnnouncementRosterMember(member: RosterMember) {
+  return member.positionSlots.includes("announcement") || member.positions.every((position) => position === "announcement");
+}
+
+function buildMembersFromRoster(roster: RosterMember[]): SetlistMember[] {
+  return roster
+    .filter((member) => member.userId && !isAnnouncementRosterMember(member))
+    .map((member) => ({
+      userId: member.userId!,
+      name: member.memberName,
+      avatarUrl: member.avatarUrl,
+      isSwappedIn: member.isSwapped,
+    }));
+}
+
+function buildConfirmationDetails(
+  scheduledMembers: SetlistMember[],
+  confirmations: Array<{ user_id: string; confirmed_at: string }> | null | undefined,
+): SetlistDetails {
+  const scheduledUserIdSet = new Set(scheduledMembers.map((member) => member.userId));
+  const scopedConfirmations = (confirmations || []).filter((confirmation) =>
+    scheduledUserIdSet.has(confirmation.user_id),
+  );
+  const confirmedByUserId = new Map(scopedConfirmations.map((confirmation) => [confirmation.user_id, confirmation.confirmed_at]));
+
+  const confirmed = scheduledMembers
+    .filter((member) => confirmedByUserId.has(member.userId))
+    .map((member) => ({
+      ...member,
+      confirmedAt: confirmedByUserId.get(member.userId)!,
+    }));
+
+  const unconfirmed = scheduledMembers.filter((member) => !confirmedByUserId.has(member.userId));
+
+  return {
+    confirmed,
+    unconfirmed,
+    totalScheduled: scheduledMembers.length,
+  };
+}
+
+function SetlistRow({
+  setlist,
+  selectedCampusId,
+  ministryFilter,
+  isExpanded,
+  onToggle,
+}: {
+  setlist: PublishedSetlist;
+  selectedCampusId: string;
+  ministryFilter: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const targetRosterMinistry = getTargetRosterMinistry(ministryFilter, setlist.ministry_type);
+  const setDate = useMemo(() => new Date(`${setlist.plan_date}T00:00:00`), [setlist.plan_date]);
+  const isAudition = setlist.ministry_type === "audition";
+  const isCustomServiceSet = !!setlist.custom_service_id;
+  const usesScheduledRoster = !isAudition && !isCustomServiceSet;
+
+  const { data: scheduledTeam, isLoading: isScheduledTeamLoading } = useScheduledTeamForDate(
+    usesScheduledRoster ? setDate : null,
+    usesScheduledRoster ? setlist.campus_id : null,
+    usesScheduledRoster ? targetRosterMinistry : null,
+  );
+
+  const { data: roster = [], isLoading: isRosterLoading } = useTeamRosterForDate(
+    usesScheduledRoster ? setDate : null,
+    usesScheduledRoster ? scheduledTeam?.teamId : undefined,
+    usesScheduledRoster ? targetRosterMinistry : undefined,
+    usesScheduledRoster ? setlist.campus_id : undefined,
+  );
+
+  const { data: confirmations = [], isLoading: isConfirmationsLoading } = useQuery({
+    queryKey: ["setlist-confirmations", setlist.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("setlist_confirmations")
+        .select("user_id, confirmed_at")
+        .eq("draft_set_id", setlist.id);
+
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: specialSetDetails, isLoading: isSpecialDetailsLoading } = useQuery({
+    queryKey: ["setlist-special-details", setlist.id, targetRosterMinistry, setlist.custom_service_id],
+    queryFn: async (): Promise<SetlistDetails | null> => {
+      if (!isAudition && !isCustomServiceSet) {
+        return null;
+      }
+
+      if (isAudition) {
+        const { data: assignments, error: assignmentsError } = await supabase
+          .from("audition_setlist_assignments")
+          .select("user_id")
+          .eq("draft_set_id", setlist.id);
+
+        if (assignmentsError) throw assignmentsError;
+
+        const userIds = [...new Set((assignments || []).map((row) => row.user_id).filter(Boolean))];
+        const { data: basicProfiles, error: profilesError } = await supabase.rpc("get_basic_profiles");
+        if (profilesError) throw profilesError;
+
+        const profileMap = new Map(
+          (basicProfiles || [])
+            .filter((profile: any) => userIds.includes(profile.id))
+            .map((profile: any) => [profile.id, profile]),
+        );
+
+        const { data: auditionRows, error: auditionRowsError } = userIds.length > 0
+          ? await supabase
+              .from("auditions")
+              .select("candidate_id, start_time, end_time")
+              .in("candidate_id", userIds)
+              .eq("audition_date", setlist.plan_date)
+              .eq("status", "scheduled")
+              .eq("campus_id", setlist.campus_id)
+          : { data: [] as Array<{ candidate_id: string; start_time: string | null; end_time: string | null }>, error: null };
+
+        if (auditionRowsError) throw auditionRowsError;
+
+        const scheduledMembers = userIds.map((userId) => ({
+          userId,
+          name: profileMap.get(userId)?.full_name || "Unknown",
+          avatarUrl: profileMap.get(userId)?.avatar_url || null,
+          isSwappedIn: false,
+        }));
+
+        const details = buildConfirmationDetails(scheduledMembers, confirmations);
+        const primaryAudition = (auditionRows || [])[0] || null;
+
+        return {
+          ...details,
+          audition_start_time: primaryAudition?.start_time || null,
+          audition_end_time: primaryAudition?.end_time || null,
+        };
+      }
+
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from("custom_service_assignments")
+        .select("user_id, role")
+        .eq("custom_service_id", setlist.custom_service_id!)
+        .eq("assignment_date", setlist.plan_date);
+
+      if (assignmentsError) throw assignmentsError;
+
+      const profileIds = [...new Set((assignments || []).map((assignment) => assignment.user_id).filter(Boolean))];
+      const { data: basicProfiles, error: profilesError } = await supabase.rpc("get_basic_profiles");
+      if (profilesError) throw profilesError;
+
+      const profileMap = new Map(
+        (basicProfiles || [])
+          .filter((profile: any) => profileIds.includes(profile.id))
+          .map((profile: any) => [profile.id, profile]),
+      );
+
+      const customRoleMatchesFilter = (role: string) => {
+        if (targetRosterMinistry === "all") return true;
+        if (targetRosterMinistry === "production") return POSITION_CATEGORIES.audio.includes(role);
+        if (targetRosterMinistry === "video") return POSITION_CATEGORIES.video.includes(role);
+        return true;
+      };
+
+      const membersByUser = new Map<string, SetlistMember>();
+      for (const assignment of assignments || []) {
+        if (!assignment.user_id || !customRoleMatchesFilter(assignment.role)) continue;
+        if (!membersByUser.has(assignment.user_id)) {
+          const profile = profileMap.get(assignment.user_id);
+          membersByUser.set(assignment.user_id, {
+            userId: assignment.user_id,
+            name: profile?.full_name || "Unknown",
+            avatarUrl: profile?.avatar_url || null,
+            isSwappedIn: false,
+          });
+        }
+      }
+
+      return buildConfirmationDetails(Array.from(membersByUser.values()), confirmations);
+    },
+    enabled: isAudition || isCustomServiceSet,
+  });
+
+  const details = useMemo(() => {
+    if (isAudition || isCustomServiceSet) {
+      return specialSetDetails;
+    }
+
+    return buildConfirmationDetails(buildMembersFromRoster(roster), confirmations);
+  }, [confirmations, isAudition, isCustomServiceSet, roster, specialSetDetails]);
+
+  const isLoading = isConfirmationsLoading || isSpecialDetailsLoading || (usesScheduledRoster && (isScheduledTeamLoading || isRosterLoading));
+
+  if (!details) {
+    return null;
   }
 
-  // Legacy fallback: rows without ministry_types should still classify by position.
-  if (!memberPosition) return false;
-  if (filterMinistry === "production") {
-    return POSITION_CATEGORIES.audio.includes(memberPosition);
-  }
-  if (filterMinistry === "video") {
-    return POSITION_CATEGORIES.video.includes(memberPosition);
-  }
+  const confirmRate = details.totalScheduled > 0
+    ? Math.round((details.confirmed.length / details.totalScheduled) * 100)
+    : 0;
+  const isFullyConfirmed = details.confirmed.length >= details.totalScheduled && details.totalScheduled > 0;
 
-  return false;
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <div className="w-full p-4 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-foreground">
+                  {format(new Date(`${setlist.plan_date}T00:00:00`), "MMM d, yyyy")}
+                </span>
+                <Badge variant="secondary" className="text-xs">
+                  {getMinistryLabel(setlist.ministry_type)}
+                </Badge>
+                {selectedCampusId === "all" && setlist.campuses && (
+                  <Badge variant="outline" className="text-xs">
+                    {setlist.campuses.name}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-sm">
+                <div className="flex items-center gap-1">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">
+                    {isLoading ? "Loading..." : `${details.totalScheduled} scheduled`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {isFullyConfirmed ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Clock className="h-4 w-4 text-yellow-500" />
+                  )}
+                  <span className={isFullyConfirmed ? "text-green-500" : "text-yellow-500"}>
+                    {isLoading ? "Loading confirmations..." : `${details.confirmed.length}/${details.totalScheduled} confirmed (${confirmRate}%)`}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <ChevronDown
+              className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            />
+          </div>
+        </div>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent className="mt-2 rounded-lg border border-border bg-background p-3">
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : (
+          <TooltipProvider>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <h4 className="font-medium text-green-500 flex items-center gap-1.5 mb-2 text-sm">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Confirmed ({details.confirmed.length})
+                </h4>
+                {details.confirmed.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No confirmations yet</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {details.confirmed.map((member) => (
+                      <Tooltip key={member.userId}>
+                        <TooltipTrigger asChild>
+                          <div className="relative">
+                            <Avatar className="h-7 w-7 ring-2 ring-green-500/30 cursor-pointer hover:ring-green-500/60 transition-all">
+                              <AvatarImage src={member.avatarUrl || undefined} />
+                              <AvatarFallback className="text-[10px] bg-green-500/20 text-green-500">
+                                {getInitials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.isSwappedIn && (
+                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          <p className="font-medium">{member.name}</p>
+                          <p className="text-muted-foreground">
+                            {format(new Date(member.confirmedAt), "MMM d, h:mm a")}
+                          </p>
+                          {member.isSwappedIn && (
+                            <p className="text-blue-400 text-[10px]">Swapped in</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1">
+                <h4 className="font-medium text-yellow-500 flex items-center gap-1.5 mb-2 text-sm">
+                  <Clock className="h-3.5 w-3.5" />
+                  Pending ({details.unconfirmed.length})
+                </h4>
+                {details.unconfirmed.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Everyone confirmed!</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {details.unconfirmed.map((member) => (
+                      <Tooltip key={member.userId}>
+                        <TooltipTrigger asChild>
+                          <div className="relative">
+                            <Avatar className="h-7 w-7 ring-2 ring-yellow-500/30 cursor-pointer hover:ring-yellow-500/60 transition-all">
+                              <AvatarImage src={member.avatarUrl || undefined} />
+                              <AvatarFallback className="text-[10px] bg-yellow-500/20 text-yellow-500">
+                                {getInitials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.isSwappedIn && (
+                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          <p className="font-medium">{member.name}</p>
+                          <p className="text-muted-foreground">Not yet confirmed</p>
+                          {member.isSwappedIn && (
+                            <p className="text-blue-400 text-[10px]">Swapped in</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </TooltipProvider>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmationWidgetProps) {
   const [ministryFilter, setMinistryFilter] = useState<string>("all");
   const [expandedSetlistId, setExpandedSetlistId] = useState<string | null>(null);
 
-  // Fetch published setlists with confirmation status
   const { data: setlists = [], isLoading } = useQuery({
     queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter],
-    queryFn: async (): Promise<SetlistWithConfirmations[]> => {
-      // Get published setlists
+    queryFn: async (): Promise<PublishedSetlist[]> => {
       let query = supabase
         .from("draft_sets")
         .select(`
@@ -109,8 +435,6 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         query = query.eq("campus_id", selectedCampusId);
       }
 
-      // Production/Video teams confirm on all published service sets for their date.
-      // Do not restrict the published-set query to only draft_sets.ministry_type in these cases.
       if (ministryFilter !== "all" && ministryFilter !== "production" && ministryFilter !== "video") {
         query = query.eq("ministry_type", ministryFilter);
       }
@@ -119,21 +443,20 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       if (error) throw error;
       if (!publishedSets || publishedSets.length === 0) return [];
 
-      // De-duplicate stale published rows.
-      // Keep the most recently published set for each campus/date/ministry context.
-      // For audition ministry, also key by assigned candidate so one candidate doesn't show duplicates.
       const auditionSetIds = publishedSets
         .filter((set) => set.ministry_type === "audition")
         .map((set) => set.id);
+
       const auditionAssignmentMap = new Map<string, string>();
       if (auditionSetIds.length > 0) {
-        const { data: auditionAssignments } = await supabase
+        const { data: auditionAssignments, error: auditionAssignmentsError } = await supabase
           .from("audition_setlist_assignments")
           .select("draft_set_id, user_id")
           .in("draft_set_id", auditionSetIds);
 
+        if (auditionAssignmentsError) throw auditionAssignmentsError;
+
         for (const row of auditionAssignments || []) {
-          // Keep the first candidate assignment as the dedupe dimension.
           if (!auditionAssignmentMap.has(row.draft_set_id)) {
             auditionAssignmentMap.set(row.draft_set_id, row.user_id);
           }
@@ -145,16 +468,15 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         const auditionCandidateId = set.ministry_type === "audition"
           ? (auditionAssignmentMap.get(set.id) || "")
           : "";
-        // Include custom_service_id in the dedupe key so multiple custom services
-        // on the same date/campus/ministry (e.g. Prayer Night + Prayer Night Mayday)
-        // do not collapse into one card.
         const serviceScope = set.custom_service_id || "none";
         const dedupeKey = `${set.campus_id}|${set.plan_date}|${set.ministry_type}|${serviceScope}|${auditionCandidateId}`;
         const existing = dedupedPublishedMap.get(dedupeKey);
+
         if (!existing) {
           dedupedPublishedMap.set(dedupeKey, set);
           continue;
         }
+
         const existingPublishedAt = existing.published_at ? new Date(existing.published_at).getTime() : 0;
         const nextPublishedAt = set.published_at ? new Date(set.published_at).getTime() : 0;
         if (nextPublishedAt >= existingPublishedAt) {
@@ -165,14 +487,13 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       const dedupedPublishedSets = Array.from(dedupedPublishedMap.values())
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
 
-      // Resolve custom service linkage defensively for legacy rows.
-      const unresolved = dedupedPublishedSets.filter((s) => !s.custom_service_id);
+      const unresolved = dedupedPublishedSets.filter((set) => !set.custom_service_id);
       const customServiceByKey = new Map<string, string>();
       if (unresolved.length > 0) {
-        const dates = [...new Set(unresolved.map((s) => s.plan_date))];
-        const campusIds = [...new Set(unresolved.map((s) => s.campus_id))];
-        const ministryTypes = [...new Set(unresolved.map((s) => s.ministry_type))];
-        const { data: customServices } = await supabase
+        const dates = [...new Set(unresolved.map((set) => set.plan_date))];
+        const campusIds = [...new Set(unresolved.map((set) => set.campus_id))];
+        const ministryTypes = [...new Set(unresolved.map((set) => set.ministry_type))];
+        const { data: customServices, error: customServicesError } = await supabase
           .from("custom_services")
           .select("id, service_date, campus_id, ministry_type, is_active")
           .eq("is_active", true)
@@ -180,490 +501,43 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           .in("campus_id", campusIds)
           .in("ministry_type", ministryTypes);
 
+        if (customServicesError) throw customServicesError;
+
         const grouped = new Map<string, string[]>();
-        for (const cs of customServices || []) {
-          const key = `${cs.service_date}|${cs.campus_id}|${cs.ministry_type}`;
+        for (const customService of customServices || []) {
+          const key = `${customService.service_date}|${customService.campus_id}|${customService.ministry_type}`;
           const existing = grouped.get(key) || [];
-          existing.push(cs.id);
+          existing.push(customService.id);
           grouped.set(key, existing);
         }
+
         for (const [key, ids] of grouped.entries()) {
-          if (ids.length === 1) customServiceByKey.set(key, ids[0]);
+          if (ids.length === 1) {
+            customServiceByKey.set(key, ids[0]);
+          }
         }
       }
 
-      // For each setlist, get confirmation status
-      const results: SetlistWithConfirmations[] = [];
-
-      for (const setlist of dedupedPublishedSets) {
-        const targetRosterMinistry = ministryFilter === "all" ? setlist.ministry_type : ministryFilter;
-        const effectiveCustomServiceId =
-          setlist.custom_service_id ||
-          customServiceByKey.get(`${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`) ||
-          null;
-        const isCustomServiceSet = !!effectiveCustomServiceId;
-        const datesToCheck = [setlist.plan_date];
-        if (isWeekend(setlist.plan_date)) {
-          const pairDate = getWeekendPairDate(setlist.plan_date);
-          if (pairDate) datesToCheck.push(pairDate);
-        }
-
-        if (setlist.ministry_type === "audition") {
-          const { data: assignments } = await supabase
-            .from("audition_setlist_assignments")
-            .select("user_id")
-            .eq("draft_set_id", setlist.id);
-
-          const userIds = [...new Set((assignments || []).map((row) => row.user_id).filter(Boolean))];
-          const { data: basicProfiles } = await supabase.rpc("get_basic_profiles");
-          const profileMap = new Map(
-            (basicProfiles || [])
-              .filter((profile: any) => userIds.includes(profile.id))
-              .map((profile: any) => [profile.id, profile]),
-          );
-
-          const { data: auditionRows } = userIds.length > 0
-            ? await supabase
-                .from("auditions")
-                .select("candidate_id, start_time, end_time")
-                .in("candidate_id", userIds)
-                .eq("audition_date", setlist.plan_date)
-                .eq("status", "scheduled")
-                .eq("campus_id", setlist.campus_id)
-            : { data: [] as any[] };
-
-          const auditionByUserId = new Map((auditionRows || []).map((row: any) => [row.candidate_id, row]));
-
-          const scheduledMembers = userIds.map((userId) => {
-            const profile = profileMap.get(userId);
-            return {
-              user_id: userId,
-              member_name: profile?.full_name || "Unknown",
-              isSwappedIn: false,
-            };
-          });
-
-          const { data: confirmations } = await supabase
-            .from("setlist_confirmations")
-            .select("user_id, confirmed_at")
-            .eq("draft_set_id", setlist.id);
-
-          const scheduledUserIdSet = new Set(scheduledMembers.map((member) => member.user_id));
-          const scopedConfirmations = (confirmations || []).filter((confirmation) =>
-            scheduledUserIdSet.has(confirmation.user_id)
-          );
-          const confirmedUserIds = new Set(scopedConfirmations.map((confirmation) => confirmation.user_id));
-
-          const confirmed = scopedConfirmations.map((confirmation) => {
-            const profile = profileMap.get(confirmation.user_id);
-            const member = scheduledMembers.find((scheduled) => scheduled.user_id === confirmation.user_id);
-            return {
-              userId: confirmation.user_id,
-              name: profile?.full_name || member?.member_name || "Unknown",
-              avatarUrl: profile?.avatar_url || null,
-              confirmedAt: confirmation.confirmed_at,
-              isSwappedIn: false,
-            };
-          });
-
-          const unconfirmed = scheduledMembers
-            .filter((member) => !confirmedUserIds.has(member.user_id))
-            .map((member) => {
-              const profile = profileMap.get(member.user_id);
-              return {
-                userId: member.user_id,
-                name: profile?.full_name || member.member_name,
-                avatarUrl: profile?.avatar_url || null,
-                isSwappedIn: false,
-              };
-            });
-
-          const primaryAudition = userIds.length > 0 ? auditionByUserId.get(userIds[0]) : null;
-
-          results.push({
-            ...setlist,
-            audition_start_time: primaryAudition?.start_time || null,
-            audition_end_time: primaryAudition?.end_time || null,
-            confirmed,
-            unconfirmed,
-            totalScheduled: scheduledMembers.length,
-          });
-          continue;
-        }
-
-        if (isCustomServiceSet) {
-          const { data: assignments } = await supabase
-            .from("custom_service_assignments")
-            .select(`
-              user_id,
-              role
-            `)
-            .eq("custom_service_id", effectiveCustomServiceId!)
-            .eq("assignment_date", setlist.plan_date);
-
-          const profileIds = [...new Set((assignments || []).map((a) => a.user_id).filter(Boolean))];
-          const { data: basicProfiles } = await supabase.rpc("get_basic_profiles");
-          const profileMap = new Map(
-            (basicProfiles || [])
-              .filter((p: any) => profileIds.includes(p.id))
-              .map((p: any) => [p.id, p]),
-          );
-
-          const customRoleMatchesFilter = (role: string): boolean => {
-            if (targetRosterMinistry === "all") return true;
-            if (targetRosterMinistry === "production") return POSITION_CATEGORIES.audio.includes(role);
-            if (targetRosterMinistry === "video") return POSITION_CATEGORIES.video.includes(role);
-            // For worship ministries (weekend, prayer night, encounter, etc), include all
-            // custom-service assignments and only split out Production/Video when explicitly filtered.
-            return true;
-          };
-
-          const membersByUser = new Map<string, { user_id: string; member_name: string; avatar_url: string | null }>();
-          for (const assignment of assignments || []) {
-            if (!assignment.user_id) continue;
-            if (!customRoleMatchesFilter(assignment.role)) continue;
-            if (!membersByUser.has(assignment.user_id)) {
-              const profile = profileMap.get(assignment.user_id);
-              membersByUser.set(assignment.user_id, {
-                user_id: assignment.user_id,
-                member_name: profile?.full_name || "Unknown",
-                avatar_url: profile?.avatar_url || null,
-              });
-            }
-          }
-
-          const scheduledMembers = Array.from(membersByUser.values()).map((m) => ({
-            user_id: m.user_id,
-            member_name: m.member_name,
-            isSwappedIn: false,
-          }));
-
-          const { data: confirmations } = await supabase
-            .from("setlist_confirmations")
-            .select("user_id, confirmed_at")
-            .eq("draft_set_id", setlist.id);
-
-          const scheduledUserIdSet = new Set(scheduledMembers.map((m) => m.user_id));
-          const scopedConfirmations = (confirmations || []).filter((c) => scheduledUserIdSet.has(c.user_id));
-          const confirmedUserIds = new Set(scopedConfirmations.map((c) => c.user_id));
-
-          const confirmed = scopedConfirmations.map((c) => {
-            const member = membersByUser.get(c.user_id);
-            return {
-              userId: c.user_id,
-              name: member?.member_name || "Unknown",
-              avatarUrl: member?.avatar_url || null,
-              confirmedAt: c.confirmed_at,
-              isSwappedIn: false,
-            };
-          });
-
-          const unconfirmed = scheduledMembers
-            .filter((m) => !confirmedUserIds.has(m.user_id))
-            .map((m) => {
-              const member = membersByUser.get(m.user_id);
-              return {
-                userId: m.user_id,
-                name: member?.member_name || m.member_name,
-                avatarUrl: member?.avatar_url || null,
-                isSwappedIn: false,
-              };
-            });
-
-          results.push({
-            ...setlist,
-            confirmed,
-            unconfirmed,
-            totalScheduled: scheduledMembers.length,
-          });
-          continue;
-        }
-
-        // Get team scheduled for this date AND campus
-        let teamScheduleQuery = supabase
-          .from("team_schedule")
-          .select("team_id")
-          .eq("schedule_date", setlist.plan_date);
-        
-        // Filter by campus - prioritize campus-specific, fall back to shared (null)
-        teamScheduleQuery = teamScheduleQuery.or(`campus_id.eq.${setlist.campus_id},campus_id.is.null`);
-        
-        const { data: teamSchedule } = await teamScheduleQuery
-          .order("campus_id", { ascending: false, nullsFirst: false }) // Campus-specific first
-          .limit(1)
-          .maybeSingle();
-
-        // Get rotation periods for this campus and date
-        const { data: rotationPeriods } = await supabase
-          .from("rotation_periods")
-          .select("id")
-          .eq("campus_id", setlist.campus_id)
-          .lte("start_date", setlist.plan_date)
-          .gte("end_date", setlist.plan_date);
-
-        const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-
-        // For a swap:
-        // - original_date: requester is OUT, accepted_by is IN
-        // - swap_date: accepted_by is OUT, requester is IN
-        //
-        // Cross-team rule: If Person A swaps with Person B, then on the selected dates
-        // they effectively trade teams. Practically, we only apply a swap to the
-        // scheduled team for THIS date if one of the swap participants is on the
-        // scheduled team for THIS date.
-
-        // Fetch team members for the scheduled team (used both for roster + to decide
-        // whether a swap applies to THIS scheduled team)
-        const { data: members } = teamSchedule?.team_id && rotationPeriodIds.length > 0
-          ? await supabase
-              .from("team_members")
-              .select("user_id, member_name, ministry_types, position")
-              .eq("team_id", teamSchedule.team_id)
-              .in("rotation_period_id", rotationPeriodIds)
-              .not("user_id", "is", null)
-          : { data: [] as any[] };
-
-        const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
-        const memberByUserId = new Map(
-          (members || [])
-            .filter((m) => !!m.user_id)
-            .map((m) => [m.user_id as string, m]),
-        );
-
-        // Get swaps where original_date matches (requester out, accepted_by in)
-        const { data: swapsOnOriginalDate } = await supabase
-          .from("swap_requests")
-          .select(`
-            requester_id,
-            accepted_by_id,
-            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-          `)
-          .in("original_date", datesToCheck)
-          .eq("status", "accepted");
-
-        // Get swaps where swap_date matches (accepted_by out, requester in)
-        const { data: swapsOnSwapDate } = await supabase
-          .from("swap_requests")
-          .select(`
-            requester_id,
-            accepted_by_id,
-            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-          `)
-          .in("swap_date", datesToCheck)
-          .eq("status", "accepted")
-          .not("swap_date", "is", null);
-
-        // Build sets for who's out and who's in FOR THIS TEAM on THIS DATE
-        const swappedOutUserIds = new Set<string>();
-        const swappedInMembers: { user_id: string; member_name: string }[] = [];
-
-        // On original_date: requester is out, accepted_by is in (apply only if requester is on this team's roster)
-        for (const swap of swapsOnOriginalDate || []) {
-          const swappedOutMember = swap.requester_id ? memberByUserId.get(swap.requester_id) : null;
-          const appliesToFilteredRoster = swappedOutMember
-            ? memberMatchesMinistryFilter(
-                swappedOutMember.ministry_types,
-                swappedOutMember.position,
-                targetRosterMinistry,
-              )
-            : false;
-
-          if (swap.requester_id && rawTeamUserIds.has(swap.requester_id) && appliesToFilteredRoster) {
-            swappedOutUserIds.add(swap.requester_id);
-            if (swap.accepted_by_id) {
-              swappedInMembers.push({
-                user_id: swap.accepted_by_id,
-                member_name: (swap.accepted_by as any)?.full_name || "Unknown",
-              });
-            }
-          }
-        }
-
-        // On swap_date: accepted_by is out, requester is in (apply only if accepted_by is on this team's roster)
-        for (const swap of swapsOnSwapDate || []) {
-          const swappedOutMember = swap.accepted_by_id ? memberByUserId.get(swap.accepted_by_id) : null;
-          const appliesToFilteredRoster = swappedOutMember
-            ? memberMatchesMinistryFilter(
-                swappedOutMember.ministry_types,
-                swappedOutMember.position,
-                targetRosterMinistry,
-              )
-            : false;
-
-          if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id) && appliesToFilteredRoster) {
-            swappedOutUserIds.add(swap.accepted_by_id);
-            if (swap.requester_id) {
-              swappedInMembers.push({
-                user_id: swap.requester_id,
-                member_name: (swap.requester as any)?.full_name || "Unknown",
-              });
-            }
-          }
-        }
-
-        // Dedupe and filter swapped-in members (exclude anyone who is also swapping out)
-        const seenSwappedIn = new Set<string>();
-        const uniqueSwappedInMembers = swappedInMembers
-          .filter(m => !swappedOutUserIds.has(m.user_id))
-          .filter(m => {
-            if (seenSwappedIn.has(m.user_id)) return false;
-            seenSwappedIn.add(m.user_id);
-            return true;
-          });
-
-        // Get scheduled team members - track who is swapped in
-        let scheduledMembers: { user_id: string; member_name: string; isSwappedIn: boolean }[] = [];
-        const swappedInUserIds = new Set(uniqueSwappedInMembers.map(m => m.user_id));
-
-        // Deduplicate by user_id (a person can have multiple positions like vocalist + instrument)
-        const seenUserIds = new Set<string>();
-        scheduledMembers = (members || [])
-          .filter((m) => {
-            return memberMatchesMinistryFilter(m.ministry_types, m.position, targetRosterMinistry);
-          })
-          // Exclude members who swapped out
-          .filter(m => !swappedOutUserIds.has(m.user_id!))
-          // Deduplicate by user_id
-          .filter(m => {
-            if (seenUserIds.has(m.user_id!)) return false;
-            seenUserIds.add(m.user_id!);
-            return true;
-          })
-          .map(m => ({ user_id: m.user_id!, member_name: m.member_name, isSwappedIn: false }));
-
-        // Add members who swapped in
-        const existingUserIds = new Set(scheduledMembers.map(m => m.user_id));
-        for (const swappedIn of uniqueSwappedInMembers) {
-          if (!existingUserIds.has(swappedIn.user_id)) {
-            scheduledMembers.push({
-              user_id: swappedIn.user_id,
-              member_name: swappedIn.member_name,
-              isSwappedIn: true,
-            });
-          }
-        }
-
-        // Get confirmations
-        const { data: confirmations } = await supabase
-          .from("setlist_confirmations")
-          .select("user_id, confirmed_at")
-          .eq("draft_set_id", setlist.id);
-
-        // Keep confirmations scoped to the currently filtered roster.
-        // Without this, users outside the selected ministry (e.g. non-video)
-        // can inflate confirmation totals.
-        const scheduledUserIdSet = new Set(scheduledMembers.map((m) => m.user_id));
-        const scopedConfirmations = (confirmations || []).filter((c) => scheduledUserIdSet.has(c.user_id));
-        const confirmedUserIds = new Set(scopedConfirmations.map((c) => c.user_id));
-
-        // Get profile info
-        const allUserIds = [...new Set([
-          ...scheduledMembers.map(m => m.user_id),
-          ...scopedConfirmations.map(c => c.user_id)
-        ])];
-
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, full_name, avatar_url")
-          .in("id", allUserIds.length > 0 ? allUserIds : ["00000000-0000-0000-0000-000000000000"]);
-
-        const profileMap = new Map((profiles || []).map(p => [p.id, p]));
-
-        // Build confirmed list
-        const confirmed = scopedConfirmations.map(c => {
-          const profile = profileMap.get(c.user_id);
-          const member = scheduledMembers.find(m => m.user_id === c.user_id);
-          return {
-            userId: c.user_id,
-            name: profile?.full_name || member?.member_name || "Unknown",
-            avatarUrl: profile?.avatar_url || null,
-            confirmedAt: c.confirmed_at,
-            isSwappedIn: swappedInUserIds.has(c.user_id),
-          };
-        });
-
-        // Build unconfirmed list
-        const unconfirmed = scheduledMembers
-          .filter(m => !confirmedUserIds.has(m.user_id))
-          .map(m => {
-            const profile = profileMap.get(m.user_id);
-            return {
-              userId: m.user_id,
-              name: profile?.full_name || m.member_name,
-              avatarUrl: profile?.avatar_url || null,
-              isSwappedIn: m.isSwappedIn,
-            };
-          });
-
-        results.push({
-          ...setlist,
-          confirmed,
-          unconfirmed,
-          totalScheduled: scheduledMembers.length,
-        });
-      }
-
-      const condensedResults = new Map<string, SetlistWithConfirmations>();
-
-      for (const result of results) {
-        if (result.ministry_type !== "audition") {
-          condensedResults.set(result.id, result);
-          continue;
-        }
-
-        const auditionTimeKey = `${result.audition_start_time || "none"}|${result.audition_end_time || "none"}`;
-        const key = `audition|${selectedCampusId}|${result.campuses?.name || "unknown"}|${result.plan_date}|${auditionTimeKey}`;
-        const existing = condensedResults.get(key);
-
-        if (!existing) {
-          condensedResults.set(key, {
-            ...result,
-            id: key,
-          });
-          continue;
-        }
-
-        const confirmedByUser = new Map(existing.confirmed.map((member) => [member.userId, member]));
-        for (const member of result.confirmed) {
-          confirmedByUser.set(member.userId, member);
-        }
-
-        const confirmedUserIds = new Set(Array.from(confirmedByUser.keys()));
-        const unconfirmedByUser = new Map(
-          existing.unconfirmed
-            .filter((member) => !confirmedUserIds.has(member.userId))
-            .map((member) => [member.userId, member]),
-        );
-
-        for (const member of result.unconfirmed) {
-          if (!confirmedUserIds.has(member.userId)) {
-            unconfirmedByUser.set(member.userId, member);
-          }
-        }
-
-        existing.confirmed = Array.from(confirmedByUser.values());
-        existing.unconfirmed = Array.from(unconfirmedByUser.values());
-        existing.totalScheduled = existing.confirmed.length + existing.unconfirmed.length;
-      }
-
-      return Array.from(condensedResults.values()).sort((a, b) => a.plan_date.localeCompare(b.plan_date));
+      return dedupedPublishedSets.map((set) => ({
+        ...set,
+        custom_service_id:
+          set.custom_service_id ||
+          customServiceByKey.get(`${set.plan_date}|${set.campus_id}|${set.ministry_type}`) ||
+          null,
+      }));
     },
   });
 
-  const getMinistryLabel = (type: string) => {
-    return MINISTRY_TYPES.find(m => m.value === type)?.label || type;
-  };
+  const visibleSetlists = useMemo(() => {
+    if (ministryFilter === "all" || ministryFilter === "production" || ministryFilter === "video") {
+      return setlists;
+    }
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map(n => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
+    return setlists.filter((setlist) => {
+      if (setlist.ministry_type === ministryFilter) return true;
+      return WEEKEND_MINISTRY_ALIASES.has(setlist.ministry_type) && WEEKEND_MINISTRY_ALIASES.has(ministryFilter);
+    });
+  }, [ministryFilter, setlists]);
 
   if (isLoading) {
     return (
@@ -697,9 +571,9 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Ministries</SelectItem>
-              {MINISTRY_TYPES.filter(m => m.value !== "weekend_team").map(m => (
-                <SelectItem key={m.value} value={m.value}>
-                  {m.label}
+              {MINISTRY_TYPES.filter((ministry) => ministry.value !== "weekend_team").map((ministry) => (
+                <SelectItem key={ministry.value} value={ministry.value}>
+                  {ministry.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -707,7 +581,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         </div>
       </CardHeader>
       <CardContent>
-        {setlists.length === 0 ? (
+        {visibleSetlists.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Music className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p>No published setlists found</p>
@@ -716,148 +590,16 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         ) : (
           <ScrollArea className="max-h-[500px]">
             <div className="space-y-3">
-              {setlists.map(setlist => {
-                const confirmRate = setlist.totalScheduled > 0
-                  ? Math.round((setlist.confirmed.length / setlist.totalScheduled) * 100)
-                  : 0;
-                const isFullyConfirmed = setlist.confirmed.length >= setlist.totalScheduled && setlist.totalScheduled > 0;
-                const isExpanded = expandedSetlistId === setlist.id;
-
-                return (
-                  <Collapsible
-                    key={setlist.id}
-                    open={isExpanded}
-                    onOpenChange={() => setExpandedSetlistId(isExpanded ? null : setlist.id)}
-                  >
-                    <CollapsibleTrigger asChild>
-                      <div className="w-full p-4 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-foreground">
-                                {format(new Date(setlist.plan_date + "T00:00:00"), "MMM d, yyyy")}
-                              </span>
-                              <Badge variant="secondary" className="text-xs">
-                                {getMinistryLabel(setlist.ministry_type)}
-                              </Badge>
-                              {selectedCampusId === "all" && setlist.campuses && (
-                                <Badge variant="outline" className="text-xs">
-                                  {setlist.campuses.name}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-2 text-sm">
-                              <div className="flex items-center gap-1">
-                                <Users className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-muted-foreground">
-                                  {setlist.totalScheduled} scheduled
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {isFullyConfirmed ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                ) : (
-                                  <Clock className="h-4 w-4 text-yellow-500" />
-                                )}
-                                <span className={isFullyConfirmed ? "text-green-500" : "text-yellow-500"}>
-                                  {setlist.confirmed.length}/{setlist.totalScheduled} confirmed ({confirmRate}%)
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <ChevronDown 
-                            className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} 
-                          />
-                        </div>
-                      </div>
-                    </CollapsibleTrigger>
-
-                    <CollapsibleContent className="mt-2 rounded-lg border border-border bg-background p-3">
-                      <TooltipProvider>
-                        <div className="flex flex-col sm:flex-row gap-4">
-                          {/* Confirmed List */}
-                          <div className="flex-1">
-                            <h4 className="font-medium text-green-500 flex items-center gap-1.5 mb-2 text-sm">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Confirmed ({setlist.confirmed.length})
-                            </h4>
-                            {setlist.confirmed.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">No confirmations yet</p>
-                            ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {setlist.confirmed.map(member => (
-                                  <Tooltip key={member.userId}>
-                                    <TooltipTrigger asChild>
-                                      <div className="relative">
-                                        <Avatar className="h-7 w-7 ring-2 ring-green-500/30 cursor-pointer hover:ring-green-500/60 transition-all">
-                                          <AvatarImage src={member.avatarUrl || undefined} />
-                                          <AvatarFallback className="text-[10px] bg-green-500/20 text-green-500">
-                                            {getInitials(member.name)}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                        {member.isSwappedIn && (
-                                          <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
-                                        )}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="text-xs">
-                                      <p className="font-medium">{member.name}</p>
-                                      <p className="text-muted-foreground">
-                                        {format(new Date(member.confirmedAt), "MMM d, h:mm a")}
-                                      </p>
-                                      {member.isSwappedIn && (
-                                        <p className="text-blue-400 text-[10px]">Swapped in</p>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Unconfirmed List */}
-                          <div className="flex-1">
-                            <h4 className="font-medium text-yellow-500 flex items-center gap-1.5 mb-2 text-sm">
-                              <Clock className="h-3.5 w-3.5" />
-                              Pending ({setlist.unconfirmed.length})
-                            </h4>
-                            {setlist.unconfirmed.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">Everyone confirmed!</p>
-                            ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {setlist.unconfirmed.map(member => (
-                                  <Tooltip key={member.userId}>
-                                    <TooltipTrigger asChild>
-                                      <div className="relative">
-                                        <Avatar className="h-7 w-7 ring-2 ring-yellow-500/30 cursor-pointer hover:ring-yellow-500/60 transition-all">
-                                          <AvatarImage src={member.avatarUrl || undefined} />
-                                          <AvatarFallback className="text-[10px] bg-yellow-500/20 text-yellow-500">
-                                            {getInitials(member.name)}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                        {member.isSwappedIn && (
-                                          <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
-                                        )}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="text-xs">
-                                      <p className="font-medium">{member.name}</p>
-                                      <p className="text-muted-foreground">Not yet confirmed</p>
-                                      {member.isSwappedIn && (
-                                        <p className="text-blue-400 text-[10px]">Swapped in</p>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TooltipProvider>
-                    </CollapsibleContent>
-                  </Collapsible>
-                );
-              })}
+              {visibleSetlists.map((setlist) => (
+                <SetlistRow
+                  key={setlist.id}
+                  setlist={setlist}
+                  selectedCampusId={selectedCampusId}
+                  ministryFilter={ministryFilter}
+                  isExpanded={expandedSetlistId === setlist.id}
+                  onToggle={() => setExpandedSetlistId(expandedSetlistId === setlist.id ? null : setlist.id)}
+                />
+              ))}
             </div>
           </ScrollArea>
         )}
