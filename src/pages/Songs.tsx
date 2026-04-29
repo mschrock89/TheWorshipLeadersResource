@@ -175,6 +175,7 @@ export default function Songs() {
   const ministryOptions = [
     { id: "all", name: "All Ministries" },
     { id: "weekend", name: "Weekend", matchesCampusName: true },
+    { id: "kids_camp", name: "Kids Camp", serviceTypePatterns: ["Kids Camp"] },
     { id: "encounter", name: "Encounter", serviceTypePatterns: ["Encounter (Boro)", "Encounter (CC)", "Encounter (Tullahoma)", "Encounter"] },
     { id: "eon", name: "EON", serviceTypePatterns: ["EON Boro", "EON Tullahoma", "EON Shelbyville", "EON"] },
     { id: "evident", name: "Evident", serviceTypePatterns: ["Evident", "ER"] },

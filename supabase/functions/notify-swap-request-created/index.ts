@@ -18,6 +18,21 @@ interface RecipientProfile {
   full_name: string | null;
 }
 
+const PRODUCTION_POSITIONS = new Set([
+  "front_of_house",
+  "lighting",
+  "broadcast_mix",
+  "producer",
+  "stage_manager",
+]);
+
+const VIDEO_POSITIONS = new Set([
+  "video_director",
+  "camera_operator",
+  "video_switcher",
+  "pro_presenter",
+]);
+
 const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
   lead_vocals: "Lead Vocals",
@@ -102,6 +117,12 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function getPreferredMinistryType(position: string): string | null {
+  if (PRODUCTION_POSITIONS.has(position)) return "production";
+  if (VIDEO_POSITIONS.has(position)) return "video";
+  return null;
 }
 
 function generateSwapRequestEmailHtml({
@@ -334,13 +355,19 @@ serve(async (req: Request): Promise<Response> => {
         .maybeSingle();
 
       let scheduleMinistryType: string | null = null;
-      const { data: matchingSchedule } = await supabase
+      const preferredMinistryType = getPreferredMinistryType(swapRequest.position);
+      let matchingScheduleQuery = supabase
         .from("team_schedule")
         .select("ministry_type")
         .eq("team_id", swapRequest.team_id)
         .eq("schedule_date", swapRequest.original_date)
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+
+      if (preferredMinistryType) {
+        matchingScheduleQuery = matchingScheduleQuery.eq("ministry_type", preferredMinistryType);
+      }
+
+      const { data: matchingSchedule } = await matchingScheduleQuery.maybeSingle();
 
       scheduleMinistryType = matchingSchedule?.ministry_type || null;
       

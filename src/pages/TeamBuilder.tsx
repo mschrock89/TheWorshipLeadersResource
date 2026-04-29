@@ -337,7 +337,7 @@ export default function TeamBuilder() {
 
   // Normalize legacy weekend aliases to the Weekend Worship value used by Team Builder.
   useEffect(() => {
-    if (selectedMinistryType === "weekend_team") {
+    if (selectedMinistryType === "weekend_team" || selectedMinistryType === "speaker") {
       setSelectedMinistryType("weekend");
     }
   }, [selectedMinistryType]);

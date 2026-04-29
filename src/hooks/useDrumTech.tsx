@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRoles } from "@/hooks/useUserRoles";
 import { useToast } from "@/hooks/use-toast";
 
 export type DrumPieceType =
@@ -432,7 +431,6 @@ async function syncLocalDrumKitsToSupabase(userId?: string | null) {
 
 export function useDrumTechAccess(campusId?: string | null) {
   const { user } = useAuth();
-  const { data: roles = [] } = useUserRoles(user?.id);
 
   const { data: assignments = { viewCampusIds: [], editCampusIds: [] } } = useQuery({
     queryKey: ["drum-tech-assignments", user?.id],
@@ -475,18 +473,17 @@ export function useDrumTechAccess(campusId?: string | null) {
   });
 
   return useMemo(() => {
-    const roleNames = roles.map((role) => role.role);
-    const isAdminLike = roleNames.includes("admin") || roleNames.includes("campus_admin");
     const assignedCampusIds = assignments.viewCampusIds;
     const editableCampusIds = assignments.editCampusIds;
 
     return {
-      isAdminLike,
       assignedCampusIds,
-      hasAnyAccess: isAdminLike || assignedCampusIds.length > 0,
-      canEditCampus: !!campusId && (isAdminLike || editableCampusIds.includes(campusId)),
+      editableCampusIds,
+      hasAnyAccess: assignedCampusIds.length > 0,
+      canAccessCampus: !!campusId && assignedCampusIds.includes(campusId),
+      canEditCampus: !!campusId && editableCampusIds.includes(campusId),
     };
-  }, [assignments, campusId, roles]);
+  }, [assignments, campusId]);
 }
 
 export function useDrumKits(campusId?: string | null) {

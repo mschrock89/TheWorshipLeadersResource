@@ -155,8 +155,8 @@ function CondensedTeamCard({
 
       <CardContent className="p-3 space-y-2">
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
-        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>
@@ -288,8 +288,8 @@ function FullTeamCard({
 
       <CardContent className="p-4 space-y-4">
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
-        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
+        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
       </CardContent>

@@ -1,4 +1,5 @@
 import { FormEvent, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { differenceInCalendarDays, formatDistanceToNowStrict, isValid, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -1309,15 +1310,15 @@ function DrumTechCommentBoard({
 }
 
 export default function DrumTech() {
-  const { user, canManageTeam } = useAuth();
+  const { user } = useAuth();
   const { data: campuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const campusCtx = useCampusSelectionOptional();
   const assignmentAccess = useDrumTechAccess(campusCtx?.selectedCampusId || null);
+  const preferredCampusId = campusCtx?.selectedCampusId;
   const selectedCampusId =
-    campusCtx?.selectedCampusId ||
+    (preferredCampusId && assignmentAccess.assignedCampusIds.includes(preferredCampusId) ? preferredCampusId : null) ||
     assignmentAccess.assignedCampusIds[0] ||
-    userCampuses[0]?.campus_id ||
     null;
   const access = useDrumTechAccess(selectedCampusId);
   const setSelectedCampusId = campusCtx?.setSelectedCampusId;
@@ -1330,14 +1331,13 @@ export default function DrumTech() {
   const deleteKit = useDeleteDrumKit();
 
   const availableCampuses = useMemo(() => {
-    if (canManageTeam) return campuses;
-    if (assignmentAccess.assignedCampusIds.length > 0) {
-      return userCampuses
-        .filter((entry) => assignmentAccess.assignedCampusIds.includes(entry.campus_id))
-        .map((entry) => entry.campuses);
-    }
-    return userCampuses.map((entry) => entry.campuses);
-  }, [assignmentAccess.assignedCampusIds, campuses, canManageTeam, userCampuses]);
+    const assignedCampusSet = new Set(assignmentAccess.assignedCampusIds);
+    const campusMap = new Map(campuses.map((campus) => [campus.id, campus]));
+
+    return assignmentAccess.assignedCampusIds
+      .map((campusId) => campusMap.get(campusId) || userCampuses.find((entry) => entry.campus_id === campusId)?.campuses)
+      .filter((campus): campus is NonNullable<typeof campus> => !!campus && assignedCampusSet.has(campus.id));
+  }, [assignmentAccess.assignedCampusIds, campuses, userCampuses]);
 
   const [selectedKitId, setSelectedKitId] = useState<string | null>(null);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -1588,6 +1588,10 @@ export default function DrumTech() {
 
     setLayoutUnlocked(false);
   };
+
+  if (!assignmentAccess.hasAnyAccess) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   if (!selectedCampusId) {
     return (

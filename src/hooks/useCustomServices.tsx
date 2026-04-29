@@ -40,10 +40,13 @@ export interface CustomServiceAssignment {
 }
 
 const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
+const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
 
 function normalizeCustomServiceMinistry(service: Pick<CustomService, "ministry_type" | "service_name">): string {
   if (service.ministry_type === "prayer_night") return "prayer_night";
   if (PRAYER_NIGHT_PATTERN.test(service.service_name || "")) return "prayer_night";
+  if (service.ministry_type === "kids_camp") return "kids_camp";
+  if (KIDS_CAMP_PATTERN.test(service.service_name || "")) return "kids_camp";
   return service.ministry_type;
 }
 
@@ -147,7 +150,7 @@ export function useCustomServiceOccurrences({
       }
       // Prayer Night supports legacy custom services that may still be stored as weekend
       // but named "Prayer Night". Filter after normalization for that case.
-      if (ministryType && ministryType !== "prayer_night") {
+      if (ministryType && ministryType !== "prayer_night" && ministryType !== "kids_camp") {
         query = query.eq("ministry_type", ministryType);
       }
 

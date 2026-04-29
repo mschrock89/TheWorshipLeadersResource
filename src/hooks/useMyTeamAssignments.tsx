@@ -35,6 +35,19 @@ export interface MyScheduledDate {
   isSwappedIn?: boolean;
 }
 
+interface MyTeamDateOverride {
+  scheduleDate: string;
+  teamId: string;
+  teamName: string;
+  teamColor: string;
+  teamIcon: string;
+  position: string;
+  campusId: string | null;
+  campusName: string | null;
+  rotationPeriodId: string | null;
+  ministryTypes: string[];
+}
+
 const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
 
 function assignmentMatchesMinistryTypes(
@@ -70,6 +83,7 @@ function assignmentMatchesMinistryTypes(
 
 export function useMyTeamAssignments() {
   const { user } = useAuth();
+  const today = new Date().toISOString().split("T")[0];
 
   // Fetch user's campuses as fallback for assignments without rotation periods
   const { data: userCampuses = [] } = useQuery({
@@ -178,13 +192,65 @@ export function useMyTeamAssignments() {
     enabled: !!user?.id,
   });
 
+  const { data: dateOverrides = [], isLoading: overridesLoading } = useQuery({
+    queryKey: ["my-team-date-overrides", user?.id, userCampuses],
+    queryFn: async () => {
+      if (!user?.id) return [];
+
+      const { data, error } = await supabase
+        .from("team_member_date_overrides")
+        .select(`
+          id,
+          schedule_date,
+          position,
+          team_id,
+          rotation_period_id,
+          ministry_types,
+          worship_teams!inner (
+            id,
+            name,
+            color,
+            icon
+          ),
+          rotation_periods (
+            campus_id,
+            campuses (
+              name
+            )
+          )
+        `)
+        .eq("user_id", user.id)
+        .gte("schedule_date", today);
+
+      if (error) throw error;
+
+      const fallbackCampus = userCampuses[0];
+      const fallbackCampusId = (fallbackCampus as any)?.campuses?.id || null;
+      const fallbackCampusName = (fallbackCampus as any)?.campuses?.name || null;
+
+      return (data || []).map((override: any) => ({
+        scheduleDate: override.schedule_date,
+        teamId: override.worship_teams.id,
+        teamName: override.worship_teams.name,
+        teamColor: override.worship_teams.color,
+        teamIcon: override.worship_teams.icon,
+        position: override.position,
+        campusId: override.rotation_periods?.campus_id || fallbackCampusId,
+        campusName: override.rotation_periods?.campuses?.name || fallbackCampusName,
+        rotationPeriodId: override.rotation_period_id,
+        ministryTypes: override.ministry_types || [],
+      })) as MyTeamDateOverride[];
+    },
+    enabled: !!user?.id,
+  });
+
   const { data: scheduledDates = [], isLoading: datesLoading } = useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["my-scheduled-dates", "local-date-v2", user?.id, assignments, acceptedSwaps],
+    queryKey: ["my-scheduled-dates", "local-date-v3", user?.id, assignments, dateOverrides, acceptedSwaps],
     queryFn: async () => {
-      if (!user?.id || assignments.length === 0) return [];
+      if (!user?.id || (assignments.length === 0 && dateOverrides.length === 0)) return [];
 
-      const teamIds = [...new Set(assignments.map((a) => a.teamId))];
+      const teamIds = [...new Set([...assignments.map((a) => a.teamId), ...dateOverrides.map((o) => o.teamId)])];
 
       const { data, error } = await supabase
         .from("team_schedule")
@@ -203,7 +269,7 @@ export function useMyTeamAssignments() {
           )
         `)
         .in("team_id", teamIds)
-        .gte("schedule_date", new Date().toISOString().split("T")[0]);
+        .gte("schedule_date", today);
 
       if (error) throw error;
 
@@ -301,6 +367,40 @@ export function useMyTeamAssignments() {
       // But deduplicates when user has multiple ministry types for the same team/campus
       const results: MyScheduledDate[] = [];
       const seen = new Set<string>();
+
+      for (const override of dateOverrides) {
+        if (swappedOutDates.has(override.scheduleDate)) continue;
+
+        const matchingEntries = (data || []).filter((entry: any) => {
+          if (entry.schedule_date !== override.scheduleDate) return false;
+          if (entry.team_id !== override.teamId) return false;
+          const scheduleMinistryType = entry.ministry_type || "weekend";
+          return assignmentMatchesMinistryTypes(override.ministryTypes, scheduleMinistryType);
+        });
+
+        for (const entry of matchingEntries) {
+          const scheduleCampusId = entry.campus_id || null;
+          const campusId = scheduleCampusId || override.campusId;
+          const dedupeKey = `${override.scheduleDate}-${override.teamId}-${campusId || "null"}`;
+
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+
+          results.push({
+            scheduleDate: override.scheduleDate,
+            date: parseLocalDate(override.scheduleDate),
+            teamId: override.teamId,
+            teamName: override.teamName,
+            teamColor: override.teamColor,
+            position: override.position,
+            campusId,
+            campusName: (entry as any)?.campuses?.name || override.campusName || null,
+            ministryTypes: override.ministryTypes,
+            rotationPeriodId: override.rotationPeriodId,
+            ministryType: (entry as any).ministry_type || "weekend",
+          });
+        }
+      }
       
       for (const entry of data || []) {
         const scheduleMinistryType = (entry as any).ministry_type || 'weekend';
@@ -432,7 +532,7 @@ export function useMyTeamAssignments() {
       
       return results;
     },
-    enabled: !!user?.id && assignments.length > 0,
+    enabled: !!user?.id && (assignments.length > 0 || dateOverrides.length > 0),
   });
 
   // Get unique teams
@@ -447,6 +547,6 @@ export function useMyTeamAssignments() {
     assignments,
     uniqueTeams,
     scheduledDates,
-    isLoading: assignmentsLoading || datesLoading,
+    isLoading: assignmentsLoading || overridesLoading || datesLoading,
   };
 }

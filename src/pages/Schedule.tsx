@@ -124,6 +124,7 @@ function formatMinistryTypes(ministryTypes: string[]): string {
   
   const labels: Record<string, string> = {
     weekend: "Weekend Worship",
+    kids_camp: "Kids Camp",
     encounter: "Encounter",
     eon: "EON",
     eon_weekend: "EON Weekend",

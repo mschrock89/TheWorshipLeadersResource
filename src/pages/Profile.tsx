@@ -40,6 +40,7 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 const PROFILE_MINISTRY_ORDER = [
   "weekend_team",
   "worship_night",
+  "kids_camp",
   "production",
   "video",
   "encounter",
@@ -1258,8 +1259,8 @@ export default function Profile() {
                                 // Determine which position categories to show based on ministry type.
                                 // Weekend Worship should only show worship positions here; Production
                                 // and Video are managed through their own ministry assignments.
-                                const showMusicPositions = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
-                                const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'evident'].includes(ministryType);
+                                const showMusicPositions = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
+                                const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'encounter', 'eon', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 const showVideoPositions = ministryType === 'video';

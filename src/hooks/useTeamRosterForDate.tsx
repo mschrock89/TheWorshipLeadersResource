@@ -10,7 +10,7 @@ import {
 } from "@/lib/rotationPeriods";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
-const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 
 const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
   const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
@@ -49,6 +49,14 @@ const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefin
   }
 
   return memberMinistries.includes(ministryType);
+};
+
+const normalizeRosterGroupingMinistry = (ministryType: string | null | undefined) => {
+  if (!ministryType) return "unknown";
+  if (WEEKEND_ROSTER_MINISTRY_ALIASES.includes(ministryType)) {
+    return "weekend_team";
+  }
+  return ministryType;
 };
 
 const normalizeRosterName = (name?: string | null) =>
@@ -171,7 +179,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v10"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v11"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -879,11 +887,42 @@ export function useTeamRosterForDate(
         const { data: announcementRows, error: announcementsError } = await announcementQuery;
         if (announcementsError) throw announcementsError;
 
+        const existingAnnouncementAssignments = new Set(
+          intermediateRoster
+            .filter((entry) => {
+              const normalizedPosition = entry.position.toLowerCase();
+              const normalizedSlot = entry.positionSlot?.toLowerCase() || "";
+              return normalizedPosition === "announcement" || normalizedSlot === "announcement";
+            })
+            .flatMap((entry) => {
+              const keys: string[] = [];
+              if (entry.userId) {
+                keys.push(`user:${entry.userId}`);
+              }
+              const normalizedName = normalizeRosterName(entry.memberName);
+              if (normalizedName) {
+                keys.push(`name:${normalizedName}`);
+              }
+              return keys;
+            }),
+        );
+
         for (const announcement of announcementRows || []) {
           const announcerName = announcement.announcer_name?.trim();
           if (!announcerName) continue;
 
           const matchedProfile = findSafeProfileByName(announcerName);
+          const normalizedAnnouncerName = normalizeRosterName(announcerName);
+          const duplicateAnnouncementKey = matchedProfile?.id
+            ? `user:${matchedProfile.id}`
+            : normalizedAnnouncerName
+            ? `name:${normalizedAnnouncerName}`
+            : null;
+
+          if (duplicateAnnouncementKey && existingAnnouncementAssignments.has(duplicateAnnouncementKey)) {
+            continue;
+          }
+
           intermediateRoster.push({
             id: announcement.id,
             memberName: matchedProfile?.full_name || announcerName,
@@ -897,18 +936,19 @@ export function useTeamRosterForDate(
             ministryTypes: [announcement.ministry_type],
             serviceDay: null,
           });
+
+          if (duplicateAnnouncementKey) {
+            existingAnnouncementAssignments.add(duplicateAnnouncementKey);
+          }
         }
       }
 
-      // Group by member name + userId AND ministry type to consolidate positions
-      // We use the first ministry type from the entry as the grouping key
-      // This ensures positions from different ministries are NOT merged together
+      // Group by member identity plus normalized ministry family so legacy speaker/weekend
+      // aliases collapse into a single roster entry.
       const memberMap = new Map<string, RosterMember>();
       
       for (const entry of intermediateRoster) {
-        // Create a composite key: userId (or name) + primary ministry type
-        // This ensures the same user with different ministry assignments is kept separate
-        const primaryMinistry = entry.ministryTypes[0] || 'unknown';
+        const primaryMinistry = normalizeRosterGroupingMinistry(entry.ministryTypes[0]);
         const baseKey = entry.userId || entry.memberName;
         const key = `${baseKey}__${primaryMinistry}`;
         

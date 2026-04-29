@@ -47,6 +47,7 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   announcement: ["announcement"],
   annoucement: ["announcement"],
   closing_prayer: ["closing_prayer"],
+  closer: ["closing_prayer"],
   drums: ["drums"],
   bass: ["bass"],
   keys: ["keys"],

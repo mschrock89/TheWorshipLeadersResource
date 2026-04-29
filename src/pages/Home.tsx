@@ -28,6 +28,7 @@ import { useProfile } from "@/hooks/useProfiles";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
+import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import worshipImage from "@/assets/worship-night.jpg";
@@ -39,6 +40,7 @@ export default function Home() {
   const { data: roles = [] } = useUserRoles(user?.id);
   const { data: isApprover } = useIsApprover();
   const { data: pendingApprovalCount } = usePendingApprovalCount();
+  const drumTechAccess = useDrumTechAccess();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
   const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
 
@@ -126,7 +128,7 @@ export default function Home() {
                       Audio Library
                     </Link>
                   </DropdownMenuItem>
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && drumTechAccess.hasAnyAccess && (
                     <DropdownMenuItem asChild>
                       <Link to="/drum-tech" className="flex items-center gap-2">
                         <Wrench className="h-4 w-4" />

@@ -1038,7 +1038,7 @@ function SetlistTeamRoster({
 
     const allMembers = [...vocalists, ...band, ...speakers];
     for (const member of allMembers) {
-      const key = member.userId || member.memberName;
+      const key = member.memberName.trim().toLowerCase();
       const existing = byPerson.get(key);
       const hasVocalistRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Vocalists") || member.positions.includes("vocalist");
       const hasBandRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Band") || member.positions.some((position) => bandFallbackPositions.has(position));

@@ -234,6 +234,8 @@ export function useSongsWithStats() {
             return "Weekend Worship";
           case "prayer_night":
             return "Prayer Night";
+          case "kids_camp":
+            return "Kids Camp";
           case "encounter":
             return "Encounter";
           case "eon":
@@ -326,6 +328,8 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
             return "Weekend Worship";
           case "prayer_night":
             return "Prayer Night";
+          case "kids_camp":
+            return "Kids Camp";
           case "encounter":
             return "Encounter";
           case "eon":
@@ -413,7 +417,7 @@ export type ServicePlansPagedOptions = {
   pageSize: number;
   sortOrder: "newest" | "oldest";
   campusId?: string; // omit for all campuses
-  ministry?: "all" | "weekend" | "encounter" | "eon" | "evident";
+  ministry?: "all" | "weekend" | "kids_camp" | "encounter" | "eon" | "evident";
 };
 
 // Cutoff date: after this date, plan history comes from draft_sets (this app)
@@ -424,6 +428,7 @@ const PCO_CUTOFF_DATE = "2026-01-17";
 function draftSetMinistryMatchesFilter(ministryType: string, filter: string): boolean {
   if (filter === "all") return true;
   if (filter === "weekend") return ministryType === "weekend";
+  if (filter === "kids_camp") return ministryType === "kids_camp";
   if (filter === "encounter") return ministryType === "encounter";
   if (filter === "eon") return ministryType === "eon";
   if (filter === "evident") return ministryType === "evident" || ministryType === "er";
@@ -470,6 +475,8 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
       "Encounter (Tullahoma)",
       "Encounter",
     ]);
+  } else if (ministry === "kids_camp") {
+    pcoQuery = pcoQuery.ilike("service_type_name", "%Kids Camp%");
   } else if (ministry === "eon") {
     pcoQuery = pcoQuery.in("service_type_name", ["EON Boro", "EON Tullahoma", "EON Shelbyville", "EON"]);
   } else if (ministry === "evident") {
@@ -514,7 +521,7 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
       id: ds.id,
       pco_plan_id: `draft-${ds.id}`, // Marker to distinguish from PCO plans
       campus_id: ds.campus_id,
-      service_type_name: ds.ministry_type.charAt(0).toUpperCase() + ds.ministry_type.slice(1),
+      service_type_name: mapMinistryTypeToServiceTypeName(ds.ministry_type),
       plan_date: ds.plan_date,
       plan_title: ds.notes || null,
       synced_at: ds.published_at || ds.plan_date,
@@ -645,6 +652,7 @@ function getMinistryTypeFromServiceName(serviceTypeName: string): string {
   
   if (lowerName.includes('eon')) return 'eon';
   if (lowerName.includes('encounter')) return 'encounter';
+  if (lowerName.includes('kids camp')) return 'kids_camp';
   if (lowerName.includes('evident')) return 'evident';
   if (lowerName.includes(' er ') || lowerName.endsWith(' er') || lowerName.startsWith('er ')) return 'er';
   
@@ -1088,6 +1096,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         // Get ministry type labels for display
         const ministryLabels: Record<string, string> = {
           weekend: "Weekend Worship",
+          kids_camp: "Kids Camp",
           encounter: "Encounter",
           eon: "EON",
           eon_weekend: "EON Weekend",

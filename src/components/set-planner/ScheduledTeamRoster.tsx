@@ -51,7 +51,7 @@ const isProductionPosition = (pos: string) => {
 
 const isSpeakerPosition = (pos: string) => {
   const lower = pos.toLowerCase();
-  return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer";
+  return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer" || lower === "closer";
 };
 
 interface RosterMember {
@@ -156,16 +156,12 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     const deduped = new Map<string, NonNullable<typeof roster>[number]>();
 
     for (const member of roster || []) {
-      const normalizedMinistries = [...(member.ministryTypes || [])]
-        .map((type) => (type === "weekend" || type === "sunday_am" ? "weekend_team" : type))
-        .sort()
-        .join("|");
       const normalizedPositions = [...member.positions]
         .map((position) => position.toLowerCase())
         .sort()
         .join("|");
       const baseKey = member.memberName.toLowerCase();
-      const key = `${baseKey}__${normalizedMinistries}__${normalizedPositions}`;
+      const key = `${baseKey}__${normalizedPositions}`;
 
       const existing = deduped.get(key);
       if (!existing) {

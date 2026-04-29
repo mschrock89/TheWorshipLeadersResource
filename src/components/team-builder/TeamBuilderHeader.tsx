@@ -22,6 +22,7 @@ import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
 const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "weekend",
   "worship_night",
+  "kids_camp",
   "production",
   "video",
   "encounter",
@@ -30,7 +31,6 @@ const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "evident",
   "er",
   "audition",
-  "speaker",
   "prayer_night",
 ] as const;
 

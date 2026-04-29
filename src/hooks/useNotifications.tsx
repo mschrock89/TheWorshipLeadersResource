@@ -11,6 +11,7 @@ export type NotificationType =
   | "swap_declined" 
   | "new_set" 
   | "new_event"
+  | "team_schedule_update"
   | "pending_approval"
   | "approval_status"
   | "setlist_confirmed";
@@ -81,7 +82,7 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      const [newSetsResult, newEventsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
+      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
@@ -117,6 +118,13 @@ export function useNotifications() {
           .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .order("created_at", { ascending: false })
           .limit(10),
+        supabase
+          .from("manual_team_schedule_notifications")
+          .select("id, title, message, link, created_at")
+          .eq("user_id", user.id)
+          .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(20),
         // User's campuses for filtering
         supabase
           .from("user_campuses")
@@ -144,12 +152,14 @@ export function useNotifications() {
 
       if (newSetsResult.error) throw newSetsResult.error;
       if (newEventsResult.error) throw newEventsResult.error;
+      if (manualScheduleNotificationsResult.error) throw manualScheduleNotificationsResult.error;
       if (userCampusesResult.error) throw userCampusesResult.error;
       if (directSwapRequestsResult.error) throw directSwapRequestsResult.error;
 
       const userCampusIds = userCampusesResult.data?.map((uc) => uc.campus_id) || [];
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
+      const manualScheduleNotifications = manualScheduleNotificationsResult.data || [];
       const directSwapRequests = directSwapRequestsResult.data || [];
 
       const requesterIds = [...new Set(directSwapRequests.map((request) => request.requester_id).filter(Boolean))];
@@ -259,6 +269,19 @@ export function useNotifications() {
         });
       });
 
+      manualScheduleNotifications.forEach((notification) => {
+        const notifId = `schedule-update-${notification.id}`;
+        notifs.push({
+          id: notifId,
+          type: "team_schedule_update",
+          title: notification.title,
+          message: notification.message,
+          timestamp: notification.created_at,
+          read: currentReadIds.has(notifId),
+          link: notification.link || "/calendar",
+        });
+      });
+
       directSwapRequests.forEach((swapRequest) => {
         const requesterName = requesterNameById.get(swapRequest.requester_id) || "A team member";
         const teamName = teamNameById.get(swapRequest.team_id) || "your team";
@@ -310,6 +333,11 @@ export function useNotifications() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "events" },
+        () => fetchNotifications()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "manual_team_schedule_notifications" },
         () => fetchNotifications()
       )
       .on(

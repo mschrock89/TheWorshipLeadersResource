@@ -64,6 +64,7 @@ const EVENT_AUDIENCE_OPTIONS = [{
 const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
   "worship_night",
+  "kids_camp",
   "production",
   "video",
   "encounter",
@@ -2107,9 +2108,9 @@ function BandRoster({
 
   // If we're in "All" mode or "weekend_team" mode, constrain to appropriate ministries
   const roster = useMemo(() => {
-    // For "weekend_team" filter, include weekend aliases plus production/video.
+    // For "weekend_team" filter, include weekend aliases plus the shared speaker roster and production/video.
     if (isWeekendTeamFilter) {
-      const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
+      const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "speaker", "production", "video"]);
       const filteredRoster = normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
       const mergedRoster = new Map<string, typeof filteredRoster[number]>();
 
@@ -2175,7 +2176,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -2201,17 +2202,21 @@ function BandRoster({
       label: "Worship Night",
       order: 1
     },
+    kids_camp: {
+      label: "Kids Camp",
+      order: 2
+    },
     eon_weekend: {
       label: "EON Weekend",
-      order: 2
+      order: 3
     },
     encounter: {
       label: "Encounter",
-      order: 3
+      order: 4
     },
     eon: {
       label: "EON",
-      order: 4
+      order: 5
     },
     sunday_am: {
       label: "Weekend Worship",
@@ -2240,7 +2245,7 @@ function BandRoster({
 
   // Vocal positions to filter by
   const vocalPositions = ['vocalist', 'Vocals', 'Vocalist'];
-  const speakerPositions = ['teacher', 'announcement', 'annoucement', 'closing_prayer'];
+  const speakerPositions = ['teacher', 'announcement', 'annoucement', 'closing_prayer', 'closer'];
 
   // Audio positions (FOH, MON, Audio Shadow, Lighting, ProPresenter, Broadcast)
   const audioPositions = ['sound_tech', 'audio_shadow', 'lighting', 'media', 'foh', 'mon', 'propresenter', 'broadcast', 'Lyrics'];
@@ -2320,7 +2325,7 @@ function BandRoster({
       const normalized = pos.toLowerCase();
       if (normalized === 'teacher') return 0;
       if (normalized === 'announcement' || normalized === 'annoucement') return 1;
-      if (normalized === 'closing_prayer') return 2;
+      if (normalized === 'closing_prayer' || normalized === 'closer') return 2;
     }
     return 99;
   };
@@ -2674,6 +2679,8 @@ function CustomServiceSongsPreview({
   const effectiveMinistryType = useMemo(() => {
     if (ministryType === "prayer_night") return "prayer_night";
     if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
+    if (ministryType === "kids_camp") return "kids_camp";
+    if (/\bkids\s*camp\b/i.test(serviceName || "")) return "kids_camp";
     return ministryType;
   }, [ministryType, serviceName]);
 

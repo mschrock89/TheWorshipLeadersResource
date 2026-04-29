@@ -97,6 +97,7 @@ export function useSongAvailability(
            if (ministryType === 'encounter') return serviceName.includes('encounter');
            if (ministryType === 'eon') return serviceName.includes('eon');
            if (ministryType === 'evident') return serviceName.includes('evident');
+           if (ministryType === 'kids_camp') return serviceName.includes('kids camp');
 
            // "Weekend" = main services (exclude specialty service types)
            if (ministryType === 'weekend') {

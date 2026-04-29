@@ -69,6 +69,10 @@ export function AssignMemberDialog({
           return false;
         }
 
+        if (normalizedValue === "speaker") {
+          return false;
+        }
+
         if ("hidden" in ministry && ministry.hidden) {
           return false;
         }
@@ -122,7 +126,13 @@ export function AssignMemberDialog({
       // Speaker slots
       if (slotType === "teacher") return pLower === "teacher";
       if (slotType === "announcement") return pLower === "announcement" || pLower === "annoucement";
-      if (slotType === "closing_prayer") return pLower === "closing_prayer" || pLower.includes("closing prayer");
+      if (slotType === "closing_prayer") {
+        return (
+          pLower === "closing_prayer" ||
+          pLower === "closer" ||
+          pLower.includes("closing prayer")
+        );
+      }
       // Band slots
       if (slotType === "drums") return pLower === "drums";
       if (slotType === "bass") return pLower === "bass";

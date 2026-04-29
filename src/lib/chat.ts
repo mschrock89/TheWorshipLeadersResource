@@ -1,5 +1,6 @@
 export const CHAT_MINISTRY_TYPES = [
   { value: "weekend", label: "Weekend" },
+  { value: "kids_camp", label: "Kids Camp" },
   { value: "encounter", label: "Encounter" },
   { value: "evident", label: "Evident" },
   { value: "eon", label: "EON" },

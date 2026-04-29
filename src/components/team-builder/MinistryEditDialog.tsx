@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 const MINISTRY_EDIT_ORDER = [
   "weekend",
   "worship_night",
+  "kids_camp",
   "production",
   "video",
   "encounter",
@@ -25,12 +26,15 @@ const MINISTRY_EDIT_ORDER = [
   "evident",
   "er",
   "audition",
-  "speaker",
   "prayer_night",
 ] as const;
 
 function getMinistryEditOption(value: (typeof MINISTRY_EDIT_ORDER)[number]) {
   return MINISTRY_TYPES.find((ministry) => ministry.value === value);
+}
+
+function normalizeSelectedMinistries(values: string[]) {
+  return [...new Set(values.map((value) => (value === "speaker" ? "weekend" : value)))];
 }
 
 interface MinistryEditDialogProps {
@@ -54,7 +58,7 @@ export function MinistryEditDialog({
   // Reset selected state when dialog opens or member changes
   useEffect(() => {
     if (open) {
-      setSelected(currentMinistries);
+      setSelected(normalizeSelectedMinistries(currentMinistries));
     }
   }, [open, currentMinistries]);
 
@@ -70,7 +74,7 @@ export function MinistryEditDialog({
     if (selected.length === 0) return;
     setIsSaving(true);
     try {
-      await onSave(selected);
+      await onSave(normalizeSelectedMinistries(selected));
       onOpenChange(false);
     } finally {
       setIsSaving(false);

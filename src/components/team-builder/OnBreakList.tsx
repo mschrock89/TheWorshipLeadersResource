@@ -75,7 +75,7 @@ const POSITION_GROUPS = [
   {
     category: "Speaker",
     icon: <BookOpen className="h-4 w-4" />,
-    positions: ["teacher", "announcement", "annoucement", "closing_prayer"]
+    positions: ["teacher", "announcement", "annoucement", "closing_prayer", "closer"]
   },
   {
     category: "Production",

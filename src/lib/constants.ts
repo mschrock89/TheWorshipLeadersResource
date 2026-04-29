@@ -22,6 +22,7 @@ export const POSITION_LABELS: Record<string, string> = {
   teacher: "Teacher",
   announcement: "Announcements",
   closing_prayer: "Closing Prayer",
+  closer: "Closing Prayer",
   acoustic_guitar: "AG 1",
   acoustic_1: "AG 1",
   acoustic_2: "AG 2",
@@ -78,6 +79,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   teacher: "Teach",
   announcement: "Ann",
   closing_prayer: "Prayer",
+  closer: "Prayer",
   acoustic_guitar: "AG 1",
   acoustic_1: "AG 1",
   acoustic_2: "AG 2",
@@ -200,6 +202,7 @@ export const MINISTRY_TYPES = [
   { value: "weekend_team", label: "Weekend Worship", shortLabel: "WKDT", color: "bg-blue-600" },
   { value: "weekend", label: "Weekend Worship", shortLabel: "WKD", color: "bg-blue-500", hidden: true },
   { value: "worship_night", label: "Worship Night", shortLabel: "WN", color: "bg-indigo-600" },
+  { value: "kids_camp", label: "Kids Camp", shortLabel: "KC", color: "bg-orange-500" },
   { value: "prayer_night", label: "Prayer Night", shortLabel: "PRAY", color: "bg-cyan-600" },
   { value: "encounter", label: "Encounter", shortLabel: "EN", color: "bg-accent" },
   { value: "eon", label: "EON", shortLabel: "EON", color: "bg-purple-500" },
@@ -215,6 +218,7 @@ export const MINISTRY_TYPES = [
 export const SET_PLANNER_MINISTRY_OPTIONS = [
   { value: "weekend", label: "Weekend Services" },
   { value: "worship_night", label: "Worship Night" },
+  { value: "kids_camp", label: "Kids Camp" },
   { value: "prayer_night", label: "Prayer Night" },
   { value: "encounter", label: "Encounter" },
   { value: "eon", label: "EON" },
@@ -233,9 +237,10 @@ export const SERVICE_FLOW_ITEM_TYPES = {
 // Which slot categories are available for each ministry type
 // Production and Video only show when those specific ministries are selected
 export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
-  weekend_team: ["Vocalists", "Band"],
-  weekend: ["Vocalists", "Band"],
+  weekend_team: ["Vocalists", "Speaker", "Band"],
+  weekend: ["Vocalists", "Speaker", "Band"],
   worship_night: ["Vocalists", "Band"],
+  kids_camp: ["Vocalists", "Speaker", "Band"],
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],
@@ -254,13 +259,14 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   weekend_team: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
   weekend: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
   worship_night: ["Team 1", "Team 2", "Team 3", "Team 4"], // Worship Night follows the same 4-team campus rotation
+  kids_camp: ["Team 1", "Team 2", "Team 3", "Team 4"], // Kids Camp follows the standard 4-team campus rotation
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Encounter
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // EON uses the full 4-team rotation
   eon_weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for EON Weekend
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
-  speaker: ["Team 1", "Team 2", "Team 3", "Team 4"], // Speaker rotations follow campus team structure
+  speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speaker rotations follow campus team structure and include the special 5th Sunday team
   production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   all: null, // null means show all teams
@@ -318,6 +324,10 @@ export function resolveTeamBuilderSlotMinistryType(
     return undefined;
   }
 
+  if (ministryFilter === "speaker") {
+    return "weekend";
+  }
+
   if (ministryFilter !== "weekend_team") {
     return ministryFilter;
   }
@@ -344,7 +354,7 @@ export function memberMatchesMinistryFilter(
   }
 
   if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
-    return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type));
+    return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type) || type === "speaker");
   }
 
   return !!ministryTypes?.includes(ministryFilter);
@@ -363,7 +373,7 @@ export function breakRequestMatchesMinistryFilter(
   }
 
   if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
-    return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType);
+    return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType) || requestMinistryType === "speaker";
   }
 
   return requestMinistryType === ministryFilter;

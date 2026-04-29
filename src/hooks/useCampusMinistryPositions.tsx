@@ -2,11 +2,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
+const POSITION_ALIASES: Record<string, string> = {
+  closer: "closing_prayer",
+};
 
 function getNormalizedMinistryType(ministryType: string) {
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? "weekend_team"
     : ministryType;
+}
+
+function getNormalizedPosition(position: string) {
+  return POSITION_ALIASES[position] ?? position;
 }
 
 function getEquivalentMinistryTypes(ministryType: string) {
@@ -33,7 +40,10 @@ export function useAllCampusMinistryPositions() {
         .select("*");
 
       if (error) throw error;
-      return data as CampusMinistryPosition[];
+      return (data as CampusMinistryPosition[]).map((item) => ({
+        ...item,
+        position: getNormalizedPosition(item.position),
+      }));
     },
   });
 }
@@ -51,7 +61,10 @@ export function useUserCampusMinistryPositions(userId: string | undefined) {
         .eq("user_id", userId);
       
       if (error) throw error;
-      return data as CampusMinistryPosition[];
+      return (data as CampusMinistryPosition[]).map((item) => ({
+        ...item,
+        position: getNormalizedPosition(item.position),
+      }));
     },
     enabled: !!userId,
   });
@@ -77,6 +90,10 @@ export function useToggleCampusMinistryPosition() {
     }) => {
       const equivalentMinistryTypes = getEquivalentMinistryTypes(ministryType);
       const normalizedMinistryType = getNormalizedMinistryType(ministryType);
+      const normalizedPosition = getNormalizedPosition(position);
+      const positionsToMatch = normalizedPosition === "closing_prayer"
+        ? ["closing_prayer", "closer"]
+        : [normalizedPosition];
 
       if (isActive) {
         // Remove the position
@@ -86,7 +103,7 @@ export function useToggleCampusMinistryPosition() {
           .eq("user_id", userId)
           .eq("campus_id", campusId)
           .in("ministry_type", equivalentMinistryTypes)
-          .eq("position", position);
+          .in("position", positionsToMatch);
         
         if (error) throw error;
       } else {
@@ -96,7 +113,7 @@ export function useToggleCampusMinistryPosition() {
           .eq("user_id", userId)
           .eq("campus_id", campusId)
           .in("ministry_type", equivalentMinistryTypes)
-          .eq("position", position);
+          .in("position", positionsToMatch);
 
         if (cleanupError) throw cleanupError;
 
@@ -107,7 +124,7 @@ export function useToggleCampusMinistryPosition() {
             user_id: userId,
             campus_id: campusId,
             ministry_type: normalizedMinistryType,
-            position: position,
+            position: normalizedPosition,
           });
         
         if (error) throw error;

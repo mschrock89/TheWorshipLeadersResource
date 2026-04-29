@@ -1348,6 +1348,56 @@ export type Database = {
         }
         Relationships: []
       }
+      manual_team_schedule_notifications: {
+        Row: {
+          campus_id: string | null
+          created_at: string
+          id: string
+          link: string | null
+          message: string
+          ministry_type: string
+          schedule_date: string
+          sent_by_user_id: string
+          team_id: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          message: string
+          ministry_type: string
+          schedule_date: string
+          sent_by_user_id: string
+          team_id?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          message?: string
+          ministry_type?: string
+          schedule_date?: string
+          sent_by_user_id?: string
+          team_id?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_team_schedule_notifications_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pco_connections: {
         Row: {
           access_token_encrypted: string | null

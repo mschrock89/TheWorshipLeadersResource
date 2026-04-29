@@ -164,7 +164,7 @@ export default function Dashboard() {
       return canOpenWeekendRundown;
     }
     if (action.to === "/drum-tech") {
-      return drumTechAccess.hasAnyAccess || canManageTeam;
+      return drumTechAccess.hasAnyAccess;
     }
     return canManageTeam;
   });

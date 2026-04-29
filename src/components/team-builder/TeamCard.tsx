@@ -272,22 +272,21 @@ export function TeamCard({
         )}
 
         {/* Band Section */}
-        {showSpeaker && (
-          renderSlotGroup({
-            title: "Speaker",
-            icon: <BookOpen className="h-4 w-4 text-muted-foreground" />,
-            slots: speakerSlots,
-            slotReadOnly: effectiveReadOnly,
-            allowMinistryEdit: true,
-          })
-        )}
-
-        {/* Band Section */}
         {showBand && (
           renderSlotGroup({
             title: "Band",
             icon: <Music className="h-4 w-4 text-muted-foreground" />,
             slots: bandSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
+        )}
+
+        {showSpeaker && (
+          renderSlotGroup({
+            title: "Speaker",
+            icon: <BookOpen className="h-4 w-4 text-muted-foreground" />,
+            slots: speakerSlots,
             slotReadOnly: effectiveReadOnly,
             allowMinistryEdit: true,
           })

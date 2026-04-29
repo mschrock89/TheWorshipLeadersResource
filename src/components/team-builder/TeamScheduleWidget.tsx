@@ -364,6 +364,7 @@ export function TeamScheduleWidget({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="weekend">Weekend</SelectItem>
+                <SelectItem value="kids_camp">Kids Camp</SelectItem>
                 <SelectItem value="production">Production</SelectItem>
                 <SelectItem value="video">Video</SelectItem>
                 <SelectItem value="encounter">Encounter</SelectItem>
@@ -459,6 +460,7 @@ export function TeamScheduleWidget({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weekend">Weekend</SelectItem>
+                        <SelectItem value="kids_camp">Kids Camp</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
                         <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">Encounter</SelectItem>

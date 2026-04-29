@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck } from "lucide-react";
+import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck, Megaphone } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,8 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       return <Music className="h-4 w-4 text-accent" />;
     case "new_event":
       return <CalendarPlus className="h-4 w-4 text-blue-500" />;
+    case "team_schedule_update":
+      return <Megaphone className="h-4 w-4 text-sky-500" />;
     case "pending_approval":
       return <Clock className="h-4 w-4 text-amber-500" />;
     case "approval_status":
