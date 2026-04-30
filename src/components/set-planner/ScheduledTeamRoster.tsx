@@ -28,8 +28,8 @@ const isVocalPosition = (pos: string) => {
 const isBandPosition = (pos: string) => {
   const lower = pos.toLowerCase();
   const bandKeywords = [
-    "guitar", "acoustic", "electric", "bass", "drums", "keys", "piano",
-    "violin", "cello", "saxophone", "trumpet", "instrument"
+    "guitar", "acoustic", "electric", "bass", "drums", "keys", "piano", "pad",
+    "violin", "cello", "saxophone", "trumpet", "instrument", "ag_", "eg_"
   ];
   return bandKeywords.some(keyword => lower.includes(keyword));
 };
@@ -37,7 +37,7 @@ const isBandPosition = (pos: string) => {
 const isVideoPosition = (pos: string) => {
   const lower = pos.toLowerCase();
   const videoKeywords = [
-    "camera", "director", "broadcast", "stream", "video", "graphics", "propresenter"
+    "camera", "director", "producer", "switcher", "graphics", "chat", "stream", "video"
   ];
   return videoKeywords.some(keyword => lower.includes(keyword));
 };
@@ -45,7 +45,8 @@ const isVideoPosition = (pos: string) => {
 const isProductionPosition = (pos: string) => {
   const lower = pos.toLowerCase();
   const productionKeywords = [
-    "foh", "monitor", "audio", "sound", "lighting", "lights", "stage"
+    "foh", "monitor", "mon", "audio", "sound", "lighting", "lights", "stage",
+    "propresenter", "media", "lyrics", "broadcast"
   ];
   return productionKeywords.some(keyword => lower.includes(keyword));
 };
@@ -59,11 +60,17 @@ interface RosterMember {
   id: string;
   memberName: string;
   positions: string[];
+  positionSlots?: string[];
   avatarUrl: string | null;
   phone: string | null;
   isSwapped: boolean;
   originalMemberName?: string;
 }
+
+const getRosterRoleValues = (member: Pick<RosterMember, "positions" | "positionSlots">) => [
+  ...member.positions,
+  ...(member.positionSlots || []),
+];
 
 function TeamMemberRow({ member }: { member: RosterMember }) {
   return (
@@ -170,11 +177,15 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
         deduped.set(key, {
           ...member,
           positions: [...member.positions],
+          positionSlots: [...member.positionSlots],
         });
         continue;
       }
 
       existing.positions = Array.from(new Set([...existing.positions, ...member.positions]));
+      existing.positionSlots = Array.from(
+        new Set([...(existing.positionSlots || []), ...member.positionSlots])
+      );
       existing.isSwapped = existing.isSwapped || member.isSwapped;
       existing.originalMemberName = existing.originalMemberName || member.originalMemberName;
       existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
@@ -186,35 +197,38 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
 
   // Filter members and positions by category
   const vocalists = rosterForDisplay.filter(member => 
-    member.positions.some(pos => isVocalPosition(pos))
+    getRosterRoleValues(member).some(pos => isVocalPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVocalPosition(pos))
   }));
 
   const bandMembers = rosterForDisplay.filter(member => 
-    member.positions.some(pos => isBandPosition(pos))
+    getRosterRoleValues(member).some(pos => isBandPosition(pos))
   ).map(member => ({
     ...member,
-    positions: member.positions.filter(pos => isBandPosition(pos))
+    positions: Array.from(new Set([
+      ...member.positions.filter(pos => isBandPosition(pos)),
+      ...(member.positionSlots || []).filter(pos => isBandPosition(pos)),
+    ]))
   }));
 
   const videoMembers = rosterForDisplay.filter(member => 
-    member.positions.some(pos => isVideoPosition(pos))
+    getRosterRoleValues(member).some(pos => isVideoPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isVideoPosition(pos))
   }));
 
   const productionMembers = rosterForDisplay.filter(member => 
-    member.positions.some(pos => isProductionPosition(pos))
+    getRosterRoleValues(member).some(pos => isProductionPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isProductionPosition(pos))
   }));
 
   const speakerMembers = rosterForDisplay.filter(member =>
-    member.positions.some(pos => isSpeakerPosition(pos))
+    getRosterRoleValues(member).some(pos => isSpeakerPosition(pos))
   ).map(member => ({
     ...member,
     positions: member.positions.filter(pos => isSpeakerPosition(pos))

@@ -1,21 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
-import { getWeekendPairDate, isWeekend } from "@/lib/utils";
-import { resolveScheduledTeamEntry } from "@/hooks/useScheduledTeamForDate";
-
-const WEEKEND_VOCAL_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
-
-const ministryMatchesScheduledFilter = (memberMinistries: string[] | null | undefined, ministryType: string) => {
-  if (!ministryType) return true;
-  if (!memberMinistries || memberMinistries.length === 0) return true;
-
-  if (WEEKEND_VOCAL_MINISTRY_ALIASES.includes(ministryType)) {
-    return memberMinistries.some((mt) => WEEKEND_VOCAL_MINISTRY_ALIASES.includes(mt));
-  }
-
-  return memberMinistries.includes(ministryType);
-};
+import { useMemo } from "react";
+import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
+import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface ScheduledVocalist {
   userId: string;
@@ -37,291 +23,57 @@ export function useScheduledVocalists(
   ministryType: string,
   campusId: string | null
 ) {
-  const dateStr = targetDate ? format(targetDate, "yyyy-MM-dd") : null;
+  const rosterMinistryScope =
+    normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType;
 
-  return useQuery({
-    queryKey: ["scheduled-vocalists", dateStr, ministryType, campusId, "v2"],
-    queryFn: async (): Promise<ScheduledVocalist[]> => {
-      if (!dateStr || !campusId) return [];
+  const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(
+    targetDate,
+    campusId,
+    rosterMinistryScope,
+  );
 
-      // Rotation period(s) for this campus covering this date
-      const { data: rotationPeriods, error: rotationError } = await supabase
-        .from("rotation_periods")
-        .select("id")
-        .eq("campus_id", campusId)
-        .lte("start_date", dateStr)
-        .gte("end_date", dateStr);
+  const { data: roster = [], isLoading: rosterLoading } = useTeamRosterForDate(
+    targetDate,
+    scheduledTeam?.teamId,
+    rosterMinistryScope,
+    campusId,
+  );
 
-      if (rotationError) throw rotationError;
+  const data = useMemo<ScheduledVocalist[]>(() => {
+    const vocalistsMap = new Map<string, ScheduledVocalist>();
 
-      const rotationPeriodIds = (rotationPeriods || []).map((rp) => rp.id);
-      if (rotationPeriodIds.length === 0) return [];
+    for (const member of roster) {
+      if (!member.userId) continue;
 
-      // Resolve the same scheduled team row the roster and publish flows use.
-      let scheduleQuery = supabase
-        .from("team_schedule")
-        .select("id, schedule_date, team_id, campus_id, ministry_type, created_at")
-        .eq("schedule_date", dateStr);
+      const vocalPositions = member.positions.filter((position) => isVocalPosition(position));
+      if (vocalPositions.length === 0) continue;
 
-      if (campusId) {
-        scheduleQuery = scheduleQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
+      const primaryPosition = vocalPositions[0] || member.positions[0] || "vocalist";
+
+      if (!vocalistsMap.has(member.userId)) {
+        vocalistsMap.set(member.userId, {
+          userId: member.userId,
+          name: member.memberName,
+          avatarUrl: member.avatarUrl,
+          position: primaryPosition,
+          isSwappedIn: member.isSwapped,
+        });
+        continue;
       }
 
-      const { data: scheduleEntries, error: scheduleError } = await scheduleQuery;
-      if (scheduleError) throw scheduleError;
-
-      const scheduledEntry = resolveScheduledTeamEntry(scheduleEntries || [], campusId, ministryType);
-      const teamId = scheduledEntry?.team_id;
-
-      if (!teamId) return [];
-
-      // Fetch team members for the rotation period + ministry (matches the roster above)
-      const { data: members, error: membersError } = await supabase
-        .from("team_members")
-        .select("id, member_name, position, user_id, rotation_period_id, ministry_types")
-        .eq("team_id", teamId)
-        .order("display_order");
-
-      if (membersError) throw membersError;
-
-      const filteredMembers = (members || []).filter((m) => {
-        if (!m.rotation_period_id) return false;
-        if (!rotationPeriodIds.includes(m.rotation_period_id)) return false;
-
-        return ministryMatchesScheduledFilter(m.ministry_types, ministryType);
-      });
-
-      // Build the list of dates to check for swaps.
-      // For weekend services, swaps are treated as covering the full weekend.
-      const datesToCheck = [dateStr];
-      if (isWeekend(dateStr)) {
-        const pairDate = getWeekendPairDate(dateStr);
-        if (pairDate) datesToCheck.push(pairDate);
+      const existing = vocalistsMap.get(member.userId)!;
+      if (!isVocalPosition(existing.position) && isVocalPosition(primaryPosition)) {
+        existing.position = primaryPosition;
       }
+      existing.isSwappedIn = existing.isSwappedIn || member.isSwapped;
+      existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
+    }
 
-      // Accepted swaps where someone is covering FOR this date (original_date matches)
-      const { data: swapsForDate, error: swapsForDateError } = await supabase
-        .from("swap_requests")
-        .select(
-          `
-          requester_id,
-          accepted_by_id,
-          position,
-          request_type,
-          accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name, avatar_url)
-        `
-        )
-        .in("original_date", datesToCheck)
-        .eq("team_id", teamId)
-        .eq("status", "accepted");
+    return Array.from(vocalistsMap.values());
+  }, [roster]);
 
-      if (swapsForDateError) throw swapsForDateError;
-
-      // Accepted swaps where this date is the swap_date (requester covers accepter on swap_date)
-      const { data: swapsOnDate, error: swapsOnDateError } = await supabase
-        .from("swap_requests")
-        .select(
-          `
-          requester_id,
-          accepted_by_id,
-          position,
-          requester:profiles!swap_requests_requester_id_fkey(id, full_name, avatar_url)
-        `
-        )
-        .in("swap_date", datesToCheck)
-        .eq("status", "accepted")
-        .not("swap_date", "is", null);
-
-      if (swapsOnDateError) throw swapsOnDateError;
-
-      // Filter swap_date swaps to only those where the accepter is on this team's roster
-      const teamMemberUserIds = new Set(
-        filteredMembers.map((m) => m.user_id).filter(Boolean) as string[]
-      );
-      const filteredSwapsOnDate = (swapsOnDate || []).filter(
-        (swap) => swap.accepted_by_id && teamMemberUserIds.has(swap.accepted_by_id)
-      );
-
-      // Build swap maps keyed by "userId|position" for position-specific matching
-      // For fill_in (cover) requests, we also track that the requester is OUT for ALL positions
-      const swapMap = new Map<
-        string,
-        {
-          acceptedById: string;
-          acceptedByName: string;
-          acceptedByAvatar: string | null;
-          isCover: boolean;
-        }
-      >();
-      const acceptersPositionSet = new Set<string>(); // "userId|position"
-      // Track users who are completely covered (fill_in requests cover ALL their positions)
-      const coveredUserIds = new Set<string>();
-      // Map covered user -> accepter info (for fill_in requests)
-      const coverMap = new Map<string, { acceptedById: string; acceptedByName: string; acceptedByAvatar: string | null }>();
-
-      for (const swap of swapsForDate || []) {
-        if (swap.requester_id && swap.accepted_by_id) {
-          // If swap_date exists, treat as direct swap even if request_type is stale.
-          const isDirectSwap = Boolean(swap.swap_date) || (swap as any).request_type === "swap";
-          const isCover = !isDirectSwap;
-          
-          if (isCover) {
-            // Cover request: requester is OUT for ALL their positions
-            coveredUserIds.add(swap.requester_id);
-            coverMap.set(swap.requester_id, {
-              acceptedById: swap.accepted_by_id,
-              acceptedByName: (swap.accepted_by as any)?.full_name || "Unknown",
-              acceptedByAvatar: (swap.accepted_by as any)?.avatar_url || null,
-            });
-          }
-          
-          const key = `${swap.requester_id}|${swap.position}`;
-          swapMap.set(key, {
-            acceptedById: swap.accepted_by_id,
-            acceptedByName: (swap.accepted_by as any)?.full_name || "Unknown",
-            acceptedByAvatar: (swap.accepted_by as any)?.avatar_url || null,
-            isCover,
-          });
-          acceptersPositionSet.add(`${swap.accepted_by_id}|${swap.position}`);
-        }
-      }
-
-      const reverseSwapMap = new Map<
-        string,
-        {
-          requesterId: string;
-          requesterName: string;
-          requesterAvatar: string | null;
-        }
-      >();
-      const requestersCoveringPositionSet = new Set<string>(); // "userId|position"
-
-      for (const swap of filteredSwapsOnDate) {
-        if (swap.requester_id && swap.accepted_by_id) {
-          const key = `${swap.accepted_by_id}|${swap.position}`;
-          reverseSwapMap.set(key, {
-            requesterId: swap.requester_id,
-            requesterName: (swap.requester as any)?.full_name || "Unknown",
-            requesterAvatar: (swap.requester as any)?.avatar_url || null,
-          });
-          requestersCoveringPositionSet.add(`${swap.requester_id}|${swap.position}`);
-        }
-      }
-
-      const swappedOutPositions = new Set<string>(swapMap.keys()); // "userId|position"
-      const coveredByRequesterPositions = new Set<string>(reverseSwapMap.keys()); // "userId|position"
-      const addedViaSwap = new Set<string>(); // "userId|position"
-
-      const rosterEntries: Array<{
-        userId: string;
-        name: string;
-        avatarUrl: string | null;
-        position: string;
-        isSwappedIn: boolean;
-      }> = [];
-
-      for (const member of filteredMembers) {
-        if (!member.user_id) continue;
-
-        const memberPositionKey = `${member.user_id}|${member.position}`;
-        const swap = swapMap.get(memberPositionKey);
-        const reverseSwap = reverseSwapMap.get(memberPositionKey);
-        
-        // Check if this member is completely covered (fill_in request covers ALL their positions)
-        const isCoveredUser = coveredUserIds.has(member.user_id);
-        const coverInfo = coverMap.get(member.user_id);
-
-        if (isCoveredUser && coverInfo) {
-          // This member is covered by a fill_in request - show the accepter for ALL their positions
-          const swapKey = `${coverInfo.acceptedById}|${member.position}`;
-          if (!addedViaSwap.has(swapKey)) {
-            rosterEntries.push({
-              userId: coverInfo.acceptedById,
-              name: coverInfo.acceptedByName,
-              avatarUrl: coverInfo.acceptedByAvatar,
-              position: member.position,
-              isSwappedIn: true,
-            });
-            addedViaSwap.add(swapKey);
-          }
-        } else if (swap && !swap.isCover) {
-          // requester is OUT for this position via position-specific swap (not cover); accepter is IN
-          const swapKey = `${swap.acceptedById}|${member.position}`;
-          if (!addedViaSwap.has(swapKey)) {
-            rosterEntries.push({
-              userId: swap.acceptedById,
-              name: swap.acceptedByName,
-              avatarUrl: swap.acceptedByAvatar,
-              position: member.position,
-              isSwappedIn: true,
-            });
-            addedViaSwap.add(swapKey);
-          }
-        } else if (reverseSwap) {
-          // accepter is OUT on swap_date for this position; requester is IN
-          const swapKey = `${reverseSwap.requesterId}|${member.position}`;
-          if (!addedViaSwap.has(swapKey)) {
-            rosterEntries.push({
-              userId: reverseSwap.requesterId,
-              name: reverseSwap.requesterName,
-              avatarUrl: reverseSwap.requesterAvatar,
-              position: member.position,
-              isSwappedIn: true,
-            });
-            addedViaSwap.add(swapKey);
-          }
-        } else if (acceptersPositionSet.has(memberPositionKey)) {
-          // Accepted a swap for this position — skip their own slot
-          continue;
-        } else if (requestersCoveringPositionSet.has(memberPositionKey)) {
-          // Covering someone else on swap_date for this position — skip their slot
-          continue;
-        } else if (swappedOutPositions.has(memberPositionKey)) {
-          // Swapped out for this position — skip this slot
-          continue;
-        } else if (coveredByRequesterPositions.has(memberPositionKey)) {
-          continue;
-        } else {
-          rosterEntries.push({
-            userId: member.user_id,
-            name: member.member_name,
-            avatarUrl: null,
-            position: member.position,
-            isSwappedIn: false,
-          });
-        }
-      }
-
-      // Fetch profiles to replace member_name with full_name + get avatars (for everyone in rosterEntries)
-      const userIds = [...new Set(rosterEntries.map((r) => r.userId))];
-      const { data: profiles, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", userIds.length > 0 ? userIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      if (profilesError) throw profilesError;
-
-      const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-
-      // Keep only vocal slots; de-dupe by userId
-      const vocalistsMap = new Map<string, ScheduledVocalist>();
-      for (const entry of rosterEntries) {
-        if (!isVocalPosition(entry.position)) continue;
-
-        const p = profileMap.get(entry.userId);
-        if (!vocalistsMap.has(entry.userId)) {
-          vocalistsMap.set(entry.userId, {
-            userId: entry.userId,
-            name: p?.full_name || entry.name,
-            avatarUrl: p?.avatar_url || entry.avatarUrl,
-            position: entry.position,
-            isSwappedIn: entry.isSwappedIn,
-          });
-        }
-      }
-
-      return Array.from(vocalistsMap.values());
-    },
-    enabled: !!dateStr && !!campusId,
-  });
+  return {
+    data,
+    isLoading: teamLoading || rosterLoading,
+  };
 }
