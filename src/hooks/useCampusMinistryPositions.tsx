@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
+const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
 const POSITION_ALIASES: Record<string, string> = {
   closer: "closing_prayer",
 };

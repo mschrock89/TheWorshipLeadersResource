@@ -437,7 +437,7 @@ export interface PositionMember {
 
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
 const ELECTRIC_POSITION_VARIANTS = [
   "electric_guitar",
   "electric_1",

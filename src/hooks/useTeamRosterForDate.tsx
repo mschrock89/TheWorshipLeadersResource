@@ -40,7 +40,7 @@ const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefin
   if (!memberMinistries || memberMinistries.length === 0) return true;
 
   if (ministryType === "weekend_team") {
-    const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am"];
+    const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am", "speaker"];
     return memberMinistries.some((mt) => weekendTeamMinistries.includes(mt));
   }
 
