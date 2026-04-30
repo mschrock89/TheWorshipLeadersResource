@@ -28,7 +28,7 @@ import {
 import { usePublishedSetlists, useConfirmSetlist } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -863,7 +863,7 @@ function SetlistTeamRoster({
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
     date,
     teamEntry?.team_id,
-    ministryType,
+    normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType,
     campusId
   );
 

@@ -25,6 +25,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import {
   useDeleteServiceTimeOverride,
   useServiceTimeOverrides,
@@ -2036,7 +2037,12 @@ function BandRoster({
   // Special handling for "weekend_team" - it's a combined view, so we fetch without ministry filter
   // and filter the results client-side
   const isWeekendTeamFilter = ministryFilter === 'weekend_team';
-  const effectiveMinistryFilter = ministryFilter && ministryFilter !== 'all' && !isWeekendTeamFilter ? ministryFilter : undefined;
+  const effectiveMinistryFilter =
+    ministryFilter && ministryFilter !== 'all' && !isWeekendTeamFilter
+      ? normalizeWeekendWorshipMinistryType(ministryFilter) === "weekend"
+        ? "weekend_team"
+        : ministryFilter
+      : undefined;
   const {
     data: rosterRaw = [],
     isLoading

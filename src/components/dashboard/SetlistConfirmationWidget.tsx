@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format } from "date-fns";
 import { Music, ChevronDown, CheckCircle2, Clock, Users, ArrowRightLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MINISTRY_TYPES, POSITION_CATEGORIES } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_CATEGORIES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
 
@@ -136,7 +136,11 @@ function SetlistRow({
   const { data: roster = [], isLoading: isRosterLoading } = useTeamRosterForDate(
     usesScheduledRoster ? setDate : null,
     usesScheduledRoster ? scheduledTeam?.teamId : undefined,
-    usesScheduledRoster ? targetRosterMinistry : undefined,
+    usesScheduledRoster
+      ? normalizeWeekendWorshipMinistryType(targetRosterMinistry) === "weekend"
+        ? "weekend_team"
+        : targetRosterMinistry
+      : undefined,
     usesScheduledRoster ? setlist.campus_id : undefined,
   );
 

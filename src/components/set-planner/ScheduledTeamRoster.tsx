@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen } from "lucide-react";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 import { filterGroupTextRecipients } from "@/lib/access";
 
@@ -138,16 +139,17 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
   const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(targetDate, campusId, ministryType);
   
-  // For "weekend_team", we want all weekend/production/video members
-  // The hook now handles "weekend_team" expansion internally
-  const isWeekendTeam = ministryType === 'weekend_team';
+  // Weekend-family services should always show the full shared weekend roster.
+  const rosterMinistryScope =
+    normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType;
+  const isWeekendTeam = rosterMinistryScope === 'weekend_team';
   const showProduction = ministryType === "production" || isWeekendTeam;
   const showVideo = ministryType === "video" || isWeekendTeam;
   
   const { data: roster, isLoading: rosterLoading } = useTeamRosterForDate(
     targetDate,
     scheduledTeam?.teamId,
-    isWeekendTeam ? 'weekend' : ministryType,
+    rosterMinistryScope,
     campusId
   );
   const isLoading = teamLoading || rosterLoading;
