@@ -9,7 +9,7 @@ import {
   buildFirstScheduledDateByRotationName,
 } from "@/lib/rotationPeriods";
 
-const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
+const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 
 const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {

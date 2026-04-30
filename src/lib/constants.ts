@@ -299,7 +299,7 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
   return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);
 }
 
-const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
 
 export function normalizeWeekendWorshipMinistryType(
   ministryType: string | null | undefined,
