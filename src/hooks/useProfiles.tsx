@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 export type TeamPosition = 
   | "vocalist"
-  | "teacher" | "announcement" | "closing_prayer"
+  | "teacher" | "childrens_pastor" | "announcement" | "closing_prayer"
   | "lead_vocals" | "harmony_vocals" | "background_vocals"
   | "acoustic_guitar" | "acoustic_1" | "acoustic_2"
   | "electric_guitar" | "electric_1" | "electric_2"

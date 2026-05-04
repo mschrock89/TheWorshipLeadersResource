@@ -5,6 +5,7 @@ const WEEKEND_GROUP_TEXT_MINISTRY_ALIASES = new Set([
   "sunday_am",
 ]);
 const WORSHIP_PASTOR_GROUP_TEXT_ROLES = new Set([
+  "campus_pastor",
   "campus_worship_pastor",
   "network_worship_pastor",
 ]);

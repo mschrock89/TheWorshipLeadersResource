@@ -123,7 +123,7 @@ export default function Songs() {
   }, []);
 
   // Permission checks - leaders/admins can sync, only org admins can delete
-  const leaderRoles = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor'];
+  const leaderRoles = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor', 'campus_pastor'];
   const canManageSongs = leaderRoles.includes(userRole || '');
   const canDeleteSongs = userRole === 'admin'; // Only organization admins can delete
   

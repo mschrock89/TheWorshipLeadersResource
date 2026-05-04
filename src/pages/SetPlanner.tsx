@@ -46,6 +46,7 @@ const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "vocalist", label: "Vocalist" },
+  { value: "childrens_pastor", label: "Children's Pastor" },
   { value: "acoustic_1", label: "AG 1" },
   { value: "acoustic_2", label: "AG 2" },
   { value: "electric_1", label: "EG 1" },

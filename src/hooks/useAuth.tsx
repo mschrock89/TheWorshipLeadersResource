@@ -81,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
       hasRole("student_worship_pastor") ||
+      hasRole("campus_pastor") ||
       hasRole("network_worship_pastor") ||
       hasRole("network_worship_leader")
     );
@@ -91,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
       hasRole("student_worship_pastor") ||
+      hasRole("campus_pastor") ||
       hasRole("network_worship_pastor") ||
       hasRole("network_worship_leader") ||
       hasRole("video_director") ||
@@ -100,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasRole("admin") ||
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
+      hasRole("campus_pastor") ||
       hasRole("network_worship_pastor") ||
       hasRole("network_worship_leader")
     );

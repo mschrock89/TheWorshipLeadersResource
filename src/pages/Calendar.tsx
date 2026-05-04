@@ -2338,7 +2338,7 @@ function BandRoster({
 
   // Vocal positions to filter by
   const vocalPositions = ['vocalist', 'Vocals', 'Vocalist'];
-  const speakerPositions = ['teacher', 'announcement', 'annoucement', 'closing_prayer', 'closer'];
+  const speakerPositions = ['teacher', 'childrens_pastor', "children's_pastor", 'announcement', 'annoucement', 'closing_prayer', 'closer'];
 
   // Audio positions (FOH, MON, Audio Shadow, Lighting, ProPresenter, Broadcast)
   const audioPositions = ['sound_tech', 'audio_shadow', 'lighting', 'media', 'foh', 'mon', 'propresenter', 'broadcast', 'Lyrics'];
@@ -2422,8 +2422,9 @@ function BandRoster({
     for (const pos of positions) {
       const normalized = pos.toLowerCase();
       if (normalized === 'teacher') return 0;
-      if (normalized === 'announcement' || normalized === 'annoucement') return 1;
-      if (normalized === 'closing_prayer' || normalized === 'closer') return 2;
+      if (normalized === 'childrens_pastor' || normalized === "children's_pastor") return 1;
+      if (normalized === 'announcement' || normalized === 'annoucement') return 2;
+      if (normalized === 'closing_prayer' || normalized === 'closer') return 3;
     }
     return 99;
   };

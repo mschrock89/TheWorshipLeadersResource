@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCampuses, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
 import { useCreateCustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
@@ -43,6 +44,7 @@ function getRoleBadgeLabel(role: string): string {
     case "network_worship_pastor": return "Network Pastor";
     case "campus_worship_pastor": return "Worship Pastor";
     case "student_worship_pastor": return "Student Leader";
+    case "campus_pastor": return "Children's Pastor";
     default: return role;
   }
 }
@@ -449,6 +451,7 @@ export default function AdminTools() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { data: userRoles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
   const updateConfig = useUpdateCampusServiceConfig();
@@ -502,6 +505,7 @@ export default function AdminTools() {
       network_worship_pastor: 2,
       campus_worship_pastor: 3,
       student_worship_pastor: 4,
+      campus_pastor: 5,
     };
     
     return Array.from(userMap.values()).sort((a, b) => {
@@ -588,12 +592,12 @@ export default function AdminTools() {
   };
   const [configs, setConfigs] = useState<CampusServiceConfig[]>([]);
 
-  // Redirect non-admins
+  // Redirect users who should not access admin tools
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !rolesLoading && !canAccessAdminTools) {
       navigate("/dashboard");
     }
-  }, [authLoading, isAdmin, navigate]);
+  }, [authLoading, rolesLoading, canAccessAdminTools, navigate]);
 
   // Initialize configs when campuses load
   useEffect(() => {
@@ -1301,7 +1305,7 @@ export default function AdminTools() {
     );
   }
 
-  if (!isAdmin) return null;
+  if (!canAccessAdminTools) return null;
 
   return (
     <div className="container max-w-4xl py-8">
@@ -2271,3 +2275,4 @@ export default function AdminTools() {
     </div>
   );
 }
+  const canAccessAdminTools = isAdmin || userRoles.some(({ role }) => role === "campus_admin");

@@ -3177,6 +3177,7 @@ export type Database = {
         | "harmony_vocals"
         | "background_vocals"
         | "teacher"
+        | "childrens_pastor"
         | "announcement"
         | "closing_prayer"
         | "acoustic_guitar"
@@ -3363,6 +3364,7 @@ export const Constants = {
         "harmony_vocals",
         "background_vocals",
         "teacher",
+        "childrens_pastor",
         "announcement",
         "closing_prayer",
         "acoustic_guitar",

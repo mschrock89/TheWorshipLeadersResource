@@ -53,7 +53,15 @@ const isProductionPosition = (pos: string) => {
 
 const isSpeakerPosition = (pos: string) => {
   const lower = pos.toLowerCase();
-  return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer" || lower === "closer";
+  return (
+    lower === "teacher" ||
+    lower === "childrens_pastor" ||
+    lower === "children's_pastor" ||
+    lower === "announcement" ||
+    lower === "annoucement" ||
+    lower === "closing_prayer" ||
+    lower === "closer"
+  );
 };
 
 interface RosterMember {
