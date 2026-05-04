@@ -16,6 +16,7 @@ export interface MyTeamAssignment {
   displayOrder: number;
   assignmentStartDate?: string | null;
   assignmentEndDate?: string | null;
+  rotationPeriodName?: string | null;
 }
 
 export interface MyScheduledDate {
@@ -117,6 +118,7 @@ export function useMyTeamAssignments() {
             icon
           ),
           rotation_periods (
+            name,
             campus_id,
             start_date,
             end_date,
@@ -146,6 +148,7 @@ export function useMyTeamAssignments() {
         campusId: member.rotation_periods?.campus_id || fallbackCampusId,
         campusName: member.rotation_periods?.campuses?.name || fallbackCampusName,
         rotationPeriodId: member.rotation_period_id,
+        rotationPeriodName: member.rotation_periods?.name || null,
         ministryTypes: member.ministry_types || [],
         assignmentStartDate: member.rotation_periods?.start_date || null,
         assignmentEndDate: member.rotation_periods?.end_date || null,
@@ -260,6 +263,7 @@ export function useMyTeamAssignments() {
             name
           ),
           ministry_type,
+          rotation_period,
           worship_teams!inner (
             id,
             name,
@@ -380,6 +384,14 @@ export function useMyTeamAssignments() {
         schedule_date: string;
         ministry_types: string[] | null;
       }>;
+      const campusSpecificScheduleKeys = new Set(
+        (data || [])
+          .filter((entry: any) => !!entry.campus_id)
+          .map((entry: any) => {
+            const ministryType = entry.ministry_type || "weekend";
+            return `${entry.team_id}:${entry.rotation_period || ""}:${entry.campus_id}:${ministryType}`;
+          }),
+      );
 
       for (const override of dateOverrides) {
         if (swappedOutDates.has(override.scheduleDate)) continue;
@@ -465,6 +477,16 @@ export function useMyTeamAssignments() {
             // Some schedules include a generic network row plus campus-specific rows for the same
             // service. For personal calendar highlights, prefer the campus-specific row so a
             // volunteer's dates don't light up for another campus's weekend.
+            return false;
+          } else if (
+            !scheduleCampusId &&
+            assignmentCampusId &&
+            campusSpecificScheduleKeys.has(
+              `${a.teamId}:${(entry as any).rotation_period || ""}:${assignmentCampusId}:${scheduleMinistryType}`,
+            )
+          ) {
+            // Once a campus has its own explicit Team Builder schedule for this team/ministry/
+            // period, don't fall back to legacy shared rows for that volunteer.
             return false;
           }
           
