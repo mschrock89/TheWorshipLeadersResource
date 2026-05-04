@@ -5,6 +5,7 @@ import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface SetlistConfirmation {
   id: string;
@@ -43,11 +44,28 @@ const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
 
 function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
   if (!memberMinistry || !setMinistry) return false;
-  if (memberMinistry === setMinistry) return true;
-  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(setMinistry)) {
+  const normalizedMemberMinistry =
+    normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+  const normalizedSetMinistry =
+    normalizeWeekendWorshipMinistryType(setMinistry) || setMinistry;
+
+  if (normalizedMemberMinistry === normalizedSetMinistry) return true;
+  if (
+    WEEKEND_MINISTRY_ALIASES.has(memberMinistry) &&
+    WEEKEND_MINISTRY_ALIASES.has(setMinistry)
+  ) {
     return true;
   }
   return false;
+}
+
+function shouldExpandScheduleDateToWeekendPair(scheduleMinistryType: string | null): boolean {
+  if (!scheduleMinistryType) return false;
+
+  const normalizedScheduleMinistry =
+    normalizeWeekendWorshipMinistryType(scheduleMinistryType) || scheduleMinistryType;
+
+  return normalizedScheduleMinistry === "weekend" || WEEKEND_SUPPORTING_MINISTRIES.has(scheduleMinistryType);
 }
 
 function shouldIncludeScheduledDateForMember(
@@ -200,6 +218,16 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             // Otherwise, only include if ministry type matches
             if (shouldIncludeScheduledDateForMember(userMinistryTypes, schedule.ministry_type)) {
               scheduledDates.add(schedule.schedule_date);
+
+              if (
+                shouldExpandScheduleDateToWeekendPair(schedule.ministry_type) &&
+                isWeekend(schedule.schedule_date)
+              ) {
+                const pairDate = getWeekendPairDate(schedule.schedule_date);
+                if (pairDate) {
+                  scheduledDates.add(pairDate);
+                }
+              }
             }
           }
 
