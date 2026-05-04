@@ -16,7 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, useUpdateEvent, Event } from "@/hooks/useEvents";
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
-import { useTeamSchedule } from "@/hooks/useTeamSchedule";
+import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -104,6 +104,31 @@ const SERVICE_OVERRIDE_MINISTRY_OPTIONS = MINISTRY_TYPES.filter(
 }));
 
 const WEEKEND_TEAM_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team", "production", "video"]);
+const CALENDAR_WEEKEND_MINISTRY_FILTERS = new Set(["weekend", "sunday_am", "weekend_team"]);
+
+const scheduleEntryMatchesCalendarFilter = (
+  entryMinistryType: string | null | undefined,
+  ministryFilter: string,
+) => {
+  const normalizedEntryMinistry =
+    normalizeWeekendWorshipMinistryType(entryMinistryType) || entryMinistryType || "weekend";
+
+  if (ministryFilter === "all") return true;
+
+  if (ministryFilter === "weekend_team") {
+    return (
+      normalizedEntryMinistry === "weekend" ||
+      entryMinistryType === "production" ||
+      entryMinistryType === "video"
+    );
+  }
+
+  if (CALENDAR_WEEKEND_MINISTRY_FILTERS.has(ministryFilter)) {
+    return normalizedEntryMinistry === "weekend";
+  }
+
+  return entryMinistryType === ministryFilter;
+};
 
 const serviceOverrideMatchesMinistryFilter = (
   overrideMinistryType: string | null | undefined,
@@ -672,15 +697,38 @@ function StandardCalendar() {
         if (isSunday && !selectedCampus.has_sunday_service) return null;
       }
       // Filter by selected campus - only show schedule at this campus
-      const match = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
-      return match;
+      let matches = scheduledDates.filter(
+        (s) => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId),
+      );
+
+      if (ministryFilter && ministryFilter !== "all") {
+        const ministryMatches = matches.filter((entry) =>
+          scheduleEntryMatchesCalendarFilter(entry.ministryType, ministryFilter),
+        );
+        if (ministryMatches.length > 0) {
+          matches = ministryMatches;
+        }
+      }
+
+      return matches[0] || null;
     }
 
     // Network-wide or no campus filter - filter by campus for non-admin users with multiple campuses
     if (!isCampusAdmin && userCampuses.length > 1 && campusFilter && campusFilter !== "network-wide") {
       return scheduledDates.find(s => s.scheduleDate === dateStr && s.campusId === campusFilter);
     }
-    return scheduledDates.find(s => s.scheduleDate === dateStr);
+    let matches = scheduledDates.filter((s) => s.scheduleDate === dateStr);
+
+    if (ministryFilter && ministryFilter !== "all") {
+      const ministryMatches = matches.filter((entry) =>
+        scheduleEntryMatchesCalendarFilter(entry.ministryType, ministryFilter),
+      );
+      if (ministryMatches.length > 0) {
+        matches = ministryMatches;
+      }
+    }
+
+    return matches[0] || null;
   };
 
   // Check if a day is a weekend (Saturday or Sunday)
@@ -712,6 +760,19 @@ function StandardCalendar() {
 
   // Check if we should hide weekends (for network-wide view)
   const hideWeekends = isCampusAdmin && campusFilter === "network-wide";
+
+  const getBaseScheduleEntriesForDate = useCallback((targetDateStr: string) => {
+    let entries = teamSchedule.filter((scheduleEntry) => scheduleEntry.schedule_date === targetDateStr);
+
+    if (activeRotationPeriodName) {
+      const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
+      if (activeEntries.length > 0) {
+        entries = activeEntries;
+      }
+    }
+
+    return entries;
+  }, [activeRotationPeriodName, teamSchedule]);
 
   // Get events for a specific day
   const getEventsForDay = (day: number): Event[] => {
@@ -767,6 +828,9 @@ function StandardCalendar() {
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
   const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
   const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
+  const selectedDayScheduleEntries = selectedDate
+    ? getBaseScheduleEntriesForDate(formatDateForStorage(selectedDate))
+    : [];
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. Encounter) should still show even if the user isn't personally scheduled.
@@ -791,23 +855,12 @@ function StandardCalendar() {
     }
 
     const getScheduleEntriesForDate = (targetDateStr: string) => {
-      let entries = teamSchedule.filter(s => s.schedule_date === targetDateStr);
-
-      if (activeRotationPeriodName) {
-        const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
-        if (activeEntries.length > 0) {
-          entries = activeEntries;
-        }
-      }
+      let entries = getBaseScheduleEntriesForDate(targetDateStr);
 
       if (ministryFilter && ministryFilter !== "all") {
-        if (ministryFilter === "weekend_team") {
-          entries = entries.filter(s => ["weekend", "sunday_am", "production", "video"].includes(s.ministry_type));
-        } else if (ministryFilter === "production" || ministryFilter === "video") {
-          entries = entries.filter(s => ["weekend", "sunday_am"].includes(s.ministry_type));
-        } else {
-          entries = entries.filter(s => s.ministry_type === ministryFilter);
-        }
+        entries = entries.filter((entry) =>
+          scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter),
+        );
       }
 
       return entries;
@@ -1527,10 +1580,10 @@ function StandardCalendar() {
                         teamId={selectedDayTeam?.team_id}
                         showAudioVideo
                         ministryFilter={ministryFilter}
+                        scheduledEntries={selectedDayScheduleEntries}
                         rotationPeriodName={selectedDayTeam?.rotation_period || null}
                         scheduledMinistries={(() => {
-                          const dateStr = selectedDate.toISOString().split("T")[0];
-                          let scheduleEntries = teamSchedule.filter(s => s.schedule_date === dateStr);
+                          let scheduleEntries = selectedDayScheduleEntries;
                           if (ministryFilter && ministryFilter !== "all") {
                             scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
                           }
@@ -2019,6 +2072,7 @@ function BandRoster({
   showAudioVideo = true,
   campusId,
   ministryFilter,
+  scheduledEntries = [],
   scheduledMinistries = [],
   rotationPeriodName,
 }: {
@@ -2027,6 +2081,7 @@ function BandRoster({
   showAudioVideo?: boolean;
   campusId?: string;
   ministryFilter?: string;
+  scheduledEntries?: TeamScheduleEntry[];
   scheduledMinistries?: string[];
   rotationPeriodName?: string | null;
 }) {
@@ -2047,16 +2102,48 @@ function BandRoster({
     data: rosterRaw = [],
     isLoading
   } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId, rotationPeriodName);
+  const normalizeRosterMembers = useCallback((members: typeof rosterRaw) =>
+    members.map((member) => ({
+      ...member,
+      memberName: member.memberName || "Team Member",
+      positions: Array.isArray(member.positions) ? member.positions : [],
+      positionSlots: Array.isArray(member.positionSlots) ? member.positionSlots : [],
+      ministryTypes: Array.isArray(member.ministryTypes) ? member.ministryTypes : [],
+    })),
+  [],);
   const normalizedRosterRaw = useMemo(
-    () =>
-      rosterRaw.map((member) => ({
-        ...member,
-        memberName: member.memberName || "Team Member",
-        positions: Array.isArray(member.positions) ? member.positions : [],
-        positionSlots: Array.isArray(member.positionSlots) ? member.positionSlots : [],
-        ministryTypes: Array.isArray(member.ministryTypes) ? member.ministryTypes : [],
-      })),
-    [rosterRaw]
+    () => normalizeRosterMembers(rosterRaw),
+    [normalizeRosterMembers, rosterRaw]
+  );
+  const productionTeamId = useMemo(
+    () => scheduledEntries.find((entry) => entry.ministry_type === "production")?.team_id,
+    [scheduledEntries],
+  );
+  const videoTeamId = useMemo(
+    () => scheduledEntries.find((entry) => entry.ministry_type === "video")?.team_id,
+    [scheduledEntries],
+  );
+  const { data: productionRosterRaw = [] } = useTeamRosterForDate(
+    date,
+    productionTeamId,
+    "production",
+    campusId,
+    rotationPeriodName,
+  );
+  const { data: videoRosterRaw = [] } = useTeamRosterForDate(
+    date,
+    videoTeamId,
+    "video",
+    campusId,
+    rotationPeriodName,
+  );
+  const normalizedProductionRoster = useMemo(
+    () => normalizeRosterMembers(productionRosterRaw),
+    [normalizeRosterMembers, productionRosterRaw],
+  );
+  const normalizedVideoRoster = useMemo(
+    () => normalizeRosterMembers(videoRosterRaw),
+    [normalizeRosterMembers, videoRosterRaw],
   );
   const serviceLabel = useMemo(() => {
     if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
@@ -2262,7 +2349,7 @@ function BandRoster({
   // Get production/video members separately (they serve across all ministries)
   // Only include explicit production/video ministries, or legacy untagged rows
   // that clearly have production/video positions.
-  const productionVideoMembers = roster.filter((m) => {
+  const fallbackProductionVideoMembers = roster.filter((m) => {
     const hasProdOrVideoMinistry = m.ministryTypes.some((mt) => productionMinistryTypes.includes(mt));
     const hasProdOrVideoPosition = m.positions.some((p) =>
       [...audioPositions, ...broadcastPositions].some(
@@ -2272,7 +2359,6 @@ function BandRoster({
     const hasNoMinistryTags = !m.ministryTypes || m.ministryTypes.length === 0;
     return hasProdOrVideoMinistry || (hasNoMinistryTags && hasProdOrVideoPosition);
   });
-
   // Helper functions for categorizing members
   const isVocalist = (positions: string[]) => {
     return positions.some(p => vocalPositions.includes(p) || p.toLowerCase().includes('vocal'));
@@ -2286,6 +2372,12 @@ function BandRoster({
   const isSpeaker = (positions: string[]) => {
     return positions.some((p) => speakerPositions.includes(p.toLowerCase()));
   };
+  const fallbackProductionMembers = fallbackProductionVideoMembers.filter((member) =>
+    member.ministryTypes.includes("production") || isAudio(member.positions),
+  );
+  const fallbackVideoMembers = fallbackProductionVideoMembers.filter((member) =>
+    member.ministryTypes.includes("video") || isBroadcast(member.positions),
+  );
 
   // Position priority functions
   const getAudioPositionPriority = (positions: string[]) => {
@@ -2400,15 +2492,6 @@ function BandRoster({
       </span>
     </div>;
 
-  // Categorize production/video members
-  const categorizeProductionVideo = (members: typeof roster) => {
-    const audioMembers = members.filter(m => isAudio(m.positions)).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
-    const broadcastMembers = members.filter(m => !isAudio(m.positions) && isBroadcast(m.positions)).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
-    return {
-      audioMembers,
-      broadcastMembers
-    };
-  };
   const renderBandSection = (members: typeof roster, title?: string) => {
     const {
       vocalists,
@@ -2454,11 +2537,13 @@ function BandRoster({
       </div>;
   };
   const renderProductionVideoSection = () => {
-    const {
-      audioMembers,
-      broadcastMembers
-    } = categorizeProductionVideo(productionVideoMembers);
     if (!showAudioVideo) return null;
+    const audioMembers = dedupeMembersForDisplay(
+      normalizedProductionRoster.length > 0 ? normalizedProductionRoster : fallbackProductionMembers,
+    ).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
+    const broadcastMembers = dedupeMembersForDisplay(
+      normalizedVideoRoster.length > 0 ? normalizedVideoRoster : fallbackVideoMembers,
+    ).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)
     const selectedDayOfWeek = date.getDay();
@@ -2552,8 +2637,8 @@ function BandRoster({
 
   // Single ministry filter applied, single ministry found, or no grouping - show flat
   // When a ministry filter is applied, we just show all roster members (already filtered by hook)
-  const membersToShow = effectiveMinistryFilter ? roster.filter(m => !productionVideoMembers.includes(m)) // Already filtered by hook
-  : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !productionVideoMembers.includes(m)); // Exclude production/video from band list
+  const membersToShow = effectiveMinistryFilter ? roster.filter(m => !fallbackProductionVideoMembers.includes(m)) // Already filtered by hook
+  : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !fallbackProductionVideoMembers.includes(m)); // Exclude production/video from band list
 
   return <div className="mb-4">
       <div className="mb-3 flex justify-end">
