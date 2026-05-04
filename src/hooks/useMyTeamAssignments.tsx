@@ -11,6 +11,7 @@ export interface MyTeamAssignment {
   teamColor: string;
   teamIcon: string;
   position: string;
+  positionSlot: string | null;
   serviceDay: string | null;
   displayOrder: number;
   assignmentStartDate?: string | null;
@@ -42,6 +43,7 @@ interface MyTeamDateOverride {
   teamColor: string;
   teamIcon: string;
   position: string;
+  positionSlot: string;
   campusId: string | null;
   campusName: string | null;
   rotationPeriodId: string | null;
@@ -102,6 +104,7 @@ export function useMyTeamAssignments() {
         .select(`
           id,
           position,
+          position_slot,
           service_day,
           display_order,
           team_id,
@@ -137,6 +140,7 @@ export function useMyTeamAssignments() {
         teamColor: member.worship_teams.color,
         teamIcon: member.worship_teams.icon,
         position: member.position,
+        positionSlot: member.position_slot || null,
         serviceDay: member.service_day || null,
         displayOrder: member.display_order,
         campusId: member.rotation_periods?.campus_id || fallbackCampusId,
@@ -195,6 +199,7 @@ export function useMyTeamAssignments() {
           id,
           schedule_date,
           position,
+          position_slot,
           team_id,
           rotation_period_id,
           ministry_types,
@@ -227,6 +232,7 @@ export function useMyTeamAssignments() {
         teamColor: override.worship_teams.color,
         teamIcon: override.worship_teams.icon,
         position: override.position,
+        positionSlot: override.position_slot,
         campusId: override.rotation_periods?.campus_id || fallbackCampusId,
         campusName: override.rotation_periods?.campuses?.name || fallbackCampusName,
         rotationPeriodId: override.rotation_period_id,
@@ -264,6 +270,14 @@ export function useMyTeamAssignments() {
         .gte("schedule_date", today);
 
       if (error) throw error;
+
+      const { data: allOverrideRows, error: allOverridesError } = await supabase
+        .from("team_member_date_overrides")
+        .select("team_id, rotation_period_id, position_slot, schedule_date, ministry_types")
+        .in("team_id", teamIds)
+        .gte("schedule_date", today);
+
+      if (allOverridesError) throw allOverridesError;
 
       const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
         const dayOfWeek = parseLocalDate(dateStr).getDay();
@@ -359,6 +373,13 @@ export function useMyTeamAssignments() {
       // But deduplicates when user has multiple ministry types for the same team/campus
       const results: MyScheduledDate[] = [];
       const seen = new Set<string>();
+      const allOverrides = (allOverrideRows || []) as Array<{
+        team_id: string;
+        rotation_period_id: string | null;
+        position_slot: string | null;
+        schedule_date: string;
+        ministry_types: string[] | null;
+      }>;
 
       for (const override of dateOverrides) {
         if (swappedOutDates.has(override.scheduleDate)) continue;
@@ -414,6 +435,22 @@ export function useMyTeamAssignments() {
           if (a.teamId !== entry.worship_teams.id) return false;
           if (!assignmentMatchesServiceDay(a, entry.schedule_date)) return false;
           if (!assignmentMatchesRotationPeriod(a, entry.schedule_date)) return false;
+          if (
+            a.rotationPeriodId &&
+            a.positionSlot &&
+            allOverrides.some((override) => {
+              if (override.team_id !== a.teamId) return false;
+              if (override.rotation_period_id !== a.rotationPeriodId) return false;
+              if (override.position_slot !== a.positionSlot) return false;
+              if (override.schedule_date !== entry.schedule_date) return false;
+              return assignmentMatchesMinistryTypes(
+                override.ministry_types || [],
+                scheduleMinistryType,
+              );
+            })
+          ) {
+            return false;
+          }
 
           const assignmentCampusId = (a as any)?.campusId || null;
           if (scheduleCampusId) {
