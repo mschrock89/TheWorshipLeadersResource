@@ -42,6 +42,29 @@ export interface PublishedSetlist {
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
 
+function getServiceDayForDate(dateStr: string): "saturday" | "sunday" | null {
+  const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
+  if (dayOfWeek === 6) return "saturday";
+  if (dayOfWeek === 0) return "sunday";
+  return null;
+}
+
+function assignmentMatchesServiceDay(
+  assignment: { service_day?: string | null },
+  dateStr: string,
+): boolean {
+  const rawServiceDay = assignment.service_day;
+  if (!rawServiceDay) return true;
+
+  const serviceDay = rawServiceDay.toLowerCase();
+  if (serviceDay === "both" || serviceDay === "weekend") return true;
+
+  const dateServiceDay = getServiceDayForDate(dateStr);
+  if (!dateServiceDay) return true;
+
+  return serviceDay === dateServiceDay;
+}
+
 function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
   if (!memberMinistry || !setMinistry) return false;
   const normalizedMemberMinistry =
@@ -190,7 +213,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         // Get teams the user is a member of
         const { data: teamMemberships } = await supabase
           .from("team_members")
-          .select("team_id, ministry_types, rotation_period_id")
+          .select("team_id, ministry_types, rotation_period_id, service_day")
           .eq("user_id", user.id);
 
         const teamIds = [...new Set((teamMemberships || []).map(m => m.team_id))];
@@ -211,12 +234,17 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           scheduledDates = new Set<string>();
           
           for (const schedule of schedules || []) {
-            const membership = (teamMemberships || []).find(m => m.team_id === schedule.team_id);
-            const userMinistryTypes = membership?.ministry_types || [];
-            
-            // If no ministry types set, include all dates
-            // Otherwise, only include if ministry type matches
-            if (shouldIncludeScheduledDateForMember(userMinistryTypes, schedule.ministry_type)) {
+            const matchingMemberships = (teamMemberships || []).filter(
+              (membership) =>
+                membership.team_id === schedule.team_id &&
+                assignmentMatchesServiceDay(membership, schedule.schedule_date),
+            );
+
+            const shouldIncludeSchedule = matchingMemberships.some((membership) =>
+              shouldIncludeScheduledDateForMember(membership.ministry_types || [], schedule.ministry_type),
+            );
+
+            if (shouldIncludeSchedule) {
               scheduledDates.add(schedule.schedule_date);
 
               if (
