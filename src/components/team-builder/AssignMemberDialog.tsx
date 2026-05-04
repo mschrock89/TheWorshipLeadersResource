@@ -125,14 +125,6 @@ export function AssignMemberDialog({
       }
       // Speaker slots
       if (slotType === "teacher") return pLower === "teacher";
-      if (slotType === "childrens_pastor") {
-        return (
-          pLower === "childrens_pastor" ||
-          pLower === "children's_pastor" ||
-          pLower.includes("childrens_pastor") ||
-          pLower.includes("children")
-        );
-      }
       if (slotType === "announcement") return pLower === "announcement" || pLower === "annoucement";
       if (slotType === "closing_prayer") {
         return (

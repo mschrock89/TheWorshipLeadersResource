@@ -890,7 +890,7 @@ function SetlistTeamRoster({
   );
 
   const speakerPositions = useMemo(
-    () => new Set(["teacher", "childrens_pastor", "children's_pastor", "announcement", "annoucement", "closing_prayer"]),
+    () => new Set(["teacher", "announcement", "annoucement", "closing_prayer"]),
     []
   );
 

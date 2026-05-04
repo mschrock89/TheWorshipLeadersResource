@@ -44,8 +44,6 @@ interface AutoBuilderDialogProps {
 const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"],
   teacher: ["teacher"],
-  childrens_pastor: ["childrens_pastor"],
-  "children's_pastor": ["childrens_pastor"],
   announcement: ["announcement"],
   annoucement: ["announcement"],
   closing_prayer: ["closing_prayer"],
@@ -81,7 +79,7 @@ const AUTO_BUILD_SLOT_PRIORITY = [
   "drums", "bass", "keys",
   "eg_1", "eg_2", "eg_3", "eg_4", "ag_1", "ag_2", "pad",
   "vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8",
-  "teacher", "childrens_pastor", "announcement", "closing_prayer",
+  "teacher", "announcement", "closing_prayer",
   "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
   "tri_pod_camera", "hand_held_camera",
   "director", "graphics", "switcher",

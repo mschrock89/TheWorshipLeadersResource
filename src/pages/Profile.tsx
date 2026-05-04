@@ -756,11 +756,6 @@ export default function Profile() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="max-w-[280px] text-center text-xs text-muted-foreground">
-                      Base Role controls account access. Serving positions for each ministry and campus are still managed below in
-                      {" "}
-                      <span className="font-medium text-foreground">Ministries &amp; Positions by Campus</span>.
-                    </p>
                     {isAuditionCandidate && (
                       <Button
                         type="button"

@@ -4,7 +4,6 @@ export const ROLE_LABELS: Record<string, string> = {
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
   student_worship_pastor: "Student Worship Leader",
-  campus_pastor: "Children's Pastor",
   speaker: "Speaker",
   video_director: "Video Director",
   production_manager: "Production Manager",
@@ -16,12 +15,11 @@ export const ROLE_LABELS: Record<string, string> = {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'campus_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
   teacher: "Teacher",
-  childrens_pastor: "Children's Pastor",
   announcement: "Announcements",
   closing_prayer: "Closing Prayer",
   closer: "Closing Prayer",
@@ -79,7 +77,6 @@ export const POSITION_LABELS: Record<string, string> = {
 export const POSITION_LABELS_SHORT: Record<string, string> = {
   vocalist: "Vox",
   teacher: "Teach",
-  childrens_pastor: "Child Pastor",
   announcement: "Ann",
   closing_prayer: "Prayer",
   closer: "Prayer",
@@ -136,7 +133,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
 
 export const POSITION_CATEGORIES = {
   vocals: ["vocalist"],
-  speaker: ["teacher", "childrens_pastor", "announcement", "closing_prayer"],
+  speaker: ["teacher", "announcement", "closing_prayer"],
   instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass", "drums", "keys", "pad"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
@@ -158,7 +155,6 @@ export const POSITION_SLOTS: {
   { slot: "vocalist_7", label: "Vocalist 7", category: "Vocalists", position: "vocalist" },
   { slot: "vocalist_8", label: "Vocalist 8", category: "Vocalists", position: "vocalist" },
   { slot: "teacher", label: "Teacher", category: "Speaker", position: "teacher" },
-  { slot: "childrens_pastor", label: "Children's Pastor", category: "Speaker", position: "childrens_pastor" },
   { slot: "announcement", label: "Announcements", category: "Speaker", position: "announcement" },
   { slot: "closing_prayer", label: "Closing Prayer", category: "Speaker", position: "closing_prayer" },
   { slot: "drums", label: "Drums", category: "Band", position: "drums" },
