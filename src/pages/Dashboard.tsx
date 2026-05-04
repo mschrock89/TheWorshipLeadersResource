@@ -146,7 +146,7 @@ export default function Dashboard() {
       iconClassName: "border-amber-300/25 bg-amber-400/15 text-amber-100",
       buttonClassName: "bg-amber-400 text-slate-950 hover:bg-amber-300",
     },
-    ...((isAdmin || roles.some(({ role }) => role === "campus_admin"))
+    ...((isAdmin || userRoles.some(({ role }) => role === "campus_admin"))
       ? [{
           title: "Admin Tools",
           description: "Handle service settings, system controls, and organization-level configuration.",
@@ -160,9 +160,6 @@ export default function Dashboard() {
       : []),
   ];
   const visibleQuickActions = quickActions.filter((action) => {
-    if (action.to === "/admin-tools") {
-      return isAdmin || roles.some(({ role }) => role === "campus_admin");
-    }
     if (action.to === "/weekend-rundown") {
       return canOpenWeekendRundown;
     }
