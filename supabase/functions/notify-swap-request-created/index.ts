@@ -27,11 +27,46 @@ const PRODUCTION_POSITIONS = new Set([
 ]);
 
 const VIDEO_POSITIONS = new Set([
-  "video_director",
-  "camera_operator",
-  "video_switcher",
-  "pro_presenter",
+  "tri_pod_camera",
+  "hand_held_camera",
+  "director",
+  "graphics",
+  "switcher",
+  "other",
 ]);
+
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
+const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"];
+const ELECTRIC_POSITION_VARIANTS = [
+  "electric_guitar",
+  "electric_1",
+  "electric_2",
+  "electric_3",
+  "electric_4",
+  "eg_1",
+  "eg_2",
+  "eg_3",
+  "eg_4",
+  "eg1",
+  "eg2",
+  "eg3",
+  "eg4",
+  "EG 1",
+  "EG 2",
+  "EG 3",
+  "EG 4",
+];
+const ACOUSTIC_POSITION_VARIANTS = [
+  "acoustic_guitar",
+  "acoustic_1",
+  "acoustic_2",
+  "ag_1",
+  "ag_2",
+  "ag1",
+  "ag2",
+  "AG 1",
+  "AG 2",
+];
 
 const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -123,6 +158,98 @@ function getPreferredMinistryType(position: string): string | null {
   if (PRODUCTION_POSITIONS.has(position)) return "production";
   if (VIDEO_POSITIONS.has(position)) return "video";
   return null;
+}
+
+function normalizePosition(position: string): string {
+  return position.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function getPositionVariants(position: string): string[] {
+  const normalized = normalizePosition(position);
+  const normalizedElectricVariants = new Set(ELECTRIC_POSITION_VARIANTS.map(normalizePosition));
+  const normalizedAcousticVariants = new Set(ACOUSTIC_POSITION_VARIANTS.map(normalizePosition));
+
+  if (VOCALIST_POSITIONS.includes(normalized)) {
+    return VOCALIST_POSITIONS;
+  }
+
+  if (normalizedElectricVariants.has(normalized)) {
+    return ELECTRIC_POSITION_VARIANTS;
+  }
+
+  if (normalizedAcousticVariants.has(normalized)) {
+    return ACOUSTIC_POSITION_VARIANTS;
+  }
+
+  return [position];
+}
+
+function resolveSwapMinistryType(position: string, ministryType: string | null): string | null {
+  const normalizedPosition = normalizePosition(position);
+
+  if (PRODUCTION_POSITIONS.has(normalizedPosition)) return "production";
+  if (VIDEO_POSITIONS.has(normalizedPosition)) return "video";
+
+  return ministryType;
+}
+
+function ministriesMatch(memberMinistry: string, targetMinistry: string): boolean {
+  if (!memberMinistry || !targetMinistry) return false;
+  if (memberMinistry === targetMinistry) return true;
+  if (WEEKEND_MINISTRY_ALIASES.has(memberMinistry) && WEEKEND_MINISTRY_ALIASES.has(targetMinistry)) {
+    return true;
+  }
+  return false;
+}
+
+async function sendPushNotification({
+  supabaseUrl,
+  supabaseServiceKey,
+  title,
+  message,
+  userIds,
+  tag,
+  createdBy,
+  metadata,
+}: {
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  title: string;
+  message: string;
+  userIds: string[];
+  tag: string;
+  createdBy: string;
+  metadata: Record<string, unknown>;
+}): Promise<number> {
+  if (userIds.length === 0) {
+    return 0;
+  }
+
+  const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${supabaseServiceKey}`,
+    },
+    body: JSON.stringify({
+      title,
+      message,
+      url: "/swaps",
+      tag,
+      userIds,
+      contextType: "swap-request",
+      contextId: String(metadata.swapRequestId || ""),
+      createdBy,
+      metadata,
+    }),
+  });
+
+  if (!pushResponse.ok) {
+    throw new Error(await pushResponse.text());
+  }
+
+  const pushResult = await pushResponse.json();
+  return pushResult.sent || 0;
 }
 
 function generateSwapRequestEmailHtml({
@@ -331,6 +458,17 @@ serve(async (req: Request): Promise<Response> => {
     let notificationTitle = "";
     let notificationMessage = "";
     let emailSubject = "";
+    let scheduleMinistryType = resolveSwapMinistryType(swapRequest.position, null) || "weekend";
+    const inAppNotifications: Array<{
+      user_id: string;
+      sent_by_user_id: string;
+      schedule_date: string;
+      team_id: string;
+      ministry_type: string;
+      title: string;
+      message: string;
+      link: string;
+    }> = [];
 
     if (swapRequest.target_user_id) {
       const isDirectCoverRequest =
@@ -346,7 +484,7 @@ serve(async (req: Request): Promise<Response> => {
         : `${requesterName} sent you a swap request`;
     } else {
       // Open swap request - notify team members with same position AND same campus as requester
-      const isVocalistPosition = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"].includes(swapRequest.position);
+      const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizePosition(swapRequest.position));
 
       const { data: requesterProfile } = await supabase
         .from("profiles")
@@ -354,8 +492,7 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", swapRequest.requester_id)
         .maybeSingle();
 
-      let scheduleMinistryType: string | null = null;
-      const preferredMinistryType = getPreferredMinistryType(swapRequest.position);
+      const preferredMinistryType = getPreferredMinistryType(normalizePosition(swapRequest.position));
       let matchingScheduleQuery = supabase
         .from("team_schedule")
         .select("ministry_type")
@@ -369,7 +506,10 @@ serve(async (req: Request): Promise<Response> => {
 
       const { data: matchingSchedule } = await matchingScheduleQuery.maybeSingle();
 
-      scheduleMinistryType = matchingSchedule?.ministry_type || null;
+      scheduleMinistryType = resolveSwapMinistryType(
+        swapRequest.position,
+        matchingSchedule?.ministry_type || null,
+      ) || scheduleMinistryType;
       
       // First, get the requester's campuses
       const { data: requesterCampuses, error: campusError } = await supabase
@@ -386,84 +526,69 @@ serve(async (req: Request): Promise<Response> => {
 
       if (requesterCampusIds.length === 0) {
         console.log("Requester has no campus assignments, no users to notify");
-        return new Response(
-          JSON.stringify({ success: true, message: "Requester has no campus", notified: 0 }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Get users who share a campus with the requester
-      const { data: sameCampusUsers, error: sameCampusError } = await supabase
-        .from("user_campuses")
-        .select("user_id")
-        .in("campus_id", requesterCampusIds)
-        .neq("user_id", swapRequest.requester_id);
-
-      if (sameCampusError) {
-        console.error("Error fetching same campus users:", sameCampusError);
-      }
-
-      const sameCampusUserIds = [...new Set(sameCampusUsers?.map(u => u.user_id) || [])];
-      console.log(`Users sharing campus with requester: ${sameCampusUserIds.length}`);
-
-      if (sameCampusUserIds.length === 0) {
-        console.log("No other users at requester's campus");
-        return new Response(
-          JSON.stringify({ success: true, message: "No users at same campus", notified: 0 }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Get team members with the same position who are in the same campus
-      let teamMembersQuery = supabase
-        .from("team_members")
-        .select("user_id, ministry_types")
-        .not("user_id", "is", null)
-        .in("user_id", sameCampusUserIds);
-
-      if (isVocalistPosition) {
-        teamMembersQuery = teamMembersQuery.in("position", ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"]);
       } else {
-        teamMembersQuery = teamMembersQuery.eq("position", swapRequest.position);
+        // Get users who share a campus with the requester
+        const { data: sameCampusUsers, error: sameCampusError } = await supabase
+          .from("user_campuses")
+          .select("user_id")
+          .in("campus_id", requesterCampusIds)
+          .neq("user_id", swapRequest.requester_id);
+
+        if (sameCampusError) {
+          console.error("Error fetching same campus users:", sameCampusError);
+        }
+
+        const sameCampusUserIds = [...new Set(sameCampusUsers?.map(u => u.user_id) || [])];
+        console.log(`Users sharing campus with requester: ${sameCampusUserIds.length}`);
+
+        if (sameCampusUserIds.length === 0) {
+          console.log("No other users at requester's campus");
+        } else {
+          // Get team members with the same position who are in the same campus
+          let teamMembersQuery = supabase
+            .from("team_members")
+            .select("user_id, ministry_types")
+            .not("user_id", "is", null)
+            .in("user_id", sameCampusUserIds);
+
+          teamMembersQuery = teamMembersQuery.in("position", getPositionVariants(swapRequest.position));
+
+          const { data: teamMembers, error: membersError } = await teamMembersQuery;
+
+          if (membersError) {
+            console.error("Error fetching team members:", membersError);
+          }
+
+          let eligibleTeamMembers = teamMembers || [];
+
+          if (scheduleMinistryType) {
+            eligibleTeamMembers = eligibleTeamMembers.filter((member: any) => {
+              const ministryTypes = (member.ministry_types || []) as string[];
+              if (ministryTypes.length === 0) return false;
+              return ministryTypes.some((memberMinistryType) =>
+                ministriesMatch(memberMinistryType, scheduleMinistryType),
+              );
+            });
+          }
+
+          let eligibleUserIds = [...new Set(eligibleTeamMembers.map((member: any) => member.user_id).filter(Boolean))];
+
+          if (isVocalistPosition && requesterProfile?.gender && eligibleUserIds.length > 0) {
+            const { data: vocalistProfiles } = await supabase
+              .from("profiles")
+              .select("id, gender")
+              .in("id", eligibleUserIds);
+
+            const normalizedRequesterGender = requesterProfile.gender.trim().toLowerCase();
+            eligibleUserIds = (vocalistProfiles || [])
+              .filter((profile) => ((profile.gender || "").trim().toLowerCase() === normalizedRequesterGender))
+              .map((profile) => profile.id);
+          }
+
+          userIdsToNotify = eligibleUserIds;
+          console.log(`Position members at same campus: ${userIdsToNotify.length}`);
+        }
       }
-
-      const { data: teamMembers, error: membersError } = await teamMembersQuery;
-
-      if (membersError) {
-        console.error("Error fetching team members:", membersError);
-      }
-
-      let eligibleTeamMembers = teamMembers || [];
-
-      if (scheduleMinistryType) {
-        const weekendAliases = new Set(["weekend", "sunday_am", "weekend_team"]);
-        eligibleTeamMembers = eligibleTeamMembers.filter((member: any) => {
-          const ministryTypes = (member.ministry_types || []) as string[];
-          if (ministryTypes.length === 0) return false;
-          return ministryTypes.some((ministryType) => {
-            if (ministryType === scheduleMinistryType) return true;
-            if (weekendAliases.has(ministryType) && weekendAliases.has(scheduleMinistryType)) return true;
-            return false;
-          });
-        });
-      }
-
-      let eligibleUserIds = [...new Set(eligibleTeamMembers.map((member: any) => member.user_id).filter(Boolean))];
-
-      if (isVocalistPosition && requesterProfile?.gender && eligibleUserIds.length > 0) {
-        const { data: vocalistProfiles } = await supabase
-          .from("profiles")
-          .select("id, gender")
-          .in("id", eligibleUserIds);
-
-        const normalizedRequesterGender = requesterProfile.gender.trim().toLowerCase();
-        eligibleUserIds = (vocalistProfiles || [])
-          .filter((profile) => ((profile.gender || "").trim().toLowerCase() === normalizedRequesterGender))
-          .map((profile) => profile.id);
-      }
-
-      userIdsToNotify = eligibleUserIds;
-      console.log(`Position members at same campus: ${userIdsToNotify.length}`);
 
       const isOpenCoverRequest = swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
       notificationTitle = isOpenCoverRequest ? "Open Cover Request" : "Open Swap Request";
@@ -473,52 +598,107 @@ serve(async (req: Request): Promise<Response> => {
       emailSubject = isOpenCoverRequest
         ? `Open cover request for ${formatPosition(swapRequest.position)}`
         : `Open swap request for ${formatPosition(swapRequest.position)}`;
-    }
 
-    if (userIdsToNotify.length === 0) {
-      console.log("No users to notify");
-      return new Response(
-        JSON.stringify({ success: true, message: "No users to notify", notified: 0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      inAppNotifications.push(
+        ...userIdsToNotify.map((userId) => ({
+          user_id: userId,
+          sent_by_user_id: swapRequest.requester_id,
+          schedule_date: swapRequest.original_date,
+          team_id: swapRequest.team_id,
+          ministry_type: scheduleMinistryType,
+          title: notificationTitle,
+          message: notificationMessage,
+          link: "/swaps",
+        })),
       );
     }
 
-    console.log(`Sending push to ${userIdsToNotify.length} users`);
-
-    // Send push notification
-    const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        title: notificationTitle,
-        message: notificationMessage,
-        url: "/swaps",
-        tag: `swap-request-${swapRequest.id}`,
-        userIds: userIdsToNotify,
-        contextType: "swap-request",
-        contextId: swapRequest.id,
-        createdBy: swapRequest.requester_id,
-        metadata: {
-          swapRequestId: swapRequest.id,
-          requestType: swapRequest.request_type,
-          directRequest: Boolean(swapRequest.target_user_id),
-          teamId: swapRequest.team_id,
-          originalDate: swapRequest.original_date,
-          swapDate: swapRequest.swap_date,
-        },
-      }),
+    inAppNotifications.push({
+      user_id: swapRequest.requester_id,
+      sent_by_user_id: swapRequest.requester_id,
+      schedule_date: swapRequest.original_date,
+      team_id: swapRequest.team_id,
+      ministry_type: scheduleMinistryType,
+      title: "Swap Request Sent",
+      message: swapRequest.target_user_id
+        ? `Your ${swapRequest.request_type === "fill_in" || !swapRequest.swap_date ? "cover" : "swap"} request was sent.`
+        : `Your request was posted to your ${formatPosition(swapRequest.position)} group.`,
+      link: "/swaps",
     });
 
-    let pushSent = 0;
-    if (pushResponse.ok) {
-      const pushResult = await pushResponse.json();
-      pushSent = pushResult.sent || 0;
-      console.log(`Push notifications sent: ${pushSent}`);
-    } else {
-      console.error("Failed to send push:", await pushResponse.text());
+    if (userIdsToNotify.length === 0) {
+      console.log("No users to notify");
+    }
+
+    const notificationRows = inAppNotifications.map((notification) => ({
+      ...notification,
+      campus_id: null,
+    }));
+
+    if (notificationRows.length > 0) {
+      const { error: notificationInsertError } = await supabase
+        .from("manual_team_schedule_notifications")
+        .insert(notificationRows);
+
+      if (notificationInsertError) {
+        console.error("Failed to create in-app swap notifications:", notificationInsertError);
+      }
+    }
+
+    console.log(`Sending push to ${userIdsToNotify.length} recipients`);
+
+    const recipientPushMetadata = {
+      swapRequestId: swapRequest.id,
+      requestType: swapRequest.request_type,
+      directRequest: Boolean(swapRequest.target_user_id),
+      teamId: swapRequest.team_id,
+      originalDate: swapRequest.original_date,
+      swapDate: swapRequest.swap_date,
+    };
+
+    let recipientPushSent = 0;
+    try {
+      recipientPushSent = await sendPushNotification({
+        supabaseUrl,
+        supabaseServiceKey,
+        title: notificationTitle,
+        message: notificationMessage,
+        userIds: userIdsToNotify,
+        tag: `swap-request-${swapRequest.id}`,
+        createdBy: swapRequest.requester_id,
+        metadata: recipientPushMetadata,
+      });
+      console.log(`Recipient push notifications sent: ${recipientPushSent}`);
+    } catch (pushError) {
+      console.error("Failed to send recipient push:", pushError);
+    }
+
+    const isCoverRequest = swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
+    const requesterPushTitle = "Swap Request Sent";
+    const requesterPushMessage = swapRequest.target_user_id
+      ? isCoverRequest
+        ? `Your cover request for ${formatPosition(swapRequest.position)} on ${dateStr} was sent.`
+        : `Your swap request for ${formatPosition(swapRequest.position)} on ${dateStr} was sent.`
+      : `Your ${formatPosition(swapRequest.position)} request was posted to your group.`;
+
+    let requesterPushSent = 0;
+    try {
+      requesterPushSent = await sendPushNotification({
+        supabaseUrl,
+        supabaseServiceKey,
+        title: requesterPushTitle,
+        message: requesterPushMessage,
+        userIds: [swapRequest.requester_id],
+        tag: `swap-request-sent-${swapRequest.id}`,
+        createdBy: swapRequest.requester_id,
+        metadata: {
+          ...recipientPushMetadata,
+          recipientType: "requester",
+        },
+      });
+      console.log(`Requester push notifications sent: ${requesterPushSent}`);
+    } catch (pushError) {
+      console.error("Failed to send requester push:", pushError);
     }
 
     let emailSent = 0;
@@ -526,6 +706,8 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!RESEND_API_KEY) {
       console.warn("RESEND_API_KEY is not configured, skipping swap request emails");
+    } else if (userIdsToNotify.length === 0) {
+      console.log("No recipient emails to send");
     } else {
       const { data: recipientProfiles, error: profilesError } = await supabase
         .from("profiles")
@@ -569,7 +751,10 @@ serve(async (req: Request): Promise<Response> => {
       JSON.stringify({
         success: true,
         notified: userIdsToNotify.length,
-        pushSent,
+        inAppCreated: notificationRows.length,
+        pushSent: recipientPushSent + requesterPushSent,
+        recipientPushSent,
+        requesterPushSent,
         emailSent,
         emailSkipped,
       }),
