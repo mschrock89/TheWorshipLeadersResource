@@ -438,6 +438,23 @@ export interface PositionMember {
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
+const PRODUCTION_SWAP_POSITIONS = new Set([
+  "sound_tech",
+  "mon",
+  "broadcast",
+  "audio_shadow",
+  "lighting",
+  "media",
+  "producer",
+]);
+const VIDEO_SWAP_POSITIONS = new Set([
+  "tri_pod_camera",
+  "hand_held_camera",
+  "director",
+  "graphics",
+  "switcher",
+  "other",
+]);
 const ELECTRIC_POSITION_VARIANTS = [
   "electric_guitar",
   "electric_1",
@@ -508,6 +525,23 @@ function getSwapPositionVariants(position: string): string[] {
   }
 
   return [position];
+}
+
+function resolveSwapMinistryType(
+  position: string,
+  ministryType?: string,
+): string | undefined {
+  const normalizedPosition = normalizeSwapPosition(position);
+
+  if (PRODUCTION_SWAP_POSITIONS.has(normalizedPosition)) {
+    return "production";
+  }
+
+  if (VIDEO_SWAP_POSITIONS.has(normalizedPosition)) {
+    return "video";
+  }
+
+  return ministryType;
 }
 
 function resolveSwapScheduleEntry(
@@ -671,6 +705,7 @@ export function usePositionMembers(
 ) {
   // Check if this is a vocalist position - vocalists can swap across teams
   const isVocalist = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
 
   return useQuery({
     queryKey: [
@@ -679,7 +714,7 @@ export function usePositionMembers(
       excludeUserId,
       campusId,
       rotationPeriodId,
-      ministryType,
+      effectiveMinistryType,
       requesterGender,
       teamId,
     ],
@@ -723,7 +758,7 @@ export function usePositionMembers(
         members: (members as any[]) || [],
         campusId,
         rotationPeriodId,
-        ministryType,
+        ministryType: effectiveMinistryType,
         requesterGender,
         position,
         strictMinistryMatch: true,
@@ -751,6 +786,7 @@ export function usePositionMembersForDate(
   requesterGender?: string | null
 ) {
   const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
 
   return useQuery({
     queryKey: [
@@ -760,7 +796,7 @@ export function usePositionMembersForDate(
       excludeUserId,
       campusId,
       rotationPeriodId,
-      ministryType,
+      effectiveMinistryType,
       requesterGender,
     ],
     queryFn: async (): Promise<PositionMember[]> => {
@@ -790,7 +826,7 @@ export function usePositionMembersForDate(
       }
 
       const resolvedTeams = dates
-        .map((date) => resolveSwapScheduleEntry(entriesByDate.get(date) || [], campusId, ministryType))
+        .map((date) => resolveSwapScheduleEntry(entriesByDate.get(date) || [], campusId, effectiveMinistryType))
         .filter((entry): entry is SwapScheduleRow => Boolean(entry));
 
       const teamIds = Array.from(
@@ -828,7 +864,7 @@ export function usePositionMembersForDate(
         members: (members as any[]) || [],
         campusId,
         rotationPeriodId: undefined,
-        ministryType,
+        ministryType: effectiveMinistryType,
         requesterGender,
         position,
         strictMinistryMatch: true,
@@ -985,6 +1021,7 @@ export function usePositionMembersForCover(
   requesterGender?: string | null
 ) {
   const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
 
   return useQuery({
     queryKey: [
@@ -993,7 +1030,7 @@ export function usePositionMembersForCover(
       excludeUserId,
       campusId,
       rotationPeriodId,
-      ministryType,
+      effectiveMinistryType,
       requesterGender,
     ],
     queryFn: async (): Promise<PositionMember[]> => {
@@ -1043,7 +1080,7 @@ export function usePositionMembersForCover(
         const syntheticAssignmentMembers = await buildSyntheticCampusAssignmentMembers({
           campusId,
           position,
-          ministryType,
+          ministryType: effectiveMinistryType,
           excludeUserId,
         });
 
@@ -1072,7 +1109,7 @@ export function usePositionMembersForCover(
         members: combinedMembers,
         campusId,
         rotationPeriodId,
-        ministryType,
+        ministryType: effectiveMinistryType,
         requesterGender,
         position,
         strictMinistryMatch: false,
@@ -1128,8 +1165,12 @@ export function useOpenRequestRecipients(
   includeOnBreakCandidates: boolean = false,
   enabled: boolean = true
 ) {
+  const effectiveMinistryType = position
+    ? resolveSwapMinistryType(position, ministryType)
+    : ministryType;
+
   return useQuery({
-    queryKey: ["open-request-recipients", position, requesterId, campusId, ministryType, requesterGender, includeLegacyUntagged, includeOnBreakCandidates],
+    queryKey: ["open-request-recipients", position, requesterId, campusId, effectiveMinistryType, requesterGender, includeLegacyUntagged, includeOnBreakCandidates],
     queryFn: async () => {
       if (!position || !requesterId) return [];
 
@@ -1242,12 +1283,12 @@ export function useOpenRequestRecipients(
         }
       }
 
-      const ministryScopedMembers = !ministryType
+      const ministryScopedMembers = !effectiveMinistryType
         ? combinedTeamMembers
         : combinedTeamMembers.filter((member: any) =>
             (includeLegacyUntagged && ((member.ministry_types as string[] | null) || []).length === 0) ||
             ((member.ministry_types as string[] | null) || []).some((memberMinistry) =>
-              ministriesMatchForSwap(memberMinistry, ministryType)
+              ministriesMatchForSwap(memberMinistry, effectiveMinistryType)
             )
           );
 
@@ -1256,7 +1297,7 @@ export function useOpenRequestRecipients(
         const eligibleAssignedUserIds = await getCampusAssignmentEligibleUserIds({
           campusId,
           position,
-          ministryType,
+          ministryType: effectiveMinistryType,
           candidateUserIds: ministryScopedMembers
             .map((member: any) => member.user_id)
             .filter(Boolean),
