@@ -48,9 +48,6 @@ interface MyTeamDateOverride {
   ministryTypes: string[];
 }
 
-const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video", "speaker"]);
-const WEEKEND_SPEAKER_COMPATIBLE_MINISTRIES = new Set(["weekend", "speaker"]);
-
 function assignmentMatchesMinistryTypes(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
@@ -70,18 +67,6 @@ function assignmentMatchesMinistryTypes(
     })
   ) {
     return true;
-  }
-
-  if (WEEKEND_SPEAKER_COMPATIBLE_MINISTRIES.has(normalizedScheduleMinistry)) {
-    return memberMinistryTypes.some((memberMinistry) => {
-      const normalizedMemberMinistry =
-        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
-
-      return (
-        WEEKEND_SPEAKER_COMPATIBLE_MINISTRIES.has(normalizedMemberMinistry) ||
-        WEEKEND_SUPPORTING_MINISTRIES.has(memberMinistry)
-      );
-    });
   }
 
   return false;
