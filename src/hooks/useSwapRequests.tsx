@@ -821,17 +821,13 @@ export function usePositionMembersForDate(
         membersQuery = membersQuery.neq("user_id", excludeUserId);
       }
 
-      if (rotationPeriodId) {
-        membersQuery = membersQuery.eq("rotation_period_id", rotationPeriodId);
-      }
-
       const { data: members, error: membersError } = await membersQuery;
       if (membersError) throw membersError;
 
       return await hydrateAndFilterMembers({
         members: (members as any[]) || [],
         campusId,
-        rotationPeriodId,
+        rotationPeriodId: undefined,
         ministryType,
         requesterGender,
         position,
