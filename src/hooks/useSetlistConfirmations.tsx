@@ -130,7 +130,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       const roles = (userRoles || []).map(r => r.role);
       const leadershipRoles = [
-        "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
+        "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor",
         "network_worship_pastor", "network_worship_leader", "leader",
         "video_director", "production_manager", "campus_pastor"
       ];
@@ -142,6 +142,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           "campus_admin",
           "campus_worship_pastor",
           "student_worship_pastor",
+          "childrens_pastor",
           "network_worship_pastor",
           "network_worship_leader",
           "campus_pastor",

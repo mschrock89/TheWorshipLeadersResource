@@ -6,6 +6,7 @@ const WEEKEND_GROUP_TEXT_MINISTRY_ALIASES = new Set([
 ]);
 const WORSHIP_PASTOR_GROUP_TEXT_ROLES = new Set([
   "campus_worship_pastor",
+  "childrens_pastor",
   "network_worship_pastor",
 ]);
 const PRODUCTION_MANAGER_GROUP_TEXT_ROLES = new Set(["production_manager"]);
@@ -14,6 +15,7 @@ export const REFERENCE_TRACK_MANAGER_ROLES = new Set([
   "network_worship_pastor",
   "campus_pastor",
   "campus_worship_pastor",
+  "childrens_pastor",
   "student_worship_pastor",
 ]);
 

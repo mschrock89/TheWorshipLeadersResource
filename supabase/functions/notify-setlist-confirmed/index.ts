@@ -11,6 +11,8 @@ interface NotifyRequest {
   confirmerId: string;
 }
 
+const ADMIN_NOTIFICATION_ROLES = new Set(["admin", "campus_admin"]);
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -63,14 +65,39 @@ serve(async (req) => {
 
     const confirmerName = confirmerProfile?.full_name || "A team member";
 
-    // 3. Get the setlist creator (worship leader) to notify
-    const creatorId = draftSet.created_by;
-    
-    // Don't notify if the creator is the one confirming
-    if (creatorId === confirmerId) {
-      console.log("Creator confirmed their own setlist, no notification needed");
+    // 3. Find admin recipients for this set's campus.
+    const { data: adminRoleRows, error: adminRolesError } = await supabase
+      .from("user_roles")
+      .select("user_id, role, admin_campus_id")
+      .in("role", Array.from(ADMIN_NOTIFICATION_ROLES));
+
+    if (adminRolesError) {
+      console.error("Failed to load admin recipients:", adminRolesError);
       return new Response(
-        JSON.stringify({ success: true, notified: false, reason: "Self-confirmation" }),
+        JSON.stringify({ error: "Failed to determine notification recipients" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const recipientUserIds = Array.from(
+      new Set(
+        (adminRoleRows || [])
+          .filter((row) =>
+            row.role === "admin" ||
+            (row.role === "campus_admin" && row.admin_campus_id === draftSet.campus_id),
+          )
+          .map((row) => row.user_id)
+          .filter((userId): userId is string => Boolean(userId) && userId !== confirmerId),
+      ),
+    );
+
+    if (recipientUserIds.length === 0) {
+      console.log("No admin recipients found for setlist confirmation", {
+        draftSetId,
+        campusId: draftSet.campus_id,
+      });
+      return new Response(
+        JSON.stringify({ success: true, notified: false, reason: "No admin recipients" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -88,7 +115,7 @@ serve(async (req) => {
       message: `${confirmerName} reviewed the ${formattedDate}${campusName ? ` ${campusName}` : ""} setlist`,
       url: `/my-setlists?setId=${draftSetId}`,
       tag: `setlist-confirm-${draftSetId}-${confirmerId}`,
-      userIds: [creatorId],
+      userIds: recipientUserIds,
     };
 
     // 5. Send push notification via the existing function
@@ -109,7 +136,7 @@ serve(async (req) => {
         JSON.stringify({
           success: true,
           notified: true,
-          creatorId,
+          recipientUserIds,
           confirmerName,
           pushResult,
         }),

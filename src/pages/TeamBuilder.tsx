@@ -297,7 +297,7 @@ export default function TeamBuilder() {
   const hasWorshipPastorTeamBuilderAccess = useMemo(
     () =>
       currentUserRoles.some(({ role }) =>
-        role === "campus_worship_pastor" || role === "student_worship_pastor",
+        role === "campus_worship_pastor" || role === "student_worship_pastor" || role === "childrens_pastor",
       ),
     [currentUserRoles],
   );
@@ -921,6 +921,13 @@ export default function TeamBuilder() {
   const assignableMembersForSlot = useMemo(() => {
     if (!assigningSlot) return availableMembers;
 
+    const getServiceDayForDate = (date: string): "saturday" | "sunday" | null => {
+      const day = new Date(`${date}T12:00:00`).getDay();
+      if (day === 6) return "saturday";
+      if (day === 0) return "sunday";
+      return null;
+    };
+
     const multiTeamLeaderIds = new Set(
       multiTeamAssignableMembers.map((member) => member.id),
     );
@@ -947,10 +954,77 @@ export default function TeamBuilder() {
 
     const targetMinistryType = assigningMinistryType || selectedMinistryType;
     const allowMultiTeamForAllMembers = targetMinistryType === "worship_night";
+    const targetScheduleDates = assigningSlot.scheduleDate
+      ? ((teamScheduleBuckets[assigningSlot.teamId] || [])
+          .find((bucket) => bucket.key === assigningSlot.scheduleDate)
+          ?.dates || [assigningSlot.scheduleDate])
+      : Array.from(
+          new Set(
+            (teamScheduleBuckets[assigningSlot.teamId] || []).flatMap((bucket) => bucket.dates),
+          ),
+        );
+    const targetServiceDays = new Set(
+      targetScheduleDates.length > 0
+        ? targetScheduleDates
+            .map((date) => getServiceDayForDate(date))
+            .filter((serviceDay): serviceDay is "saturday" | "sunday" => Boolean(serviceDay))
+        : assigningSlot.serviceDay
+        ? [assigningSlot.serviceDay]
+        : [],
+    );
     const assignmentsByUser = new Map<
       string,
-      Array<{ teamId: string; positionSlot: string | null; ministryTypes: string[] }>
+      Array<{
+        teamId: string;
+        positionSlot: string | null;
+        ministryTypes: string[];
+        serviceDay: "saturday" | "sunday" | null;
+        scheduleDate: string | null;
+      }>
     >();
+
+    const assignmentConflictsWithTarget = (assignment: {
+      teamId: string;
+      serviceDay: "saturday" | "sunday" | null;
+      scheduleDate: string | null;
+    }) => {
+      if (targetScheduleDates.length > 0) {
+        if (assignment.scheduleDate) {
+          return targetScheduleDates.includes(assignment.scheduleDate);
+        }
+
+        const assignmentTeamDates = (teamScheduleBuckets[assignment.teamId] || []).flatMap(
+          (bucket) => bucket.dates,
+        );
+        const overlapsTargetWeekend = assignmentTeamDates.some((date) =>
+          targetScheduleDates.includes(date),
+        );
+
+        if (!overlapsTargetWeekend) {
+          return false;
+        }
+
+        if (!assignment.serviceDay) {
+          return true;
+        }
+
+        return targetServiceDays.has(assignment.serviceDay);
+      }
+
+      if (assigningSlot.serviceDay) {
+        if (assignment.scheduleDate) {
+          return getServiceDayForDate(assignment.scheduleDate) === assigningSlot.serviceDay;
+        }
+
+        if (!assignment.serviceDay) {
+          return true;
+        }
+
+        return assignment.serviceDay === assigningSlot.serviceDay;
+      }
+
+      return false;
+    };
 
     members.forEach((member) => {
       if (!member.user_id || allowedCurrentUserIds.has(member.user_id)) return;
@@ -960,6 +1034,8 @@ export default function TeamBuilder() {
         teamId: member.team_id,
         positionSlot: member.position_slot,
         ministryTypes: member.ministry_types?.length ? member.ministry_types : ["weekend"],
+        serviceDay: member.service_day,
+        scheduleDate: null,
       });
       assignmentsByUser.set(member.user_id, existingAssignments);
     });
@@ -972,6 +1048,8 @@ export default function TeamBuilder() {
         teamId: override.team_id,
         positionSlot: override.position_slot,
         ministryTypes: override.ministry_types?.length ? override.ministry_types : ["weekend"],
+        serviceDay: null,
+        scheduleDate: override.schedule_date,
       });
       assignmentsByUser.set(override.user_id, existingAssignments);
     });
@@ -985,13 +1063,16 @@ export default function TeamBuilder() {
         return false;
       }
 
-      if (selectedPeriodBreakUserIds.includes(member.id)) {
+      // Full-trimester breaks still block normal rotation assignments, but
+      // one-off date splits should remain schedulable for special coverage.
+      if (!assigningSlot.scheduleDate && selectedPeriodBreakUserIds.includes(member.id)) {
         return false;
       }
 
       const existingAssignments = assignmentsByUser.get(member.id) || [];
       const conflictingAssignments = existingAssignments.filter((assignment) =>
-        memberMatchesMinistryFilter(assignment.ministryTypes, targetMinistryType),
+        memberMatchesMinistryFilter(assignment.ministryTypes, targetMinistryType) &&
+        assignmentConflictsWithTarget(assignment),
       );
 
       if (conflictingAssignments.length === 0) {
@@ -1030,6 +1111,7 @@ export default function TeamBuilder() {
     assigningMinistryType,
     selectedMinistryType,
     selectedPeriodBreakUserIds,
+    teamScheduleBuckets,
   ]);
 
   const blackoutConflictDatesForAssigningSlot = useMemo(() => {

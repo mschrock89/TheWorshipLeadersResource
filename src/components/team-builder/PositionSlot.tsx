@@ -46,6 +46,11 @@ export function PositionSlot({
   onRemoveDateOverride,
 }: PositionSlotProps) {
   const [selectedView, setSelectedView] = useState<"all" | string>("all");
+  const firstOverrideDate = useMemo(
+    () => scheduleDates.find((date) => !!dateOverrides[date]) || Object.keys(dateOverrides)[0],
+    [dateOverrides, scheduleDates],
+  );
+  const hasAnyDateOverrides = !!firstOverrideDate;
   const ministryBadges = showMinistryBadges
     ? ministryTypes.map((mt) => MINISTRY_TYPES.find((m) => m.value === mt)).filter(Boolean)
     : [];
@@ -57,7 +62,14 @@ export function PositionSlot({
     }
   }, [scheduleDates, selectedView]);
 
+  useEffect(() => {
+    if (isEmpty && selectedView === "all" && firstOverrideDate) {
+      setSelectedView(firstOverrideDate);
+    }
+  }, [firstOverrideDate, isEmpty, selectedView]);
+
   const selectedOverride = selectedView !== "all" ? dateOverrides[selectedView] : undefined;
+  const effectiveIsEmpty = isEmpty && !selectedOverride;
   const selectedMemberName = selectedOverride?.member_name || memberName;
   const selectedAvatarUrl = selectedOverride ? null : avatarUrl;
   const selectedConflictDates = useMemo(() => {
@@ -92,31 +104,53 @@ export function PositionSlot({
     <div
       className={cn(
         "rounded-lg border p-2 transition-colors",
-        isEmpty
+        effectiveIsEmpty
           ? "border-dashed border-muted-foreground/30 bg-muted/30"
           : hasConflicts
           ? "border-amber-500/35 bg-amber-500/[0.04]"
           : "border-border bg-card"
       )}
     >
-      {isEmpty ? (
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-            <User className="h-4 w-4 text-muted-foreground" />
-          </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-muted-foreground">{label}</p>
-              <p className="text-xs text-muted-foreground/60">Empty</p>
+      {effectiveIsEmpty ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+              <User className="h-4 w-4 text-muted-foreground" />
             </div>
-          {!readOnly && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-primary hover:bg-primary/10"
-              onClick={onAdd}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                <p className="text-xs text-muted-foreground/60">Empty</p>
+              </div>
+            {!readOnly && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-primary hover:bg-primary/10"
+                onClick={onAdd}
+                title="Assign for the full rotation"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {hasWeekendSplit && !readOnly && onAssignDate && (
+            <div className="flex flex-wrap gap-1.5">
+              {scheduleDates.map((date, index) => (
+                <Button
+                  key={date}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[10px] font-medium"
+                  onClick={() => onAssignDate(date)}
+                  title={`Assign only for ${format(parseISO(date), "MMM d")}`}
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  {`W${index + 1}`}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
       ) : (

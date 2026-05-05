@@ -3163,6 +3163,7 @@ export type Database = {
         | "admin"
         | "campus_worship_pastor"
         | "student_worship_pastor"
+        | "childrens_pastor"
         | "speaker"
         | "volunteer"
         | "campus_admin"
@@ -3348,6 +3349,7 @@ export const Constants = {
         "admin",
         "campus_worship_pastor",
         "student_worship_pastor",
+        "childrens_pastor",
         "speaker",
         "volunteer",
         "campus_admin",

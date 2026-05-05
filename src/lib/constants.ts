@@ -4,6 +4,7 @@ export const ROLE_LABELS: Record<string, string> = {
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
   student_worship_pastor: "Student Worship Leader",
+  childrens_pastor: "Children's Pastor",
   speaker: "Speaker",
   video_director: "Video Director",
   production_manager: "Production Manager",
@@ -15,7 +16,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",

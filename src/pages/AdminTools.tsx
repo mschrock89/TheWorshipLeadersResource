@@ -43,6 +43,7 @@ function getRoleBadgeLabel(role: string): string {
     case "network_worship_pastor": return "Network Pastor";
     case "campus_worship_pastor": return "Worship Pastor";
     case "student_worship_pastor": return "Student Leader";
+    case "childrens_pastor": return "Children's Pastor";
     default: return role;
   }
 }
@@ -502,6 +503,7 @@ export default function AdminTools() {
       network_worship_pastor: 2,
       campus_worship_pastor: 3,
       student_worship_pastor: 4,
+      childrens_pastor: 5,
     };
     
     return Array.from(userMap.values()).sort((a, b) => {

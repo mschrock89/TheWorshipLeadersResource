@@ -417,6 +417,7 @@ export function useAdminCampusId() {
         [
           "campus_worship_pastor",
           "student_worship_pastor",
+          "childrens_pastor",
           "video_director",
           "production_manager",
         ].includes(row.role),
@@ -596,7 +597,7 @@ export function useCampusWorshipPastors(campusId: string | null) {
       const { data: roleRows, error: roleError } = await supabase
         .from("user_roles")
         .select("user_id")
-        .in("role", ["campus_worship_pastor", "student_worship_pastor"]);
+        .in("role", ["campus_worship_pastor", "student_worship_pastor", "childrens_pastor"]);
 
       if (roleError) throw roleError;
 
@@ -639,6 +640,7 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
           "network_worship_pastor",
           "campus_worship_pastor",
           "student_worship_pastor",
+          "childrens_pastor",
           "video_director",
           "production_manager",
         ]);
@@ -1934,6 +1936,32 @@ function exceedsGuitarFamilyLimit(filledSlots: Set<string>, targetSlot: string) 
   return false;
 }
 
+function teamsHaveOverlappingScheduleDates(
+  teamScheduledDatesByTeam: Map<string, Set<string>> | undefined,
+  firstTeamId: string,
+  secondTeamId: string,
+) {
+  const firstTeamDates = teamScheduledDatesByTeam?.get(firstTeamId);
+  const secondTeamDates = teamScheduledDatesByTeam?.get(secondTeamId);
+
+  if (!firstTeamDates?.size || !secondTeamDates?.size) {
+    return false;
+  }
+
+  const [smallerDates, largerDates] =
+    firstTeamDates.size <= secondTeamDates.size
+      ? [firstTeamDates, secondTeamDates]
+      : [secondTeamDates, firstTeamDates];
+
+  for (const date of smallerDates) {
+    if (largerDates.has(date)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function canAssignMemberToTeam(
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   member: AvailableMember,
@@ -1941,6 +1969,7 @@ function canAssignMemberToTeam(
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
   allowMultiTeamUserIds?: Set<string>,
+  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
@@ -1949,9 +1978,13 @@ function canAssignMemberToTeam(
   if (!teamAssignments) return true;
 
   if (!allowMultiTeamUserIds?.has(member.id)) {
-    const assignedTeamIds = [...teamAssignments.keys()];
-    const isAssignedToDifferentTeam = assignedTeamIds.some((assignedTeamId) => assignedTeamId !== teamId);
-    if (isAssignedToDifferentTeam) return false;
+    const hasOverlappingDifferentTeamAssignment = [...teamAssignments.keys()].some(
+      (assignedTeamId) =>
+        assignedTeamId !== teamId &&
+        teamsHaveOverlappingScheduleDates(teamScheduledDatesByTeam, assignedTeamId, teamId),
+    );
+
+    if (hasOverlappingDifferentTeamAssignment) return false;
   }
 
   const existingSlots = teamAssignments.get(teamId);
@@ -1991,7 +2024,17 @@ function findBestCandidateForTeam(
   let bestConflictCount = Number.POSITIVE_INFINITY;
 
   for (const member of pool) {
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
+    if (
+      !canAssignMemberToTeam(
+        assignedSlotsByTeam,
+        member,
+        team.id,
+        targetSlot,
+        blockedTeammateIdsByTeam,
+        allowMultiTeamUserIds,
+        teamScheduledDatesByTeam,
+      )
+    ) {
       continue;
     }
 
@@ -2046,7 +2089,17 @@ function findBestTeamForMemberSlot(
     if (filledSlots?.has(targetSlot)) continue;
     if (exceedsGuitarFamilyLimit(filledSlots || new Set<string>(), targetSlot)) continue;
     if (!isTeamSlotVisible(team.template_config, targetSlot, templateContext)) continue;
-    if (!canAssignMemberToTeam(assignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, allowMultiTeamUserIds)) {
+    if (
+      !canAssignMemberToTeam(
+        assignedSlotsByTeam,
+        member,
+        team.id,
+        targetSlot,
+        blockedTeammateIdsByTeam,
+        allowMultiTeamUserIds,
+        teamScheduledDatesByTeam,
+      )
+    ) {
       continue;
     }
 
@@ -2368,7 +2421,17 @@ export function useAutoBuildTeams() {
         const filledSlots = slotFilledPerTeam.get(team.id)!;
         if (filledSlots.has(targetSlot)) return false;
         if (exceedsGuitarFamilyLimit(filledSlots, targetSlot)) return false;
-        if (!canAssignMemberToTeam(userAssignedSlotsByTeam, member, team.id, targetSlot, blockedTeammateIdsByTeam, multiTeamUserIds)) return false;
+        if (
+          !canAssignMemberToTeam(
+            userAssignedSlotsByTeam,
+            member,
+            team.id,
+            targetSlot,
+            blockedTeammateIdsByTeam,
+            multiTeamUserIds,
+            teamScheduledDatesByTeam,
+          )
+        ) return false;
 
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);

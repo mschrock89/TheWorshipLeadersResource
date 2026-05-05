@@ -6,6 +6,7 @@ const STAFF_ROLES = [
   "network_worship_pastor",
   "campus_worship_pastor",
   "student_worship_pastor",
+  "childrens_pastor",
   "campus_pastor",
 ] as const;
 

@@ -13,7 +13,7 @@ interface NotifyRequest {
 const WEEKEND_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 const SUPPORT_MINISTRIES = ["production", "video"] as const;
 const LEADERSHIP_ROLES = [
-  "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor",
+  "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor",
   "network_worship_pastor", "network_worship_leader", "leader",
   "video_director", "production_manager", "campus_pastor",
 ];

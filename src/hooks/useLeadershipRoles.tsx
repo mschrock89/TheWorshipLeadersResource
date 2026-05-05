@@ -27,7 +27,7 @@ export function useLeadershipRoles() {
         supabase
           .from("user_roles")
           .select("user_id, role, admin_campus_id")
-          .in("role", ["admin", "campus_admin", "network_worship_pastor", "campus_worship_pastor", "student_worship_pastor"]),
+          .in("role", ["admin", "campus_admin", "network_worship_pastor", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor"]),
         supabase.rpc("get_basic_profiles"),
         supabase.from("campuses").select("id, name"),
       ]);
@@ -81,6 +81,7 @@ export function useLeadershipRoles() {
             break;
           case "campus_worship_pastor":
           case "student_worship_pastor":
+          case "childrens_pastor":
             // Avoid duplicates
             if (!worshipPastors.find(p => p.id === user.id && p.role === user.role)) {
               worshipPastors.push(user);

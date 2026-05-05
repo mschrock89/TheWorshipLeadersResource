@@ -55,6 +55,7 @@ serve(async (req) => {
       "campus_admin",
       "campus_worship_pastor",
       "student_worship_pastor",
+      "childrens_pastor",
       "network_worship_pastor",
       "network_worship_leader",
       "video_director",
