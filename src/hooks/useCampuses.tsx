@@ -87,13 +87,48 @@ export function useUserCampuses(userId: string | undefined) {
     queryKey: ["user-campuses", userId],
     queryFn: async () => {
       if (!userId) return [];
-      const { data, error } = await supabase
-        .from("user_campuses")
-        .select("*, campuses(*)")
-        .eq("user_id", userId);
-      
+      const [{ data, error }, { data: adminRoles, error: adminRolesError }] = await Promise.all([
+        supabase
+          .from("user_campuses")
+          .select("*, campuses(*)")
+          .eq("user_id", userId),
+        supabase
+          .from("user_roles")
+          .select("admin_campus_id")
+          .eq("user_id", userId)
+          .eq("role", "campus_admin")
+          .not("admin_campus_id", "is", null),
+      ]);
+
       if (error) throw error;
-      return data as (UserCampus & { campuses: Campus })[];
+      if (adminRolesError) throw adminRolesError;
+
+      const assignedCampuses = (data || []) as (UserCampus & { campuses: Campus })[];
+      const assignedCampusIds = new Set(assignedCampuses.map((entry) => entry.campus_id));
+      const adminCampusIds = (adminRoles || [])
+        .map((entry) => entry.admin_campus_id)
+        .filter((campusId): campusId is string => Boolean(campusId) && !assignedCampusIds.has(campusId));
+
+      if (adminCampusIds.length === 0) {
+        return assignedCampuses;
+      }
+
+      const { data: adminCampuses, error: adminCampusesError } = await supabase
+        .from("campuses")
+        .select("*")
+        .in("id", adminCampusIds);
+
+      if (adminCampusesError) throw adminCampusesError;
+
+      const synthesizedAdminCampuses = (adminCampuses || []).map((campus) => ({
+        id: `admin-${userId}-${campus.id}`,
+        user_id: userId,
+        campus_id: campus.id,
+        created_at: "",
+        campuses: campus as Campus,
+      }));
+
+      return [...assignedCampuses, ...synthesizedAdminCampuses];
     },
     enabled: !!userId,
   });

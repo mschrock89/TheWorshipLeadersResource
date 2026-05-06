@@ -207,9 +207,7 @@ export default function Profile() {
   }, [candidateAudition]);
 
   useEffect(() => {
-    if (userCampuses.length > 0) {
-      setSelectedCampuses(userCampuses.map(uc => uc.campus_id));
-    }
+    setSelectedCampuses(userCampuses.map(uc => uc.campus_id));
   }, [userCampuses]);
 
   useEffect(() => {
