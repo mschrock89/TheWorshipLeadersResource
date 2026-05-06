@@ -129,6 +129,38 @@ export default function Profile() {
   const isCampusAdmin = hasRole('campus_admin');
   const isAuditionCandidate = hasRole('audition_candidate');
   const baseRole = userRoles.find(r => BASE_ROLES.includes(r.role as any))?.role || 'volunteer';
+  const campusNameById = useMemo(
+    () => new Map(campuses.map((campus) => [campus.id, campus.name])),
+    [campuses],
+  );
+  const displayRoleGroups = useMemo(() => {
+    const campusAdminCampusNames = userRoles
+      .filter((roleData) => roleData.role === "campus_admin" && roleData.admin_campus_id)
+      .map((roleData) => campusNameById.get(roleData.admin_campus_id || "") || "Campus");
+    const uniqueCampusAdminCampusNames = Array.from(new Set(campusAdminCampusNames));
+    const nonCampusAdminRoles = userRoles
+      .filter((roleData) => roleData.role !== "campus_admin")
+      .map((roleData) => ({
+        key: roleData.admin_campus_id ? `${roleData.role}-${roleData.admin_campus_id}` : roleData.role,
+        label: ROLE_LABELS[roleData.role] || roleData.role,
+      }));
+
+    const groups = [...nonCampusAdminRoles];
+
+    if (userRoles.some((roleData) => roleData.role === "campus_admin")) {
+      groups.push({
+        key: "campus_admin_summary",
+        label: uniqueCampusAdminCampusNames.length > 0
+          ? `Campus Admin · ${uniqueCampusAdminCampusNames.length} campuses`
+          : ROLE_LABELS.campus_admin,
+      });
+    }
+
+    return {
+      groups,
+      campusAdminCampusNames: uniqueCampusAdminCampusNames,
+    };
+  }, [campusNameById, userRoles]);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -771,27 +803,38 @@ export default function Profile() {
                   )}
                 </>
               ) : (
-                <div className="flex flex-wrap justify-center gap-2">
-                  {/* Display all roles as badges */}
-                  {userRoles.map((roleData, index) => (
-                    <span 
-                      key={`${roleData.role}-${roleData.admin_campus_id || index}`}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1 text-sm font-medium text-secondary-foreground"
-                    >
-                      <Shield className="h-3.5 w-3.5" />
-                      {ROLE_LABELS[roleData.role] || roleData.role}
-                      {roleData.role === 'campus_admin' && roleData.admin_campus_id && (
-                        <span className="text-xs opacity-75">
-                          ({campuses.find(c => c.id === roleData.admin_campus_id)?.name || 'Campus'})
-                        </span>
+                <div className="w-full max-w-3xl space-y-3">
+                  {displayRoleGroups.groups.length > 0 ? (
+                    <>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {displayRoleGroups.groups.map((roleGroup) => (
+                          <span
+                            key={roleGroup.key}
+                            className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/50 px-4 py-2 text-sm font-medium text-foreground"
+                          >
+                            <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                            {roleGroup.label}
+                          </span>
+                        ))}
+                      </div>
+                      {displayRoleGroups.campusAdminCampusNames.length > 0 && (
+                        <div className="rounded-xl border border-border/60 bg-muted/25 px-4 py-3 text-center">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                            Campus Admin Access
+                          </p>
+                          <p className="mt-2 text-sm text-foreground">
+                            {displayRoleGroups.campusAdminCampusNames.join(" • ")}
+                          </p>
+                        </div>
                       )}
-                    </span>
-                  ))}
-                  {userRoles.length === 0 && (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2.5 py-1 text-sm font-medium text-secondary-foreground">
-                      <Shield className="h-3.5 w-3.5" />
-                      Volunteer
-                    </span>
+                    </>
+                  ) : (
+                    <div className="flex justify-center">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/50 px-4 py-2 text-sm font-medium text-foreground">
+                        <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                        Volunteer
+                      </span>
+                    </div>
                   )}
                 </div>
               )}
