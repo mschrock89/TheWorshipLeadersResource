@@ -36,6 +36,30 @@ interface SwapNotificationRequest {
   swapRequestId: string;
 }
 
+const PRODUCTION_POSITIONS = new Set([
+  "front_of_house",
+  "lighting",
+  "broadcast_mix",
+  "producer",
+  "stage_manager",
+  "engineer",
+]);
+
+const VIDEO_POSITIONS = new Set([
+  "video_director",
+  "camera_operator",
+  "video_switcher",
+  "pro_presenter",
+  "graphics",
+  "director",
+  "switcher",
+  "tri_pod_camera",
+  "hand_held_camera",
+  "other",
+]);
+
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", {
@@ -44,6 +68,53 @@ function formatDate(dateStr: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function normalizePosition(position: string | null | undefined): string {
+  return (position || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function normalizeMinistryType(ministryType: string | null | undefined): string {
+  const normalized = (ministryType || "weekend").trim().toLowerCase();
+  return WEEKEND_MINISTRY_ALIASES.has(normalized) ? "weekend_team" : normalized;
+}
+
+function getLeaderRolesForSwap(params: {
+  position: string | null | undefined;
+  ministryType: string | null | undefined;
+}) {
+  const normalizedPosition = normalizePosition(params.position);
+  const normalizedMinistryType = normalizeMinistryType(params.ministryType);
+
+  if (
+    VIDEO_POSITIONS.has(normalizedPosition) ||
+    (normalizedMinistryType === "video" && !PRODUCTION_POSITIONS.has(normalizedPosition))
+  ) {
+    return {
+      ministryType: "video",
+      roles: ["video_director"],
+    };
+  }
+
+  if (
+    PRODUCTION_POSITIONS.has(normalizedPosition) ||
+    (normalizedMinistryType === "production" && !VIDEO_POSITIONS.has(normalizedPosition))
+  ) {
+    return {
+      ministryType: "production",
+      roles: ["production_manager"],
+    };
+  }
+
+  return {
+    ministryType: normalizedMinistryType,
+    roles: [
+      "campus_worship_pastor",
+      "student_worship_pastor",
+      "network_worship_pastor",
+      "network_worship_leader",
+    ],
+  };
 }
 
 // ECC Brand Colors: Blue #35B0E5, Dark Blue #27749D, Yellow #FFB838
@@ -264,16 +335,21 @@ serve(async (req: Request): Promise<Response> => {
       .eq("id", swapRequest.team_id)
       .single();
 
-    // Find campus pastors for this user's campus
-    // First, get the requester's campus
-    const { data: userCampuses } = await supabase
-      .from("user_campuses")
-      .select("campus_id")
-      .eq("user_id", swapRequest.requester_id);
+    const { data: scheduleEntry } = await supabase
+      .from("team_schedule")
+      .select("campus_id, ministry_type")
+      .eq("team_id", swapRequest.team_id)
+      .eq("schedule_date", swapRequest.original_date)
+      .limit(1)
+      .maybeSingle();
 
-    const campusIds = userCampuses?.map((uc) => uc.campus_id) || [];
+    const swapCampusId = scheduleEntry?.campus_id || null;
+    const leaderAudience = getLeaderRolesForSwap({
+      position: swapRequest.position,
+      ministryType: scheduleEntry?.ministry_type,
+    });
 
-    if (campusIds.length === 0) {
+    if (!swapCampusId) {
       console.log("No campus found for requester, skipping notification");
       return new Response(
         JSON.stringify({ success: true, message: "No campus found, no notification sent" }),
@@ -281,52 +357,47 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Find campus admins for the requester's campus
-    const { data: campusAdminRoles } = await supabase
+    const { data: leaderRoles, error: leaderRolesError } = await supabase
       .from("user_roles")
-      .select("user_id, admin_campus_id")
-      .eq("role", "campus_admin")
-      .in("admin_campus_id", campusIds);
+      .select("user_id, role")
+      .in("role", leaderAudience.roles);
 
-    const campusAdminIds = campusAdminRoles?.map((r) => r.user_id) || [];
+    if (leaderRolesError) {
+      throw leaderRolesError;
+    }
 
-    // Find campus worship pastors for the requester's campus  
-    const { data: campusWorshipPastorRoles } = await supabase
-      .from("user_roles")
-      .select("user_id, admin_campus_id")
-      .eq("role", "campus_worship_pastor")
-      .in("admin_campus_id", campusIds);
+    const leaderRoleUserIds = [...new Set((leaderRoles || []).map((role) => role.user_id))];
 
-    const campusWorshipPastorIds = campusWorshipPastorRoles?.map((r) => r.user_id) || [];
+    if (leaderRoleUserIds.length === 0) {
+      console.log("No matching leader roles for this swap");
+      return new Response(
+        JSON.stringify({ success: true, message: "No matching leader roles" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // Find campus pastors in the same campus
-    const { data: campusPastorRoles } = await supabase
-      .from("user_roles")
+    const { data: ministryAssignments, error: ministryAssignmentsError } = await supabase
+      .from("user_ministry_campuses")
       .select("user_id")
-      .eq("role", "campus_pastor");
+      .eq("campus_id", swapCampusId)
+      .eq("ministry_type", leaderAudience.ministryType)
+      .in("user_id", leaderRoleUserIds);
 
-    const campusPastorIds = campusPastorRoles?.map((r) => r.user_id) || [];
+    if (ministryAssignmentsError) {
+      throw ministryAssignmentsError;
+    }
 
-    const { data: pastorsInCampus } = await supabase
-      .from("user_campuses")
-      .select("user_id")
-      .in("user_id", campusPastorIds)
-      .in("campus_id", campusIds);
+    const leaderIdsToNotify = [...new Set(
+      (ministryAssignments || [])
+        .map((assignment) => assignment.user_id)
+        .filter((userId) =>
+          userId &&
+          userId !== swapRequest.requester_id &&
+          userId !== swapRequest.accepted_by_id,
+        ),
+    )];
 
-    const pastorIdsToNotify = pastorsInCampus?.map((p) => p.user_id) || [];
-
-    // Also notify leaders
-    const { data: leaders } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "leader");
-
-    const leaderIds = leaders?.map((l) => l.user_id) || [];
-    
-    // Combine and dedupe - prioritize campus admins
-    const allIdsToNotify = [...new Set([...campusAdminIds, ...campusWorshipPastorIds, ...pastorIdsToNotify, ...leaderIds])];
-
-    if (allIdsToNotify.length === 0) {
+    if (leaderIdsToNotify.length === 0) {
       console.log("No one to notify");
       return new Response(
         JSON.stringify({ success: true, message: "No one to notify" }),
@@ -334,39 +405,36 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Send push notifications to campus admins
-    if (campusAdminIds.length > 0) {
-      try {
-        const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            title: "Swap Request Confirmed",
-            message: `${requester?.full_name || "Someone"} and ${accepter?.full_name || "someone"} have confirmed a swap for ${formatDate(swapRequest.original_date)}`,
-            url: "/swap-requests",
-            tag: "swap-confirmed",
-            userIds: campusAdminIds,
-          }),
-        });
-        
-        if (pushResponse.ok) {
-          const pushResult = await pushResponse.json();
-          console.log(`Push notifications sent: ${pushResult.sent} success, ${pushResult.failed} failed`);
-        }
-      } catch (pushError) {
-        console.error("Failed to send push notifications:", pushError);
-        // Don't throw - continue with email notifications
+    try {
+      const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          title: "Swap Request Confirmed",
+          message: `${requester?.full_name || "Someone"} and ${accepter?.full_name || "someone"} have confirmed a swap for ${formatDate(swapRequest.original_date)}`,
+          url: "/swap-requests",
+          tag: "swap-confirmed",
+          userIds: leaderIdsToNotify,
+        }),
+      });
+
+      if (pushResponse.ok) {
+        const pushResult = await pushResponse.json();
+        console.log(`Push notifications sent: ${pushResult.sent} success, ${pushResult.failed} failed`);
       }
+    } catch (pushError) {
+      console.error("Failed to send push notifications:", pushError);
+      // Don't throw - continue with email notifications
     }
 
     // Fetch profiles of people to notify
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, email, full_name")
-      .in("id", allIdsToNotify);
+      .in("id", leaderIdsToNotify);
 
     if (!profiles || profiles.length === 0) {
       console.log("No profiles found to notify");
