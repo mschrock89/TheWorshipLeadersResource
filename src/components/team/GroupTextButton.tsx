@@ -294,131 +294,134 @@ export function GroupTextButton({
         {label}
       </Button>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="top-2 flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-3 overflow-hidden p-3 sm:top-[50%] sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-2xl sm:translate-y-[-50%] sm:gap-4 sm:p-6">
+          <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>Compose Group Text</DialogTitle>
             <DialogDescription>
               This will open your device messaging app with {selectedPhones.length} roster member{selectedPhones.length === 1 ? "" : "s"}.
             </DialogDescription>
           </DialogHeader>
-          {hasMinistrySelection && (
-            <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            {hasMinistrySelection && (
+              <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Ministries on this date</p>
+                  <div className="flex gap-1">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => {
+                      setSelectedMinistries(availableMinistries);
+                      setSelectedRecipients(resolvedEntries.map((entry) => entry.id));
+                    }}>
+                      Select all
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => {
+                      setSelectedMinistries([]);
+                      setSelectedRecipients([]);
+                    }}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {availableMinistries.map((ministry) => {
+                    const checked = selectedMinistries.includes(ministry);
+                    return (
+                      <label
+                        key={ministry}
+                        className="flex items-center gap-2 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) => toggleMinistry(ministry, value === true)}
+                        />
+                        <span>{ministry === "unassigned" ? "Unassigned" : getMinistryLabel(ministry)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">Ministries on this date</p>
-                <div className="flex gap-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => {
-                    setSelectedMinistries(availableMinistries);
-                    setSelectedRecipients(resolvedEntries.map((entry) => entry.id));
-                  }}>
-                    Select all
+                <p className="text-sm font-medium">Include recipients</p>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedRecipients(visibleRecipients.map((entry) => entry.id))}
+                    disabled={visibleRecipients.length === 0}
+                  >
+                    Select visible
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => {
-                    setSelectedMinistries([]);
-                    setSelectedRecipients([]);
-                  }}>
-                    Clear
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedRecipients((current) => current.filter((id) => !visibleRecipients.some((entry) => entry.id === id)))}
+                    disabled={visibleRecipients.length === 0}
+                  >
+                    Clear visible
                   </Button>
                 </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {availableMinistries.map((ministry) => {
-                  const checked = selectedMinistries.includes(ministry);
-                  return (
-                    <label
-                      key={ministry}
-                      className="flex items-center gap-2 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(value) => toggleMinistry(ministry, value === true)}
-                      />
-                      <span>{ministry === "unassigned" ? "Unassigned" : getMinistryLabel(ministry)}</span>
-                    </label>
-                  );
-                })}
+              <div className="max-h-44 space-y-3 overflow-auto rounded border border-border/50 bg-background/70 p-2 sm:max-h-56">
+                {recipientGroups.length === 0 ? (
+                  <p className="px-2 py-1 text-sm text-muted-foreground">No recipients match the selected ministries.</p>
+                ) : (
+                  recipientGroups.map(([ministry, group]) => (
+                    <div key={ministry} className="space-y-1.5">
+                      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {ministry === "unassigned" ? "Unassigned" : getMinistryLabel(ministry)}
+                      </p>
+                      {group.map((entry) => (
+                        <label
+                          key={entry.id}
+                          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={selectedRecipients.includes(entry.id)}
+                            onCheckedChange={(value) => toggleRecipient(entry.id, value === true)}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{entry.phone}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-          )}
-          <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium">Include recipients</p>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedRecipients(visibleRecipients.map((entry) => entry.id))}
-                  disabled={visibleRecipients.length === 0}
-                >
-                  Select visible
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedRecipients((current) => current.filter((id) => !visibleRecipients.some((entry) => entry.id === id)))}
-                  disabled={visibleRecipients.length === 0}
-                >
-                  Clear visible
-                </Button>
-              </div>
-            </div>
-            <div className="max-h-56 space-y-3 overflow-auto rounded border border-border/50 bg-background/70 p-2">
-              {recipientGroups.length === 0 ? (
-                <p className="px-2 py-1 text-sm text-muted-foreground">No recipients match the selected ministries.</p>
-              ) : (
-                recipientGroups.map(([ministry, group]) => (
-                  <div key={ministry} className="space-y-1.5">
-                    <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {ministry === "unassigned" ? "Unassigned" : getMinistryLabel(ministry)}
-                    </p>
-                    {group.map((entry) => (
-                      <label
-                        key={entry.id}
-                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
-                      >
-                        <Checkbox
-                          checked={selectedRecipients.includes(entry.id)}
-                          onCheckedChange={(value) => toggleRecipient(entry.id, value === true)}
-                        />
-                        <span className="flex-1">{entry.name}</span>
-                        <span className="text-xs text-muted-foreground">{entry.phone}</span>
-                      </label>
-                    ))}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          <Textarea
-            value={messageBody}
-            onChange={(event) => setMessageBody(event.target.value)}
-            placeholder="Add an optional message"
-            rows={5}
-          />
-          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
-            <p className="text-muted-foreground">
-              Selected recipients: {selectedPhones.length} of {resolvedEntries.length}
-            </p>
-            {duplicatePhones.length > 0 && (
-              <p className="text-amber-600">
-                Duplicate phones: {duplicatePhones.map(([phone, names]) => `${names.join(" / ")} -> ${phone}`).join(" | ")}
+            <Textarea
+              value={messageBody}
+              onChange={(event) => setMessageBody(event.target.value)}
+              placeholder="Add an optional message"
+              rows={3}
+              className="min-h-24 sm:min-h-32"
+            />
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
+              <p className="text-muted-foreground">
+                Selected recipients: {selectedPhones.length} of {resolvedEntries.length}
               </p>
-            )}
-            {unresolvedNames.length > 0 && (
-              <p className="text-amber-600">
-                Missing phone for: {unresolvedNames.join(", ")}
-              </p>
-            )}
-            <div className="max-h-24 overflow-auto rounded border border-border/50 bg-background/70 p-1.5 space-y-0.5">
-              {selectedResolvedRecipients.map((entry) => (
-                <p key={`${entry.name}-${entry.phone}`} className="font-mono text-[11px]">
-                  {entry.name} - {entry.phone}
+              {duplicatePhones.length > 0 && (
+                <p className="text-amber-600">
+                  Duplicate phones: {duplicatePhones.map(([phone, names]) => `${names.join(" / ")} -> ${phone}`).join(" | ")}
                 </p>
-              ))}
+              )}
+              {unresolvedNames.length > 0 && (
+                <p className="text-amber-600">
+                  Missing phone for: {unresolvedNames.join(", ")}
+                </p>
+              )}
+              <div className="max-h-20 overflow-auto rounded border border-border/50 bg-background/70 p-1.5 space-y-0.5 sm:max-h-24">
+                {selectedResolvedRecipients.map((entry) => (
+                  <p key={`${entry.name}-${entry.phone}`} className="font-mono text-[11px]">
+                    {entry.name} - {entry.phone}
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
               Cancel
             </Button>
