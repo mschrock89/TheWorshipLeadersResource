@@ -58,7 +58,9 @@ export function usePushNotifications() {
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
 
   const ensureRegistration = useCallback(async () => {
-    return navigator.serviceWorker.register("/sw.js");
+    const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+    await registration.update();
+    return registration;
   }, []);
 
   const deleteSubscriptionRecord = useCallback(async (endpoint: string) => {
