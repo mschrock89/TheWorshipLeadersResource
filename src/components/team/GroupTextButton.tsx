@@ -13,7 +13,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { getMinistryLabel } from "@/lib/constants";
+import { getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export function buildRosterGroupTextTemplate({
   date,
@@ -24,6 +24,10 @@ export function buildRosterGroupTextTemplate({
 }) {
   const label = serviceLabel?.trim() || "this service";
   return `Hi team! Reminder: you're scheduled for ${label} on ${format(date, "EEEE, MMMM d, yyyy")}. Please check the app for details.`;
+}
+
+function normalizeGroupTextMinistry(ministry: string) {
+  return normalizeWeekendWorshipMinistryType(ministry) || ministry;
 }
 
 interface GroupTextButtonProps {
@@ -84,7 +88,7 @@ export function GroupTextButton({
       ministryTypes: Array.from(
         new Set(
           (member.ministryTypes || []).map((ministry) =>
-            ministry === "weekend_team" || ministry === "sunday_am" ? "weekend" : ministry
+            normalizeGroupTextMinistry(ministry)
           )
         )
       ),
@@ -290,7 +294,7 @@ export function GroupTextButton({
         {label}
       </Button>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Compose Group Text</DialogTitle>
             <DialogDescription>
