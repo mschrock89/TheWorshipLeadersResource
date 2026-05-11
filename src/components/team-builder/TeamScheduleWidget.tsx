@@ -531,9 +531,9 @@ export function TeamScheduleWidget({
                 return (
                   <div
                     key={entry.id}
-                    className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border bg-card p-3 transition-colors hover:bg-accent/50 sm:flex sm:items-center sm:gap-3 sm:p-2"
                   >
-                    <div className="flex-shrink-0 w-24 text-sm">
+                    <div className="min-w-0 text-sm sm:w-24 sm:flex-shrink-0">
                       <div className="font-medium">
                         {format(date, "EEE, MMM d")}
                       </div>
@@ -542,75 +542,75 @@ export function TeamScheduleWidget({
                       </div>
                     </div>
 
-                    <Select
-                      value={entry.team_id}
-                      onValueChange={(value) =>
-                        handleTeamChange(entry, value)
-                      }
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue>
-                          {entry.team_id ? (
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: entry.team_color }}
-                              />
-                              <span className="truncate">{entry.team_name}</span>
-                            </div>
-                          ) : (
-                            <span className="truncate text-muted-foreground">Select team</span>
-                          )}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {teams.map((team) => (
-                          <SelectItem key={team.id} value={team.id}>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: team.color }}
-                              />
-                              {team.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-span-1 sm:flex-nowrap">
+                      <Select
+                        value={entry.team_id}
+                        onValueChange={(value) =>
+                          handleTeamChange(entry, value)
+                        }
+                      >
+                        <SelectTrigger className="w-36 max-w-full sm:w-32">
+                          <SelectValue>
+                            {entry.team_id ? (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: entry.team_color }}
+                                />
+                                <span className="truncate">{entry.team_name}</span>
+                              </div>
+                            ) : (
+                              <span className="truncate text-muted-foreground">Select team</span>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teams.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: team.color }}
+                                />
+                                {team.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
 
-                    <Badge
-                      variant="secondary"
-                      className={MINISTRY_COLORS[ministryType] || ""}
-                    >
-                      {ministryType.charAt(0).toUpperCase() +
-                        ministryType.slice(1)}
-                    </Badge>
+                      <Badge
+                        variant="secondary"
+                        className={MINISTRY_COLORS[ministryType] || ""}
+                      >
+                        {ministryType.charAt(0).toUpperCase() +
+                          ministryType.slice(1)}
+                      </Badge>
 
-                    {isShared && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="outline" className="text-xs">
-                              Shared
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              This is a shared schedule entry. Editing will
-                              create a campus-specific copy.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-
-                    <div className="flex-1" />
+                      {isShared && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Badge variant="outline" className="text-xs">
+                                Shared
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                This is a shared schedule entry. Editing will
+                                create a campus-specific copy.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
 
                     {!isShared && !entry.isVirtual && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        className="col-start-2 row-start-1 h-8 w-8 justify-self-end text-muted-foreground hover:text-destructive sm:ml-auto sm:flex-shrink-0"
                         onClick={() => handleDeleteEntry(entry.id)}
                       >
                         <Trash2 className="h-4 w-4" />
