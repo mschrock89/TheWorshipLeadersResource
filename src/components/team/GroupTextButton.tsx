@@ -294,16 +294,16 @@ export function GroupTextButton({
         {label}
       </Button>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="top-2 flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-3 overflow-hidden p-3 sm:top-[50%] sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-2xl sm:translate-y-[-50%] sm:gap-4 sm:p-6">
+        <DialogContent className="top-[max(env(safe-area-inset-top),0.75rem)] flex h-[78svh] max-h-[78svh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] translate-y-0 flex-col gap-2 overflow-hidden p-3 sm:top-[50%] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-2xl sm:translate-y-[-50%] sm:gap-4 sm:p-6">
           <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>Compose Group Text</DialogTitle>
-            <DialogDescription>
-              This will open your device messaging app with {selectedPhones.length} roster member{selectedPhones.length === 1 ? "" : "s"}.
+            <DialogDescription className="text-xs sm:text-sm">
+              Opens Messages with {selectedPhones.length} roster member{selectedPhones.length === 1 ? "" : "s"}.
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-scroll overscroll-contain pr-1 [-webkit-overflow-scrolling:touch] sm:space-y-3">
             {hasMinistrySelection && (
-              <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">Ministries on this date</p>
                   <div className="flex gap-1">
@@ -340,7 +340,7 @@ export function GroupTextButton({
                 </div>
               </div>
             )}
-            <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+            <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">Include recipients</p>
                 <div className="flex gap-1">
@@ -364,7 +364,7 @@ export function GroupTextButton({
                   </Button>
                 </div>
               </div>
-              <div className="max-h-44 space-y-3 overflow-auto rounded border border-border/50 bg-background/70 p-2 sm:max-h-56">
+              <div className="max-h-32 space-y-3 overflow-auto rounded border border-border/50 bg-background/70 p-2 sm:max-h-56">
                 {recipientGroups.length === 0 ? (
                   <p className="px-2 py-1 text-sm text-muted-foreground">No recipients match the selected ministries.</p>
                 ) : (
@@ -396,9 +396,9 @@ export function GroupTextButton({
               onChange={(event) => setMessageBody(event.target.value)}
               placeholder="Add an optional message"
               rows={3}
-              className="min-h-24 sm:min-h-32"
+              className="min-h-20 sm:min-h-32"
             />
-            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs space-y-1">
+            <div className="rounded-md border border-border/60 bg-muted/30 px-2 py-2 text-xs space-y-1 sm:px-3">
               <p className="text-muted-foreground">
                 Selected recipients: {selectedPhones.length} of {resolvedEntries.length}
               </p>
@@ -412,7 +412,7 @@ export function GroupTextButton({
                   Missing phone for: {unresolvedNames.join(", ")}
                 </p>
               )}
-              <div className="max-h-20 overflow-auto rounded border border-border/50 bg-background/70 p-1.5 space-y-0.5 sm:max-h-24">
+              <div className="max-h-14 overflow-auto rounded border border-border/50 bg-background/70 p-1.5 space-y-0.5 sm:max-h-24">
                 {selectedResolvedRecipients.map((entry) => (
                   <p key={`${entry.name}-${entry.phone}`} className="font-mono text-[11px]">
                     {entry.name} - {entry.phone}
@@ -421,7 +421,7 @@ export function GroupTextButton({
               </div>
             </div>
           </div>
-          <DialogFooter className="shrink-0 gap-2 pt-1">
+          <DialogFooter className="shrink-0 flex-col gap-2 pt-1 sm:flex-row">
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
               Cancel
             </Button>
