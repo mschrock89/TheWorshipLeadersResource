@@ -62,7 +62,7 @@ export function AppOnboardingTour() {
         target: '[data-tour="home-profile-badge"]',
         title: "Your profile menu",
         description:
-          "Tap your initials anytime to get to your profile, schedule, library links, and sign out.",
+          "Tap your initials anytime to get to your profile, schedule, swap requests, library links, and sign out.",
       },
       {
         id: "calendar-nav",

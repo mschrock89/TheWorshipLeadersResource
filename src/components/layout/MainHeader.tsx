@@ -5,9 +5,10 @@ import { useProfile } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
+import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -50,6 +51,9 @@ export function MainHeader({
   const {
     data: pendingApprovalCount
   } = usePendingApprovalCount();
+  const {
+    data: pendingSwaps = 0
+  } = usePendingSwapRequestsCount();
   const drumTechAccess = useDrumTechAccess();
   const campusCtx = useCampusSelectionOptional();
   const selectedCampusId = selectedCampusIdProp ?? campusCtx?.selectedCampusId;
@@ -151,6 +155,17 @@ export function MainHeader({
                   <Link to="/schedule" className="flex items-center gap-2">
                     <ClipboardList className="h-4 w-4" />
                     My Schedule
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/swaps" className="flex items-center gap-2">
+                    <ArrowLeftRight className="h-4 w-4" />
+                    Swaps
+                    {pendingSwaps > 0 && <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                        {pendingSwaps > 99 ? "99+" : pendingSwaps}
+                      </Badge>}
                   </Link>
                 </DropdownMenuItem>
               )}

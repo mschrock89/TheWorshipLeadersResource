@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowLeftRight, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -18,7 +18,6 @@ import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, 
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
-import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useSongsForDate } from "@/hooks/useSongs";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -33,7 +32,6 @@ import {
 } from "@/hooks/useServiceTimeOverrides";
 import { SwapButton } from "@/components/calendar/SwapButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
-import { SwapsSheet } from "@/components/calendar/SwapsSheet";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
@@ -206,7 +204,6 @@ function StandardCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
-  const [isSwapsSheetOpen, setIsSwapsSheetOpen] = useState(false);
   const [sendingScheduleNotificationKey, setSendingScheduleNotificationKey] = useState<string | null>(null);
 
   // Use the global campus selection from context
@@ -357,10 +354,6 @@ function StandardCalendar() {
   const deleteServiceTimeOverride = useDeleteServiceTimeOverride();
   const deleteEvent = useDeleteEvent();
   const toggleEventRsvp = useToggleEventRsvp();
-  const {
-    data: pendingSwaps = 0
-  } = usePendingSwapRequestsCount();
-
   // Check if user has swapped out/in for the selected date
   const {
     data: userSwapStatus
@@ -1425,13 +1418,6 @@ function StandardCalendar() {
                       </div>}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button variant="outline" size="sm" className="gap-1.5 h-7 px-2 relative border-ecc-yellow hover:bg-ecc-yellow/10" onClick={() => setIsSwapsSheetOpen(true)}>
-                      <ArrowLeftRight className="h-3.5 w-3.5 text-ecc-yellow" />
-                      <span className="text-xs hidden sm:inline">Swaps</span>
-                      {pendingSwaps > 0 && <Badge variant="destructive" className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] flex items-center justify-center">
-                          {pendingSwaps > 99 ? "99+" : pendingSwaps}
-                        </Badge>}
-                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="text-muted-foreground hover:text-foreground h-7 w-7">
                       <X className="h-4 w-4" />
                     </Button>
@@ -1874,8 +1860,6 @@ function StandardCalendar() {
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>}
         </div>
-
-        <SwapsSheet open={isSwapsSheetOpen} onOpenChange={setIsSwapsSheetOpen} />
       </div>
     </RefreshableContainer>;
 }
@@ -2711,12 +2695,12 @@ function SongsPreview({
               View only
             </Badge>
           ) : (
-            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
               </span>
-              LIVE
+              Service Flow
             </Link>
           )}
         </div>
@@ -2796,12 +2780,12 @@ function CustomServiceSongsPreview({
               View only
             </Badge>
           ) : (
-            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
               </span>
-              LIVE
+              Service Flow
             </Link>
           )}
         </div>
@@ -2822,12 +2806,12 @@ function CustomServiceSongsPreview({
               View only
             </Badge>
           ) : (
-            <Link to={serviceFlowLink} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
               </span>
-              LIVE
+              Service Flow
             </Link>
           )}
         </div>
@@ -2907,7 +2891,7 @@ function CustomServiceFlowTitleEditor({
   if (flowItems.length === 0) {
     return (
       <div className="mt-3 rounded-md border border-border/70 p-2.5 text-xs text-muted-foreground">
-        Service flow has no items yet. Open LIVE for this service to generate/edit the flow, then titles will be editable here.
+        Service flow has no items yet. Open Service Flow for this service to generate/edit the flow, then titles will be editable here.
       </div>
     );
   }

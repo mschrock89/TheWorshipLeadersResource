@@ -14,6 +14,7 @@ import {
   Settings,
   Users,
   Wrench,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -29,6 +30,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
+import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import worshipImage from "@/assets/worship-night.jpg";
@@ -40,6 +42,7 @@ export default function Home() {
   const { data: roles = [] } = useUserRoles(user?.id);
   const { data: isApprover } = useIsApprover();
   const { data: pendingApprovalCount } = usePendingApprovalCount();
+  const { data: pendingSwaps = 0 } = usePendingSwapRequestsCount();
   const drumTechAccess = useDrumTechAccess();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
   const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
@@ -107,6 +110,19 @@ export default function Home() {
                       <Link to="/schedule" className="flex items-center gap-2">
                         <ClipboardList className="h-4 w-4" />
                         My Schedule
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/swaps" className="flex items-center gap-2">
+                        <ArrowLeftRight className="h-4 w-4" />
+                        Swaps
+                        {pendingSwaps > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                            {pendingSwaps > 99 ? "99+" : pendingSwaps}
+                          </Badge>
+                        )}
                       </Link>
                     </DropdownMenuItem>
                   )}

@@ -142,11 +142,19 @@ export function useSwapRequests() {
                 .single();
               
               const name = requester?.full_name || "Someone";
-              toast.info(`${name} requested a swap`, {
-                description: isTargetedAtMe 
-                  ? "They want to swap dates with you" 
-                  : `Looking for coverage on ${parseLocalDate(payload.new.original_date).toLocaleDateString()}`,
-              });
+              const isCoverRequest = payload.new.request_type === "fill_in" || !payload.new.swap_date;
+              toast.info(
+                isCoverRequest
+                  ? `${name} requested coverage`
+                  : `${name} requested a swap`,
+                {
+                  description: isTargetedAtMe
+                    ? isCoverRequest
+                      ? "They asked you directly to cover"
+                      : "They want to swap dates with you"
+                    : `Looking for coverage on ${parseLocalDate(payload.new.original_date).toLocaleDateString()}`,
+                },
+              );
             }
           }
         }
@@ -204,30 +212,59 @@ export function useSwapRequests() {
 
 export function usePendingSwapRequestsCount() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["swap-requests-count", user?.id],
     queryFn: async () => {
-      // Get user's positions from team_members
-      const { data: memberData } = await supabase
-        .from("team_members")
-        .select("position")
-        .eq("user_id", user!.id);
+      const [{ data: requests, error: requestsError }, { data: dismissals, error: dismissalsError }] = await Promise.all([
+        supabase
+          .from("swap_requests")
+          .select("id")
+          .eq("status", "pending")
+          .neq("requester_id", user!.id),
+        supabase
+          .from("swap_request_dismissals")
+          .select("swap_request_id")
+          .eq("user_id", user!.id),
+      ]);
 
-      const positions = memberData?.map((m) => m.position) || [];
+      if (requestsError) throw requestsError;
+      if (dismissalsError) throw dismissalsError;
 
-      const { count, error } = await supabase
-        .from("swap_requests")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-        .neq("requester_id", user!.id)
-        .or(`target_user_id.eq.${user!.id},and(target_user_id.is.null,position.in.(${positions.map(p => `"${p}"`).join(",")}))`);
-
-      if (error) throw error;
-      return count || 0;
+      const dismissedIds = new Set((dismissals || []).map((dismissal) => dismissal.swap_request_id));
+      return (requests || []).filter((request) => !dismissedIds.has(request.id)).length;
     },
     enabled: !!user,
   });
+
+  useEffect(() => {
+    if (!user) return;
+
+    const invalidateCount = () => {
+      queryClient.invalidateQueries({ queryKey: ["swap-requests-count", user.id] });
+    };
+
+    const channel = supabase
+      .channel(`swap-requests-count-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "swap_requests" },
+        invalidateCount,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "swap_request_dismissals" },
+        invalidateCount,
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, queryClient]);
+
+  return query;
 }
 
 export function useCreateSwapRequest() {
@@ -279,6 +316,7 @@ export function useCreateSwapRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["swap-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
     },
   });
 }
