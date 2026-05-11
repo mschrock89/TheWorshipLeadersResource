@@ -1,9 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { parseLocalDate } from "@/lib/utils";
+import { formatPositionLabel, parseLocalDate } from "@/lib/utils";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
+
+function formatSwapNotificationMessage(message: string) {
+  return message
+    .replace(/\bcover ([a-z0-9_]+) on\b/gi, (_match, position: string) => (
+      `cover ${formatPositionLabel(position)} on`
+    ))
+    .replace(/\brequest for ([a-z0-9_]+) on\b/gi, (_match, position: string) => (
+      `request for ${formatPositionLabel(position)} on`
+    ));
+}
 
 export type NotificationType = 
   | "swap_request" 
@@ -39,7 +49,7 @@ export interface Notification {
 }
 
 export function useNotifications() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -130,8 +140,27 @@ export function useNotifications() {
           .from("user_campuses")
           .select("campus_id")
           .eq("user_id", user.id),
-        // Direct incoming cover/swap requests for this user
-        supabase
+        // Direct incoming cover/swap requests for this user.
+        // Admins can observe all pending requests through RLS, so use observer wording below.
+        (isAdmin
+          ? supabase
+            .from("swap_requests")
+            .select(`
+              id,
+              created_at,
+              original_date,
+              swap_date,
+              request_type,
+              position,
+              status,
+              requester_id,
+              team_id
+            `)
+            .eq("status", "pending")
+            .neq("requester_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(10)
+          : supabase
           .from("swap_requests")
           .select(`
             id,
@@ -147,7 +176,7 @@ export function useNotifications() {
           .eq("target_user_id", user.id)
           .eq("status", "pending")
           .order("created_at", { ascending: false })
-          .limit(10),
+          .limit(10)),
       ]);
 
       if (newSetsResult.error) throw newSetsResult.error;
@@ -270,12 +299,19 @@ export function useNotifications() {
       });
 
       manualScheduleNotifications.forEach((notification) => {
+        const isSwapNotification = notification.link === "/swaps";
+        if (isAdmin && isSwapNotification && notification.title.startsWith("Open ")) {
+          return;
+        }
+
         const notifId = `schedule-update-${notification.id}`;
         notifs.push({
           id: notifId,
           type: "team_schedule_update",
           title: notification.title,
-          message: notification.message,
+          message: isSwapNotification
+            ? formatSwapNotificationMessage(notification.message)
+            : notification.message,
           timestamp: notification.created_at,
           read: currentReadIds.has(notifId),
           link: notification.link || "/calendar",
@@ -284,18 +320,25 @@ export function useNotifications() {
 
       directSwapRequests.forEach((swapRequest) => {
         const requesterName = requesterNameById.get(swapRequest.requester_id) || "A team member";
+        const requesterFirstName = requesterName.split(/\s+/)[0] || "Someone";
         const teamName = teamNameById.get(swapRequest.team_id) || "your team";
+        const positionLabel = formatPositionLabel(swapRequest.position);
         const isCoverRequest =
           swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
         const notifId = `swap-request-${swapRequest.id}`;
+        const message = isAdmin
+          ? isCoverRequest
+            ? `${requesterFirstName} is looking for a cover for ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
+            : `${requesterFirstName} is looking for a swap for ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
+          : isCoverRequest
+            ? `${requesterName} asked you to cover ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
+            : `${requesterName} wants to swap ${positionLabel} with you on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()}`;
 
         notifs.push({
           id: notifId,
           type: "swap_request",
           title: isCoverRequest ? "Cover Request" : "Swap Request",
-          message: isCoverRequest
-            ? `${requesterName} asked you to cover ${swapRequest.position} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
-            : `${requesterName} wants to swap ${swapRequest.position} with you on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()}`,
+          message,
           timestamp: swapRequest.created_at || new Date().toISOString(),
           read: currentReadIds.has(notifId),
           link: "/swaps",
@@ -310,7 +353,7 @@ export function useNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   // Only fetch notifications AFTER read IDs have been loaded
   useEffect(() => {
