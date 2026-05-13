@@ -47,6 +47,8 @@ import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
+const TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME = "Empty";
 const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
   "admin",
   "campus_admin",
@@ -57,6 +59,12 @@ const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
   "network_worship_leader",
   "campus_pastor",
 ]);
+
+function getRosterMemberDisplayName(memberName: string | null | undefined) {
+  return memberName === TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME
+    ? TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME
+    : memberName || "Team Member";
+}
 
 function getSetlistDisplayDate(planDate: string, ministryType: string) {
   const date = parseLocalDate(planDate);
@@ -1132,7 +1140,10 @@ function SetlistTeamRoster({
         <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
         <GroupTextButton
           phoneNumbers={rosterRows.map((member) => member.phone)}
-          rosterMembers={rosterRows.map((member) => ({ name: member.memberName, phone: member.phone }))}
+          rosterMembers={rosterRows.map((member) => ({
+            name: getRosterMemberDisplayName(member.memberName),
+            phone: member.phone,
+          }))}
           defaultMessage={buildRosterGroupTextTemplate({
             date,
             serviceLabel,
@@ -1159,10 +1170,10 @@ function SetlistTeamRoster({
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={member.avatarUrl || undefined} />
                     <AvatarFallback className="text-[11px]">
-                      {getInitials(member.memberName || "?")}
+                      {getInitials(getRosterMemberDisplayName(member.memberName))}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="truncate text-sm">{member.memberName}</span>
+                  <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
                   {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
                 </div>
                 <span className="text-xs text-muted-foreground text-right">
@@ -1192,10 +1203,10 @@ function SetlistTeamRoster({
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={member.avatarUrl || undefined} />
                     <AvatarFallback className="text-[11px]">
-                      {getInitials(member.memberName || "?")}
+                      {getInitials(getRosterMemberDisplayName(member.memberName))}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="truncate text-sm">{member.memberName}</span>
+                  <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
                   {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
                 </div>
                 <span className="text-xs text-muted-foreground text-right">
@@ -1225,10 +1236,10 @@ function SetlistTeamRoster({
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={member.avatarUrl || undefined} />
                     <AvatarFallback className="text-[11px]">
-                      {getInitials(member.memberName || "?")}
+                      {getInitials(getRosterMemberDisplayName(member.memberName))}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="truncate text-sm">{member.memberName}</span>
+                  <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
                   {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
                 </div>
                 <span className="text-xs text-muted-foreground text-right">

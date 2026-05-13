@@ -67,28 +67,60 @@ interface RosterMember {
   originalMemberName?: string;
 }
 
+const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
+
+function getRosterMemberDisplayName(memberName: string | null | undefined) {
+  return memberName === TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME ? "Empty" : memberName || "Team Member";
+}
+
+function formatRosterRoleLabel(position: string) {
+  const label = formatPositionLabel(position);
+  const guitarMatch = label.match(/^(e|a)g\s*([12])$/i);
+  if (guitarMatch) {
+    return `${guitarMatch[1].toUpperCase()}G ${guitarMatch[2]}`;
+  }
+  return label;
+}
+
+function getUniqueRosterRoleLabels(positions: string[]) {
+  const seen = new Set<string>();
+
+  return sortPositionsByPriority(positions).flatMap((position) => {
+    const label = formatRosterRoleLabel(position);
+    const key = label.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    return [label];
+  });
+}
+
 const getRosterRoleValues = (member: Pick<RosterMember, "positions" | "positionSlots">) => [
   ...member.positions,
   ...(member.positionSlots || []),
 ];
 
 function TeamMemberRow({ member }: { member: RosterMember }) {
+  const displayName = getRosterMemberDisplayName(member.memberName);
+  const roleLabels = getUniqueRosterRoleLabels(member.positions);
+
   return (
     <div className="flex items-center gap-3 py-1.5">
       <Avatar className="h-8 w-8 shrink-0">
         <AvatarImage src={member.avatarUrl || undefined} />
         <AvatarFallback className="text-xs bg-muted">
-          {member.memberName?.charAt(0) || "?"}
+          {displayName.charAt(0)}
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
         <span className="text-sm font-medium block truncate">
-          {member.memberName}
+          {displayName}
         </span>
         <div className="flex items-center gap-1 mt-0.5">
-          {sortPositionsByPriority(member.positions).map((pos) => (
-            <Badge key={pos} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-              {formatPositionLabel(pos)}
+          {roleLabels.map((label) => (
+            <Badge key={label} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+              {label}
             </Badge>
           ))}
           {member.isSwapped && (
@@ -303,7 +335,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
           <GroupTextButton
             phoneNumbers={groupTextMembers.map((member) => member.phone)}
             rosterMembers={groupTextMembers.map((member) => ({
-              name: member.memberName,
+              name: getRosterMemberDisplayName(member.memberName),
               phone: member.phone,
               ministryTypes: member.ministryTypes,
               positions: member.positions,
