@@ -148,9 +148,13 @@ function isAnnouncementsContext(title: string, sectionTitle: string) {
     compactSectionTitle.includes("announcement") ||
     compactSectionTitle.includes("anncouncement") ||
     compactSectionTitle.includes("annoucement") ||
+    compactSectionTitle.includes("annoucnemt") ||
+    compactSectionTitle.includes("annoucnemtn") ||
     compactTitle.includes("announcement") ||
     compactTitle.includes("anncouncement") ||
-    compactTitle.includes("annoucement")
+    compactTitle.includes("annoucement") ||
+    compactTitle.includes("annoucnemt") ||
+    compactTitle.includes("annoucnemtn")
   );
 }
 
@@ -684,7 +688,29 @@ export function ServiceFlowEditor({
     const clockMap = new Map<string, string>();
     if (startSeconds === null) return clockMap;
 
-    let runningSeconds = startSeconds;
+    let currentSectionTitle = "";
+    let secondsBeforeServiceStart = 0;
+    let hasServiceStartAnchor = false;
+
+    for (const item of localItems) {
+      if (item.item_type === "header") {
+        currentSectionTitle = item.title;
+        continue;
+      }
+
+      const title = item.song?.title || item.title;
+      if (isAnnouncementsContext(title, currentSectionTitle)) {
+        hasServiceStartAnchor = true;
+        break;
+      }
+
+      secondsBeforeServiceStart += item.duration_seconds || 0;
+    }
+
+    let runningSeconds = hasServiceStartAnchor
+      ? startSeconds - secondsBeforeServiceStart
+      : startSeconds;
+
     localItems.forEach((item) => {
       if (item.item_type === "header") return;
       clockMap.set(item.id, formatClockTime(runningSeconds));
