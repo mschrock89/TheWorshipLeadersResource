@@ -23,7 +23,10 @@ import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
+import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
+import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
+import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
 import { buildBibleHref } from "@/lib/bible";
 import {
   useServiceFlow,
@@ -41,7 +44,7 @@ import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface ServiceFlowEditorProps {
   initialDate?: string;
@@ -50,6 +53,115 @@ interface ServiceFlowEditorProps {
   initialDraftSetId?: string;
   initialCustomServiceId?: string;
   mode?: "editor" | "view";
+}
+
+const WEEKEND_SERVICE_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
+
+function normalizeClockSource(value?: string | null): string | null {
+  const normalized = value?.trim().slice(0, 5) || "";
+  return /^\d{2}:\d{2}$/.test(normalized) ? normalized : null;
+}
+
+function clockSourceToSeconds(value?: string | null): number | null {
+  const normalized = normalizeClockSource(value);
+  if (!normalized) return null;
+
+  const [hours, minutes] = normalized.split(":").map(Number);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 3600 + minutes * 60;
+}
+
+function formatClockTime(totalSeconds: number): string {
+  const secondsInDay = 24 * 60 * 60;
+  const normalizedSeconds = ((Math.round(totalSeconds / 60) * 60) % secondsInDay + secondsInDay) % secondsInDay;
+  const hours24 = Math.floor(normalizedSeconds / 3600);
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60);
+  const period = hours24 >= 12 ? "PM" : "AM";
+  const hours12 = hours24 % 12 || 12;
+
+  return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
+function getDefaultCampusServiceTimes(
+  campus: { saturday_service_time: string[] | null; sunday_service_time: string[] | null } | undefined,
+  date: Date,
+  ministryType: string
+): string[] {
+  if (!campus || !WEEKEND_SERVICE_TYPES.has(ministryType)) return [];
+
+  const dayOfWeek = date.getDay();
+  if (dayOfWeek === 6) return campus.saturday_service_time || [];
+  if (dayOfWeek === 0) return campus.sunday_service_time || [];
+  return [];
+}
+
+function serviceTimeOverrideMatches(overrideMinistryType: string, ministryType: string): boolean {
+  if (overrideMinistryType === ministryType) return true;
+  return WEEKEND_SERVICE_TYPES.has(overrideMinistryType) && WEEKEND_SERVICE_TYPES.has(ministryType);
+}
+
+function normalizeRoleText(value?: string | null): string {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function compactRoleText(value?: string | null): string {
+  return normalizeRoleText(value).replace(/\s+/g, "");
+}
+
+function rosterMemberHasRole(member: RosterMember, roles: Set<string>) {
+  return [...member.positions, ...member.positionSlots].some((role) =>
+    roles.has(compactRoleText(role))
+  );
+}
+
+function formatRosterRoleNames(members: RosterMember[], roles: Set<string>) {
+  const seen = new Set<string>();
+
+  return members
+    .filter((member) => rosterMemberHasRole(member, roles))
+    .map((member) => member.memberName?.trim())
+    .filter((name): name is string => Boolean(name) && name !== TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME)
+    .filter((name) => {
+      const key = compactRoleText(name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(", ");
+}
+
+function isNamePlaceholderTitle(title: string) {
+  const normalized = normalizeRoleText(title);
+  return normalized === "name place holder" || normalized === "name placeholder";
+}
+
+function isAnnouncementsContext(title: string, sectionTitle: string) {
+  const compactTitle = compactRoleText(title);
+  const compactSectionTitle = compactRoleText(sectionTitle);
+  return (
+    compactSectionTitle.includes("announcement") ||
+    compactSectionTitle.includes("anncouncement") ||
+    compactSectionTitle.includes("annoucement") ||
+    compactTitle.includes("announcement") ||
+    compactTitle.includes("anncouncement") ||
+    compactTitle.includes("annoucement")
+  );
+}
+
+function isClosingPrayerContext(title: string, sectionTitle: string) {
+  const normalizedTitle = normalizeRoleText(title);
+  const normalizedSectionTitle = normalizeRoleText(sectionTitle);
+  return (
+    normalizedSectionTitle.includes("closing prayer") ||
+    normalizedSectionTitle.includes("communion closing prayer") ||
+    normalizedTitle.includes("communion closing prayer")
+  );
 }
 
 export function ServiceFlowEditor({ 
@@ -128,6 +240,36 @@ export function ServiceFlowEditor({
     ministryType,
     serviceDateStr
   );
+  const { data: scheduledTeam } = useScheduledTeamForDate(
+    selectedDate,
+    effectiveCampusId,
+    ministryType
+  );
+  const { data: scheduledRoster = [] } = useTeamRosterForDate(
+    selectedDate,
+    scheduledTeam?.teamId,
+    ministryType,
+    effectiveCampusId
+  );
+  const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
+    campusId: effectiveCampusId || undefined,
+    startDate: serviceDateStr,
+    endDate: serviceDateStr,
+  });
+  const { data: customServiceStartTime = null } = useQuery({
+    queryKey: ["custom-service-start-time", resolvedCustomServiceId],
+    enabled: !!resolvedCustomServiceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_services")
+        .select("start_time")
+        .eq("id", resolvedCustomServiceId!)
+        .maybeSingle();
+
+      if (error) throw error;
+      return normalizeClockSource(data?.start_time) || null;
+    },
+  });
 
   const loadDraftSongsWithVocalists = useCallback(async (draftSetId: string) => {
     const { data: draftSongs, error: draftSongsError } = await supabase
@@ -499,6 +641,120 @@ export function ServiceFlowEditor({
     return localItems.reduce((sum, item) => sum + (item.duration_seconds || 0), 0);
   }, [localItems]);
 
+  const scheduledStartTime = useMemo(() => {
+    if (customServiceStartTime) return customServiceStartTime;
+
+    const matchingOverride = serviceTimeOverrides
+      .filter((override) => {
+        if (!effectiveCampusId || override.campus_id !== effectiveCampusId) return false;
+        if (override.service_date !== serviceDateStr) return false;
+        return serviceTimeOverrideMatches(override.ministry_type || "weekend", ministryType);
+      })
+      .sort((a, b) => {
+        const aExact = (a.ministry_type || "weekend") === ministryType ? 0 : 1;
+        const bExact = (b.ministry_type || "weekend") === ministryType ? 0 : 1;
+        return aExact - bExact || (a.ministry_type || "").localeCompare(b.ministry_type || "");
+      })[0];
+
+    const overrideTime = matchingOverride?.service_times
+      ?.map(normalizeClockSource)
+      .filter((time): time is string => Boolean(time))
+      .sort()[0];
+    if (overrideTime) return overrideTime;
+
+    const campus = campuses?.find((campus) => campus.id === effectiveCampusId);
+    const defaultTime = getDefaultCampusServiceTimes(campus, selectedDate, ministryType)
+      .map(normalizeClockSource)
+      .filter((time): time is string => Boolean(time))
+      .sort()[0];
+
+    return defaultTime || null;
+  }, [
+    campuses,
+    customServiceStartTime,
+    effectiveCampusId,
+    ministryType,
+    selectedDate,
+    serviceDateStr,
+    serviceTimeOverrides,
+  ]);
+
+  const clockTimesByItemId = useMemo(() => {
+    const startSeconds = clockSourceToSeconds(scheduledStartTime);
+    const clockMap = new Map<string, string>();
+    if (startSeconds === null) return clockMap;
+
+    let runningSeconds = startSeconds;
+    localItems.forEach((item) => {
+      if (item.item_type === "header") return;
+      clockMap.set(item.id, formatClockTime(runningSeconds));
+      runningSeconds += item.duration_seconds || 0;
+    });
+
+    return clockMap;
+  }, [localItems, scheduledStartTime]);
+
+  const scheduledRoleNames = useMemo(() => ({
+    announcements: formatRosterRoleNames(
+      scheduledRoster,
+      new Set(["announcement", "announcements", "anncouncement", "anncouncements", "annoucement", "annoucements"])
+    ),
+    closingPrayer: formatRosterRoleNames(
+      scheduledRoster,
+      new Set(["closingprayer", "closer"])
+    ),
+  }), [scheduledRoster]);
+
+  const resolvePlaceholderTitle = useCallback((
+    item: ServiceFlowItemType,
+    sectionTitle: string
+  ) => {
+    const rawTitle = item.song?.title || item.title;
+
+    if (
+      isNamePlaceholderTitle(rawTitle) &&
+      isAnnouncementsContext(rawTitle, sectionTitle)
+    ) {
+      return scheduledRoleNames.announcements || teachingWeek?.announcer_name?.trim() || rawTitle;
+    }
+
+    if (
+      isNamePlaceholderTitle(rawTitle) &&
+      isClosingPrayerContext(rawTitle, sectionTitle)
+    ) {
+      return scheduledRoleNames.closingPrayer || rawTitle;
+    }
+
+    if (
+      normalizeRoleText(rawTitle) === "communion closing prayer" &&
+      scheduledRoleNames.closingPrayer
+    ) {
+      return scheduledRoleNames.closingPrayer;
+    }
+
+    return rawTitle;
+  }, [
+    scheduledRoleNames.announcements,
+    scheduledRoleNames.closingPrayer,
+    teachingWeek?.announcer_name,
+  ]);
+
+  const resolvedItemTitlesById = useMemo(() => {
+    const titles = new Map<string, string>();
+    let currentSectionTitle = "";
+
+    localItems.forEach((item) => {
+      if (item.item_type === "header") {
+        currentSectionTitle = item.title;
+        return;
+      }
+
+      titles.set(item.id, resolvePlaceholderTitle(item, currentSectionTitle));
+    });
+
+    return titles;
+  }, [localItems, resolvePlaceholderTitle]);
+
   const printDateRange = useMemo(() => {
     const date = new Date(selectedDate);
     const dayOfWeek = date.getDay();
@@ -680,25 +936,6 @@ export function ServiceFlowEditor({
       return item.vocalist?.full_name || undefined;
     };
 
-    const resolvePreviewTitle = (
-      item: ServiceFlowItemType,
-      activeSection: ServiceFlowPreviewData["sections"][number] | null
-    ) => {
-      const rawTitle = item.song?.title || item.title;
-      const normalizedTitle = rawTitle.trim().toLowerCase();
-      const normalizedSectionTitle = activeSection?.title.trim().toLowerCase() || "";
-
-      const isAnnouncementsPlaceholder =
-        normalizedTitle === "name place holder" &&
-        normalizedSectionTitle.includes("announcement");
-
-      if (isAnnouncementsPlaceholder && teachingWeek?.announcer_name?.trim()) {
-        return teachingWeek.announcer_name.trim();
-      }
-
-      return rawTitle;
-    };
-
     localItems.forEach((item) => {
       if (item.item_type === "header") {
         currentSection = {
@@ -712,9 +949,10 @@ export function ServiceFlowEditor({
 
       ensureSection().items.push({
         id: item.id,
-        title: resolvePreviewTitle(item, currentSection),
+        title: resolvePlaceholderTitle(item, currentSection?.title || ""),
         type: inferItemType(item),
         duration: formatItemDuration(item.duration_seconds),
+        clockTime: clockTimesByItemId.get(item.id),
         bpm: item.song?.bpm || undefined,
         key: item.song_key || undefined,
         leader: formatLeader(item),
@@ -731,10 +969,11 @@ export function ServiceFlowEditor({
     campuses,
     effectiveCampusId,
     availableMinistryOptions,
+    clockTimesByItemId,
     ministryType,
     localItems,
+    resolvePlaceholderTitle,
     serviceDateStr,
-    teachingWeek?.announcer_name,
     totalDuration,
   ]);
 
@@ -784,6 +1023,15 @@ export function ServiceFlowEditor({
             />
           </PopoverContent>
         </Popover>
+
+        {scheduledStartTime ? (
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Start: </span>
+            <span className="font-medium tabular-nums">
+              {formatClockTime(clockSourceToSeconds(scheduledStartTime) || 0)}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {teachingWeek ? (
@@ -862,6 +1110,8 @@ export function ServiceFlowEditor({
                   item={item}
                   onUpdate={(updates) => handleUpdateItem(item.id, updates)}
                   onDelete={() => handleDeleteItem(item.id)}
+                  displayTitle={resolvedItemTitlesById.get(item.id)}
+                  clockTime={clockTimesByItemId.get(item.id)}
                   isDragging={draggedItem?.id === item.id}
                 />
               </div>

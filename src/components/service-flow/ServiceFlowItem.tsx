@@ -11,6 +11,8 @@ interface ServiceFlowItemProps {
   item: ServiceFlowItemType;
   onUpdate: (updates: Partial<ServiceFlowItemType>) => void;
   onDelete: () => void;
+  displayTitle?: string;
+  clockTime?: string | null;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
 }
@@ -19,6 +21,8 @@ export function ServiceFlowItem({
   item,
   onUpdate,
   onDelete,
+  displayTitle,
+  clockTime,
   dragHandleProps,
   isDragging,
 }: ServiceFlowItemProps) {
@@ -47,7 +51,9 @@ export function ServiceFlowItem({
     setIsEditingTitle(false);
   };
 
-  const printTitleSlug = (item.song?.title || item.title || "")
+  const resolvedTitle = displayTitle || item.song?.title || item.title;
+
+  const printTitleSlug = (resolvedTitle || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -129,9 +135,14 @@ export function ServiceFlowItem({
           value={item.duration_seconds}
           onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
         />
+        {clockTime ? (
+          <span className="w-[4.75rem] shrink-0 text-center text-xs font-medium tabular-nums text-muted-foreground">
+            {clockTime}
+          </span>
+        ) : null}
         <Music className="h-4 w-4 text-muted-foreground flex-shrink-0" />
         <span className="service-flow-song-title flex-1 min-w-0 font-medium text-sm truncate">
-          {item.song?.title || item.title}
+          {resolvedTitle}
         </span>
         <div className="service-flow-song-meta ml-auto flex items-center justify-end gap-2 text-right">
           {item.song?.bpm && (
@@ -183,6 +194,11 @@ export function ServiceFlowItem({
         value={item.duration_seconds}
         onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
       />
+      {clockTime ? (
+        <span className="w-[4.75rem] shrink-0 text-center text-xs font-medium tabular-nums text-muted-foreground">
+          {clockTime}
+        </span>
+      ) : null}
       {isEditingTitle ? (
         <Input
           value={titleDraft}
@@ -207,7 +223,7 @@ export function ServiceFlowItem({
           onClick={() => setIsEditingTitle(true)}
           title="Click to edit title"
         >
-          {item.title}
+          {resolvedTitle}
         </button>
       )}
       <Button
