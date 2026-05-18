@@ -1165,7 +1165,7 @@ export function ServiceFlowEditor({
       ) : null}
 
       {!isLoading && localItems.length > 0 ? (
-        <div className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.08in]">
+        <div className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]">
           <ServiceFlowPreview
             service={servicePreview}
             compactMode
