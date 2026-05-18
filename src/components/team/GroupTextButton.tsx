@@ -288,7 +288,6 @@ export function GroupTextButton({
         size={size}
         className={className}
         onClick={openComposer}
-        disabled={recipients.length === 0}
       >
         <MessageCircle className="h-4 w-4 mr-2" />
         {label}
