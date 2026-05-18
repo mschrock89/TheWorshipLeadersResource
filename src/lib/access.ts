@@ -93,9 +93,10 @@ export function filterGroupTextRecipients<T extends { ministryTypes?: string[] |
     hasWeekendGroupTextMinistry(member.ministryTypes),
   );
 
-  if (hasProductionManagerRole && !hasVideoDirectorRole) {
+  if (hasProductionManagerRole) {
     return weekendMembers.filter((member) =>
-      hasMatchingPosition(member.positions, PRODUCTION_POSITION_KEYWORDS),
+      hasMatchingPosition(member.positions, PRODUCTION_POSITION_KEYWORDS) ||
+      hasMatchingPosition(member.positions, VIDEO_POSITION_KEYWORDS),
     );
   }
 

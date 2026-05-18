@@ -153,7 +153,10 @@ serve(async (req: Request): Promise<Response> => {
     const hasCampusAccess = isAdminLike || userCampusIds.has(campusId);
     const hasMinistryAccess =
       (ministryType === "production" && roleNames.includes("production_manager")) ||
-      (ministryType === "video" && roleNames.includes("video_director"));
+      (
+        ministryType === "video" &&
+        (roleNames.includes("video_director") || roleNames.includes("production_manager"))
+      );
 
     if (!hasCampusAccess || (!isAdminLike && !hasMinistryAccess)) {
       return new Response(

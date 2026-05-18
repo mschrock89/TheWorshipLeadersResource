@@ -939,7 +939,11 @@ function StandardCalendar() {
         return [];
       }
 
-      if (entry.ministry_type === "video" && !roleNames.includes("video_director")) {
+      if (
+        entry.ministry_type === "video" &&
+        !roleNames.includes("video_director") &&
+        !roleNames.includes("production_manager")
+      ) {
         return [];
       }
 

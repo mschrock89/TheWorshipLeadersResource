@@ -92,7 +92,7 @@ function getLeaderRolesForSwap(params: {
   ) {
     return {
       ministryType: "video",
-      roles: ["video_director"],
+      roles: ["video_director", "production_manager"],
     };
   }
 

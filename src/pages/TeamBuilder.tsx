@@ -304,6 +304,7 @@ export default function TeamBuilder() {
 
   const hasFullTeamBuilderAccess =
     canEditCampus && (isVideoDirector || isAdmin || hasWorshipPastorTeamBuilderAccess);
+  const canEditVideoTeam = (canEditCampus && isProductionManager) || hasFullTeamBuilderAccess;
 
   const isAdminUser = adminCampusInfo?.isOrgAdmin || !!adminCampusInfo?.campusId;
 
@@ -1436,7 +1437,7 @@ export default function TeamBuilder() {
                   periods={periods}
                   ministryFilter={selectedMinistryType}
                   canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
-                  canEditBroadcast={hasFullTeamBuilderAccess}
+                  canEditBroadcast={canEditVideoTeam}
                 />
                 
                 <OnBreakList
@@ -1608,7 +1609,7 @@ export default function TeamBuilder() {
                       isLocked={isTeamLocked(team.id)}
                       onToggleLock={() => handleToggleLock(team.id)}
                       canLock={canEditCampus}
-                      canEditBroadcast={hasFullTeamBuilderAccess}
+                      canEditBroadcast={canEditVideoTeam}
                       canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
                       ministryFilter={selectedMinistryType}
                       campusName={selectedCampus?.name}
@@ -1659,7 +1660,7 @@ export default function TeamBuilder() {
                 ministryFilter={selectedMinistryType}
                 campusName={selectedCampus?.name}
                 canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
-                canEditBroadcast={hasFullTeamBuilderAccess}
+                canEditBroadcast={canEditVideoTeam}
               />
               
               
