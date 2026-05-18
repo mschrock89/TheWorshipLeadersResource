@@ -39,6 +39,38 @@ export interface PublishedSetlist {
   amIOnRoster?: boolean;
 }
 
+type PublishedSetlistRow = Omit<PublishedSetlist, "songs" | "myConfirmation" | "amIOnRoster">;
+
+interface DraftSetSongRow {
+  id: string;
+  draft_set_id: string;
+  song_id: string;
+  sequence_order: number;
+  song_key: string | null;
+  youtube_url?: string | null;
+  vocalist_id: string | null;
+  songs: { title: string; author: string | null } | null;
+}
+
+interface CustomServiceConfirmationAssignment {
+  user_id: string | null;
+  profiles?: { full_name: string | null } | { full_name: string | null }[] | null;
+}
+
+interface TeamMemberConfirmationRow {
+  user_id: string | null;
+  member_name: string | null;
+  ministry_types?: string[] | null;
+}
+
+function getJoinedFullName(profile: unknown): string | null {
+  const value = Array.isArray(profile) ? profile[0] : profile;
+  if (!value || typeof value !== "object") return null;
+
+  const fullName = (value as { full_name?: unknown }).full_name;
+  return typeof fullName === "string" ? fullName : null;
+}
+
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
 
@@ -208,75 +240,33 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
       }
 
-      // For volunteers, get their scheduled dates based on team assignments
-      let scheduledDates: Set<string> | null = null;
-      if (isVolunteerOnly) {
-        // Get teams the user is a member of
-        const { data: teamMemberships } = await supabase
-          .from("team_members")
-          .select("team_id, ministry_types, rotation_period_id, service_day")
-          .eq("user_id", user.id);
+      // Dates where the user was manually assigned for a specific service date.
+      // These override rows are used by Team Builder for one-off/split-role assignments
+      // and may point to a campus that is not on the user's profile.
+      let dateOverrideQuery = supabase
+        .from("team_member_date_overrides")
+        .select("schedule_date")
+        .eq("user_id", user.id);
 
-        const teamIds = [...new Set((teamMemberships || []).map(m => m.team_id))];
-
-        if (teamIds.length > 0) {
-          // Get scheduled dates for those teams
-          let schedulesQuery = supabase
-            .from("team_schedule")
-            .select("schedule_date, team_id, ministry_type")
-            .in("team_id", teamIds);
-          
-          if (!includePast) {
-            schedulesQuery = schedulesQuery.gte("schedule_date", new Date().toISOString().split("T")[0]);
-          }
-          
-          const { data: schedules } = await schedulesQuery;
-
-          scheduledDates = new Set<string>();
-          
-          for (const schedule of schedules || []) {
-            const matchingMemberships = (teamMemberships || []).filter(
-              (membership) =>
-                membership.team_id === schedule.team_id &&
-                assignmentMatchesServiceDay(membership, schedule.schedule_date),
-            );
-
-            const shouldIncludeSchedule = matchingMemberships.some((membership) =>
-              shouldIncludeScheduledDateForMember(membership.ministry_types || [], schedule.ministry_type),
-            );
-
-            if (shouldIncludeSchedule) {
-              scheduledDates.add(schedule.schedule_date);
-
-              if (
-                shouldExpandScheduleDateToWeekendPair(schedule.ministry_type) &&
-                isWeekend(schedule.schedule_date)
-              ) {
-                const pairDate = getWeekendPairDate(schedule.schedule_date);
-                if (pairDate) {
-                  scheduledDates.add(pairDate);
-                }
-              }
-            }
-          }
-
-          // Also include swap dates
-          for (const date of swapDates) {
-            scheduledDates.add(date);
-          }
-
-          // Include custom-service assigned dates
-          for (const date of customAssignmentDates) {
-            scheduledDates.add(date);
-          }
-        } else {
-          // No team memberships - still show swap dates + custom-service assigned dates
-          scheduledDates = new Set([...swapDates, ...customAssignmentDates]);
-        }
+      if (!includePast) {
+        dateOverrideQuery = dateOverrideQuery.gte("schedule_date", new Date().toISOString().split("T")[0]);
       }
 
+      const { data: dateOverrideAssignments } = await dateOverrideQuery;
+      const dateOverrideDatesSet = new Set<string>();
+      for (const row of dateOverrideAssignments || []) {
+        if (!row.schedule_date) continue;
+        dateOverrideDatesSet.add(row.schedule_date);
+
+        if (isWeekend(row.schedule_date)) {
+          const pairDate = getWeekendPairDate(row.schedule_date);
+          if (pairDate) dateOverrideDatesSet.add(pairDate);
+        }
+      }
+      const dateOverrideDates = Array.from(dateOverrideDatesSet);
+
       // Fetch published setlists for user's campuses
-      let setlistsFromCampuses: any[] = [];
+      let setlistsFromCampuses: PublishedSetlistRow[] = [];
       if (userCampusIds.length > 0) {
         let query = supabase
           .from("draft_sets")
@@ -308,11 +298,11 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
 
         const { data } = await query;
-        setlistsFromCampuses = data || [];
+        setlistsFromCampuses = (data || []) as PublishedSetlistRow[];
       }
 
       // Fetch setlists for swap dates (even if outside user's campuses)
-      let setlistsFromSwaps: any[] = [];
+      let setlistsFromSwaps: PublishedSetlistRow[] = [];
       if (swapDates.length > 0) {
         let query = supabase
           .from("draft_sets")
@@ -343,12 +333,12 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
 
         const { data } = await query;
-        setlistsFromSwaps = data || [];
+        setlistsFromSwaps = (data || []) as PublishedSetlistRow[];
       }
 
       // Fetch setlists for custom-service assignments even if they fall outside the
       // currently selected home campus. We will roster-filter these later.
-      let setlistsFromCustomAssignments: any[] = [];
+      let setlistsFromCustomAssignments: PublishedSetlistRow[] = [];
       const customAssignmentDateList = Array.from(customAssignmentDates);
       if (customAssignmentDateList.length > 0) {
         let query = supabase
@@ -380,12 +370,53 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
 
         const { data } = await query;
-        setlistsFromCustomAssignments = data || [];
+        setlistsFromCustomAssignments = (data || []) as PublishedSetlistRow[];
+      }
+
+      // Fetch setlists for date-override assignments even when the assigned service
+      // belongs to a campus that is not on the user's profile.
+      let setlistsFromDateOverrides: PublishedSetlistRow[] = [];
+      if (dateOverrideDates.length > 0) {
+        let query = supabase
+          .from("draft_sets")
+          .select(`
+            id,
+            campus_id,
+            plan_date,
+            ministry_type,
+            custom_service_id,
+            notes,
+            published_at,
+            campuses(name)
+          `)
+          .eq("status", "published")
+          .not("published_at", "is", null)
+          .in("plan_date", dateOverrideDates);
+
+        if (!includePast) {
+          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+        }
+
+        if (ministryType) {
+          query = query.eq("ministry_type", ministryType);
+        }
+
+        if (isVolunteerOnly) {
+          query = query.neq("ministry_type", "audition");
+        }
+
+        const { data } = await query;
+        setlistsFromDateOverrides = (data || []) as PublishedSetlistRow[];
       }
 
       // Merge and deduplicate
       const seenIds = new Set<string>();
-      let setlists = [...setlistsFromCampuses, ...setlistsFromSwaps, ...setlistsFromCustomAssignments]
+      let setlists = [
+        ...setlistsFromCampuses,
+        ...setlistsFromSwaps,
+        ...setlistsFromCustomAssignments,
+        ...setlistsFromDateOverrides,
+      ]
         .filter(s => {
           if (seenIds.has(s.id)) return false;
           seenIds.add(s.id);
@@ -422,10 +453,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
       }
 
-      // For volunteers, filter to only scheduled dates
-      if (isVolunteerOnly && scheduledDates) {
-        setlists = setlists.filter(s => scheduledDates!.has(s.plan_date));
-      }
+      // Do not pre-filter volunteer setlists by locally reconstructed scheduled
+      // dates. Split roles, date overrides, and accepted swaps can legitimately
+      // place a user on a roster even when team_members + team_schedule alone do
+      // not capture that assignment. The roster RPC below is the source of truth.
 
       if (isVolunteerOnly) {
         setlists = setlists.filter((s) => s.ministry_type !== "audition");
@@ -560,7 +591,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           if (canViewAllSetlists) return false;
 
           const isUserSpecificOutOfCampusSet =
-            (swapDatesSet.has(setlist.plan_date) || customAssignmentDates.has(setlist.plan_date)) &&
+            (swapDatesSet.has(setlist.plan_date) ||
+              customAssignmentDates.has(setlist.plan_date) ||
+              dateOverrideDatesSet.has(setlist.plan_date)) &&
             rosterEligibilityBySetId.get(setlist.id) === true;
 
           return isUserSpecificOutOfCampusSet;
@@ -581,7 +614,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
       
-      let allSongs: any[] | null = null;
+      let allSongs: DraftSetSongRow[] | null = null;
       const baseSongIds = setlistIds.length > 0 ? setlistIds : ["00000000-0000-0000-0000-000000000000"];
       const primarySongsQuery = await supabase
         .from("draft_set_songs")
@@ -613,10 +646,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .in("draft_set_id", baseSongIds)
           .order("sequence_order");
         if (legacySongsQuery.error) throw legacySongsQuery.error;
-        allSongs = legacySongsQuery.data;
+        allSongs = (legacySongsQuery.data || []) as DraftSetSongRow[];
       } else {
         if (primarySongsQuery.error) throw primarySongsQuery.error;
-        allSongs = primarySongsQuery.data;
+        allSongs = (primarySongsQuery.data || []) as DraftSetSongRow[];
       }
 
       // Fetch multi-vocalist assignments from junction table
@@ -763,16 +796,16 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
           .eq("assignment_date", draftSet.plan_date);
 
         const seenAssignedUsers = new Set<string>();
-        scheduledMembers = (customAssignments || [])
-          .filter((assignment: any) => Boolean(assignment.user_id))
-          .filter((assignment: any) => {
+        scheduledMembers = ((customAssignments || []) as CustomServiceConfirmationAssignment[])
+          .filter((assignment) => Boolean(assignment.user_id))
+          .filter((assignment) => {
             if (seenAssignedUsers.has(assignment.user_id)) return false;
             seenAssignedUsers.add(assignment.user_id);
             return true;
           })
-          .map((assignment: any) => ({
+          .map((assignment) => ({
             user_id: assignment.user_id,
-            member_name: assignment.profiles?.full_name || "Unknown",
+            member_name: getJoinedFullName(assignment.profiles) || "Unknown",
             isSwappedIn: false,
           }));
       } else {
@@ -803,7 +836,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
               .eq("team_id", teamSchedule.team_id)
               .in("rotation_period_id", rotationPeriodIds)
               .not("user_id", "is", null)
-          : { data: [] as any[] };
+          : { data: [] as TeamMemberConfirmationRow[] };
 
         const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
 
@@ -843,7 +876,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
             if (swap.accepted_by_id) {
               swappedInMembers.push({
                 user_id: swap.accepted_by_id,
-                member_name: (swap.accepted_by as any)?.full_name || "Unknown",
+                member_name: getJoinedFullName(swap.accepted_by) || "Unknown",
               });
             }
           }
@@ -856,7 +889,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
             if (swap.requester_id) {
               swappedInMembers.push({
                 user_id: swap.requester_id,
-                member_name: (swap.requester as any)?.full_name || "Unknown",
+                member_name: getJoinedFullName(swap.requester) || "Unknown",
               });
             }
           }
