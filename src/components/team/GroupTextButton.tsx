@@ -305,7 +305,7 @@ export function GroupTextButton({
             {hasMinistrySelection && (
               <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2 sm:p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium">Ministries on this date</p>
+                  <p className="text-sm font-medium">Teams on this date</p>
                   <div className="flex gap-1">
                     <Button type="button" variant="ghost" size="sm" onClick={() => {
                       setSelectedMinistries(availableMinistries);
