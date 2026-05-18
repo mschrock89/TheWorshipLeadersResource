@@ -24,7 +24,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
-import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType, POSITION_SLOTS } from "@/lib/constants";
 import {
   useDeleteServiceTimeOverride,
   useServiceTimeOverrides,
@@ -75,6 +75,12 @@ const CALENDAR_MINISTRY_FILTER_ORDER = [
   "speaker",
   "prayer_night",
 ] as const;
+const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
+  POSITION_SLOTS.flatMap((slot) => [
+    [slot.slot.toLowerCase(), slot.category],
+    [slot.position.toLowerCase(), slot.category],
+  ]),
+);
 const teamIcons: Record<string, React.ElementType> = {
   star: Star,
   heart: Heart,
@@ -2331,19 +2337,15 @@ function BandRoster({
   // Broadcast positions (cameras, director, producer, etc.)
   const broadcastPositions = ['tri_pod_camera', 'hand_held_camera', 'director', 'graphics', 'producer', 'switcher'];
 
-  // Get production/video members separately (they serve across all ministries)
-  // Only include explicit production/video ministries, or legacy untagged rows
-  // that clearly have production/video positions.
-  const fallbackProductionVideoMembers = roster.filter((m) => {
-    const hasProdOrVideoMinistry = m.ministryTypes.some((mt) => productionMinistryTypes.includes(mt));
-    const hasProdOrVideoPosition = m.positions.some((p) =>
-      [...audioPositions, ...broadcastPositions].some(
-        (ap) => p.toLowerCase().includes(ap.toLowerCase()) || ap.toLowerCase().includes(p.toLowerCase())
-      )
+  const getMemberRosterRoleValues = (member: typeof roster[0]) => [
+    ...member.positions,
+    ...(member.positionSlots || []),
+  ];
+  const memberHasRosterCategory = (member: typeof roster[0], category: string) =>
+    getMemberRosterRoleValues(member).some(
+      (role) => ROSTER_POSITION_CATEGORY_BY_VALUE.get(role.toLowerCase()) === category,
     );
-    const hasNoMinistryTags = !m.ministryTypes || m.ministryTypes.length === 0;
-    return hasProdOrVideoMinistry || (hasNoMinistryTags && hasProdOrVideoPosition);
-  });
+
   // Helper functions for categorizing members
   const isVocalist = (positions: string[]) => {
     return positions.some(p => vocalPositions.includes(p) || p.toLowerCase().includes('vocal'));
@@ -2357,11 +2359,30 @@ function BandRoster({
   const isSpeaker = (positions: string[]) => {
     return positions.some((p) => speakerPositions.includes(p.toLowerCase()));
   };
+  const memberHasProductionRole = (member: typeof roster[0]) => {
+    const roleValues = getMemberRosterRoleValues(member);
+    return memberHasRosterCategory(member, "Production") || isAudio(roleValues);
+  };
+  const memberHasVideoRole = (member: typeof roster[0]) => {
+    const roleValues = getMemberRosterRoleValues(member);
+    return memberHasRosterCategory(member, "Video") || isBroadcast(roleValues);
+  };
+
+  // Get production/video members separately (they serve across all ministries)
+  // Only include explicit production/video ministries when their role also
+  // belongs to that category; this prevents band slots like Keys from leaking
+  // into the Production column through stale or overly broad ministry tags.
+  const fallbackProductionVideoMembers = roster.filter((m) => {
+    const hasProdOrVideoMinistry = m.ministryTypes.some((mt) => productionMinistryTypes.includes(mt));
+    const hasProdOrVideoRole = memberHasProductionRole(m) || memberHasVideoRole(m);
+    const hasNoMinistryTags = !m.ministryTypes || m.ministryTypes.length === 0;
+    return (hasProdOrVideoMinistry && hasProdOrVideoRole) || (hasNoMinistryTags && hasProdOrVideoRole);
+  });
   const fallbackProductionMembers = fallbackProductionVideoMembers.filter((member) =>
-    member.ministryTypes.includes("production") || isAudio(member.positions),
+    memberHasProductionRole(member),
   );
   const fallbackVideoMembers = fallbackProductionVideoMembers.filter((member) =>
-    member.ministryTypes.includes("video") || isBroadcast(member.positions),
+    memberHasVideoRole(member),
   );
 
   // Position priority functions
@@ -2523,11 +2544,13 @@ function BandRoster({
   };
   const renderProductionVideoSection = () => {
     if (!showAudioVideo) return null;
+    const directProductionMembers = normalizedProductionRoster.filter(memberHasProductionRole);
+    const directVideoMembers = normalizedVideoRoster.filter(memberHasVideoRole);
     const audioMembers = dedupeMembersForDisplay(
-      normalizedProductionRoster.length > 0 ? normalizedProductionRoster : fallbackProductionMembers,
+      normalizedProductionRoster.length > 0 ? directProductionMembers : fallbackProductionMembers,
     ).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
     const broadcastMembers = dedupeMembersForDisplay(
-      normalizedVideoRoster.length > 0 ? normalizedVideoRoster : fallbackVideoMembers,
+      normalizedVideoRoster.length > 0 ? directVideoMembers : fallbackVideoMembers,
     ).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)
