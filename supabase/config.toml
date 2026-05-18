@@ -57,6 +57,9 @@ verify_jwt = false
 [functions.notify-chat-message]
 verify_jwt = false
 
+[functions.notify-team-schedule-date]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = false
 
