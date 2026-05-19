@@ -80,6 +80,10 @@ import {
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
 } from "@/lib/constants";
+import {
+  TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME,
+  isBlankTeamBuilderAssignment,
+} from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { formatPositionLabel, getWeekendKey, isWeekend } from "@/lib/utils";
 
@@ -697,13 +701,19 @@ export default function TeamBuilder() {
         teamMembers.forEach((member) => {
           if (!member.position_slot) return;
           const override = dateOverridesByTeamSlot[team.id]?.[member.position_slot]?.[bucketKey];
-          slotMap[member.position_slot] = override?.member_name || member.member_name;
+          if (override) {
+            if (!isBlankTeamBuilderAssignment(override)) {
+              slotMap[member.position_slot] = override.member_name;
+            }
+            return;
+          }
+          slotMap[member.position_slot] = member.member_name;
         });
 
         Object.entries(dateOverridesByTeamSlot[team.id] || {}).forEach(([slot, overridesByBucket]) => {
           if (slotMap[slot]) return;
           const override = overridesByBucket[bucketKey];
-          if (override) {
+          if (override && !isBlankTeamBuilderAssignment(override)) {
             slotMap[slot] = override.member_name;
           }
         });
@@ -1231,6 +1241,55 @@ export default function TeamBuilder() {
     });
   };
 
+  const handleLeaveBlank = (
+    teamId: string,
+    slot: string,
+    scheduleDate?: string,
+  ) => {
+    if (!selectedPeriodId || !canEditCampus || isTeamLocked(teamId)) return;
+
+    const targetMinistryType = resolveTeamBuilderSlotMinistryType(selectedMinistryType, slot);
+    const ministryTypes =
+      targetMinistryType && targetMinistryType !== "all"
+        ? [targetMinistryType]
+        : undefined;
+
+    if (!scheduleDate) {
+      assignMember.mutate({
+        teamId,
+        userId: null,
+        memberName: TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME,
+        positionSlot: slot,
+        rotationPeriodId: selectedPeriodId,
+        ministryTypes,
+        matchMinistryType: targetMinistryType,
+        toastTitle: "Slot left blank",
+      });
+      return;
+    }
+
+    const matchingBucketDates =
+      (teamScheduleBuckets[teamId] || [])
+        .find((bucket) => bucket.key === scheduleDate)
+        ?.dates || [scheduleDate];
+
+    Promise.all(
+      matchingBucketDates.map((bucketDate, index) =>
+        assignMemberDateOverride.mutateAsync({
+          teamId,
+          userId: null,
+          memberName: TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME,
+          positionSlot: slot,
+          rotationPeriodId: selectedPeriodId,
+          scheduleDate: bucketDate,
+          ministryTypes,
+          suppressToast: index < matchingBucketDates.length - 1,
+          toastTitle: "Slot left blank",
+        }),
+      ),
+    );
+  };
+
   const handleSelectMember = (member: AvailableMember, ministryTypes: string[]) => {
     if (!assigningSlot || !selectedPeriodId) return;
     const targetMinistryType = assigningMinistryType || selectedMinistryType;
@@ -1603,6 +1662,7 @@ export default function TeamBuilder() {
                       availableMembers={availableMembers}
                       onAssign={(slot, scheduleDate) => handleAssign(team, slot, scheduleDate, serviceDay)}
                       onRemove={(slot, scheduleDate) => handleRemove(team.id, slot, scheduleDate, serviceDay)}
+                      onLeaveBlank={(slot, scheduleDate) => handleLeaveBlank(team.id, slot, scheduleDate)}
                       onEditMinistry={handleEditMinistry}
                       onEditTemplate={canEditCampus ? () => setEditingTemplateTeam(team) : undefined}
                       readOnly={!canEditCampus}
@@ -1730,6 +1790,11 @@ export default function TeamBuilder() {
           members={assignableMembersForSlot}
           blackoutConflictDatesByMember={blackoutConflictDatesForAssigningSlot}
           onSelect={handleSelectMember}
+          onLeaveBlank={
+            assigningSlot.scheduleDate
+              ? () => handleLeaveBlank(assigningSlot.teamId, assigningSlot.slot, assigningSlot.scheduleDate!)
+              : undefined
+          }
           ministryFilter={selectedMinistryType !== "all" ? selectedMinistryType : undefined}
           requiredGender={assigningSlot.requiredGender}
           scheduleDate={assigningSlot.scheduleDate}

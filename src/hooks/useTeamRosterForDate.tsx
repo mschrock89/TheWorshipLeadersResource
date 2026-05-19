@@ -2,8 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
+import { POSITION_SLOTS } from "@/lib/constants";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import {
   applyEffectiveActiveRotationPeriods,
   buildFirstScheduledDateByRotationName,
@@ -11,6 +13,12 @@ import {
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
+const POSITION_CATEGORY_BY_VALUE = new Map(
+  POSITION_SLOTS.flatMap((slot) => [
+    [slot.slot.toLowerCase(), slot.category],
+    [slot.position.toLowerCase(), slot.category],
+  ]),
+);
 
 const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
   const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
@@ -49,6 +57,50 @@ const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefin
   }
 
   return memberMinistries.includes(ministryType);
+};
+
+const getMinistryTypeForPositionCategory = (category: string | undefined) => {
+  if (category === "Production") return "production";
+  if (category === "Video") return "video";
+  if (category === "Speaker") return "speaker";
+  return null;
+};
+
+const getInferredPositionCategoryForAssignment = (position?: string | null, positionSlot?: string | null) => {
+  const positionSlotCategory = positionSlot ? POSITION_CATEGORY_BY_VALUE.get(positionSlot.toLowerCase()) : undefined;
+  if (positionSlotCategory) return positionSlotCategory;
+
+  return position ? POSITION_CATEGORY_BY_VALUE.get(position.toLowerCase()) : undefined;
+};
+
+const assignmentMatchesRosterFilter = (
+  assignment: {
+    ministry_types?: string[] | null;
+    position?: string | null;
+    position_slot?: string | null;
+  },
+  ministryType?: string,
+) => {
+  if (!ministryType) return true;
+
+  const inferredPositionCategory = getInferredPositionCategoryForAssignment(
+    assignment.position,
+    assignment.position_slot,
+  );
+  const inferredMinistryType = getMinistryTypeForPositionCategory(inferredPositionCategory);
+
+  if (inferredMinistryType) {
+    return ministryMatchesRosterFilter([inferredMinistryType], ministryType);
+  }
+
+  if (
+    (inferredPositionCategory === "Band" || inferredPositionCategory === "Vocalists") &&
+    (ministryType === "production" || ministryType === "video")
+  ) {
+    return false;
+  }
+
+  return ministryMatchesRosterFilter(assignment.ministry_types, ministryType);
 };
 
 const normalizeRosterGroupingMinistry = (ministryType: string | null | undefined) => {
@@ -179,7 +231,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v11"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v12"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -279,7 +331,7 @@ export function useTeamRosterForDate(
         if (!assignmentMatchesServiceDay(m, dateStr)) return false;
 
         // If ministryType is specified, filter by ministry_types array
-        return ministryMatchesRosterFilter(m.ministry_types, ministryType);
+        return assignmentMatchesRosterFilter(m, ministryType);
       });
 
       // Some campuses can have a scheduled team row without a rotation period that
@@ -311,7 +363,7 @@ export function useTeamRosterForDate(
 
         const fallbackCandidates = ((fallbackMembers || []) as TeamMemberWithPeriodRow[])
           .filter((member) => {
-            if (!ministryMatchesRosterFilter(member.ministry_types, ministryType)) {
+            if (!assignmentMatchesRosterFilter(member, ministryType)) {
               return false;
             }
 
@@ -384,14 +436,18 @@ export function useTeamRosterForDate(
       const { data: dateOverrides, error: dateOverridesError } = await overrideQuery;
       if (dateOverridesError) throw dateOverridesError;
 
+      const visibleDateOverrides = ((dateOverrides || []) as TeamMemberDateOverrideRow[])
+        .filter((override) => !isBlankTeamBuilderAssignment(override))
+        .filter((override) => assignmentMatchesRosterFilter(override, ministryType));
       const overrideBySlot = new Map(
-        ((dateOverrides || []) as TeamMemberDateOverrideRow[]).map((override) => [override.position_slot, override]),
+        visibleDateOverrides.map((override) => [override.position_slot, override]),
       );
 
       const effectiveMembers = filteredMembers
+        .filter((member) => !isBlankTeamBuilderAssignment(member))
         .filter((member) => !member.position_slot || !overrideBySlot.has(member.position_slot))
         .concat(
-          ((dateOverrides || []) as TeamMemberDateOverrideRow[]).map((override) => ({
+          visibleDateOverrides.map((override) => ({
             id: override.id,
             member_name: override.member_name,
             position: override.position,

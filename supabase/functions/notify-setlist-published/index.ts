@@ -334,7 +334,7 @@ serve(async (req) => {
     let pushFailed = 0;
 
     if (userIdsToNotify.length > 0) {
-      const campusName = (draftSet.campuses as any)?.name || "";
+      const campusName = (draftSet.campuses as { name?: string } | null)?.name || "";
       const formattedDate = new Date(draftSet.plan_date).toLocaleDateString("en-US", {
         weekday: "short",
         month: "short",
@@ -347,6 +347,14 @@ serve(async (req) => {
         url: `/my-setlists?setId=${draftSetId}`,
         tag: `setlist-${draftSetId}`,
         userIds: userIdsToNotify,
+        contextType: "setlist-published",
+        contextId: draftSetId,
+        metadata: {
+          draftSetId,
+          campusId: draftSet.campus_id,
+          planDate: draftSet.plan_date,
+          ministryType: draftSet.ministry_type,
+        },
       };
 
       try {

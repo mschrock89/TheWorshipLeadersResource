@@ -30,6 +30,7 @@ interface TeamCardProps {
   availableMembers: AvailableMember[];
   onAssign: (slot: string, scheduleDate?: string) => void;
   onRemove: (slot: string, scheduleDate?: string) => void;
+  onLeaveBlank?: (slot: string, scheduleDate?: string) => void;
   onEditMinistry?: (member: TeamMemberAssignment) => void;
   readOnly?: boolean;
   isLocked?: boolean;
@@ -52,6 +53,7 @@ export function TeamCard({
   members,
   onAssign,
   onRemove,
+  onLeaveBlank,
   onEditMinistry,
   readOnly = false,
   isLocked = false,
@@ -126,7 +128,9 @@ export function TeamCard({
       scheduleDates={slotScheduleDates}
       dateOverrides={slotDateOverrides[slotConfig.slot] || {}}
       dateOverrideConflictDates={slotDateOverrideConflictDates[slotConfig.slot] || {}}
+      onLeaveBlank={onLeaveBlank ? () => onLeaveBlank(slotConfig.slot) : undefined}
       onAssignDate={(scheduleDate) => onAssign(slotConfig.slot, scheduleDate)}
+      onLeaveBlankDate={onLeaveBlank ? (scheduleDate) => onLeaveBlank(slotConfig.slot, scheduleDate) : undefined}
       onRemoveDateOverride={(scheduleDate) => onRemove(slotConfig.slot, scheduleDate)}
     />
   );

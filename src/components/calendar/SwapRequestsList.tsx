@@ -1,11 +1,34 @@
+import { useState } from "react";
 import { format } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Check, X, Clock, ArrowLeftRight, Users, User, Loader2, UserPlus, Ban } from "lucide-react";
-import { useSwapRequests, useRespondToSwapRequest, useDismissedSwapRequests, useDismissSwapRequest, SwapRequest } from "@/hooks/useSwapRequests";
+import {
+  useSwapRequests,
+  useRespondToSwapRequest,
+  useDismissedSwapRequests,
+  useDismissSwapRequest,
+  useUserScheduledDates,
+  SwapRequest,
+} from "@/hooks/useSwapRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { parseLocalDate, isWeekend, getWeekendPairDate, formatPositionLabel } from "@/lib/utils";
@@ -46,7 +69,7 @@ function SwapRequestCard({
 }: {
   request: SwapRequest;
   currentUserId: string;
-  onRespond: (id: string, action: "accept" | "decline" | "cancel") => void;
+  onRespond: (request: SwapRequest, action: "accept" | "decline" | "cancel") => void;
   onDismiss: (id: string) => void;
   isResponding: boolean;
   isDismissing: boolean;
@@ -141,7 +164,7 @@ function SwapRequestCard({
             <Button
               size="sm"
               className="flex-1"
-              onClick={() => onRespond(request.id, "accept")}
+              onClick={() => onRespond(request, "accept")}
               disabled={isResponding || isDismissing}
             >
               {isResponding ? (
@@ -158,7 +181,7 @@ function SwapRequestCard({
                 size="sm"
                 variant="outline"
                 className="flex-1"
-                onClick={() => onRespond(request.id, "decline")}
+                onClick={() => onRespond(request, "decline")}
                 disabled={isResponding || isDismissing}
               >
                 <X className="h-4 w-4 mr-1" />
@@ -190,7 +213,7 @@ function SwapRequestCard({
             size="sm"
             variant="ghost"
             className="w-full text-muted-foreground"
-            onClick={() => onRespond(request.id, "cancel")}
+            onClick={() => onRespond(request, "cancel")}
             disabled={isResponding}
           >
             Cancel Request
@@ -209,12 +232,26 @@ export function SwapRequestsList() {
   const { user } = useAuth();
   const { data: requests, isLoading } = useSwapRequests();
   const { data: dismissedIds, isLoading: dismissalsLoading } = useDismissedSwapRequests();
+  const { data: scheduledDates, isLoading: scheduledDatesLoading } = useUserScheduledDates(user?.id);
   const respondToRequest = useRespondToSwapRequest();
   const dismissRequest = useDismissSwapRequest();
+  const [reciprocalSwapRequest, setReciprocalSwapRequest] = useState<SwapRequest | null>(null);
+  const [selectedSwapDate, setSelectedSwapDate] = useState("");
 
-  const handleRespond = async (requestId: string, action: "accept" | "decline" | "cancel") => {
+  const reciprocalDateOptions = (scheduledDates || [])
+    .filter((date) => date.schedule_date !== reciprocalSwapRequest?.original_date)
+    .filter((date, index, dates) => dates.findIndex((entry) => entry.schedule_date === date.schedule_date) === index);
+
+  const handleRespond = async (request: SwapRequest, action: "accept" | "decline" | "cancel") => {
+    if (action === "accept" && request.request_type === "swap" && !request.swap_date) {
+      const firstAvailableDate = (scheduledDates || []).find((date) => date.schedule_date !== request.original_date);
+      setSelectedSwapDate(firstAvailableDate?.schedule_date || "");
+      setReciprocalSwapRequest(request);
+      return;
+    }
+
     try {
-      await respondToRequest.mutateAsync({ requestId, action });
+      await respondToRequest.mutateAsync({ requestId: request.id, action });
       toast.success(
         action === "accept"
           ? "Swap request accepted!"
@@ -222,6 +259,27 @@ export function SwapRequestsList() {
           ? "Swap request declined"
           : "Swap request cancelled"
       );
+    } catch (error) {
+      toast.error("Failed to respond to request");
+      console.error(error);
+    }
+  };
+
+  const handleConfirmReciprocalSwap = async () => {
+    if (!reciprocalSwapRequest || !selectedSwapDate) {
+      toast.error("Choose the date they will cover for you");
+      return;
+    }
+
+    try {
+      await respondToRequest.mutateAsync({
+        requestId: reciprocalSwapRequest.id,
+        action: "accept",
+        swapDate: selectedSwapDate,
+      });
+      toast.success("Swap request accepted!");
+      setReciprocalSwapRequest(null);
+      setSelectedSwapDate("");
     } catch (error) {
       toast.error("Failed to respond to request");
       console.error(error);
@@ -260,96 +318,159 @@ export function SwapRequestsList() {
   const resolvedOutgoing = outgoingRequests.filter((r) => r.status !== "pending");
 
   return (
-    <Tabs defaultValue="incoming" className="w-full">
-      <TabsList className="grid w-full grid-cols-2">
-        <TabsTrigger value="incoming" className="relative">
-          Incoming
-          {incomingRequests.length > 0 && (
-            <Badge
-              variant="destructive"
-              className="ml-2 h-5 min-w-5 px-1.5 text-xs"
-            >
-              {incomingRequests.length}
-            </Badge>
-          )}
-        </TabsTrigger>
-        <TabsTrigger value="outgoing">
-          My Requests
-          {pendingOutgoing.length > 0 && (
-            <Badge
-              variant="secondary"
-              className="ml-2 h-5 min-w-5 px-1.5 text-xs"
-            >
-              {pendingOutgoing.length}
-            </Badge>
-          )}
-        </TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="incoming" className="mt-4 space-y-3">
-        {incomingRequests.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No incoming swap requests</p>
-          </div>
-        ) : (
-          incomingRequests.map((request) => (
-            <SwapRequestCard
-              key={request.id}
-              request={request}
-              currentUserId={user?.id || ""}
-              onRespond={handleRespond}
-              onDismiss={handleDismiss}
-              isResponding={respondToRequest.isPending}
-              isDismissing={dismissRequest.isPending}
-            />
-          ))
-        )}
-      </TabsContent>
-
-      <TabsContent value="outgoing" className="mt-4 space-y-4">
-        {outgoingRequests.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>You haven't made any swap requests</p>
-          </div>
-        ) : (
-          <>
+    <>
+      <Tabs defaultValue="incoming" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="incoming" className="relative">
+            Incoming
+            {incomingRequests.length > 0 && (
+              <Badge
+                variant="destructive"
+                className="ml-2 h-5 min-w-5 px-1.5 text-xs"
+              >
+                {incomingRequests.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="outgoing">
+            My Requests
             {pendingOutgoing.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground">Pending</h3>
-                {pendingOutgoing.map((request) => (
-                  <SwapRequestCard
-                    key={request.id}
-                    request={request}
-                    currentUserId={user?.id || ""}
-                    onRespond={handleRespond}
-                    onDismiss={handleDismiss}
-                    isResponding={respondToRequest.isPending}
-                    isDismissing={dismissRequest.isPending}
-                  />
-                ))}
-              </div>
+              <Badge
+                variant="secondary"
+                className="ml-2 h-5 min-w-5 px-1.5 text-xs"
+              >
+                {pendingOutgoing.length}
+              </Badge>
             )}
-            {resolvedOutgoing.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-muted-foreground">Past Requests</h3>
-                {resolvedOutgoing.slice(0, 5).map((request) => (
-                  <SwapRequestCard
-                    key={request.id}
-                    request={request}
-                    currentUserId={user?.id || ""}
-                    onRespond={handleRespond}
-                    onDismiss={handleDismiss}
-                    isResponding={respondToRequest.isPending}
-                    isDismissing={dismissRequest.isPending}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </TabsContent>
-    </Tabs>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="incoming" className="mt-4 space-y-3">
+          {incomingRequests.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No incoming swap requests</p>
+            </div>
+          ) : (
+            incomingRequests.map((request) => (
+              <SwapRequestCard
+                key={request.id}
+                request={request}
+                currentUserId={user?.id || ""}
+                onRespond={handleRespond}
+                onDismiss={handleDismiss}
+                isResponding={respondToRequest.isPending}
+                isDismissing={dismissRequest.isPending}
+              />
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="outgoing" className="mt-4 space-y-4">
+          {outgoingRequests.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>You haven't made any swap requests</p>
+            </div>
+          ) : (
+            <>
+              {pendingOutgoing.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground">Pending</h3>
+                  {pendingOutgoing.map((request) => (
+                    <SwapRequestCard
+                      key={request.id}
+                      request={request}
+                      currentUserId={user?.id || ""}
+                      onRespond={handleRespond}
+                      onDismiss={handleDismiss}
+                      isResponding={respondToRequest.isPending}
+                      isDismissing={dismissRequest.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+              {resolvedOutgoing.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground">Past Requests</h3>
+                  {resolvedOutgoing.slice(0, 5).map((request) => (
+                    <SwapRequestCard
+                      key={request.id}
+                      request={request}
+                      currentUserId={user?.id || ""}
+                      onRespond={handleRespond}
+                      onDismiss={handleDismiss}
+                      isResponding={respondToRequest.isPending}
+                      isDismissing={dismissRequest.isPending}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      <Dialog
+        open={!!reciprocalSwapRequest}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReciprocalSwapRequest(null);
+            setSelectedSwapDate("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Choose Your Swap Date</DialogTitle>
+            <DialogDescription>
+              Select the date {reciprocalSwapRequest?.requester?.full_name || "they"} will cover for you.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Select
+            value={selectedSwapDate}
+            onValueChange={setSelectedSwapDate}
+            disabled={scheduledDatesLoading || reciprocalDateOptions.length === 0}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={scheduledDatesLoading ? "Loading dates..." : "Select a date"} />
+            </SelectTrigger>
+            <SelectContent>
+              {reciprocalDateOptions.map((date) => (
+                <SelectItem key={`${date.team_id}-${date.schedule_date}`} value={date.schedule_date}>
+                  {formatSwapDate(date.schedule_date)}
+                  {date.worship_teams?.name ? ` - ${date.worship_teams.name}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {reciprocalDateOptions.length === 0 && !scheduledDatesLoading && (
+            <p className="text-sm text-muted-foreground">
+              You do not have an upcoming scheduled date to offer for this swap.
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReciprocalSwapRequest(null);
+                setSelectedSwapDate("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmReciprocalSwap}
+              disabled={!selectedSwapDate || respondToRequest.isPending}
+            >
+              {respondToRequest.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accept Swap"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

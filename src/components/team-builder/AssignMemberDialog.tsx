@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search, Users, AlertTriangle } from "lucide-react";
+import { Search, Users, AlertTriangle, Minus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import {
   Dialog,
@@ -31,6 +31,7 @@ interface AssignMemberDialogProps {
   members: AvailableMember[];
   blackoutConflictDatesByMember?: Record<string, string[]>;
   onSelect: (member: AvailableMember, ministryTypes: string[]) => void;
+  onLeaveBlank?: () => void;
   ministryFilter?: string;
   requiredGender?: VocalSlotGender | null;
   scheduleDate?: string;
@@ -44,6 +45,7 @@ export function AssignMemberDialog({
   members,
   blackoutConflictDatesByMember = {},
   onSelect,
+  onLeaveBlank,
   ministryFilter,
   requiredGender,
   scheduleDate,
@@ -237,6 +239,11 @@ export function AssignMemberDialog({
     }
   };
 
+  const handleLeaveBlank = () => {
+    onLeaveBlank?.();
+    handleClose(false);
+  };
+
   const handleBack = () => {
     setSelectedMember(null);
     setSelectedMinistries([]);
@@ -291,6 +298,25 @@ export function AssignMemberDialog({
                 className="pl-9"
               />
             </div>
+
+            {scheduleDateLabel && onLeaveBlank && (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-auto w-full justify-start rounded-xl px-3 py-3 text-left"
+                onClick={handleLeaveBlank}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <Minus className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="ml-3">
+                  <p className="font-medium">Leave this slot blank</p>
+                  <p className="text-xs text-muted-foreground">
+                    No one will be scheduled for {slotLabel} on {scheduleDateLabel}.
+                  </p>
+                </div>
+              </Button>
+            )}
 
             {effectiveMinistryFilter && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

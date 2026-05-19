@@ -9,6 +9,7 @@ import {
   memberMatchesMinistryFilter,
   normalizeWeekendWorshipMinistryType,
 } from "@/lib/constants";
+import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
 import { getWeekendKey, isWeekend } from "@/lib/utils";
@@ -518,7 +519,7 @@ export function usePreviousPeriodMembers(
         // Treat NULL or empty array as default ministry for backwards compatibility
         ministry_types: m.ministry_types?.length ? m.ministry_types : ['weekend'],
         service_day: m.service_day || null,
-      })) as TeamMemberAssignment[];
+      })).filter((assignment) => !isBlankTeamBuilderAssignment(assignment)) as TeamMemberAssignment[];
     },
   });
 }
@@ -684,7 +685,7 @@ export function useTeamMembersForPeriod(rotationPeriodId: string | null) {
         // Treat NULL or empty array as default ministry for backwards compatibility
         ministry_types: m.ministry_types?.length ? m.ministry_types : ['weekend'],
         service_day: m.service_day || null,
-      })) as TeamMemberAssignment[];
+      })).filter((assignment) => !isBlankTeamBuilderAssignment(assignment)) as TeamMemberAssignment[];
     },
   });
 }
@@ -885,6 +886,7 @@ export function useAssignMember() {
       serviceDay,
       ministryTypes,
       matchMinistryType,
+      toastTitle,
     }: {
       teamId: string;
       userId: string | null;
@@ -894,6 +896,7 @@ export function useAssignMember() {
       serviceDay?: string | null;
       ministryTypes?: string[];
       matchMinistryType?: string | null;
+      toastTitle?: string;
     }) => {
       // IMPORTANT: team display filters depend on ministry_types including the active ministry.
       // If we ever insert/update with an empty array, the assignment can disappear when filtering.
@@ -1010,10 +1013,12 @@ export function useAssignMember() {
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["team-members-period", variables.rotationPeriodId] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
-      toast({ title: "Member assigned successfully" });
+      queryClient.invalidateQueries({ queryKey: ["my-scheduled-dates"] });
+      toast({ title: variables.toastTitle || "Member assigned successfully" });
     },
     onError: (error) => {
       toast({
@@ -1125,6 +1130,7 @@ export function useAssignMemberDateOverride() {
       scheduleDate,
       ministryTypes,
       suppressToast,
+      toastTitle,
     }: {
       teamId: string;
       userId: string | null;
@@ -1134,6 +1140,7 @@ export function useAssignMemberDateOverride() {
       scheduleDate: string;
       ministryTypes?: string[];
       suppressToast?: boolean;
+      toastTitle?: string;
     }) => {
       const normalizedMinistryTypes = ministryTypes?.length ? ministryTypes : ["weekend"];
       const slotConfig = POSITION_SLOTS.find((s) => s.slot === positionSlot);
@@ -1161,9 +1168,12 @@ export function useAssignMemberDateOverride() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides", variables.rotationPeriodId] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
+      queryClient.invalidateQueries({ queryKey: ["my-team-date-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["my-scheduled-dates"] });
       if (!variables.suppressToast) {
-        toast({ title: "Split assignment saved" });
+        toast({ title: variables.toastTitle || "Split assignment saved" });
       }
     },
     onError: (error) => {
@@ -1694,7 +1704,11 @@ export function useCrossCheckRotationAssignments() {
 
       const conflictsByUserWeekend = new Map<string, RotationConflict>();
       (teamMembers as Array<Pick<TeamMemberRow, "rotation_period_id" | "user_id" | "member_name" | "team_id" | "ministry_types" | "service_day">> | null || [])
-        .filter((member) => member.user_id && memberMatchesMinistryFilter(member.ministry_types || [], ministryType))
+        .filter((member) =>
+          !isBlankTeamBuilderAssignment(member) &&
+          member.user_id &&
+          memberMatchesMinistryFilter(member.ministry_types || [], ministryType)
+        )
         .forEach((member) => {
           const periodMeta = periodCampusMap.get(member.rotation_period_id);
           if (!periodMeta) return;

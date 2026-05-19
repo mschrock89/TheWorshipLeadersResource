@@ -329,9 +329,11 @@ export function useRespondToSwapRequest() {
     mutationFn: async ({
       requestId,
       action,
+      swapDate,
     }: {
       requestId: string;
       action: "accept" | "decline" | "cancel";
+      swapDate?: string | null;
     }) => {
       const updateData: Record<string, unknown> = {
         resolved_at: new Date().toISOString(),
@@ -350,6 +352,12 @@ export function useRespondToSwapRequest() {
         updateData.status = "accepted";
         updateData.accepted_by_id = user!.id;
         if (existingRequest?.swap_date) {
+          updateData.request_type = "swap";
+        } else if (existingRequest?.request_type === "swap") {
+          if (!swapDate) {
+            throw new Error("A reciprocal date is required to accept an open swap.");
+          }
+          updateData.swap_date = swapDate;
           updateData.request_type = "swap";
         }
       } else if (action === "decline") {
@@ -384,6 +392,12 @@ export function useRespondToSwapRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["swap-requests"] });
       queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
+      queryClient.invalidateQueries({ queryKey: ["team-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-team"] });
+      queryClient.invalidateQueries({ queryKey: ["my-team-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-all"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-for-date"] });
     },
   });
 }

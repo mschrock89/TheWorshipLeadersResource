@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Plus, User, Edit2, AlertTriangle, SplitSquareVertical } from "lucide-react";
+import { X, Plus, User, Edit2, AlertTriangle, SplitSquareVertical, Minus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MINISTRY_TYPES } from "@/lib/constants";
+import {
+  isBlankTeamBuilderAssignment,
+  isBlankTeamBuilderMemberName,
+} from "@/lib/teamBuilderBlankSlot";
 import { TeamMemberAssignment } from "@/hooks/useTeamBuilder";
 
 interface PositionSlotProps {
@@ -23,7 +27,9 @@ interface PositionSlotProps {
   scheduleDates?: string[];
   dateOverrides?: Record<string, TeamMemberAssignment>;
   dateOverrideConflictDates?: Record<string, string[]>;
+  onLeaveBlank?: () => void;
   onAssignDate?: (scheduleDate: string) => void;
+  onLeaveBlankDate?: (scheduleDate: string) => void;
   onRemoveDateOverride?: (scheduleDate: string) => void;
 }
 
@@ -42,7 +48,9 @@ export function PositionSlot({
   scheduleDates = [],
   dateOverrides = {},
   dateOverrideConflictDates = {},
+  onLeaveBlank,
   onAssignDate,
+  onLeaveBlankDate,
   onRemoveDateOverride,
 }: PositionSlotProps) {
   const [selectedView, setSelectedView] = useState<"all" | string>("all");
@@ -69,9 +77,14 @@ export function PositionSlot({
   }, [firstOverrideDate, isEmpty, selectedView]);
 
   const selectedOverride = selectedView !== "all" ? dateOverrides[selectedView] : undefined;
+  const selectedOverrideIsBlank = isBlankTeamBuilderAssignment(selectedOverride);
+  const baseAssignmentIsBlank = selectedView === "all" && isBlankTeamBuilderMemberName(memberName);
+  const selectedAssignmentIsBlank = selectedOverrideIsBlank || baseAssignmentIsBlank;
   const effectiveIsEmpty = isEmpty && !selectedOverride;
-  const selectedMemberName = selectedOverride?.member_name || memberName;
-  const selectedAvatarUrl = selectedOverride ? null : avatarUrl;
+  const selectedMemberName = selectedAssignmentIsBlank
+    ? "No one assigned"
+    : selectedOverride?.member_name || memberName;
+  const selectedAvatarUrl = selectedOverride && !selectedOverrideIsBlank ? null : avatarUrl;
   const selectedConflictDates = useMemo(() => {
     if (selectedView === "all") {
       return conflictDates;
@@ -87,6 +100,8 @@ export function PositionSlot({
   const hasConflicts = selectedConflictDates.length > 0;
   const isDateView = selectedView !== "all";
   const showSplitButton = isDateView && !!onAssignDate && !readOnly;
+  const showBlankButton = isDateView && !!onLeaveBlankDate && !readOnly && !selectedOverrideIsBlank;
+  const showFullBlankButton = !isDateView && !effectiveIsEmpty && !!onLeaveBlank && !readOnly && !baseAssignmentIsBlank;
   const canRemoveCurrentSelection = isDateView
     ? !!selectedOverride && !!onRemoveDateOverride && !readOnly
     : !readOnly;
@@ -104,7 +119,7 @@ export function PositionSlot({
     <div
       className={cn(
         "rounded-lg border p-2 transition-colors",
-        effectiveIsEmpty
+        effectiveIsEmpty || selectedAssignmentIsBlank
           ? "border-dashed border-muted-foreground/30 bg-muted/30"
           : hasConflicts
           ? "border-amber-500/35 bg-amber-500/[0.04]"
@@ -198,15 +213,28 @@ export function PositionSlot({
           )}
 
           <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={selectedAvatarUrl || undefined} alt={selectedMemberName} />
-              <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                {selectedMemberName?.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-              </AvatarFallback>
-            </Avatar>
+            {selectedAssignmentIsBlank ? (
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+                <User className="h-4 w-4 text-muted-foreground" />
+              </div>
+            ) : (
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={selectedAvatarUrl || undefined} alt={selectedMemberName} />
+                <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                  {selectedMemberName?.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+            )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-sm font-medium truncate">{selectedMemberName}</p>
+                <p
+                  className={cn(
+                    "truncate text-sm font-medium",
+                    selectedAssignmentIsBlank && "text-muted-foreground",
+                  )}
+                >
+                  {selectedMemberName}
+                </p>
                 <div className="flex-1" />
                 {hasConflicts && (
                   <Badge
@@ -235,7 +263,11 @@ export function PositionSlot({
                 {label}
                 {isDateView && (
                   <span className="ml-1">
-                    · {selectedOverride ? `Split for ${format(parseISO(selectedView), "MMM d")}` : format(parseISO(selectedView), "MMM d")}
+                    · {selectedOverrideIsBlank
+                      ? `Blank for ${format(parseISO(selectedView), "MMM d")}`
+                      : selectedOverride
+                      ? `Split for ${format(parseISO(selectedView), "MMM d")}`
+                      : format(parseISO(selectedView), "MMM d")}
                   </span>
                 )}
               </p>
@@ -251,6 +283,18 @@ export function PositionSlot({
                 <Edit2 className="h-3.5 w-3.5" />
               </Button>
             )}
+            {showFullBlankButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:bg-muted"
+                onClick={onLeaveBlank}
+                title={`Leave ${label} blank for the full rotation`}
+              >
+                <Minus className="mr-1 h-3.5 w-3.5" />
+                Blank
+              </Button>
+            )}
             {showSplitButton && (
               <Button
                 variant="ghost"
@@ -259,7 +303,19 @@ export function PositionSlot({
                 onClick={() => onAssignDate?.(selectedView)}
               >
                 <SplitSquareVertical className="mr-1 h-3.5 w-3.5" />
-                {selectedOverride ? "Change" : "Split"}
+                {selectedOverrideIsBlank ? "Assign" : selectedOverride ? "Change" : "Split"}
+              </Button>
+            )}
+            {showBlankButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:bg-muted"
+                onClick={() => onLeaveBlankDate?.(selectedView)}
+                title={`Leave ${label} blank for ${format(parseISO(selectedView), "MMM d")}`}
+              >
+                <Minus className="mr-1 h-3.5 w-3.5" />
+                Blank
               </Button>
             )}
             {canRemoveCurrentSelection && (
@@ -267,6 +323,11 @@ export function PositionSlot({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                title={
+                  isDateView && selectedOverride
+                    ? "Remove date override"
+                    : "Remove assignment"
+                }
                 onClick={() => {
                   if (isDateView && selectedOverride) {
                     onRemoveDateOverride?.(selectedView);

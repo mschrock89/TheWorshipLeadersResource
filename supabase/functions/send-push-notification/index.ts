@@ -415,7 +415,7 @@ serve(async (req) => {
       title: payload.title,
       message: payload.message,
       audience: payload.audience || "default",
-      userIds: payload.userIds?.length || "all",
+      userIds: Array.isArray(payload.userIds) ? payload.userIds.length : "not provided",
       isAdminTestPush,
     });
 
@@ -476,6 +476,7 @@ serve(async (req) => {
     }
 
     let recipientUserIds: string[] = [];
+    const hasExplicitRecipientList = Array.isArray(payload.userIds);
 
     if (isAdminTestPush) {
       const { data: enabledUsers, error: enabledUsersError } = await supabase
@@ -493,8 +494,41 @@ serve(async (req) => {
       recipientUserIds = Array.from(
         new Set((enabledUsers || []).map((subscription) => subscription.user_id).filter(Boolean)),
       );
-    } else if (payload.userIds && payload.userIds.length > 0) {
-      recipientUserIds = Array.from(new Set(payload.userIds.filter(Boolean)));
+    } else if (hasExplicitRecipientList) {
+      recipientUserIds = Array.from(new Set(payload.userIds!.filter(Boolean)));
+
+      if (recipientUserIds.length === 0) {
+        console.log("Push request had an explicit empty recipient list; skipping delivery");
+        return new Response(
+          JSON.stringify({
+            success: true,
+            sent: 0,
+            failed: 0,
+            total: 0,
+            recipientUserCount: 0,
+            recipientDeviceCount: 0,
+            skipped: true,
+            reason: "No recipient userIds",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      console.warn("Rejecting push request without explicit recipients", {
+        title: payload.title,
+        tag: payload.tag,
+        contextType: payload.contextType,
+      });
+
+      return new Response(
+        JSON.stringify({
+          error: "userIds is required unless audience is all_enabled_users",
+          sent: 0,
+          failed: 0,
+          total: 0,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     let query = supabase.from("push_subscriptions").select("*");
