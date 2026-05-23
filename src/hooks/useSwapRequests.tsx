@@ -490,6 +490,44 @@ export interface PositionMember {
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
+const SWAP_POSITION_ALIASES: Record<string, string> = {
+  foh: "sound_tech",
+  lyrics: "media",
+  announcements: "announcement",
+  closing_prayer: "closing_prayer",
+  tri_pod_camera: "tri_pod_camera",
+  hand_held_camera: "hand_held_camera",
+  drum_tech: "drum_tech",
+  audio_shadow: "audio_shadow",
+};
+const SWAP_POSITION_DISPLAY_VARIANTS: Record<string, string[]> = {
+  announcement: ["Announcements"],
+  bass: ["Bass"],
+  broadcast: ["Broadcast"],
+  camera_1: ["Camera 1"],
+  camera_2: ["Camera 2"],
+  camera_3: ["Camera 3"],
+  camera_4: ["Camera 4"],
+  camera_5: ["Camera 5"],
+  camera_6: ["Camera 6"],
+  closing_prayer: ["Closing Prayer"],
+  director: ["Director"],
+  drums: ["Drums"],
+  drum_tech: ["Drum Tech"],
+  graphics: ["Graphics"],
+  hand_held_camera: ["Hand-Held Camera"],
+  keys: ["Keys"],
+  lighting: ["Lighting"],
+  media: ["Lyrics"],
+  mon: ["MON"],
+  other_instrument: ["Other Instrument"],
+  pad: ["Pad"],
+  piano: ["Piano"],
+  producer: ["Producer"],
+  sound_tech: ["FOH"],
+  switcher: ["Switcher"],
+  tri_pod_camera: ["Tri-Pod Camera"],
+};
 const PRODUCTION_SWAP_POSITIONS = new Set([
   "sound_tech",
   "mon",
@@ -556,7 +594,8 @@ function ministriesMatchForSwap(memberMinistry: string, targetMinistry: string):
 }
 
 function normalizeSwapPosition(position: string): string {
-  return position.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = position.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return SWAP_POSITION_ALIASES[normalized] || normalized;
 }
 
 function getSwapPositionVariants(position: string): string[] {
@@ -565,18 +604,18 @@ function getSwapPositionVariants(position: string): string[] {
   const normalizedAcousticVariants = new Set(ACOUSTIC_POSITION_VARIANTS.map(normalizeSwapPosition));
 
   if (VOCALIST_POSITIONS.includes(normalized)) {
-    return VOCALIST_POSITIONS;
+    return [...new Set([...VOCALIST_POSITIONS, "Vocalist"])];
   }
 
   if (normalizedElectricVariants.has(normalized)) {
-    return ELECTRIC_POSITION_VARIANTS;
+    return [...new Set([...ELECTRIC_POSITION_VARIANTS, ...ELECTRIC_POSITION_VARIANTS.map(normalizeSwapPosition)])];
   }
 
   if (normalizedAcousticVariants.has(normalized)) {
-    return ACOUSTIC_POSITION_VARIANTS;
+    return [...new Set([...ACOUSTIC_POSITION_VARIANTS, ...ACOUSTIC_POSITION_VARIANTS.map(normalizeSwapPosition)])];
   }
 
-  return [position];
+  return [...new Set([position, normalized, ...(SWAP_POSITION_DISPLAY_VARIANTS[normalized] || [])])];
 }
 
 function resolveSwapMinistryType(

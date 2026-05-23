@@ -2,7 +2,86 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
-const POSITION_ALIASES: Record<string, string> = {
+const DB_POSITION_TO_UI_POSITION: Record<string, string> = {
+  "Vocalist": "vocalist",
+  "Announcements": "announcement",
+  "Closing Prayer": "closing_prayer",
+  "AG 1": "acoustic_1",
+  "AG 2": "acoustic_2",
+  "EG 1": "electric_1",
+  "EG 2": "electric_2",
+  "EG 3": "electric_3",
+  "EG 4": "electric_4",
+  "Bass": "bass",
+  "Broadcast": "broadcast",
+  "Camera 1": "camera_1",
+  "Camera 2": "camera_2",
+  "Camera 3": "camera_3",
+  "Camera 4": "camera_4",
+  "Camera 5": "camera_5",
+  "Camera 6": "camera_6",
+  "Director": "director",
+  "Drums": "drums",
+  "Drum Tech": "drum_tech",
+  "Graphics": "graphics",
+  "Keys": "keys",
+  "Lighting": "lighting",
+  "Other Instrument": "other_instrument",
+  "Pad": "pad",
+  "Piano": "piano",
+  "Producer": "producer",
+  "FOH": "sound_tech",
+  "MON": "mon",
+  "Lyrics": "media",
+  "Switcher": "switcher",
+  "Audio Shadow": "audio_shadow",
+  "Tri-Pod Camera": "tri_pod_camera",
+  "Hand-Held Camera": "hand_held_camera",
+};
+
+const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
+  vocalist: "Vocalist",
+  teacher: "Teacher",
+  announcement: "Announcements",
+  closing_prayer: "Closing Prayer",
+  closer: "Closing Prayer",
+  acoustic_guitar: "AG 1",
+  acoustic_1: "AG 1",
+  acoustic_2: "AG 2",
+  electric_guitar: "EG 1",
+  electric_1: "EG 1",
+  electric_2: "EG 2",
+  electric_3: "EG 3",
+  electric_4: "EG 4",
+  bass: "Bass",
+  broadcast: "Broadcast",
+  camera_1: "Camera 1",
+  camera_2: "Camera 2",
+  camera_3: "Camera 3",
+  camera_4: "Camera 4",
+  camera_5: "Camera 5",
+  camera_6: "Camera 6",
+  drums: "Drums",
+  drum_tech: "Drum Tech",
+  keys: "Keys",
+  pad: "Pad",
+  piano: "Piano",
+  sound_tech: "FOH",
+  mon: "MON",
+  media: "Lyrics",
+  audio_shadow: "Audio Shadow",
+  lighting: "Lighting",
+  producer: "Producer",
+  tri_pod_camera: "Tri-Pod Camera",
+  hand_held_camera: "Hand-Held Camera",
+  director: "Director",
+  graphics: "Graphics",
+  switcher: "Switcher",
+  other: "Other",
+  other_instrument: "Other Instrument",
+};
+
+const LEGACY_POSITION_ALIASES: Record<string, string> = {
   closer: "closing_prayer",
 };
 
@@ -13,7 +92,25 @@ function getNormalizedMinistryType(ministryType: string) {
 }
 
 function getNormalizedPosition(position: string) {
-  return POSITION_ALIASES[position] ?? position;
+  return DB_POSITION_TO_UI_POSITION[position] ?? LEGACY_POSITION_ALIASES[position] ?? position;
+}
+
+function getStoredPosition(position: string) {
+  const normalizedPosition = getNormalizedPosition(position);
+  return UI_POSITION_TO_DB_POSITION[normalizedPosition] ?? position;
+}
+
+function getEquivalentPositions(position: string) {
+  const normalizedPosition = getNormalizedPosition(position);
+  const storedPosition = getStoredPosition(position);
+  const positions = new Set([position, normalizedPosition, storedPosition]);
+
+  if (normalizedPosition === "closing_prayer") {
+    positions.add("closer");
+    positions.add("Closing Prayer");
+  }
+
+  return [...positions];
 }
 
 function getEquivalentMinistryTypes(ministryType: string) {
@@ -91,9 +188,8 @@ export function useToggleCampusMinistryPosition() {
       const equivalentMinistryTypes = getEquivalentMinistryTypes(ministryType);
       const normalizedMinistryType = getNormalizedMinistryType(ministryType);
       const normalizedPosition = getNormalizedPosition(position);
-      const positionsToMatch = normalizedPosition === "closing_prayer"
-        ? ["closing_prayer", "closer"]
-        : [normalizedPosition];
+      const storedPosition = getStoredPosition(normalizedPosition);
+      const positionsToMatch = getEquivalentPositions(normalizedPosition);
 
       if (isActive) {
         // Remove the position
@@ -124,7 +220,7 @@ export function useToggleCampusMinistryPosition() {
             user_id: userId,
             campus_id: campusId,
             ministry_type: normalizedMinistryType,
-            position: normalizedPosition,
+            position: storedPosition,
           });
         
         if (error) throw error;
