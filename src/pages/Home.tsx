@@ -129,7 +129,7 @@ export default function Home() {
                   <DropdownMenuItem asChild>
                     <Link to="/feed" className="flex items-center gap-2">
                       <Newspaper className="h-4 w-4" />
-                      The Feed
+                      THE FEED
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

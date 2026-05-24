@@ -12,7 +12,6 @@ import {
   MessageSquare,
   PenSquare,
   PlayCircle,
-  Sparkles,
   Trash2,
   Youtube,
 } from "lucide-react";
@@ -491,15 +490,11 @@ export default function Feed() {
     <div className="mx-auto w-full max-w-6xl min-w-0 space-y-8 overflow-x-hidden">
       <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(53,176,229,0.22),transparent_32%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-6 py-7 shadow-[0_28px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-8">
         <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(255,184,56,0.10),transparent_60%)] lg:block" />
-        <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1.4fr)_320px]">
-          <div className="space-y-5">
-            <Badge className="border-0 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-primary">
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-              The Feed
-            </Badge>
+        <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1.25fr)_390px]">
+          <div>
             <div className="space-y-3">
-              <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Welcome to THE FEED
+              <h1 className="max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
+                THE FEED
               </h1>
             </div>
           </div>
@@ -514,21 +509,21 @@ export default function Feed() {
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-4">
+                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
                   <p className="text-2xl font-semibold text-foreground">{posts.length}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Posts</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Posts</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-4">
+                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
                   <p className="text-2xl font-semibold text-foreground">
                     {posts.reduce((count, post) => count + post.like_count, 0)}
                   </p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Likes</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Likes</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-white/5 px-3 py-4">
+                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
                   <p className="text-2xl font-semibold text-foreground">
                     {posts.reduce((count, post) => count + (post.comment_count ?? 0), 0)}
                   </p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">Comments</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Comments</p>
                 </div>
               </div>
             </CardContent>
