@@ -10,6 +10,7 @@ interface SavePushSubscriptionRequest {
   endpoint: string;
   p256dh: string;
   auth: string;
+  resourceAppKey?: string;
 }
 
 serve(async (req) => {
@@ -50,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const { endpoint, p256dh, auth }: SavePushSubscriptionRequest = await req.json();
+    const { endpoint, p256dh, auth, resourceAppKey = "worship" }: SavePushSubscriptionRequest = await req.json();
 
     if (!endpoint || !p256dh || !auth) {
       return new Response(
@@ -67,6 +68,7 @@ serve(async (req) => {
           endpoint,
           p256dh,
           auth,
+          resource_app_key: resourceAppKey,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "endpoint" },

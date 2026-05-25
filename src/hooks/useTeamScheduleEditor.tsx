@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export interface ScheduleEntry {
   id: string;
@@ -13,6 +14,7 @@ export interface ScheduleEntry {
   notes: string | null;
   campus_id: string | null;
   rotation_period: string;
+  resource_app_key?: string;
 }
 
 interface TeamScheduleRow {
@@ -23,6 +25,7 @@ interface TeamScheduleRow {
   notes: string | null;
   campus_id: string | null;
   rotation_period: string;
+  resource_app_key?: string | null;
   created_at?: string | null;
   worship_teams?: {
     id?: string;
@@ -34,6 +37,7 @@ interface TeamScheduleRow {
 
 export function usePublishScheduleNetworkWide() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({
@@ -54,6 +58,7 @@ export function usePublishScheduleNetworkWide() {
         const { data: campusEntries, error: campusEntriesError } = await supabase
           .from("team_schedule")
           .select("schedule_date, team_id, ministry_type, notes")
+          .eq("resource_app_key", resourceAppKey)
           .eq("campus_id", campusId)
           .eq("rotation_period", rotationPeriod)
           .eq("ministry_type", ministryType)
@@ -71,6 +76,7 @@ export function usePublishScheduleNetworkWide() {
           .from("team_schedule")
           .delete()
           .is("campus_id", null)
+          .eq("resource_app_key", resourceAppKey)
           .eq("rotation_period", rotationPeriod)
           .eq("ministry_type", ministryType)
           .in("schedule_date", scheduleDates);
@@ -84,6 +90,7 @@ export function usePublishScheduleNetworkWide() {
           ministry_type: entry.ministry_type,
           rotation_period: rotationPeriod,
           notes: entry.notes,
+          resource_app_key: resourceAppKey,
         }));
 
         const { error: insertError } = await supabase
@@ -111,8 +118,10 @@ export function useTeamScheduleForCampus(
   rotationPeriodName: string | null,
   ministryFilter: string | null
 ) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["team-schedule-campus", campusId, rotationPeriodName, ministryFilter],
+    queryKey: ["team-schedule-campus", campusId, rotationPeriodName, ministryFilter, resourceAppKey],
     queryFn: async (): Promise<ScheduleEntry[]> => {
       if (!campusId || !rotationPeriodName) return [];
 
@@ -125,10 +134,12 @@ export function useTeamScheduleForCampus(
           ministry_type,
           notes,
           campus_id,
+          resource_app_key,
           rotation_period,
           created_at,
           worship_teams(id, name, color, icon)
         `)
+        .eq("resource_app_key", resourceAppKey)
         .eq("rotation_period", rotationPeriodName)
         .order("schedule_date", { ascending: true });
 
@@ -193,6 +204,7 @@ export function useTeamScheduleForCampus(
           notes: entry.notes,
           campus_id: entry.campus_id,
           rotation_period: entry.rotation_period,
+          resource_app_key: entry.resource_app_key || resourceAppKey,
         }));
     },
     enabled: !!campusId && !!rotationPeriodName,
@@ -201,6 +213,7 @@ export function useTeamScheduleForCampus(
 
 export function useUpdateScheduleTeam() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({
@@ -217,6 +230,7 @@ export function useUpdateScheduleTeam() {
         .from("team_schedule")
         .select("campus_id, schedule_date, ministry_type, rotation_period, notes")
         .eq("id", scheduleId)
+        .eq("resource_app_key", resourceAppKey)
         .single();
 
       if (fetchError) throw fetchError;
@@ -232,6 +246,7 @@ export function useUpdateScheduleTeam() {
             ministry_type: existing.ministry_type,
             rotation_period: existing.rotation_period,
             notes: existing.notes,
+            resource_app_key: resourceAppKey,
           });
 
         if (insertError) throw insertError;
@@ -240,7 +255,8 @@ export function useUpdateScheduleTeam() {
         const { error: updateError } = await supabase
           .from("team_schedule")
           .update({ team_id: teamId })
-          .eq("id", scheduleId);
+          .eq("id", scheduleId)
+          .eq("resource_app_key", resourceAppKey);
 
         if (updateError) throw updateError;
       }
@@ -260,6 +276,7 @@ export function useUpdateScheduleTeam() {
 
 export function useCreateScheduleEntry() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({
@@ -283,6 +300,7 @@ export function useCreateScheduleEntry() {
         team_id: teamId,
         ministry_type: ministryType,
         rotation_period: rotationPeriod,
+        resource_app_key: resourceAppKey,
       });
 
       if (error) throw error;
@@ -304,13 +322,15 @@ export function useCreateScheduleEntry() {
 
 export function useDeleteScheduleEntry() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (scheduleId: string) => {
       const { error } = await supabase
         .from("team_schedule")
         .delete()
-        .eq("id", scheduleId);
+        .eq("id", scheduleId)
+        .eq("resource_app_key", resourceAppKey);
 
       if (error) throw error;
     },
@@ -328,6 +348,7 @@ export function useDeleteScheduleEntry() {
 
 export function useClearScheduleEntries() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (scheduleIds: string[]) => {
@@ -336,6 +357,7 @@ export function useClearScheduleEntries() {
       const { error } = await supabase
         .from("team_schedule")
         .delete()
+        .eq("resource_app_key", resourceAppKey)
         .in("id", scheduleIds);
 
       if (error) throw error;

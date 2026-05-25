@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
@@ -51,6 +52,7 @@ function uint8ArraysEqual(a: Uint8Array, b: Uint8Array) {
 
 export function usePushNotifications() {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,6 +98,7 @@ export function usePushNotifications() {
         endpoint: subscription.endpoint,
         p256dh,
         auth,
+        resourceAppKey,
       },
     });
 
@@ -104,7 +107,7 @@ export function usePushNotifications() {
     }
 
     return true;
-  }, [user]);
+  }, [user, resourceAppKey]);
 
   const refreshSubscriptionState = useCallback(async () => {
     if (!isSupported || !user) {

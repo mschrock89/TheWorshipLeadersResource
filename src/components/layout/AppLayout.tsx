@@ -10,6 +10,7 @@ import { Home, Users, Settings, LogOut, LayoutDashboard, FolderOpen, Calendar, L
 import { TeamBadge } from "./TeamBadge";
 import { NotificationBell } from "./NotificationBell";
 import { cn } from "@/lib/utils";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 interface AppLayoutProps {
   children: ReactNode;
 }
@@ -30,6 +31,7 @@ export function AppLayout({
   // Check if audio player is active to add extra padding
   const audioPlayer = useAudioPlayerSafe();
   const hasActivePlayer = !!audioPlayer?.currentTrack;
+  const isStudentApp = isCurrentStudentResourceApp();
   
   const navigation = [{
     name: "Dashboard",
@@ -109,12 +111,14 @@ export function AppLayout({
                   My Schedule
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link to="/songs" className="flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4" />
-                  Song Library
-                </Link>
-              </DropdownMenuItem>
+              {!isStudentApp && (
+                <DropdownMenuItem asChild>
+                  <Link to="/songs" className="flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4" />
+                    Song Library
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem asChild>
                 <Link to="/bible" className="flex items-center gap-2">
                   <BookOpen className="h-4 w-4" />

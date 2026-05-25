@@ -12,6 +12,7 @@ import { MINISTRY_TYPES } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useApproveSetlist, usePendingApprovals, useRejectSetlist } from "@/hooks/useSetlistApprovals";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 interface SetlistReviewWidgetProps {
   selectedCampusId: string;
@@ -79,6 +80,12 @@ function getMinistryLabel(type: string) {
 }
 
 export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetProps) {
+  const isStudentApp = isCurrentStudentResourceApp();
+  const reviewLabel = isStudentApp ? "Wednesday Flow Review" : "Setlist Review";
+  const publishedLabel = isStudentApp ? "Upcoming Published Wednesday Flows" : "Upcoming Published Setlists";
+  const emptyPublishedLabel = isStudentApp
+    ? "No upcoming published Wednesday flows for this campus filter."
+    : "No upcoming published setlists for this campus filter.";
   const today = new Date().toISOString().split("T")[0];
   const approveSetlist = useApproveSetlist();
   const rejectSetlist = useRejectSetlist();
@@ -172,9 +179,11 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
     <section className="mb-8 space-y-4">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-semibold text-foreground">Setlist Review</h2>
+          <h2 className="font-display text-xl font-semibold text-foreground">{reviewLabel}</h2>
           <p className="mt-1 text-muted-foreground">
-            Review incoming drafts and keep an eye on published sets from the dashboard.
+            {isStudentApp
+              ? "Review incoming drafts and keep an eye on published Wednesday flows from the dashboard."
+              : "Review incoming drafts and keep an eye on published sets from the dashboard."}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -190,7 +199,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
       ) : hasError ? (
         <Card>
           <CardContent className="py-6 text-sm text-destructive">
-            Unable to load setlist review data. Please refresh and try again.
+            Unable to load {isStudentApp ? "Wednesday flow" : "setlist"} review data. Please refresh and try again.
           </CardContent>
         </Card>
       ) : (
@@ -299,7 +308,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
                         disabled={approveSetlist.isPending}
                         onClick={() => approveSetlist.mutate({ approvalId: approval.id, draftSetId: approval.draft_set_id })}
                       >
-                        Approve Setlist
+                        {isStudentApp ? "Approve Wednesday Flow" : "Approve Setlist"}
                       </Button>
                       <Button
                         variant="outline"
@@ -318,13 +327,13 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Upcoming Published Setlists</h3>
+              <h3 className="text-lg font-semibold">{publishedLabel}</h3>
               <Badge variant="secondary">{approvedSetlists.length}</Badge>
             </div>
 
             {approvedSetlists.length === 0 ? (
               <Card>
-                <CardContent className="py-6 text-sm text-muted-foreground">No upcoming published setlists for this campus filter.</CardContent>
+                <CardContent className="py-6 text-sm text-muted-foreground">{emptyPublishedLabel}</CardContent>
               </Card>
             ) : (
               approvedSetlists.map((setlist) => (

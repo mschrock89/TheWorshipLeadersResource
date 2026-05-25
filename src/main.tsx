@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { getResourceAppForLocation } from "@/lib/constants";
 
 const root = document.getElementById("root")!;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -9,6 +10,32 @@ const DEV_SW_RESET_KEY = "dev-sw-reset-v1";
 const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 let lastAppUpdateCheck = 0;
+
+function upsertHeadLink(rel: string, href: string, type?: string) {
+  let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = rel;
+    document.head.appendChild(link);
+  }
+
+  link.href = href;
+  if (type) {
+    link.type = type;
+  }
+}
+
+function setResourceAppMetadata() {
+  const app = getResourceAppForLocation();
+
+  upsertHeadLink("icon", app.iconPath, "image/png");
+  upsertHeadLink("apple-touch-icon", app.iconPath);
+  upsertHeadLink("manifest", app.manifestPath);
+
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  themeColor?.setAttribute("content", app.themeColor);
+}
 
 function getCurrentAppScriptPath() {
   const script = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]');
@@ -110,6 +137,7 @@ async function resetDevelopmentBrowserState() {
 }
 
 async function bootstrap() {
+  setResourceAppMetadata();
   await resetDevelopmentBrowserState();
   startProductionAppUpdateChecks();
 

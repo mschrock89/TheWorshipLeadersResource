@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface TypingUser {
   userId: string;
@@ -9,16 +10,21 @@ interface TypingUser {
 
 interface TypingIndicatorProps {
   campusId: string | null;
+  ministryType: string | null;
 }
 
-export function TypingIndicator({ campusId }: TypingIndicatorProps) {
+function getTypingChannelName(campusId: string, ministryType: string | null) {
+  return `typing-${getCurrentResourceAppKey()}-${campusId}-${ministryType || "chat"}`;
+}
+
+export function TypingIndicator({ campusId, ministryType }: TypingIndicatorProps) {
   const { user } = useAuth();
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
 
   useEffect(() => {
     if (!campusId || !user) return;
 
-    const channel = supabase.channel(`typing-${campusId}`);
+    const channel = supabase.channel(getTypingChannelName(campusId, ministryType));
 
     channel
       .on("presence", { event: "sync" }, () => {
@@ -40,7 +46,7 @@ export function TypingIndicator({ campusId }: TypingIndicatorProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campusId, user]);
+  }, [campusId, ministryType, user]);
 
   if (typingUsers.length === 0) return null;
 
@@ -58,14 +64,14 @@ export function TypingIndicator({ campusId }: TypingIndicatorProps) {
   );
 }
 
-export function useTypingPresence(campusId: string | null, userName: string | null) {
+export function useTypingPresence(campusId: string | null, ministryType: string | null, userName: string | null) {
   const { user } = useAuth();
   const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     if (!campusId || !user) return;
 
-    const ch = supabase.channel(`typing-${campusId}`);
+    const ch = supabase.channel(getTypingChannelName(campusId, ministryType));
     ch.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await ch.track({ userId: user.id, name: userName || "Someone", isTyping: false });
@@ -76,7 +82,7 @@ export function useTypingPresence(campusId: string | null, userName: string | nu
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [campusId, user, userName]);
+  }, [campusId, ministryType, user, userName]);
 
   const setTyping = useCallback(
     async (isTyping: boolean) => {

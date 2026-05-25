@@ -75,6 +75,7 @@ import { useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
+  STUDENT_TEAM_BUILDER_MINISTRY_TYPE,
   isTeamVisibleForMinistry,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
@@ -86,6 +87,7 @@ import {
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { formatPositionLabel, getWeekendKey, isWeekend } from "@/lib/utils";
+import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
 
@@ -175,6 +177,62 @@ const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
     icon: "diamond",
     template_config: null,
   },
+  "9c95bf00-0000-4a00-9000-000000000101": {
+    id: "9c95bf00-0000-4a00-9000-000000000101",
+    name: "Hospitality",
+    color: "#0EA5E9",
+    icon: "heart",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000102": {
+    id: "9c95bf00-0000-4a00-9000-000000000102",
+    name: "Hype",
+    color: "#F97316",
+    icon: "zap",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000103": {
+    id: "9c95bf00-0000-4a00-9000-000000000103",
+    name: "Prayer",
+    color: "#8B5CF6",
+    icon: "star",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000104": {
+    id: "9c95bf00-0000-4a00-9000-000000000104",
+    name: "Cafe",
+    color: "#22C55E",
+    icon: "diamond",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000201": {
+    id: "9c95bf00-0000-4a00-9000-000000000201",
+    name: "Hospitality",
+    color: "#0EA5E9",
+    icon: "heart",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000202": {
+    id: "9c95bf00-0000-4a00-9000-000000000202",
+    name: "Hype",
+    color: "#F97316",
+    icon: "zap",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000203": {
+    id: "9c95bf00-0000-4a00-9000-000000000203",
+    name: "Prayer",
+    color: "#8B5CF6",
+    icon: "star",
+    template_config: null,
+  },
+  "9c95bf00-0000-4a00-9000-000000000204": {
+    id: "9c95bf00-0000-4a00-9000-000000000204",
+    name: "Cafe",
+    color: "#22C55E",
+    icon: "diamond",
+    template_config: null,
+  },
 };
 
 const TEAM_DISPLAY_ORDER = [
@@ -187,9 +245,30 @@ const TEAM_DISPLAY_ORDER = [
   "5th Sunday",
 ] as const;
 
-function sortTeamsForDisplay(sourceTeams: WorshipTeam[]) {
+const STUDENT_TEAM_DISPLAY_ORDER = [
+  "Hospitality",
+  "Hype",
+  "Prayer",
+  "Cafe",
+] as const;
+
+const STUDENT_HS_FALLBACK_TEAM_IDS = new Set([
+  "9c95bf00-0000-4a00-9000-000000000101",
+  "9c95bf00-0000-4a00-9000-000000000102",
+  "9c95bf00-0000-4a00-9000-000000000103",
+  "9c95bf00-0000-4a00-9000-000000000104",
+]);
+
+const STUDENT_MS_FALLBACK_TEAM_IDS = new Set([
+  "9c95bf00-0000-4a00-9000-000000000201",
+  "9c95bf00-0000-4a00-9000-000000000202",
+  "9c95bf00-0000-4a00-9000-000000000203",
+  "9c95bf00-0000-4a00-9000-000000000204",
+]);
+
+function sortTeamsForDisplay(sourceTeams: WorshipTeam[], isStudentApp = false) {
   const orderMap = new Map(
-    TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+    (isStudentApp ? STUDENT_TEAM_DISPLAY_ORDER : TEAM_DISPLAY_ORDER).map((name, index) => [name.toLowerCase(), index]),
   );
 
   return [...sourceTeams].sort((a, b) => {
@@ -209,6 +288,8 @@ function sortTeamsForDisplay(sourceTeams: WorshipTeam[]) {
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
   const { data: currentUserRoles = [] } = useUserRoles(user?.id);
+  const resourceAppKey = getCurrentResourceAppKey();
+  const isStudentTeamBuilder = isStudentResourceAppKey(resourceAppKey);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -217,7 +298,9 @@ export default function TeamBuilder() {
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
-  const [selectedMinistryType, setSelectedMinistryType] = useState<string>("weekend");
+  const [selectedMinistryType, setSelectedMinistryType] = useState<string>(
+    isStudentTeamBuilder ? STUDENT_TEAM_BUILDER_MINISTRY_TYPE : "weekend",
+  );
   const [showAutoBuilder, setShowAutoBuilder] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [assigningSlot, setAssigningSlot] = useState<{
@@ -301,7 +384,7 @@ export default function TeamBuilder() {
   const hasWorshipPastorTeamBuilderAccess = useMemo(
     () =>
       currentUserRoles.some(({ role }) =>
-        role === "campus_worship_pastor" || role === "student_worship_pastor" || role === "childrens_pastor",
+        role === "campus_worship_pastor" || role === "student_pastor" || role === "student_worship_pastor" || role === "childrens_pastor",
       ),
     [currentUserRoles],
   );
@@ -342,10 +425,15 @@ export default function TeamBuilder() {
 
   // Normalize legacy weekend aliases to the Weekend Worship value used by Team Builder.
   useEffect(() => {
+    if (isStudentTeamBuilder && selectedMinistryType !== STUDENT_TEAM_BUILDER_MINISTRY_TYPE) {
+      setSelectedMinistryType(STUDENT_TEAM_BUILDER_MINISTRY_TYPE);
+      return;
+    }
+
     if (selectedMinistryType === "weekend_team" || selectedMinistryType === "speaker") {
       setSelectedMinistryType("weekend");
     }
-  }, [selectedMinistryType]);
+  }, [isStudentTeamBuilder, selectedMinistryType]);
 
   const previousApprovedBreakUserIds = useMemo(() => {
     const matchingBreaks = previousBreakRequests.filter(
@@ -443,7 +531,13 @@ export default function TeamBuilder() {
   }, [teams, selectedMinistryType]);
 
   const displayTeams = useMemo(() => {
-    const canonicalVisibleFallbackTeams = Object.values(FALLBACK_TEAM_DEFINITIONS).filter((team) =>
+    const fallbackTeamsForApp = Object.values(FALLBACK_TEAM_DEFINITIONS).filter((team) => {
+      if (resourceAppKey === "students_hs") return STUDENT_HS_FALLBACK_TEAM_IDS.has(team.id);
+      if (resourceAppKey === "students_ms") return STUDENT_MS_FALLBACK_TEAM_IDS.has(team.id);
+      return !STUDENT_HS_FALLBACK_TEAM_IDS.has(team.id) && !STUDENT_MS_FALLBACK_TEAM_IDS.has(team.id);
+    });
+
+    const canonicalVisibleFallbackTeams = fallbackTeamsForApp.filter((team) =>
       isTeamVisibleForMinistry(team.name, selectedMinistryType),
     );
 
@@ -452,7 +546,7 @@ export default function TeamBuilder() {
       return sortTeamsForDisplay([
         ...sourceTeams,
         ...canonicalVisibleFallbackTeams.filter((team) => !existingTeamIds.has(team.id)),
-      ]);
+      ], isStudentTeamBuilder);
     };
 
     if (filteredTeams.length > 0) {
@@ -480,7 +574,7 @@ export default function TeamBuilder() {
       .filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
 
     return mergeMissingTeams(fallbackTeams);
-  }, [filteredTeams, members, selectedMinistryType, teams]);
+  }, [filteredTeams, isStudentTeamBuilder, members, resourceAppKey, selectedMinistryType, teams]);
 
   const displayTeamIds = useMemo(() => displayTeams.map((team) => team.id), [displayTeams]);
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds(

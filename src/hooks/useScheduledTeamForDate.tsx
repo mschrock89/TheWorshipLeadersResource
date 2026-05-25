@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface ScheduledTeamScheduleRow {
   id: string;
@@ -78,12 +79,13 @@ export function useScheduledTeamForDate(
   campusId?: string | null,
   ministryType?: string | null,
 ) {
+  const resourceAppKey = getCurrentResourceAppKey();
   const dateStr = date
     ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
     : null;
 
   return useQuery({
-    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType],
+    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType, resourceAppKey],
     queryFn: async (): Promise<ScheduledTeam | null> => {
       if (!dateStr) return null;
 
@@ -98,6 +100,7 @@ export function useScheduledTeamForDate(
           created_at,
           worship_teams(id, name, color, icon)
         `)
+        .eq("resource_app_key", resourceAppKey)
         .eq("schedule_date", dateStr);
 
       if (campusId) {

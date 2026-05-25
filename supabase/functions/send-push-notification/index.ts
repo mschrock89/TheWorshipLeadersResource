@@ -537,6 +537,14 @@ serve(async (req) => {
       query = query.in("user_id", recipientUserIds);
     }
 
+    const resourceAppKey = typeof payload.metadata?.resourceAppKey === "string"
+      ? payload.metadata.resourceAppKey
+      : null;
+
+    if (resourceAppKey) {
+      query = query.eq("resource_app_key", resourceAppKey);
+    }
+
     const { data: subscriptions, error: fetchError } = await query;
 
     if (fetchError) {

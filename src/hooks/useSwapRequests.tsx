@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { parseLocalDate, getWeekendPairDate } from "@/lib/utils";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export type SwapRequestType = "swap" | "fill_in";
 
@@ -21,6 +22,7 @@ export interface SwapRequest {
   created_at: string;
   resolved_at: string | null;
   request_type: SwapRequestType;
+  resource_app_key?: string;
   requester?: {
     id: string;
     full_name: string | null;
@@ -47,15 +49,17 @@ export interface SwapRequest {
 export function useSwapRequests() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   const query = useQuery({
-    queryKey: ["swap-requests", user?.id],
+    queryKey: ["swap-requests", user?.id, resourceAppKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("swap_requests")
         .select(`
           *
         `)
+        .eq("resource_app_key", resourceAppKey)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -73,7 +77,11 @@ export function useSwapRequests() {
           ? supabase.from("profiles").select("id, full_name, avatar_url").in("id", profileIds)
           : Promise.resolve({ data: [], error: null }),
         teamIds.length > 0
-          ? supabase.from("worship_teams").select("id, name, color, icon").in("id", teamIds)
+          ? supabase
+              .from("worship_teams")
+              .select("id, name, color, icon")
+              .eq("resource_app_key", resourceAppKey)
+              .in("id", teamIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -129,7 +137,11 @@ export function useSwapRequests() {
           queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
           
           // Only show toast if not from current user and after initial load
-          if (initialLoadComplete.current && payload.new.requester_id !== user.id) {
+          if (
+            initialLoadComplete.current &&
+            payload.new.requester_id !== user.id &&
+            payload.new.resource_app_key === resourceAppKey
+          ) {
             const isTargetedAtMe = payload.new.target_user_id === user.id;
             
             // Check if it's an open request for my position
@@ -171,7 +183,11 @@ export function useSwapRequests() {
           queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
           
           // Only notify requester about status changes
-          if (initialLoadComplete.current && payload.new.requester_id === user.id) {
+          if (
+            initialLoadComplete.current &&
+            payload.new.requester_id === user.id &&
+            payload.new.resource_app_key === resourceAppKey
+          ) {
             const newStatus = payload.new.status;
             const oldStatus = payload.old?.status;
             
@@ -205,7 +221,7 @@ export function useSwapRequests() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient]);
+  }, [user, queryClient, resourceAppKey]);
 
   return query;
 }
@@ -213,15 +229,17 @@ export function useSwapRequests() {
 export function usePendingSwapRequestsCount() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   const query = useQuery({
-    queryKey: ["swap-requests-count", user?.id],
+    queryKey: ["swap-requests-count", user?.id, resourceAppKey],
     queryFn: async () => {
       const [{ data: requests, error: requestsError }, { data: dismissals, error: dismissalsError }] = await Promise.all([
         supabase
           .from("swap_requests")
           .select("id")
           .eq("status", "pending")
+          .eq("resource_app_key", resourceAppKey)
           .neq("requester_id", user!.id),
         supabase
           .from("swap_request_dismissals")
@@ -262,7 +280,7 @@ export function usePendingSwapRequestsCount() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient]);
+  }, [user, queryClient, resourceAppKey]);
 
   return query;
 }
@@ -270,6 +288,7 @@ export function usePendingSwapRequestsCount() {
 export function useCreateSwapRequest() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (request: {
@@ -296,6 +315,7 @@ export function useCreateSwapRequest() {
           team_id: request.team_id,
           message: request.message || null,
           request_type: normalizedRequestType,
+          resource_app_key: resourceAppKey,
         })
         .select()
         .single();
@@ -305,7 +325,7 @@ export function useCreateSwapRequest() {
       // Send push notification to relevant team members
       try {
         await supabase.functions.invoke("notify-swap-request-created", {
-          body: { swapRequestId: data.id },
+          body: { swapRequestId: data.id, resourceAppKey },
         });
       } catch (notifyError) {
         console.error("Failed to send swap request notification:", notifyError);
@@ -878,6 +898,7 @@ export function usePositionMembersForDate(
 ) {
   const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
   const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
     queryKey: [
@@ -889,6 +910,7 @@ export function usePositionMembersForDate(
       rotationPeriodId,
       effectiveMinistryType,
       requesterGender,
+      resourceAppKey,
     ],
     queryFn: async (): Promise<PositionMember[]> => {
       if (!scheduledDate) return [];
@@ -900,6 +922,7 @@ export function usePositionMembersForDate(
       let scheduleQuery = supabase
         .from("team_schedule")
         .select("team_id, schedule_date, campus_id, ministry_type, created_at")
+        .eq("resource_app_key", resourceAppKey)
         .in("schedule_date", dates);
 
       if (campusId) {
@@ -1211,9 +1234,11 @@ export function usePositionMembersForCover(
 }
 
 export function useUserScheduledDates(userId: string | undefined, teamId?: string) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["user-scheduled-dates", "local-date-v1", userId, teamId],
+    queryKey: ["user-scheduled-dates", "local-date-v1", userId, teamId, resourceAppKey],
     queryFn: async () => {
       // Get all teams the user is a member of
       const { data: memberData } = await supabase
@@ -1226,6 +1251,7 @@ export function useUserScheduledDates(userId: string | undefined, teamId?: strin
       let query = supabase
         .from("team_schedule")
         .select("schedule_date, team_id, worship_teams(id, name)")
+        .eq("resource_app_key", resourceAppKey)
         .in("team_id", teamIds)
         .gte("schedule_date", new Date().toISOString().split("T")[0])
         .order("schedule_date", { ascending: true });

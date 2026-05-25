@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatPositionLabel, parseLocalDate } from "@/lib/utils";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
 
@@ -50,6 +51,7 @@ export interface Notification {
 
 export function useNotifications() {
   const { user, isAdmin } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -157,6 +159,7 @@ export function useNotifications() {
               team_id
             `)
             .eq("status", "pending")
+            .eq("resource_app_key", resourceAppKey)
             .neq("requester_id", user.id)
             .order("created_at", { ascending: false })
             .limit(10)
@@ -175,6 +178,7 @@ export function useNotifications() {
           `)
           .eq("target_user_id", user.id)
           .eq("status", "pending")
+          .eq("resource_app_key", resourceAppKey)
           .order("created_at", { ascending: false })
           .limit(10)),
       ]);
@@ -199,7 +203,11 @@ export function useNotifications() {
           ? supabase.from("profiles").select("id, full_name").in("id", requesterIds)
           : Promise.resolve({ data: [], error: null }),
         teamIds.length > 0
-          ? supabase.from("worship_teams").select("id, name").in("id", teamIds)
+          ? supabase
+              .from("worship_teams")
+              .select("id, name")
+              .eq("resource_app_key", resourceAppKey)
+              .in("id", teamIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -353,7 +361,7 @@ export function useNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, resourceAppKey]);
 
   // Only fetch notifications AFTER read IDs have been loaded
   useEffect(() => {

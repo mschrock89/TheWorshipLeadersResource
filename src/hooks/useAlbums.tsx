@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export interface Album {
   id: string;
@@ -9,6 +10,7 @@ export interface Album {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+  resource_app_key: string;
 }
 
 export interface AlbumTrack {
@@ -35,12 +37,15 @@ export interface AlbumWithTracks extends Album {
 }
 
 export function useAlbums() {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["albums"],
+    queryKey: ["albums", resourceAppKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("albums")
         .select("*")
+        .eq("resource_app_key", resourceAppKey)
         .order("display_order");
 
       if (error) throw error;
@@ -50,8 +55,10 @@ export function useAlbums() {
 }
 
 export function useAlbumWithTracks(albumId: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["album", albumId],
+    queryKey: ["album", albumId, resourceAppKey],
     queryFn: async () => {
       if (!albumId) return null;
 
@@ -77,6 +84,7 @@ export function useAlbumWithTracks(albumId: string | null) {
           )
         `)
         .eq("id", albumId)
+        .eq("resource_app_key", resourceAppKey)
         .order("track_number", { referencedTable: "album_tracks" })
         .maybeSingle();
 
@@ -90,6 +98,7 @@ export function useAlbumWithTracks(albumId: string | null) {
 export function useCreateAlbum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({ title, artworkUrl }: { title: string; artworkUrl?: string }) => {
@@ -101,6 +110,7 @@ export function useCreateAlbum() {
           title,
           artwork_url: artworkUrl || null,
           created_by: user?.id,
+          resource_app_key: resourceAppKey,
         })
         .select()
         .single();
@@ -125,6 +135,7 @@ export function useCreateAlbum() {
 export function useUpdateAlbum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({ id, title, artworkUrl }: { id: string; title: string; artworkUrl?: string }) => {
@@ -135,6 +146,7 @@ export function useUpdateAlbum() {
           artwork_url: artworkUrl,
         })
         .eq("id", id)
+        .eq("resource_app_key", resourceAppKey)
         .select()
         .single();
 
@@ -159,13 +171,15 @@ export function useUpdateAlbum() {
 export function useDeleteAlbum() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (albumId: string) => {
       const { error } = await supabase
         .from("albums")
         .delete()
-        .eq("id", albumId);
+        .eq("id", albumId)
+        .eq("resource_app_key", resourceAppKey);
 
       if (error) throw error;
     },

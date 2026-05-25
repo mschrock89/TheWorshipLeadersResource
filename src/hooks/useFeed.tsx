@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export type FeedCategory = "blog" | "scripture" | "video";
 
@@ -17,6 +18,7 @@ export interface FeedPostRecord {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  resource_app_key: string;
   author_name: string | null;
   like_count: number;
   liked_by_me: boolean;
@@ -75,6 +77,8 @@ export interface FeedPostInput {
 }
 
 async function fetchFeedPosts(userId: string | undefined) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   const { data: postRows, error: postError } = await supabase
     .from("feed_posts")
     .select(`
@@ -89,10 +93,12 @@ async function fetchFeedPosts(userId: string | undefined) {
       updated_by,
       created_at,
       updated_at,
+      resource_app_key,
       author:profiles!feed_posts_created_by_fkey (
         full_name
       )
     `)
+    .eq("resource_app_key", resourceAppKey)
     .order("created_at", { ascending: false });
 
   if (postError) throw postError;
@@ -157,9 +163,10 @@ async function fetchFeedPosts(userId: string | undefined) {
 
 export function useFeedPosts() {
   const { user, isLoading } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["feed-posts", user?.id],
+    queryKey: ["feed-posts", user?.id, resourceAppKey],
     queryFn: () => fetchFeedPosts(user?.id),
     enabled: !!user && !isLoading,
   });
@@ -169,6 +176,7 @@ export function useCreateFeedPost() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (input: FeedPostInput) => {
@@ -185,6 +193,7 @@ export function useCreateFeedPost() {
           youtube_video_id: input.youtube_video_id || null,
           created_by: user.id,
           updated_by: user.id,
+          resource_app_key: resourceAppKey,
         })
         .select("id")
         .single();
@@ -210,6 +219,7 @@ export function useUpdateFeedPost() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({ id, ...input }: FeedPostInput & { id: string }) => {
@@ -226,7 +236,8 @@ export function useUpdateFeedPost() {
           youtube_video_id: input.youtube_video_id || null,
           updated_by: user.id,
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("resource_app_key", resourceAppKey);
 
       if (error) throw error;
     },
@@ -247,13 +258,15 @@ export function useUpdateFeedPost() {
 export function useDeleteFeedPost() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (postId: string) => {
       const { error } = await supabase
         .from("feed_posts")
         .delete()
-        .eq("id", postId);
+        .eq("id", postId)
+        .eq("resource_app_key", resourceAppKey);
 
       if (error) throw error;
     },

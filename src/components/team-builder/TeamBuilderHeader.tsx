@@ -16,10 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
+import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
-const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
+const WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "weekend",
   "worship_night",
   "kids_camp",
@@ -34,7 +35,11 @@ const TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "prayer_night",
 ] as const;
 
-function getTeamBuilderMinistryOption(value: (typeof TEAM_BUILDER_MINISTRY_FILTER_ORDER)[number]) {
+const STUDENT_TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
+  STUDENT_TEAM_BUILDER_MINISTRY_TYPE,
+] as const;
+
+function getTeamBuilderMinistryOption(value: string) {
   return MINISTRY_TYPES.find((ministry) => ministry.value === value);
 }
 
@@ -63,6 +68,14 @@ export function TeamBuilderHeader({
   selectedMinistryType,
   onMinistryTypeChange,
 }: TeamBuilderHeaderProps) {
+  const isStudentTeamBuilder = isStudentResourceAppKey(getCurrentResourceAppKey());
+  const ministryFilterOrder = isStudentTeamBuilder
+    ? STUDENT_TEAM_BUILDER_MINISTRY_FILTER_ORDER
+    : WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER;
+  const ministryOptions = ministryFilterOrder
+    .map((value) => getTeamBuilderMinistryOption(value))
+    .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry));
+
   return (
     <div className="mb-6">
       <Breadcrumb className="mb-4">
@@ -92,7 +105,11 @@ export function TeamBuilderHeader({
               {isAdminUser ? "Team Builder" : "View My Team"}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {isAdminUser 
+              {isStudentTeamBuilder
+                ? isAdminUser
+                  ? "Build and manage student team rotations"
+                  : "View your student team assignments"
+                : isAdminUser 
                 ? "Build and manage worship team rotations" 
                 : "View your team assignments and teammates"}
             </p>
@@ -135,24 +152,24 @@ export function TeamBuilderHeader({
           </SelectContent>
         </Select>
 
-        <Select value={selectedMinistryType} onValueChange={onMinistryTypeChange}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <Music className="mr-2 h-4 w-4 shrink-0" />
-            <SelectValue placeholder="Select ministry" />
-          </SelectTrigger>
-          <SelectContent>
-            {TEAM_BUILDER_MINISTRY_FILTER_ORDER.map((value) => getTeamBuilderMinistryOption(value))
-              .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry))
-              .map(ministry => (
-              <SelectItem key={ministry.value} value={ministry.value}>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${ministry.color}`} />
-                  {ministry.label}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {ministryOptions.length > 1 && (
+          <Select value={selectedMinistryType} onValueChange={onMinistryTypeChange}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <Music className="mr-2 h-4 w-4 shrink-0" />
+              <SelectValue placeholder="Select ministry" />
+            </SelectTrigger>
+            <SelectContent>
+              {ministryOptions.map(ministry => (
+                <SelectItem key={ministry.value} value={ministry.value}>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${ministry.color}`} />
+                    {ministry.label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* View-only indicator */}

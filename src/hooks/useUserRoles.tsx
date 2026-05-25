@@ -10,6 +10,21 @@ interface UserRoleData {
   admin_campus_id: string | null;
 }
 
+const BASE_APP_ROLES: AppRole[] = [
+  'network_worship_pastor',
+  'campus_worship_pastor',
+  'student_pastor',
+  'student_worship_pastor',
+  'childrens_pastor',
+  'speaker',
+  'video_director',
+  'production_manager',
+  'audition_candidate',
+  'volunteer',
+  'leader',
+  'member',
+];
+
 // Returns the highest priority role for display purposes along with admin_campus_id
 export function useUserRole(userId: string | undefined) {
   return useQuery({
@@ -27,7 +42,7 @@ export function useUserRole(userId: string | undefined) {
       const roles = data || [];
       
       // Return highest priority role for display
-      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'leader', 'audition_candidate', 'volunteer', 'member'];
+      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'leader', 'audition_candidate', 'volunteer', 'member'];
       for (const priorityRole of priorityOrder) {
         const matchedRole = roles.find(r => r.role === priorityRole);
         if (matchedRole) {
@@ -246,28 +261,38 @@ export function useToggleUserRole() {
   });
 }
 
-// Update the base role (replaces existing base roles but keeps leadership roles)
-export function useUpdateBaseRole() {
+// Update base roles (replaces existing base roles but keeps leadership roles)
+export function useUpdateBaseRoles() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: AppRole }) => {
-      const baseRoles: AppRole[] = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer', 'leader', 'member'];
-      
+    mutationFn: async ({ userId, roles }: { userId: string; roles: AppRole[] }) => {
+      const nextRoles = Array.from(new Set(roles)).filter((role) =>
+        BASE_APP_ROLES.includes(role),
+      );
+
+      if (nextRoles.length === 0) {
+        throw new Error("Select at least one base role.");
+      }
+
+      if (nextRoles.length > 3) {
+        throw new Error("A user can have up to three base roles.");
+      }
+
       // Delete existing base roles
       const { error: deleteError } = await supabase
         .from("user_roles")
         .delete()
         .eq("user_id", userId)
-        .in("role", baseRoles);
+        .in("role", BASE_APP_ROLES);
       
       if (deleteError) throw deleteError;
       
-      // Insert new base role
+      // Insert selected base roles
       const { error: insertError } = await supabase
         .from("user_roles")
-        .insert({ user_id: userId, role, admin_campus_id: null });
+        .insert(nextRoles.map((role) => ({ user_id: userId, role, admin_campus_id: null })));
       
       if (insertError) throw insertError;
     },
@@ -277,18 +302,35 @@ export function useUpdateBaseRole() {
       queryClient.invalidateQueries({ queryKey: ["user-roles", variables.userId] });
       queryClient.invalidateQueries({ queryKey: ["leadership-roles"] });
       toast({
-        title: "Role updated",
-        description: "The user's base role has been changed.",
+        title: "Roles updated",
+        description: "The user's base roles have been changed.",
       });
     },
     onError: (error) => {
       toast({
-        title: "Failed to update role",
+        title: "Failed to update roles",
         description: error.message,
         variant: "destructive",
       });
     },
   });
+}
+
+// Update one base role, preserving the original single-role call shape.
+export function useUpdateBaseRole() {
+  const updateBaseRoles = useUpdateBaseRoles();
+
+  return {
+    ...updateBaseRoles,
+    mutate: (
+      variables: { userId: string; role: AppRole },
+      options?: Parameters<typeof updateBaseRoles.mutate>[1],
+    ) => updateBaseRoles.mutate({ userId: variables.userId, roles: [variables.role] }, options),
+    mutateAsync: (
+      variables: { userId: string; role: AppRole },
+      options?: Parameters<typeof updateBaseRoles.mutateAsync>[1],
+    ) => updateBaseRoles.mutateAsync({ userId: variables.userId, roles: [variables.role] }, options),
+  };
 }
 
 // Legacy - kept for backwards compatibility but now just updates base role

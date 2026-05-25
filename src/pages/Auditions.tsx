@@ -24,6 +24,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { PromoteAuditionCandidateDialog } from "@/components/team/PromoteAuditionCandidateDialog";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 type QueueAudition = {
   id: string;
@@ -70,6 +71,15 @@ function getStageLabel(stage: AuditionStage | null): string {
 
 export default function Auditions() {
   const { user, canManageTeam, isLoading: authLoading } = useAuth();
+  const isStudentApp = isCurrentStudentResourceApp();
+  const pageLabel = isStudentApp ? "On Boarding" : "Auditions";
+  const queueLabel = isStudentApp ? "On Boarding Queue" : "Audition Queue";
+  const getQueueStageLabel = (stage: AuditionStage | null) => {
+    if (!isStudentApp) return getStageLabel(stage);
+    if (stage === "pre_audition") return "Pre-On Boarding";
+    if (stage === "audition") return "On Boarding";
+    return "Unscheduled";
+  };
   const queryClient = useQueryClient();
   const upsertAudition = useUpsertAudition();
   const { data: campuses = [] } = useCampuses();
@@ -236,7 +246,7 @@ export default function Auditions() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Auditions</BreadcrumbPage>
+            <BreadcrumbPage>{pageLabel}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -245,10 +255,12 @@ export default function Auditions() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <ListChecks className="h-6 w-6" />
-            Audition Queue
+            {queueLabel}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Track candidates in process and schedule upcoming pre-auditions/auditions.
+            {isStudentApp
+              ? "Track students in process and schedule upcoming onboarding steps."
+              : "Track candidates in process and schedule upcoming pre-auditions/auditions."}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -275,11 +287,17 @@ export default function Auditions() {
               <CalendarClock className="h-4 w-4 text-amber-500" />
               Needs Scheduling
             </CardTitle>
-            <CardDescription>{needsScheduling.length} candidate(s)</CardDescription>
+            <CardDescription>
+              {needsScheduling.length} {isStudentApp ? "student(s)" : "candidate(s)"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {needsScheduling.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Everyone in this campus has an upcoming audition scheduled.</p>
+              <p className="text-sm text-muted-foreground">
+                {isStudentApp
+                  ? "Everyone in this campus has an upcoming onboarding step scheduled."
+                  : "Everyone in this campus has an upcoming audition scheduled."}
+              </p>
             ) : (
               <div className="space-y-3">
                 {needsScheduling.map((candidate) => (
@@ -322,7 +340,9 @@ export default function Auditions() {
             {isLoading ? (
               <p className="text-sm text-muted-foreground">Loading queue...</p>
             ) : scheduledQueue.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No upcoming auditions scheduled yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {isStudentApp ? "No upcoming onboarding steps scheduled yet." : "No upcoming auditions scheduled yet."}
+              </p>
             ) : (
               <div className="space-y-3">
                 {scheduledQueue.map((candidate) => {
@@ -333,7 +353,7 @@ export default function Auditions() {
                         <div className="space-y-1">
                           <p className="font-medium">{candidate.full_name || "Unnamed Candidate"}</p>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="secondary">{getStageLabel(upcoming.stage)}</Badge>
+                            <Badge variant="secondary">{getQueueStageLabel(upcoming.stage)}</Badge>
                             <Badge variant="outline">{getTrackLabel(upcoming.candidate_track)}</Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
@@ -350,7 +370,9 @@ export default function Auditions() {
                             Reschedule
                           </Button>
                           <Button size="sm" asChild>
-                            <Link to={`/set-planner/audition/${candidate.id}`}>Setlist</Link>
+                            <Link to={`/set-planner/audition/${candidate.id}`}>
+                              {isStudentApp ? "Wednesday Flow" : "Setlist"}
+                            </Link>
                           </Button>
                           <Button size="sm" variant="ghost" asChild>
                             <Link to={`/team/${candidate.id}`}>Profile</Link>
@@ -369,7 +391,7 @@ export default function Auditions() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Schedule Audition</DialogTitle>
+            <DialogTitle>{isStudentApp ? "Schedule On Boarding" : "Schedule Audition"}</DialogTitle>
             <DialogDescription>
               {activeCandidate?.full_name || "Candidate"} • {availableCampuses.find((c) => c.id === selectedCampusId)?.name || "Campus"}
             </DialogDescription>
@@ -387,8 +409,8 @@ export default function Auditions() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pre_audition">Pre-Audition</SelectItem>
-                  <SelectItem value="audition">Audition</SelectItem>
+                  <SelectItem value="pre_audition">{isStudentApp ? "Pre-On Boarding" : "Pre-Audition"}</SelectItem>
+                  <SelectItem value="audition">{isStudentApp ? "On Boarding" : "Audition"}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -430,7 +452,11 @@ export default function Auditions() {
           </div>
           <div className="space-y-2">
             <Label>Notes (optional)</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any prep notes for this candidate..." />
+            <Input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={isStudentApp ? "Any prep notes for this student..." : "Any prep notes for this candidate..."}
+            />
           </div>
 
           <DialogFooter>

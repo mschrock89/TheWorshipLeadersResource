@@ -3,20 +3,124 @@ export const ROLE_LABELS: Record<string, string> = {
   campus_admin: "Campus Admin",
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
+  student_pastor: "Student Pastor",
   student_worship_pastor: "Student Worship Leader",
   childrens_pastor: "Children's Pastor",
   speaker: "Speaker",
   video_director: "Video Director",
   production_manager: "Production Manager",
   audition_candidate: "Audition Candidate",
-  volunteer: "Volunteer",
+  volunteer: "Worship Volunteer",
 };
+
+export const RESOURCE_APPS = {
+  my_church_resource: {
+    key: "my_church_resource",
+    name: "My Church Resource",
+    shortName: "MCR",
+    host: "mychurchresource.com",
+    pathPrefix: "/admin",
+    isAdminOnly: true,
+    themeColor: "#0f172a",
+    iconPath: "/app-icon-512.png",
+    manifestPath: "/manifest.json",
+  },
+  worship: {
+    key: "worship",
+    name: "Worship Resource",
+    shortName: "Worship",
+    host: "worship.mychurchresource.com",
+    pathPrefix: "/",
+    isAdminOnly: false,
+    themeColor: "#000000",
+    iconPath: "/app-icon-512.png",
+    manifestPath: "/manifest.json",
+  },
+  students_hs: {
+    key: "students_hs",
+    name: "Experience Students HS",
+    shortName: "Students HS",
+    host: "students.mychurchresource.com",
+    pathPrefix: "/hs",
+    isAdminOnly: false,
+    themeColor: "#1d4ed8",
+    iconPath: "/students-resource-icon.png",
+    manifestPath: "/students-manifest.json",
+  },
+  students_ms: {
+    key: "students_ms",
+    name: "Experience Students MS",
+    shortName: "Students MS",
+    host: "students.mychurchresource.com",
+    pathPrefix: "/ms",
+    isAdminOnly: false,
+    themeColor: "#7c3aed",
+    iconPath: "/students-resource-icon.png",
+    manifestPath: "/students-manifest.json",
+  },
+} as const;
+
+export type ResourceAppKey = keyof typeof RESOURCE_APPS;
+
+export const DEFAULT_RESOURCE_APP_KEY: ResourceAppKey = "worship";
+export const STUDENT_RESOURCE_APP_KEYS: ResourceAppKey[] = ["students_hs", "students_ms"];
+export const STUDENT_TEAM_BUILDER_MINISTRY_TYPE = "students";
+export const STUDENT_TEAM_NAMES = ["Hospitality", "Hype", "Prayer", "Cafe"] as const;
+
+function normalizePathPrefix(prefix: string) {
+  if (!prefix || prefix === "/") return "/";
+  return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+}
+
+function pathnameMatchesPrefix(pathname: string, prefix: string) {
+  const normalizedPrefix = normalizePathPrefix(prefix);
+  if (normalizedPrefix === "/") return true;
+  return pathname === normalizedPrefix || pathname.startsWith(`${normalizedPrefix}/`);
+}
+
+export function getResourceAppForLocation(
+  hostname = typeof window !== "undefined" ? window.location.hostname : "",
+  pathname = typeof window !== "undefined" ? window.location.pathname : "/"
+) {
+  const normalizedHostname = hostname.replace(/^www\./, "");
+  const apps = Object.values(RESOURCE_APPS).sort(
+    (a, b) => normalizePathPrefix(b.pathPrefix).length - normalizePathPrefix(a.pathPrefix).length
+  );
+
+  const appForHostAndPath = apps.find(
+    (app) =>
+      app.host.replace(/^www\./, "") === normalizedHostname &&
+      pathnameMatchesPrefix(pathname, app.pathPrefix)
+  );
+
+  return (
+    appForHostAndPath ??
+    apps.find((app) => app.pathPrefix !== "/" && pathnameMatchesPrefix(pathname, app.pathPrefix)) ??
+    RESOURCE_APPS[DEFAULT_RESOURCE_APP_KEY]
+  );
+}
+
+export function getRouterBasename() {
+  const prefix = normalizePathPrefix(getResourceAppForLocation().pathPrefix);
+  return prefix === "/" ? undefined : prefix;
+}
+
+export function getAppPath(path: string) {
+  const prefix = getRouterBasename();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return prefix ? `${prefix}${normalizedPath === "/" ? "" : normalizedPath}` : normalizedPath;
+}
+
+export function getAppUrl(path: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}${getAppPath(path)}`;
+}
 
 // Roles that can be combined (leadership roles)
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -69,6 +173,9 @@ export const POSITION_LABELS: Record<string, string> = {
   graphics_4: "Graphics 4",
   producer: "Producer",
   switcher: "Switcher",
+  chat_member: "Chat Member",
+  student_team_lead: "Lead",
+  student_team_member: "Team Member",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -126,6 +233,8 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   graphics_4: "Graphics 4",
   producer: "Producer",
   switcher: "Switcher",
+  student_team_lead: "Lead",
+  student_team_member: "Member",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -138,6 +247,7 @@ export const POSITION_CATEGORIES = {
   instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass", "drums", "keys", "pad"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
+  students: ["student_team_lead", "student_team_member"],
 };
 
 // Team Builder position slots - these map to position_slot column in team_members table
@@ -197,6 +307,16 @@ export const POSITION_SLOTS: {
   { slot: "switcher_2", label: "Switcher 2", category: "Video", position: "switcher" },
   { slot: "switcher_3", label: "Switcher 3", category: "Video", position: "switcher" },
   { slot: "switcher_4", label: "Switcher 4", category: "Video", position: "switcher" },
+  // Student Resource slots
+  { slot: "student_team_lead", label: "Lead", category: "Students", position: "student_team_lead" },
+  { slot: "student_member_1", label: "Member 1", category: "Students", position: "student_team_member" },
+  { slot: "student_member_2", label: "Member 2", category: "Students", position: "student_team_member" },
+  { slot: "student_member_3", label: "Member 3", category: "Students", position: "student_team_member" },
+  { slot: "student_member_4", label: "Member 4", category: "Students", position: "student_team_member" },
+  { slot: "student_member_5", label: "Member 5", category: "Students", position: "student_team_member" },
+  { slot: "student_member_6", label: "Member 6", category: "Students", position: "student_team_member" },
+  { slot: "student_member_7", label: "Member 7", category: "Students", position: "student_team_member" },
+  { slot: "student_member_8", label: "Member 8", category: "Students", position: "student_team_member" },
 ];
 
 export const MINISTRY_TYPES = [
@@ -214,6 +334,7 @@ export const MINISTRY_TYPES = [
   { value: "speaker", label: "Speaker", shortLabel: "SPK", color: "bg-amber-600" },
   { value: "production", label: "Production", shortLabel: "PROD", color: "bg-emerald-500" },
   { value: "video", label: "Video", shortLabel: "VID", color: "bg-rose-500" },
+  { value: STUDENT_TEAM_BUILDER_MINISTRY_TYPE, label: "Students", shortLabel: "STU", color: "bg-blue-600" },
 ] as const;
 
 export const SET_PLANNER_MINISTRY_OPTIONS = [
@@ -251,7 +372,8 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   speaker: ["Speaker"],
   production: ["Production"],
   video: ["Video"],
-  all: ["Vocalists", "Speaker", "Band", "Production", "Video"],
+  students: ["Students"],
+  all: ["Vocalists", "Speaker", "Band", "Production", "Video", "Students"],
 };
 
 // Which teams are visible for each ministry type
@@ -270,6 +392,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speaker rotations follow campus team structure and include the special 5th Sunday team
   production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
+  students: [...STUDENT_TEAM_NAMES],
   all: null, // null means show all teams
 };
 

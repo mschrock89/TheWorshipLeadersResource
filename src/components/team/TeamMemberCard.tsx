@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Phone, Cake, Heart, MapPin, Mail, CheckCircle, MessageCircle, KeyRound, Trash2 } from "lucide-react";
+import { Phone, Cake, Heart, MapPin, Mail, CheckCircle, MessageCircle, KeyRound, Trash2, Shield } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { parseLocalDate } from "@/lib/utils";
 import {
@@ -20,6 +20,7 @@ interface TeamMemberCardProps {
   onSendEmail?: (member: Profile) => void;
   onResetPassword?: (member: Profile) => void;
   onDelete?: (member: Profile) => void;
+  onManageRoles?: (member: Profile) => void;
 }
 
 export function TeamMemberCard({
@@ -28,6 +29,7 @@ export function TeamMemberCard({
   onSendEmail,
   onResetPassword,
   onDelete,
+  onManageRoles,
 }: TeamMemberCardProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -90,6 +92,13 @@ export function TeamMemberCard({
     e.stopPropagation();
     onDelete?.(member);
   };
+
+  const handleManageRolesClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onManageRoles?.(member);
+  };
+
   return (
     <div onClick={handleCardClick} className="cursor-pointer">
       <Card className="group h-full transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 animate-fade-in border-0 shadow-lg bg-card">
@@ -108,8 +117,27 @@ export function TeamMemberCard({
             )}
             
             {/* Leader action buttons */}
-            {(onSendEmail || onResetPassword || onDelete) && (
+            {(onSendEmail || onResetPassword || onDelete || onManageRoles) && (
               <div className="absolute top-3 left-3 flex gap-1">
+                {onManageRoles && (
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white"
+                          onClick={handleManageRolesClick}
+                        >
+                          <Shield className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="z-50">
+                        <p>Manage base roles</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {onSendEmail && (
                   <TooltipProvider delayDuration={0}>
                     <Tooltip>

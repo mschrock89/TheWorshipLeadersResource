@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface SwapInfo {
   id: string;
@@ -36,13 +37,14 @@ interface UserSwapStatus {
  */
 export function useUserSwapsForDate(date: Date | null) {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
   
   const dateStr = date
     ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
     : null;
 
   return useQuery({
-    queryKey: ["user-swaps-for-date", user?.id, dateStr],
+    queryKey: ["user-swaps-for-date", user?.id, dateStr, resourceAppKey],
     queryFn: async (): Promise<UserSwapStatus> => {
       if (!user?.id || !dateStr) {
         return { swappedOut: false, swappedIn: false, swapInDetails: null };
@@ -56,6 +58,7 @@ export function useUserSwapsForDate(date: Date | null) {
         .select("id, original_date, swap_date, requester_id, accepted_by_id, position, team_id")
         .eq("requester_id", user.id)
         .eq("status", "accepted")
+        .eq("resource_app_key", resourceAppKey)
         .in("original_date", relatedServiceDates);
 
       if (outError) throw outError;
@@ -75,6 +78,7 @@ export function useUserSwapsForDate(date: Date | null) {
         `)
         .eq("accepted_by_id", user.id)
         .eq("status", "accepted")
+        .eq("resource_app_key", resourceAppKey)
         .in("original_date", relatedServiceDates);
 
       if (inError) throw inError;

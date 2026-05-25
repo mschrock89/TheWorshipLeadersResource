@@ -17,6 +17,7 @@ import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { useMemo, useEffect, useState } from "react";
 import { useCampusSelectionOptional } from "./CampusSelectionContext";
 import { isAuditionCandidateRole } from "@/lib/access";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 interface MainHeaderProps {
   selectedCampusId?: string | null;
@@ -55,6 +56,7 @@ export function MainHeader({
     data: pendingSwaps = 0
   } = usePendingSwapRequestsCount();
   const drumTechAccess = useDrumTechAccess();
+  const isStudentApp = isCurrentStudentResourceApp();
   const campusCtx = useCampusSelectionOptional();
   const selectedCampusId = selectedCampusIdProp ?? campusCtx?.selectedCampusId;
   const onSelectCampus = onSelectCampusProp ?? campusCtx?.setSelectedCampusId;
@@ -175,12 +177,14 @@ export function MainHeader({
                   THE FEED
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link to="/songs" className="flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4" />
-                  Song Library
-                </Link>
-              </DropdownMenuItem>
+              {!isStudentApp && (
+                <DropdownMenuItem asChild>
+                  <Link to="/songs" className="flex items-center gap-2">
+                    <FolderOpen className="h-4 w-4" />
+                    Song Library
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem asChild>
                 <Link to="/resources" className="flex items-center gap-2">
                   <Music className="h-4 w-4" />

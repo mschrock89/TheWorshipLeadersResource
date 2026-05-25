@@ -8,6 +8,7 @@ const WORSHIP_PASTOR_GROUP_TEXT_ROLES = new Set([
   "campus_worship_pastor",
   "childrens_pastor",
   "network_worship_pastor",
+  "student_pastor",
 ]);
 const PRODUCTION_MANAGER_GROUP_TEXT_ROLES = new Set(["production_manager"]);
 const VIDEO_DIRECTOR_GROUP_TEXT_ROLES = new Set(["video_director"]);
@@ -16,6 +17,7 @@ export const REFERENCE_TRACK_MANAGER_ROLES = new Set([
   "campus_pastor",
   "campus_worship_pastor",
   "childrens_pastor",
+  "student_pastor",
   "student_worship_pastor",
 ]);
 

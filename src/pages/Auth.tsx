@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { getAppUrl } from "@/lib/constants";
 import { Loader2, Music, MailCheck, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
@@ -134,7 +135,7 @@ export default function Auth() {
     }
 
     setIsResetting(true);
-    const redirectTo = `${window.location.origin}/auth`;
+    const redirectTo = getAppUrl("/auth");
     const { error } = await supabase.functions.invoke("send-reset-password-email", {
       body: {
         email: emailToUse,
@@ -328,7 +329,7 @@ export default function Auth() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-worship">
             <Music className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Worship Leader</h1>
+          <h1 className="font-display text-3xl font-bold text-foreground">Worship Resource</h1>
           <p className="mt-2 text-muted-foreground">Manage your worship team with ease</p>
         </div>
 

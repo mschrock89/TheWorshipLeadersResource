@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getAppUrl } from "@/lib/constants";
 
 export interface PcoConnection {
   id: string;
@@ -78,7 +79,7 @@ export function useStartPcoAuth() {
 
   return useMutation({
     mutationFn: async (campusId?: string) => {
-      const redirectUri = `${window.location.origin}/settings/planning-center`;
+      const redirectUri = getAppUrl("/settings/planning-center");
       
       const { data, error } = await supabase.functions.invoke("pco-auth-start", {
         body: { redirectUri, campusId },

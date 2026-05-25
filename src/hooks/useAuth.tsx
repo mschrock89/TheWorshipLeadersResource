@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { getAppUrl } from "@/lib/constants";
+import { getCurrentResourceAppKey, hasStudentAppAdminRole } from "@/lib/resourceApp";
 
 interface AuthContextType {
   user: User | null;
@@ -74,23 +76,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const roles = data?.map(r => r.role) || [];
     const hasRole = (role: typeof roles[number]) => roles.includes(role);
+    const resourceAppKey = getCurrentResourceAppKey();
+    const hasStudentAppAdmin = hasStudentAppAdminRole(roles, resourceAppKey);
     
-    setIsAdmin(hasRole("admin"));
+    setIsAdmin(hasRole("admin") || hasStudentAppAdmin);
     setIsLeader(
       hasRole("admin") ||
+      hasStudentAppAdmin ||
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
+      hasRole("student_pastor") ||
       hasRole("student_worship_pastor") ||
       hasRole("childrens_pastor") ||
       hasRole("network_worship_pastor") ||
       hasRole("network_worship_leader")
     );
-    setIsVideoDirector(hasRole("admin") || hasRole("video_director"));
-    setIsProductionManager(hasRole("admin") || hasRole("production_manager"));
+    setIsVideoDirector(hasRole("admin") || hasStudentAppAdmin || hasRole("video_director"));
+    setIsProductionManager(hasRole("admin") || hasStudentAppAdmin || hasRole("production_manager"));
     setCanManageTeam(
       hasRole("admin") ||
+      hasStudentAppAdmin ||
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
+      hasRole("student_pastor") ||
       hasRole("student_worship_pastor") ||
       hasRole("childrens_pastor") ||
       hasRole("network_worship_pastor") ||
@@ -100,8 +108,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
     setCanSwitchCampusChat(
       hasRole("admin") ||
+      hasStudentAppAdmin ||
       hasRole("campus_admin") ||
       hasRole("campus_worship_pastor") ||
+      hasRole("student_pastor") ||
       hasRole("childrens_pastor") ||
       hasRole("network_worship_pastor") ||
       hasRole("network_worship_leader")
@@ -114,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/auth?mode=confirm-signup`;
+    const redirectUrl = getAppUrl("/auth?mode=confirm-signup");
     const tempPassword = `${crypto.randomUUID()}!Wlr`;
     const { error } = await supabase.auth.signUp({
       email,

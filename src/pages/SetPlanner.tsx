@@ -173,7 +173,7 @@ export default function SetPlanner() {
   const assignedCampusIds = useMemo(() => {
     return allUserRoles
       .filter(r => 
-        (r.role === 'campus_worship_pastor' || r.role === 'student_worship_pastor' || r.role === 'childrens_pastor') && 
+        (r.role === 'campus_worship_pastor' || r.role === 'student_pastor' || r.role === 'student_worship_pastor' || r.role === 'childrens_pastor') && 
         r.admin_campus_id
       )
       .map(r => r.admin_campus_id as string);

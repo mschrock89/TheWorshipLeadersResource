@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import {
   MINISTRY_SLOT_CATEGORIES,
   POSITION_SLOTS,
+  STUDENT_TEAM_NAMES,
   memberMatchesMinistryFilter,
   normalizeWeekendWorshipMinistryType,
 } from "@/lib/constants";
@@ -18,6 +19,7 @@ import {
   buildFirstScheduledDateByRotationName,
   compareRotationPeriods,
 } from "@/lib/rotationPeriods";
+import { getCurrentResourceAppKey, hasOrgAdminPrivilegesForResourceApp, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 export interface TeamPeriodLock {
   id: string;
@@ -76,6 +78,8 @@ const WORSHIP_TEAM_DISPLAY_ORDER = [
   "Simple Worship",
   "5th Sunday",
 ] as const;
+
+const STUDENT_TEAM_DISPLAY_ORDER = STUDENT_TEAM_NAMES;
 
 const DEFAULT_WORSHIP_TEAMS: WorshipTeam[] = [
   {
@@ -161,9 +165,82 @@ const DEFAULT_WORSHIP_TEAMS: WorshipTeam[] = [
   },
 ];
 
-function sortWorshipTeams(teams: WorshipTeam[]) {
+const DEFAULT_STUDENT_TEAMS_BY_APP: Record<string, WorshipTeam[]> = {
+  students_hs: [
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000101",
+      name: "Hospitality",
+      color: "#0EA5E9",
+      icon: "heart",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000102",
+      name: "Hype",
+      color: "#F97316",
+      icon: "zap",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000103",
+      name: "Prayer",
+      color: "#8B5CF6",
+      icon: "star",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000104",
+      name: "Cafe",
+      color: "#22C55E",
+      icon: "diamond",
+      template_config: null,
+    },
+  ],
+  students_ms: [
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000201",
+      name: "Hospitality",
+      color: "#0EA5E9",
+      icon: "heart",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000202",
+      name: "Hype",
+      color: "#F97316",
+      icon: "zap",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000203",
+      name: "Prayer",
+      color: "#8B5CF6",
+      icon: "star",
+      template_config: null,
+    },
+    {
+      id: "9c95bf00-0000-4a00-9000-000000000204",
+      name: "Cafe",
+      color: "#22C55E",
+      icon: "diamond",
+      template_config: null,
+    },
+  ],
+};
+
+function getDefaultTeamsForResourceApp(resourceAppKey: string): WorshipTeam[] {
+  return isStudentResourceAppKey(resourceAppKey)
+    ? DEFAULT_STUDENT_TEAMS_BY_APP[resourceAppKey] || DEFAULT_STUDENT_TEAMS_BY_APP.students_hs
+    : DEFAULT_WORSHIP_TEAMS;
+}
+
+function getTeamDisplayOrderForResourceApp(resourceAppKey: string) {
+  return isStudentResourceAppKey(resourceAppKey) ? STUDENT_TEAM_DISPLAY_ORDER : WORSHIP_TEAM_DISPLAY_ORDER;
+}
+
+function sortWorshipTeams(teams: WorshipTeam[], resourceAppKey = getCurrentResourceAppKey()) {
   const orderMap = new Map(
-    WORSHIP_TEAM_DISPLAY_ORDER.map((name, index) => [name.toLowerCase(), index]),
+    getTeamDisplayOrderForResourceApp(resourceAppKey).map((name, index) => [name.toLowerCase(), index]),
   );
 
   return [...teams].sort((a, b) => {
@@ -324,6 +401,18 @@ interface RelatedRotationPeriodRow extends Pick<RotationPeriodRow, "id" | "campu
   campuses: { name: string | null } | null;
 }
 
+async function getTeamIdsForResourceApp(resourceAppKey = getCurrentResourceAppKey()) {
+  const { data, error } = await supabase
+    .from("worship_teams")
+    .select("id")
+    .eq("resource_app_key", resourceAppKey);
+
+  if (error) throw error;
+  return (data || []).map((team) => team.id);
+}
+
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
+
 // Re-export POSITION_SLOTS for backwards compatibility
 export { POSITION_SLOTS } from "@/lib/constants";
 
@@ -386,7 +475,7 @@ export function useAdminCampusId() {
       const fallbackCampusId = profileRow?.default_campus_id || assignedCampusIds[0] || null;
 
       // Check if user is org admin
-      const isOrgAdmin = data?.some(r => r.role === "admin");
+      const isOrgAdmin = hasOrgAdminPrivilegesForResourceApp(data.map((row) => row.role), getCurrentResourceAppKey());
       if (isOrgAdmin) {
         return {
           isOrgAdmin: true,
@@ -417,6 +506,7 @@ export function useAdminCampusId() {
       const hasCampusScopedBuilderRole = data?.some((row) =>
         [
           "campus_worship_pastor",
+          "student_pastor",
           "student_worship_pastor",
           "childrens_pastor",
           "video_director",
@@ -434,8 +524,10 @@ export function useAdminCampusId() {
 }
 
 export function useRotationPeriodsForCampus(campusId: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["rotation-periods", campusId],
+    queryKey: ["rotation-periods", campusId, resourceAppKey],
     enabled: !!campusId,
     queryFn: async () => {
       const [{ data, error }, { data: scheduleRows, error: scheduleError }] = await Promise.all([
@@ -448,6 +540,7 @@ export function useRotationPeriodsForCampus(campusId: string | null) {
         supabase
           .from("team_schedule")
           .select("rotation_period, schedule_date, campus_id")
+          .eq("resource_app_key", resourceAppKey)
           .or(`campus_id.eq.${campusId},campus_id.is.null`),
       ]);
 
@@ -500,18 +593,21 @@ export function usePreviousPeriodMembers(
   periods: RotationPeriod[],
   currentPeriodId: string | null
 ) {
+  const resourceAppKey = getCurrentResourceAppKey();
   const previousPeriodId = useMemo(() => {
     return getPreviousPeriodId(periods, currentPeriodId);
   }, [periods, currentPeriodId]);
 
   return useQuery({
-    queryKey: ["team-members-period", previousPeriodId],
+    queryKey: ["team-members-period", previousPeriodId, resourceAppKey],
     enabled: !!previousPeriodId,
     queryFn: async () => {
+      const teamIds = await getTeamIdsForResourceApp(resourceAppKey);
       const { data, error } = await supabase
         .from("team_members")
         .select("*")
-        .eq("rotation_period_id", previousPeriodId);
+        .eq("rotation_period_id", previousPeriodId)
+        .in("team_id", teamIds.length > 0 ? teamIds : [EMPTY_UUID]);
 
       if (error) throw error;
       return (data || []).map(m => ({
@@ -525,19 +621,22 @@ export function usePreviousPeriodMembers(
 }
 
 export function useWorshipTeams(campusId: string | null, ministryType: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["worship-teams", campusId, ministryType],
+    queryKey: ["worship-teams", campusId, ministryType, resourceAppKey],
     queryFn: async () => {
       const { data: teams, error: teamsError } = await supabase
         .from("worship_teams")
         .select("*")
+        .eq("resource_app_key", resourceAppKey)
         .order("name");
 
       if (teamsError) throw teamsError;
 
       const baseTeams = (teams || []).length > 0
         ? ((teams || []) as WorshipTeam[])
-        : DEFAULT_WORSHIP_TEAMS;
+        : getDefaultTeamsForResourceApp(resourceAppKey);
 
       const templateMinistryType =
         normalizeWeekendWorshipMinistryType(
@@ -559,7 +658,7 @@ export function useWorshipTeams(campusId: string | null, ministryType: string | 
       const { data: templateConfigs, error: templateConfigsError } = await templateQuery;
       if (templateConfigsError) {
         console.warn("Falling back to default worship team templates", templateConfigsError);
-        return sortWorshipTeams(baseTeams);
+        return sortWorshipTeams(baseTeams, resourceAppKey);
       }
 
       const bestTemplateByTeamId = new Map<string, TeamTemplateConfigRow>();
@@ -583,6 +682,7 @@ export function useWorshipTeams(campusId: string | null, ministryType: string | 
           ...team,
           template_config: bestTemplateByTeamId.get(team.id)?.template_config ?? team.template_config ?? null,
         })),
+        resourceAppKey,
       );
     },
   });
@@ -598,7 +698,7 @@ export function useCampusWorshipPastors(campusId: string | null) {
       const { data: roleRows, error: roleError } = await supabase
         .from("user_roles")
         .select("user_id")
-        .in("role", ["campus_worship_pastor", "student_worship_pastor", "childrens_pastor"]);
+        .in("role", ["campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor"]);
 
       if (roleError) throw roleError;
 
@@ -640,6 +740,7 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
         .in("role", [
           "network_worship_pastor",
           "campus_worship_pastor",
+          "student_pastor",
           "student_worship_pastor",
           "childrens_pastor",
           "video_director",
@@ -670,14 +771,18 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
 }
 
 export function useTeamMembersForPeriod(rotationPeriodId: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["team-members-period", rotationPeriodId],
+    queryKey: ["team-members-period", rotationPeriodId, resourceAppKey],
     enabled: !!rotationPeriodId,
     queryFn: async () => {
+      const teamIds = await getTeamIdsForResourceApp(resourceAppKey);
       const { data, error } = await supabase
         .from("team_members")
         .select("*")
-        .eq("rotation_period_id", rotationPeriodId);
+        .eq("rotation_period_id", rotationPeriodId)
+        .in("team_id", teamIds.length > 0 ? teamIds : [EMPTY_UUID]);
 
       if (error) throw error;
       return (data || []).map(m => ({
@@ -691,14 +796,18 @@ export function useTeamMembersForPeriod(rotationPeriodId: string | null) {
 }
 
 export function useTeamMemberDateOverrides(rotationPeriodId: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["team-member-date-overrides", rotationPeriodId],
+    queryKey: ["team-member-date-overrides", rotationPeriodId, resourceAppKey],
     enabled: !!rotationPeriodId,
     queryFn: async () => {
+      const teamIds = await getTeamIdsForResourceApp(resourceAppKey);
       const { data, error } = await supabase
         .from("team_member_date_overrides")
         .select("*")
         .eq("rotation_period_id", rotationPeriodId)
+        .in("team_id", teamIds.length > 0 ? teamIds : [EMPTY_UUID])
         .order("schedule_date", { ascending: true });
 
       if (error) throw error;
@@ -1279,6 +1388,7 @@ export function useRemoveMemberDateOverride() {
 
 export function useCopyFromPreviousPeriod() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async ({
@@ -1288,8 +1398,13 @@ export function useCopyFromPreviousPeriod() {
       fromPeriodId: string | null;
       toPeriodId: string;
     }) => {
+      const teamIds = await getTeamIdsForResourceApp(resourceAppKey);
+      if (teamIds.length === 0) {
+        throw new Error("No teams found for this app");
+      }
+
       // Get members from source period (or default if null)
-      let query = supabase.from("team_members").select("*");
+      let query = supabase.from("team_members").select("*").in("team_id", teamIds);
       
       if (fromPeriodId) {
         query = query.eq("rotation_period_id", fromPeriodId);
@@ -1308,7 +1423,8 @@ export function useCopyFromPreviousPeriod() {
       const { error: deleteError } = await supabase
         .from("team_members")
         .delete()
-        .eq("rotation_period_id", toPeriodId);
+        .eq("rotation_period_id", toPeriodId)
+        .in("team_id", teamIds);
 
       if (deleteError) throw deleteError;
 
@@ -1321,8 +1437,9 @@ export function useCopyFromPreviousPeriod() {
         position_slot: m.position_slot,
         display_order: m.display_order,
         rotation_period_id: toPeriodId,
-         // Treat NULL or empty array as default
-         ministry_types: m.ministry_types?.length ? m.ministry_types : ['weekend'],
+        service_day: m.service_day || null,
+        // Treat NULL or empty array as default
+        ministry_types: m.ministry_types?.length ? m.ministry_types : ['weekend'],
       }));
 
       const { error: insertError } = await supabase
@@ -1347,13 +1464,18 @@ export function useCopyFromPreviousPeriod() {
 
 export function useClearPeriod() {
   const queryClient = useQueryClient();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (rotationPeriodId: string) => {
+      const teamIds = await getTeamIdsForResourceApp(resourceAppKey);
+      if (teamIds.length === 0) return;
+
       const { error } = await supabase
         .from("team_members")
         .delete()
-        .eq("rotation_period_id", rotationPeriodId);
+        .eq("rotation_period_id", rotationPeriodId)
+        .in("team_id", teamIds);
 
       if (error) throw error;
     },
@@ -1651,6 +1773,7 @@ export function useCrossCheckRotationAssignments() {
       let scheduleQuery = supabase
         .from("team_schedule")
         .select("team_id, schedule_date, ministry_type, campus_id, created_at")
+        .eq("resource_app_key", getCurrentResourceAppKey())
         .eq("rotation_period", rotationPeriodName)
         .order("schedule_date", { ascending: true });
 
@@ -1667,6 +1790,7 @@ export function useCrossCheckRotationAssignments() {
       const { data: teams, error: teamsError } = await supabase
         .from("worship_teams")
         .select("id, name")
+        .eq("resource_app_key", getCurrentResourceAppKey())
         .in("id", teamIds.length > 0 ? teamIds : ["00000000-0000-0000-0000-000000000000"]);
 
       if (teamsError) throw teamsError;

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface SwapInfo {
   id: string;
@@ -32,9 +33,10 @@ interface UserSwapsData {
  */
 export function useUserSwaps() {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["user-swaps-all", user?.id],
+    queryKey: ["user-swaps-all", user?.id, resourceAppKey],
     queryFn: async (): Promise<UserSwapsData> => {
       if (!user?.id) {
         return { swappedOutDates: new Set(), swappedInDates: new Map() };
@@ -54,6 +56,7 @@ export function useUserSwaps() {
           worship_teams(id, name, color, icon)
         `)
         .eq("requester_id", user.id)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
 
       if (requesterError) throw requesterError;
@@ -72,6 +75,7 @@ export function useUserSwaps() {
           worship_teams(id, name, color, icon)
         `)
         .eq("accepted_by_id", user.id)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
 
       if (accepterError) throw accepterError;

@@ -5,7 +5,7 @@ export default function Privacy() {
     <LegalPageLayout title="Privacy Policy" lastUpdated="February 28, 2026">
       <section className="space-y-3">
         <p>
-          Worship Leader&apos;s Resource authenticates users with Google and uses Google Calendar to push calendar dates.
+          Worship Resource authenticates users with Google and uses Google Calendar to push calendar dates.
           We only use Google data as needed to sync your calendar activity.
         </p>
       </section>

@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { MINISTRY_TYPES, POSITION_CATEGORIES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 interface SetlistMember {
   userId: string;
@@ -49,6 +50,11 @@ interface SetlistConfirmationWidgetProps {
 }
 
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
+
+function isWednesdayPlanDate(planDate: string) {
+  const date = new Date(`${planDate}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && date.getDay() === 3;
+}
 
 function getTargetRosterMinistry(ministryFilter: string, setlistMinistry: string) {
   return ministryFilter === "all" ? setlistMinistry : ministryFilter;
@@ -414,9 +420,16 @@ function SetlistRow({
 export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmationWidgetProps) {
   const [ministryFilter, setMinistryFilter] = useState<string>("all");
   const [expandedSetlistId, setExpandedSetlistId] = useState<string | null>(null);
+  const isStudentApp = isCurrentStudentResourceApp();
+  const widgetTitle = isStudentApp ? "Services" : "Setlist Confirmation Status";
+  const emptyTitle = isStudentApp ? "No published Wednesday flows found" : "No published setlists found";
+  const emptyDescription = isStudentApp
+    ? "Publish a Wednesday flow to track confirmations"
+    : "Publish a setlist from Set Builder to track confirmations";
+  const today = format(new Date(), "yyyy-MM-dd");
 
   const { data: setlists = [], isLoading } = useQuery({
-    queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter],
+    queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter, isStudentApp, today],
     queryFn: async (): Promise<PublishedSetlist[]> => {
       let query = supabase
         .from("draft_sets")
@@ -431,9 +444,9 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         `)
         .eq("status", "published")
         .not("published_at", "is", null)
-        .gte("plan_date", new Date().toISOString().split("T")[0])
+        .gte("plan_date", today)
         .order("plan_date", { ascending: true })
-        .limit(10);
+        .limit(isStudentApp ? 50 : 10);
 
       if (selectedCampusId !== "all") {
         query = query.eq("campus_id", selectedCampusId);
@@ -522,13 +535,18 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         }
       }
 
-      return dedupedPublishedSets.map((set) => ({
+      const resolvedSets = dedupedPublishedSets.map((set) => ({
         ...set,
         custom_service_id:
           set.custom_service_id ||
           customServiceByKey.get(`${set.plan_date}|${set.campus_id}|${set.ministry_type}`) ||
           null,
       }));
+
+      return (isStudentApp
+        ? resolvedSets.filter((set) => isWednesdayPlanDate(set.plan_date))
+        : resolvedSets
+      ).slice(0, 10);
     },
   });
 
@@ -549,7 +567,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Music className="h-5 w-5 text-primary" />
-            Setlist Confirmation Status
+            {widgetTitle}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -567,7 +585,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Music className="h-5 w-5 text-primary" />
-            Setlist Confirmation Status
+            {widgetTitle}
           </CardTitle>
           <Select value={ministryFilter} onValueChange={setMinistryFilter}>
             <SelectTrigger className="w-[160px] bg-background">
@@ -588,8 +606,8 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         {visibleSetlists.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Music className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>No published setlists found</p>
-            <p className="text-sm mt-1">Publish a setlist from Set Builder to track confirmations</p>
+            <p>{emptyTitle}</p>
+            <p className="text-sm mt-1">{emptyDescription}</p>
           </div>
         ) : (
           <ScrollArea className="max-h-[500px]">

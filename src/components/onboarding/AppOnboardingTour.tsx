@@ -9,6 +9,7 @@ import { useCompleteOnboarding, useOnboardingStatus } from "@/hooks/useProfiles"
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { isAuditionCandidateRole } from "@/lib/access";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 type TourStep = {
   id: string;
@@ -46,15 +47,16 @@ export function AppOnboardingTour() {
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
   const startedForUserId = useRef<string | null>(null);
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
+  const isStudentApp = isCurrentStudentResourceApp();
 
   const steps = useMemo<TourStep[]>(() => {
     const baseSteps: TourStep[] = [
       {
         id: "welcome",
         route: "/",
-        title: "Welcome to Worship Leader's Resource",
+        title: "Welcome to Worship Resource",
         description:
-          "This quick tour shows the parts of the app you'll use most often so new volunteers can get oriented fast.",
+          "This quick tour shows the parts of the app you'll use most often so new worship volunteers can get oriented fast.",
       },
       {
         id: "profile-menu",
@@ -95,9 +97,11 @@ export function AppOnboardingTour() {
         id: "setlists-nav",
         route: "/",
         target: '[data-tour="nav-setlists"]',
-        title: "Setlists live here",
+        title: isStudentApp ? "Wednesday Flow lives here" : "Setlists live here",
         description:
-          "Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to.",
+          isStudentApp
+            ? "Wednesday Flow is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to."
+            : "Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to.",
       });
     }
 
@@ -113,7 +117,7 @@ export function AppOnboardingTour() {
     }
 
     return baseSteps;
-  }, [isAuditionCandidate, isSubscribed, isSupported]);
+  }, [isAuditionCandidate, isStudentApp, isSubscribed, isSupported]);
 
   useEffect(() => {
     if (user) {

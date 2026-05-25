@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface Profile {
   id: string;
@@ -30,6 +31,7 @@ interface MessageRow {
   created_at: string;
   campus_id: string | null;
   ministry_type: string | null;
+  resource_app_key: string | null;
   attachments: string[] | null;
   message_reactions: MessageReactionRow[] | null;
 }
@@ -41,6 +43,7 @@ export interface ChatMessage {
   created_at: string;
   campus_id: string | null;
   ministry_type: string | null;
+  resource_app_key: string | null;
   attachments: string[] | null;
   profiles: Profile;
   message_reactions: Reaction[];
@@ -51,6 +54,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   const fetchMessages = useCallback(async () => {
     if (!campusId || !ministryType) {
@@ -72,6 +76,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       `)
       .eq("campus_id", campusId)
       .eq("ministry_type", ministryType)
+      .eq("resource_app_key", resourceAppKey)
       .order("created_at", { ascending: true });
 
     const { data, error } = await query;
@@ -107,7 +112,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     setMessages(normalized as unknown as ChatMessage[]);
     setIsLoading(false);
-  }, [campusId, ministryType, toast]);
+  }, [campusId, ministryType, resourceAppKey, toast]);
 
   const sendMessage = async (content: string, attachments?: string[]) => {
     if (!user || !campusId || !ministryType) return;
@@ -122,6 +127,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         content: content.trim() || (attachments?.length ? "" : ""),
         campus_id: campusId,
         ministry_type: ministryType,
+        resource_app_key: resourceAppKey,
         attachments: attachments && attachments.length > 0 ? attachments : null,
       })
       .select("id")
@@ -144,6 +150,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         await supabase.functions.invoke("notify-chat-message", {
           body: {
             messageId: insertedMessage.id,
+            resourceAppKey,
           },
         });
       } catch (notificationError) {
@@ -159,6 +166,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       .from("chat_messages")
       .update({ content: newContent.trim() })
       .eq("id", messageId)
+      .eq("resource_app_key", resourceAppKey)
       .eq("user_id", user.id);
 
     if (error) {
@@ -185,6 +193,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       .from("chat_messages")
       .delete()
       .eq("id", messageId)
+      .eq("resource_app_key", resourceAppKey)
       .eq("user_id", user.id);
 
     if (error) {
@@ -246,7 +255,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     // Subscribe to new messages and reactions for this campus+ministry
     const messagesChannel = supabase
-      .channel(`chat-messages-${campusId}-${ministryType}`)
+      .channel(`chat-messages-${resourceAppKey}-${campusId}-${ministryType}`)
       .on(
         "postgres_changes",
         { 
@@ -257,8 +266,8 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         },
         (payload) => {
           // Only process messages for our ministry type
-          const newMsg = payload.new as { ministry_type?: string; user_id?: string };
-          if (newMsg.ministry_type !== ministryType) return;
+          const newMsg = payload.new as { ministry_type?: string; resource_app_key?: string; user_id?: string };
+          if (newMsg.ministry_type !== ministryType || newMsg.resource_app_key !== resourceAppKey) return;
           
           if (newMsg.user_id !== user?.id) {
             haptic("light");
@@ -276,8 +285,8 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         },
         (payload) => {
           // Only process updates for our ministry type
-          const updatedMsg = payload.new as { ministry_type?: string };
-          if (updatedMsg.ministry_type !== ministryType) return;
+          const updatedMsg = payload.new as { ministry_type?: string; resource_app_key?: string };
+          if (updatedMsg.ministry_type !== ministryType || updatedMsg.resource_app_key !== resourceAppKey) return;
           fetchMessages();
         }
       )
@@ -305,7 +314,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
     return () => {
       supabase.removeChannel(messagesChannel);
     };
-  }, [campusId, fetchMessages, ministryType, user?.id]);
+  }, [campusId, fetchMessages, ministryType, resourceAppKey, user?.id]);
 
   return {
     messages,

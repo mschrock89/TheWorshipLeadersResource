@@ -20,7 +20,13 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { CHAT_MINISTRY_TYPES, getUniqueNormalizedChatMinistries } from "@/lib/chat";
+import {
+  getChatMinistryLabel,
+  getChatMinistryTypesForResourceApp,
+  getDefaultChatMinistryTypeForResourceApp,
+  getUniqueNormalizedChatMinistries,
+} from "@/lib/chat";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 // Hook to get ministries the user is assigned to at a specific campus
 function useUserMinistriesForCampus(userId: string | undefined, campusId: string | null) {
@@ -51,7 +57,11 @@ function ChatContent() {
 
   const campusCtx = useCampusSelectionOptional();
   const [localCampusId, setLocalCampusId] = useState<string | null>(null);
-  const [selectedMinistryType, setSelectedMinistryType] = useState<string>('weekend');
+  const resourceAppKey = getCurrentResourceAppKey();
+  const chatMinistryTypes = useMemo(() => getChatMinistryTypesForResourceApp(resourceAppKey), [resourceAppKey]);
+  const [selectedMinistryType, setSelectedMinistryType] = useState<string>(() =>
+    getDefaultChatMinistryTypeForResourceApp(resourceAppKey)
+  );
 
   const selectedCampusId = campusCtx?.selectedCampusId ?? localCampusId;
   const setSelectedCampusId = campusCtx?.setSelectedCampusId ?? setLocalCampusId;
@@ -93,7 +103,7 @@ function ChatContent() {
   const lastSeenUnreadIndexRef = useRef<number>(-1);
   
   // Typing presence
-  const { setTyping } = useTypingPresence(selectedCampusId, userProfile?.full_name ?? null);
+  const { setTyping } = useTypingPresence(selectedCampusId, selectedMinistryType, userProfile?.full_name ?? null);
 
   // Determine if we're still loading campuses data
   const isCampusDataLoading = isLeader ? allCampusesLoading : campusesLoading;
@@ -115,7 +125,7 @@ function ChatContent() {
   // Admins/leaders see all ministries, others see only their assigned ministries
   // Evident chat is only available for Murfreesboro Central
   const availableMinistries = useMemo(() => {
-    let ministries = CHAT_MINISTRY_TYPES.filter(m => {
+    let ministries = chatMinistryTypes.filter(m => {
       // Evident is only for Murfreesboro Central
       if (m.value === 'evident' && !isMurfreesboroCentral) {
         return false;
@@ -129,7 +139,7 @@ function ChatContent() {
     }
     
     return ministries;
-  }, [isAdmin, isLeader, userMinistries, isMurfreesboroCentral]);
+  }, [chatMinistryTypes, isAdmin, isLeader, userMinistries, isMurfreesboroCentral]);
 
   // Find the index of the first unread message and count total unread
   const { firstUnreadIndex, unreadCount } = useMemo(() => {
@@ -349,7 +359,7 @@ function ChatContent() {
   // Get the display name for the chat (campus name + ministry)
   const getChatDisplayName = () => {
     const campusName = selectedCampus?.campuses?.name || 'Chat';
-    const ministryLabel = CHAT_MINISTRY_TYPES.find(m => m.value === selectedMinistryType)?.label || '';
+    const ministryLabel = getChatMinistryLabel(selectedMinistryType);
     return `${campusName} ${ministryLabel}`.trim();
   };
 
@@ -420,7 +430,7 @@ function ChatContent() {
         </PullToRefresh>
         
         {/* Typing indicator */}
-        <TypingIndicator campusId={selectedCampusId} />
+        <TypingIndicator campusId={selectedCampusId} ministryType={selectedMinistryType} />
         
         {/* Floating "Jump to last read" button */}
         {firstUnreadIndex > 0 && 

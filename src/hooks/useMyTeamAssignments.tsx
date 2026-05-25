@@ -4,6 +4,7 @@ import { useAuth } from "./useAuth";
 import { parseLocalDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -79,6 +80,7 @@ function assignmentMatchesMinistryTypes(
 export function useMyTeamAssignments() {
   const { user } = useAuth();
   const today = new Date().toISOString().split("T")[0];
+  const resourceAppKey = getCurrentResourceAppKey();
 
   // Fetch user's campuses as fallback for assignments without rotation periods
   const { data: userCampuses = [] } = useQuery({
@@ -96,7 +98,7 @@ export function useMyTeamAssignments() {
   });
 
   const { data: assignments = [], isLoading: assignmentsLoading } = useQuery({
-    queryKey: ["my-team-assignments", user?.id, userCampuses],
+    queryKey: ["my-team-assignments", user?.id, userCampuses, resourceAppKey],
     queryFn: async () => {
       if (!user?.id) return [];
 
@@ -115,7 +117,8 @@ export function useMyTeamAssignments() {
             id,
             name,
             color,
-            icon
+            icon,
+            resource_app_key
           ),
           rotation_periods (
             name,
@@ -127,7 +130,8 @@ export function useMyTeamAssignments() {
             )
           )
         `)
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("worship_teams.resource_app_key", resourceAppKey);
 
       if (error) throw error;
 
@@ -159,7 +163,7 @@ export function useMyTeamAssignments() {
 
   // Fetch accepted swaps where user gave away their date or accepted someone else's date
   const { data: acceptedSwaps = [] } = useQuery({
-    queryKey: ["my-accepted-swaps", user?.id],
+    queryKey: ["my-accepted-swaps", user?.id, resourceAppKey],
     queryFn: async () => {
       if (!user?.id) return [];
 
@@ -182,6 +186,7 @@ export function useMyTeamAssignments() {
           )
         `)
         .eq("status", "accepted")
+        .eq("resource_app_key", resourceAppKey)
         .or(`requester_id.eq.${user.id},accepted_by_id.eq.${user.id}`)
         .gte("original_date", new Date().toISOString().split("T")[0]);
 
@@ -192,7 +197,7 @@ export function useMyTeamAssignments() {
   });
 
   const { data: dateOverrides = [], isLoading: overridesLoading } = useQuery({
-    queryKey: ["my-team-date-overrides", user?.id, userCampuses],
+    queryKey: ["my-team-date-overrides", user?.id, userCampuses, resourceAppKey],
     queryFn: async () => {
       if (!user?.id) return [];
 
@@ -210,7 +215,8 @@ export function useMyTeamAssignments() {
             id,
             name,
             color,
-            icon
+            icon,
+            resource_app_key
           ),
           rotation_periods (
             campus_id,
@@ -220,6 +226,7 @@ export function useMyTeamAssignments() {
           )
         `)
         .eq("user_id", user.id)
+        .eq("worship_teams.resource_app_key", resourceAppKey)
         .gte("schedule_date", today);
 
       if (error) throw error;
@@ -247,7 +254,7 @@ export function useMyTeamAssignments() {
 
   const { data: scheduledDates = [], isLoading: datesLoading } = useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["my-scheduled-dates", "local-date-v3", user?.id, assignments, dateOverrides, acceptedSwaps],
+    queryKey: ["my-scheduled-dates", "local-date-v3", user?.id, assignments, dateOverrides, acceptedSwaps, resourceAppKey],
     queryFn: async () => {
       if (!user?.id || (assignments.length === 0 && dateOverrides.length === 0)) return [];
 
@@ -270,6 +277,7 @@ export function useMyTeamAssignments() {
             color
           )
         `)
+        .eq("resource_app_key", resourceAppKey)
         .in("team_id", teamIds)
         .gte("schedule_date", today);
 

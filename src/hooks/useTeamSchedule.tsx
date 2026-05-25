@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { TeamTemplateConfig } from "@/lib/teamTemplates";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 /** Get the rotation period name that covers a given date for a campus (for filtering team_schedule) */
 export function useRotationPeriodForDate(campusId: string | null, date: Date | null) {
@@ -33,6 +34,7 @@ export interface WorshipTeam {
   color: string;
   icon: string;
   created_at: string;
+  resource_app_key?: string;
   template_config?: TeamTemplateConfig | null;
 }
 
@@ -54,6 +56,7 @@ export interface TeamScheduleEntry {
   notes: string | null;
   created_at: string;
   campus_id?: string | null;
+  resource_app_key?: string;
   worship_teams?: WorshipTeam;
 }
 
@@ -87,13 +90,16 @@ function sortWorshipTeams(teams: WorshipTeam[]) {
 }
 
 export function useWorshipTeams() {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["worship-teams"],
+    queryKey: ["worship-teams", resourceAppKey],
     staleTime: 10 * 60 * 1000, // 10 minutes - teams rarely change
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worship_teams")
         .select("*")
+        .eq("resource_app_key", resourceAppKey)
         .order("name");
       if (error) throw error;
       return sortWorshipTeams((data || []) as WorshipTeam[]);
@@ -122,12 +128,15 @@ export function useTeamMembers(teamId?: string) {
 }
 
 export function useTeamSchedule(rotationPeriod?: string, campusId?: string | null) {
+  const resourceAppKey = getCurrentResourceAppKey();
+
   return useQuery({
-    queryKey: ["team-schedule", rotationPeriod, campusId],
+    queryKey: ["team-schedule", rotationPeriod, campusId, resourceAppKey],
     queryFn: async () => {
       let query = supabase
         .from("team_schedule")
         .select("*, worship_teams(*), campus_id")
+        .eq("resource_app_key", resourceAppKey)
         .order("schedule_date");
       
       if (rotationPeriod) {
@@ -181,14 +190,16 @@ export function useTeamSchedule(rotationPeriod?: string, campusId?: string | nul
 
 export function useTeamForDate(date: Date) {
   const dateStr = date.toISOString().split("T")[0];
+  const resourceAppKey = getCurrentResourceAppKey();
   
   return useQuery({
-    queryKey: ["team-for-date", dateStr],
+    queryKey: ["team-for-date", dateStr, resourceAppKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("team_schedule")
         .select("*, worship_teams(*)")
         .eq("schedule_date", dateStr)
+        .eq("resource_app_key", resourceAppKey)
         .maybeSingle();
       
       if (error) throw error;

@@ -10,6 +10,7 @@ import { TeamMemberCard } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
 import { CreateTeamMemberDialog } from "@/components/team/CreateTeamMemberDialog";
+import { ManageBaseRolesDialog } from "@/components/team/ManageBaseRolesDialog";
 import { WelcomeEmailDialog } from "@/components/team/WelcomeEmailDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export default function Team() {
   const [selectedMemberForEmail, setSelectedMemberForEmail] = useState<Profile | undefined>();
   const [resetPasswordMember, setResetPasswordMember] = useState<Profile | undefined>();
   const [deleteMember, setDeleteMember] = useState<Profile | undefined>();
+  const [roleMember, setRoleMember] = useState<Profile | undefined>();
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -310,6 +312,10 @@ export default function Team() {
 
   const handleDeleteProfile = (member: Profile) => {
     setDeleteMember(member);
+  };
+
+  const handleManageRoles = (member: Profile) => {
+    setRoleMember(member);
   };
 
   const getFunctionErrorMessage = async (
@@ -555,6 +561,7 @@ export default function Team() {
               campusNames={userCampusMap[member.id]?.names || []}
               onSendEmail={canManageTeam ? handleSendIndividualEmail : undefined}
               onResetPassword={canManageTeam ? handleResetPassword : undefined}
+              onManageRoles={canManageTeam ? handleManageRoles : undefined}
               onDelete={isAdmin ? handleDeleteProfile : undefined}
             />
           ))}
@@ -579,6 +586,17 @@ export default function Team() {
           queryClient.invalidateQueries({ queryKey: ["profiles"] });
           queryClient.invalidateQueries({ queryKey: ["user-roles"] });
           queryClient.invalidateQueries({ queryKey: ["user-campuses"] });
+        }}
+      />
+
+      <ManageBaseRolesDialog
+        open={!!roleMember}
+        onOpenChange={(open) => !open && setRoleMember(undefined)}
+        memberId={roleMember?.id || null}
+        memberName={roleMember?.full_name || roleMember?.email || null}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles"] });
         }}
       />
 

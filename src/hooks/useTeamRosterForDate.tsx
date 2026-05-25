@@ -10,6 +10,7 @@ import {
   applyEffectiveActiveRotationPeriods,
   buildFirstScheduledDateByRotationName,
 } from "@/lib/rotationPeriods";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
@@ -221,6 +222,7 @@ export function useTeamRosterForDate(
   rotationPeriodName?: string | null,
 ) {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   
   // If campusId is provided, we use it for filtering rotation periods
@@ -231,7 +233,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, "v12"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v12"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -272,6 +274,7 @@ export function useTeamRosterForDate(
             supabase
               .from("team_schedule")
               .select("rotation_period, schedule_date, campus_id")
+              .eq("resource_app_key", resourceAppKey)
               .or(`campus_id.eq.${campusId},campus_id.is.null`),
           ]);
 
@@ -651,6 +654,7 @@ export function useTeamRosterForDate(
         `)
         .in("original_date", datesToCheck)
         .eq("team_id", teamId)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
 
       if (swapsForDateError) throw swapsForDateError;
@@ -671,6 +675,7 @@ export function useTeamRosterForDate(
           accepted_by:profiles!swap_requests_accepted_by_id_fkey(full_name, avatar_url)
         `)
         .in("swap_date", datesToCheck)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
 
       if (swapsOnDateError) throw swapsOnDateError;
@@ -690,6 +695,7 @@ export function useTeamRosterForDate(
         .select("requester_id")
         .in("original_date", datesToCheck)
         .eq("team_id", teamId)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "pending");
 
       if (pendingSwapsError) throw pendingSwapsError;

@@ -45,6 +45,7 @@ import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeac
 import { buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
@@ -53,6 +54,7 @@ const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
   "admin",
   "campus_admin",
   "campus_worship_pastor",
+  "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
   "network_worship_pastor",
@@ -165,6 +167,8 @@ function SetlistYoutubeLinks({
 
 function StandardMySetlists() {
   const { isAdmin, canManageTeam, user } = useAuth();
+  const isStudentApp = isCurrentStudentResourceApp();
+  const setlistsPageLabel = isStudentApp ? "Wednesday Flow" : "My Setlists";
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
@@ -372,7 +376,7 @@ function StandardMySetlists() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>My Setlists</BreadcrumbPage>
+            <BreadcrumbPage>{setlistsPageLabel}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -381,10 +385,12 @@ function StandardMySetlists() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <ListMusic className="h-6 w-6" />
-            My Setlists
+            {setlistsPageLabel}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Review published setlists for your upcoming dates
+            {isStudentApp
+              ? "Review the Wednesday flow for your upcoming dates"
+              : "Review published setlists for your upcoming dates"}
           </p>
         </div>
         
@@ -758,6 +764,7 @@ function SetlistTeamRoster({
   getInitials: (name: string) => string;
 }) {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
 
   const { data: customAssignments = [], isLoading: loadingCustomAssignments } = useQuery({
@@ -785,7 +792,7 @@ function SetlistTeamRoster({
   });
 
   const { data: teamEntry, isLoading: loadingTeam } = useQuery({
-    queryKey: ["my-setlists-team-entry", planDate, campusId, ministryType],
+    queryKey: ["my-setlists-team-entry", planDate, campusId, ministryType, resourceAppKey],
     queryFn: async () => {
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const datesToCheck = [planDate];
@@ -800,6 +807,7 @@ function SetlistTeamRoster({
       let query = supabase
         .from("team_schedule")
         .select("team_id, campus_id, ministry_type, schedule_date")
+        .eq("resource_app_key", resourceAppKey)
         .in("schedule_date", datesToCheck)
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
 

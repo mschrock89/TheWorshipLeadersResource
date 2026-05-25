@@ -4,7 +4,7 @@ import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile, useUpdateProfile, TeamPosition, useUpdateServingRequirements } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses, useUpdateUserCampuses } from "@/hooks/useCampuses";
-import { useUserRoles, useUserAdminCampuses, useAddUserRole, useRemoveUserRole, useToggleUserRole, useUpdateBaseRole } from "@/hooks/useUserRoles";
+import { useUserRoles, useUserAdminCampuses, useAddUserRole, useRemoveUserRole, useToggleUserRole, useUpdateBaseRoles } from "@/hooks/useUserRoles";
 import { useUserMinistryAssignments, useToggleMinistryAssignment } from "@/hooks/useMinistryAssignments";
 import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from "@/hooks/useCampusMinistryPositions";
 import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
@@ -29,11 +29,12 @@ import {
 import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft, ListMusic } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES } from "@/lib/constants";
+import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { areHapticsEnabled, HAPTICS_CHANGE_EVENT, isHapticsSupported, setHapticsEnabled } from "@/lib/haptics";
+import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -51,6 +52,7 @@ const PROFILE_MINISTRY_ORDER = [
   "audition",
   "speaker",
   "prayer_night",
+  STUDENT_TEAM_BUILDER_MINISTRY_TYPE,
 ] as const;
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
@@ -103,6 +105,10 @@ export default function Profile() {
   const canManageAssignments = canManageTeam;
   const bandTopRowPositions = ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass"];
   const bandBottomRowPositions = ["drums", "keys", "pad"];
+  const isStudentResourceApp = isStudentResourceAppKey(getCurrentResourceAppKey());
+  const visibleProfileMinistryOrder = isStudentResourceApp
+    ? [STUDENT_TEAM_BUILDER_MINISTRY_TYPE]
+    : PROFILE_MINISTRY_ORDER.filter((ministryType) => ministryType !== STUDENT_TEAM_BUILDER_MINISTRY_TYPE);
 
   const { data: profile, isLoading } = useProfile(profileId);
   const { data: campuses = [] } = useCampuses();
@@ -115,7 +121,7 @@ export default function Profile() {
   const updateServingRequirements = useUpdateServingRequirements();
   const updateUserCampuses = useUpdateUserCampuses();
   const toggleUserRole = useToggleUserRole();
-  const updateBaseRole = useUpdateBaseRole();
+  const updateBaseRoles = useUpdateBaseRoles();
   const addUserRole = useAddUserRole();
   const removeUserRole = useRemoveUserRole();
   const toggleMinistryAssignment = useToggleMinistryAssignment();
@@ -128,7 +134,18 @@ export default function Profile() {
   const isOrgAdmin = hasRole('admin');
   const isCampusAdmin = hasRole('campus_admin');
   const isAuditionCandidate = hasRole('audition_candidate');
-  const baseRole = userRoles.find(r => BASE_ROLES.includes(r.role as any))?.role || 'volunteer';
+  const baseRoles = Array.from(
+    new Set(
+      userRoles
+        .map((roleData) => roleData.role)
+        .filter((role): role is AppRole => BASE_ROLES.includes(role as typeof BASE_ROLES[number])),
+    ),
+  );
+  const displayedBaseRoles = [
+    baseRoles[0] || "volunteer",
+    baseRoles[1] || "none",
+    baseRoles[2] || "none",
+  ] as const;
   const campusNameById = useMemo(
     () => new Map(campuses.map((campus) => [campus.id, campus.name])),
     [campuses],
@@ -161,6 +178,32 @@ export default function Profile() {
       campusAdminCampusNames: uniqueCampusAdminCampusNames,
     };
   }, [campusNameById, userRoles]);
+
+  const getSelectableBaseRoles = (index: number) => {
+    const selectedElsewhere = new Set(
+      displayedBaseRoles.filter((role, roleIndex) => role !== "none" && roleIndex !== index),
+    );
+
+    return BASE_ROLES.filter((role) => !selectedElsewhere.has(role));
+  };
+
+  const handleBaseRoleChange = (index: number, value: AppRole | "none") => {
+    if (!profileId) return;
+
+    const nextRoles = [...displayedBaseRoles] as Array<AppRole | "none">;
+    nextRoles[index] = index === 0 && value === "none" ? "volunteer" : value;
+
+    if (value !== "none") {
+      nextRoles.forEach((role, roleIndex) => {
+        if (roleIndex !== index && role === value) {
+          nextRoles[roleIndex] = "none";
+        }
+      });
+    }
+
+    const roles = nextRoles.filter((role): role is AppRole => role !== "none");
+    updateBaseRoles.mutate({ userId: profileId, roles });
+  };
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -759,33 +802,32 @@ export default function Profile() {
                     )}
                   </div>
                   
-                  {/* Base Role Selector */}
-                  <div className="flex flex-col items-center gap-2">
-                    <p className="text-xs text-muted-foreground font-medium">Base Role</p>
-                    <Select
-                      value={baseRole}
-                      onValueChange={(value) => {
-                        if (profileId) {
-                          updateBaseRole.mutate({ 
-                            userId: profileId, 
-                            role: value as AppRole
-                          });
-                        }
-                      }}
-                      disabled={updateBaseRole.isPending || isRolesLoading}
-                    >
-                      <SelectTrigger className="w-[280px] bg-background">
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                          <SelectValue placeholder="Select base role" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent className="bg-background">
-                        {BASE_ROLES.map((role) => (
-                          <SelectItem key={role} value={role}>{ROLE_LABELS[role]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {/* Base Role Selectors */}
+                  <div className="flex flex-col items-center gap-3">
+                    <p className="text-xs text-muted-foreground font-medium">Base Roles</p>
+                    {["Primary Base Role", "2nd Base Role", "3rd Base Role"].map((label, index) => (
+                      <div key={label} className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">{label}</Label>
+                        <Select
+                          value={displayedBaseRoles[index]}
+                          onValueChange={(value) => handleBaseRoleChange(index, value as AppRole | "none")}
+                          disabled={updateBaseRoles.isPending || isRolesLoading}
+                        >
+                          <SelectTrigger className="w-[280px] bg-background">
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-muted-foreground" />
+                              <SelectValue placeholder="Select base role" />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent className="bg-background">
+                            {index > 0 && <SelectItem value="none">None</SelectItem>}
+                            {getSelectableBaseRoles(index).map((role) => (
+                              <SelectItem key={role} value={role}>{ROLE_LABELS[role]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
                     {isAuditionCandidate && (
                       <Button
                         type="button"
@@ -798,7 +840,7 @@ export default function Profile() {
                     )}
                   </div>
                   
-                  {(toggleUserRole.isPending || updateBaseRole.isPending) && (
+                  {(toggleUserRole.isPending || updateBaseRoles.isPending) && (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
                 </>
@@ -832,7 +874,7 @@ export default function Profile() {
                     <div className="flex justify-center">
                       <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/50 px-4 py-2 text-sm font-medium text-foreground">
                         <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                        Volunteer
+                        Worship Volunteer
                       </span>
                     </div>
                   )}
@@ -1224,8 +1266,10 @@ export default function Profile() {
                           {/* Ministry Types */}
                           {canManageAssignments ? (
                             <div className="flex flex-wrap gap-3">
-                              {PROFILE_MINISTRY_ORDER.map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
-                                .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry) && !("hidden" in ministry && ministry.hidden))
+                              {visibleProfileMinistryOrder.map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
+                                .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] =>
+                                  Boolean(ministry) && !("hidden" in ministry && ministry.hidden)
+                                )
                                 .map((ministry) => {
                                 const isActive = campusMinistries.includes(ministry.value);
                                 return (
@@ -1281,7 +1325,7 @@ export default function Profile() {
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                                 Positions by Ministry
                               </p>
-                              {PROFILE_MINISTRY_ORDER
+                              {visibleProfileMinistryOrder
                                 .filter((ministryType) => campusMinistries.includes(ministryType))
                                 .map((ministryType) => {
                                 const ministry = MINISTRY_TYPES.find(m => m.value === ministryType);
@@ -1305,6 +1349,7 @@ export default function Profile() {
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 const showVideoPositions = ministryType === 'video';
+                                const showStudentPositions = ministryType === STUDENT_TEAM_BUILDER_MINISTRY_TYPE;
                                 
                                 return (
                                   <div key={ministryType} className="space-y-2 rounded-md bg-muted/30 p-3">
@@ -1378,6 +1423,17 @@ export default function Profile() {
                                             POSITION_CATEGORIES.video,
                                           )
                                         )}
+
+                                        {showStudentPositions && (
+                                          renderMinistryPositionGroup(
+                                            "Team:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.students,
+                                          )
+                                        )}
+
                                       </div>
                                     ) : (
                                       <div className="flex flex-wrap gap-1.5">

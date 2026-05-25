@@ -3,12 +3,14 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getWeekendPlanDate, GOOD_FIT_LABEL } from "@/lib/weekendRundown";
+import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 type WeekendRundownStatus = "no_issues" | "minor_issues" | "no_distractions" | "dumpster_fire";
 
 export interface WeekendRundownRow {
   id: string;
   campus_id: string;
+  resource_app_key: string;
   weekend_date: string;
   user_id: string;
   overall_status: WeekendRundownStatus;
@@ -88,6 +90,7 @@ export function useWeekendRundown(userId: string | undefined, campusId: string |
         .eq("user_id", userId)
         .eq("campus_id", campusId)
         .eq("weekend_date", weekendDate)
+        .eq("resource_app_key", getCurrentResourceAppKey())
         .maybeSingle();
 
       if (rundownError) throw rundownError;
@@ -125,9 +128,10 @@ export function useWeekendRundownEntries(campusId: string | null, weekendDate: s
 
       const { data: rundowns, error } = await supabase
         .from("weekend_rundowns")
-        .select("id, campus_id, weekend_date, user_id, overall_status, notes, created_at, updated_at")
+        .select("id, campus_id, resource_app_key, weekend_date, user_id, overall_status, notes, created_at, updated_at")
         .eq("campus_id", campusId)
         .eq("weekend_date", weekendDate)
+        .eq("resource_app_key", getCurrentResourceAppKey())
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
@@ -164,6 +168,8 @@ export function useSaveWeekendRundown(userId: string | undefined) {
 
   return useMutation({
     mutationFn: async (payload: WeekendRundownPayload) => {
+      const resourceAppKey = getCurrentResourceAppKey();
+
       if (!userId) {
         throw new Error("You must be signed in to save a weekend rundown.");
       }
@@ -174,11 +180,12 @@ export function useSaveWeekendRundown(userId: string | undefined) {
           {
             user_id: userId,
             campus_id: payload.campusId,
+            resource_app_key: resourceAppKey,
             weekend_date: payload.weekendDate,
             overall_status: payload.overallStatus,
             notes: payload.notes.trim() || null,
           },
-          { onConflict: "user_id,campus_id,weekend_date" },
+          { onConflict: "user_id,campus_id,weekend_date,resource_app_key" },
         )
         .select("*")
         .single();
@@ -223,6 +230,7 @@ export function useSaveWeekendRundown(userId: string | undefined) {
       return rundown as WeekendRundownRow;
     },
     onSuccess: (_, variables) => {
+      const rundownName = isCurrentStudentResourceApp() ? "Wednesday Rundown" : "Weekend Rundown";
       queryClient.invalidateQueries({
         queryKey: ["weekend-rundown", userId, variables.campusId, variables.weekendDate],
       });
@@ -233,13 +241,16 @@ export function useSaveWeekendRundown(userId: string | undefined) {
         queryKey: ["weekend-rundown-good-fit-highlights", userId, variables.campusId],
       });
       toast({
-        title: "Weekend Rundown saved",
-        description: "Your post-weekend notes are ready for future planning.",
+        title: `${rundownName} saved`,
+        description: isCurrentStudentResourceApp()
+          ? "Your post-Wednesday notes are ready for future planning."
+          : "Your post-weekend notes are ready for future planning.",
       });
     },
     onError: (error) => {
+      const rundownName = isCurrentStudentResourceApp() ? "Wednesday Rundown" : "Weekend Rundown";
       toast({
-        title: "Could not save Weekend Rundown",
+        title: `Could not save ${rundownName}`,
         description: error.message,
         variant: "destructive",
       });
@@ -376,7 +387,8 @@ export function useWeekendRundownGoodFitHighlights(
         .from("weekend_rundowns")
         .select("id")
         .eq("user_id", userId)
-        .eq("campus_id", campusId);
+        .eq("campus_id", campusId)
+        .eq("resource_app_key", getCurrentResourceAppKey());
 
       if (rundownError) throw rundownError;
       if (!rundowns || rundowns.length === 0) return {} as Record<string, string[]>;

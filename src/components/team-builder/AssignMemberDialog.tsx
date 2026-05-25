@@ -157,6 +157,13 @@ export function AssignMemberDialog({
       if (slotType === "graphics") return pLower === "graphics" || pLower === "broadcast";
       if (slotType === "producer") return pLower === "producer" || pLower === "broadcast";
       if (slotType === "switcher") return pLower === "switcher" || pLower === "broadcast";
+      // Student Resource slots
+      if (slotType === "student_team_lead") {
+        return pLower === "student_team_lead" || pLower === "student_team_member";
+      }
+      if (slotType === "student_member") {
+        return pLower === "student_team_member" || pLower === "student_team_lead";
+      }
       return false;
     });
   };
@@ -270,6 +277,7 @@ export function AssignMemberDialog({
   const ministryLabel = effectiveMinistryFilter === 'weekend' ? 'Weekend Worship'
     : effectiveMinistryFilter === 'eon' ? 'EON'
     : effectiveMinistryFilter === 'encounter' ? 'Encounter'
+    : effectiveMinistryFilter === 'students' ? 'Students'
     : effectiveMinistryFilter || 'All';
   const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;
 

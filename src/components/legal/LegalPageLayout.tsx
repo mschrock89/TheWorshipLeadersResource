@@ -25,7 +25,7 @@ export function LegalPageLayout({ title, lastUpdated, children }: LegalPageLayou
               <p className="text-sm font-medium uppercase tracking-[0.3em] text-muted-foreground">
                 Experience Music
               </p>
-              <p className="text-lg font-semibold">Worship Leader&apos;s Resource</p>
+              <p className="text-lg font-semibold">Worship Resource</p>
             </div>
           </Link>
 

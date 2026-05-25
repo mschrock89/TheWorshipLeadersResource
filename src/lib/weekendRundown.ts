@@ -1,3 +1,5 @@
+import { hasOrgAdminPrivilegesForResourceApp } from "@/lib/resourceApp";
+
 export const WEEKEND_RUNDOWN_STATUS_OPTIONS = [
   { value: "no_issues", label: "No Issues" },
   { value: "minor_issues", label: "Minor Issues" },
@@ -13,11 +15,11 @@ const WEEKEND_RUNDOWN_ADMIN_ROLES = new Set([
 ]);
 
 export function canAccessWeekendRundown(roleNames: string[]) {
-  return roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
+  return hasOrgAdminPrivilegesForResourceApp(roleNames) || roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
 }
 
 export function canReviewWeekendSongs(roleNames: string[]) {
-  return roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
+  return hasOrgAdminPrivilegesForResourceApp(roleNames) || roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
 }
 
 export function getWeekendRundownTargetSunday(now = new Date()) {
@@ -33,6 +35,22 @@ export function getWeekendRundownTargetSunday(now = new Date()) {
   }
 
   return thisSunday;
+}
+
+export function getWednesdayRundownTargetDate(now = new Date()) {
+  const targetWednesday = new Date(now);
+  const daysSinceWednesday = (now.getDay() + 4) % 7;
+  targetWednesday.setDate(now.getDate() - daysSinceWednesday);
+  targetWednesday.setHours(0, 0, 0, 0);
+
+  const unlockTime = new Date(targetWednesday);
+  unlockTime.setHours(21, 0, 0, 0);
+
+  if (now.getDay() === 3 && now < unlockTime) {
+    targetWednesday.setDate(targetWednesday.getDate() - 7);
+  }
+
+  return targetWednesday;
 }
 
 export function getWeekendPlanDate(

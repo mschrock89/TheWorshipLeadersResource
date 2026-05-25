@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 export default function Dashboard() {
   const {
     user,
@@ -95,6 +96,7 @@ export default function Dashboard() {
   // Check if user is a regular volunteer (not a leader/admin)
   const isVolunteer = !canManageTeam;
   const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
+  const isStudentApp = isCurrentStudentResourceApp();
   const quickActions = [
     {
       title: "Set Builder",
@@ -117,11 +119,13 @@ export default function Dashboard() {
       buttonClassName: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
     },
     {
-      title: "Weekend Rundown",
-      description: "Capture post-service notes, flag what went sideways, and log future planning cues.",
+      title: isStudentApp ? "Wednesday Rundown" : "Weekend Rundown",
+      description: isStudentApp
+        ? "Capture post-Wednesday notes, flag what went sideways, and log future planning cues."
+        : "Capture post-service notes, flag what went sideways, and log future planning cues.",
       to: "/weekend-rundown",
       icon: ClipboardList,
-      actionLabel: "Open Weekend Rundown",
+      actionLabel: isStudentApp ? "Open Wednesday Rundown" : "Open Weekend Rundown",
       cardClassName: "border-fuchsia-400/35 bg-[linear-gradient(145deg,rgba(217,70,239,0.18),rgba(88,28,135,0.3))] text-white",
       iconClassName: "border-fuchsia-300/25 bg-fuchsia-400/15 text-fuchsia-100",
       buttonClassName: "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200",
@@ -137,11 +141,13 @@ export default function Dashboard() {
       buttonClassName: "bg-sky-300 text-slate-950 hover:bg-sky-200",
     },
     {
-      title: "Auditions",
-      description: "Track candidates, schedule evaluations, and move people through the process.",
+      title: isStudentApp ? "On Boarding" : "Auditions",
+      description: isStudentApp
+        ? "Track students, schedule next steps, and move people through the onboarding process."
+        : "Track candidates, schedule evaluations, and move people through the process.",
       to: "/auditions",
       icon: ListChecks,
-      actionLabel: "Open Auditions",
+      actionLabel: isStudentApp ? "Open On Boarding" : "Open Auditions",
       cardClassName: "border-amber-400/35 bg-[linear-gradient(145deg,rgba(245,158,11,0.18),rgba(120,53,15,0.28))] text-white",
       iconClassName: "border-amber-300/25 bg-amber-400/15 text-amber-100",
       buttonClassName: "bg-amber-400 text-slate-950 hover:bg-amber-300",
@@ -160,6 +166,9 @@ export default function Dashboard() {
       : []),
   ];
   const visibleQuickActions = quickActions.filter((action) => {
+    if (isStudentApp && action.to === "/set-planner") {
+      return false;
+    }
     if (action.to === "/weekend-rundown") {
       return canOpenWeekendRundown;
     }

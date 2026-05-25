@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
-import { CHAT_MINISTRY_TYPES, normalizeChatMinistryType } from "@/lib/chat";
+import { getChatMinistryTypesForResourceApp, normalizeChatMinistryType } from "@/lib/chat";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface UnreadCount {
   campusId: string;
@@ -21,6 +22,8 @@ export function useUnreadMessages() {
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { data: userCampuses } = useUserCampuses(user?.id);
+  const resourceAppKey = getCurrentResourceAppKey();
+  const chatMinistryTypes = getChatMinistryTypesForResourceApp(resourceAppKey);
   
   // Track which campus+ministry is currently being viewed
   const viewingChatRef = useRef<{ campusId: string; ministryType: string } | null>(null);
@@ -39,6 +42,7 @@ export function useUnreadMessages() {
       .from("message_read_status")
       .select("campus_id, ministry_type, last_read_at")
       .eq("user_id", user.id)
+      .eq("resource_app_key", resourceAppKey)
       .in("campus_id", campusIds);
 
     // Build a map of campus_id:ministry_type -> last_read_at
@@ -52,7 +56,7 @@ export function useUnreadMessages() {
     const countPromises: Promise<UnreadCount>[] = [];
     
     for (const campusId of campusIds) {
-      for (const { value: ministryType } of CHAT_MINISTRY_TYPES) {
+      for (const { value: ministryType } of chatMinistryTypes) {
         countPromises.push((async () => {
           const key = `${campusId}:${ministryType}`;
           const lastReadAt = readStatusMap[key];
@@ -62,6 +66,7 @@ export function useUnreadMessages() {
             .select("id", { count: "exact", head: true })
             .eq("campus_id", campusId)
             .eq("ministry_type", ministryType)
+            .eq("resource_app_key", resourceAppKey)
             .neq("user_id", user.id);
           
           if (lastReadAt) {
@@ -79,7 +84,7 @@ export function useUnreadMessages() {
     
     setUnreadCounts(counts);
     setIsLoading(false);
-  }, [user, userCampuses]);
+  }, [user, userCampuses, resourceAppKey, chatMinistryTypes]);
 
   const markAsRead = useCallback(async (campusId: string, ministryType: string = "weekend") => {
     if (!user) return;
@@ -93,10 +98,11 @@ export function useUnreadMessages() {
           user_id: user.id,
           campus_id: campusId,
           ministry_type: normalizedMinistryType,
+          resource_app_key: resourceAppKey,
           last_read_at: new Date().toISOString(),
         },
         {
-          onConflict: "user_id,campus_id,ministry_type",
+          onConflict: "user_id,campus_id,ministry_type,resource_app_key",
         }
       );
 
@@ -109,17 +115,18 @@ export function useUnreadMessages() {
     setUnreadCounts((prev) => 
       prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
     );
-  }, [user]);
+  }, [user, resourceAppKey]);
 
   // Set which campus+ministry is currently being viewed
   const setViewingChat = useCallback((campusId: string | null, ministryType: string | null) => {
+    const normalizedMinistryType = ministryType ? normalizeChatMinistryType(ministryType) : null;
     viewingChatRef.current = campusId && ministryType 
-      ? { campusId, ministryType } 
+      ? { campusId, ministryType: normalizedMinistryType || ministryType } 
       : null;
     // If we're viewing a chat, immediately clear its unread count
-    if (campusId && ministryType) {
+    if (campusId && normalizedMinistryType) {
       setUnreadCounts((prev) => 
-        prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === ministryType))
+        prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
       );
     }
   }, []);
@@ -152,6 +159,7 @@ export function useUnreadMessages() {
           const newMessage = payload.new as { 
             campus_id: string; 
             ministry_type: string; 
+            resource_app_key: string;
             user_id: string;
           };
           
@@ -161,6 +169,7 @@ export function useUnreadMessages() {
           // AND they're not currently viewing that campus+ministry
           if (
             campusIds.includes(newMessage.campus_id) &&
+            newMessage.resource_app_key === resourceAppKey &&
             newMessage.user_id !== user.id &&
             !(viewingChatRef.current?.campusId === newMessage.campus_id && 
               viewingChatRef.current?.ministryType === msgMinistry)
@@ -186,7 +195,7 @@ export function useUnreadMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, userCampuses]);
+  }, [user, userCampuses, resourceAppKey]);
 
   // Get total unread count
   const totalUnread = unreadCounts.reduce((sum, uc) => sum + uc.count, 0);
@@ -200,8 +209,9 @@ export function useUnreadMessages() {
   
   // Get unread count for a specific campus+ministry
   const getUnreadForCampusMinistry = useCallback((campusId: string, ministryType: string) => {
+    const normalizedMinistryType = normalizeChatMinistryType(ministryType);
     return unreadCounts.find(
-      (uc) => uc.campusId === campusId && uc.ministryType === ministryType
+      (uc) => uc.campusId === campusId && uc.ministryType === normalizedMinistryType
     )?.count || 0;
   }, [unreadCounts]);
 
@@ -223,6 +233,7 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   useEffect(() => {
     if (!user || !campusId || !ministryType) {
@@ -239,6 +250,7 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
         .eq("user_id", user.id)
         .eq("campus_id", campusId)
         .eq("ministry_type", normalizedMinistryType)
+        .eq("resource_app_key", resourceAppKey)
         .maybeSingle();
 
       if (error) {
@@ -251,7 +263,7 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
     };
 
     fetchLastRead();
-  }, [user, campusId, ministryType]);
+  }, [user, campusId, ministryType, resourceAppKey]);
 
   return { lastReadAt, isLoading };
 }

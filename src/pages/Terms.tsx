@@ -6,7 +6,7 @@ export default function Terms() {
       <section className="space-y-3">
         <h2 className="text-2xl font-semibold text-foreground">Agreement</h2>
         <p>
-          These Terms of Service govern your use of Worship Leader&apos;s Resource, a platform used by Experience Music
+          These Terms of Service govern your use of Worship Resource, a platform used by Experience Music
           at Experience Community Church. By accessing or using the service, you agree to these terms.
         </p>
       </section>

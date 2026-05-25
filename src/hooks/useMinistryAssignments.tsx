@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { isStudentChatMinistryType } from "@/lib/chat";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
 
@@ -87,6 +88,23 @@ export function useUpdateMinistryAssignments() {
           .insert(newAssignments);
         
         if (insertError) throw insertError;
+
+        const chatPositionRows = normalizedMinistryTypes
+          .filter(isStudentChatMinistryType)
+          .map((mt) => ({
+            user_id: userId,
+            campus_id: campusId,
+            ministry_type: mt,
+            position: "chat_member",
+          }));
+
+        if (chatPositionRows.length > 0) {
+          const { error: positionInsertError } = await supabase
+            .from("user_campus_ministry_positions")
+            .insert(chatPositionRows);
+
+          if (positionInsertError) throw positionInsertError;
+        }
       }
     },
     onSuccess: (_, variables) => {
@@ -144,6 +162,15 @@ export function useToggleMinistryAssignment() {
 
         if (cleanupError) throw cleanupError;
 
+        const { error: positionCleanupError } = await supabase
+          .from("user_campus_ministry_positions")
+          .delete()
+          .eq("user_id", userId)
+          .eq("campus_id", campusId)
+          .in("ministry_type", equivalentMinistryTypes);
+
+        if (positionCleanupError) throw positionCleanupError;
+
         // Add the assignment
         const { error } = await supabase
           .from("user_ministry_campuses")
@@ -154,6 +181,19 @@ export function useToggleMinistryAssignment() {
           });
         
         if (error) throw error;
+
+        if (isStudentChatMinistryType(normalizedMinistryType)) {
+          const { error: positionError } = await supabase
+            .from("user_campus_ministry_positions")
+            .insert({
+              user_id: userId,
+              campus_id: campusId,
+              ministry_type: normalizedMinistryType,
+              position: "chat_member",
+            });
+
+          if (positionError) throw positionError;
+        }
       }
     },
     onSuccess: (_, variables) => {

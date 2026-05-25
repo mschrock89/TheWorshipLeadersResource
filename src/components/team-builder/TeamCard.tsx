@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +79,7 @@ export function TeamCard({
   // Only show Production/Video when they are in the allowed categories for the selected ministry filter
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
+  const showStudents = allowedCategories.includes("Students");
 
   const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
     campusName,
@@ -89,6 +90,7 @@ export function TeamCard({
   const bandSlots = useMemo(() => templateSlots.bandSlots, [templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
+  const studentSlots = POSITION_SLOTS.filter(s => s.category === "Students");
 
   // Filter members by ministry type when a specific ministry is selected
   const filteredMembers = members.filter((member) =>
@@ -187,6 +189,7 @@ export function TeamCard({
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
+    ...(showStudents ? studentSlots : []),
   ];
   const totalSlots = visibleSlots.length;
   
@@ -291,6 +294,16 @@ export function TeamCard({
             title: "Speaker",
             icon: <BookOpen className="h-4 w-4 text-muted-foreground" />,
             slots: speakerSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
+        )}
+
+        {showStudents && (
+          renderSlotGroup({
+            title: "Team",
+            icon: <Users className="h-4 w-4 text-muted-foreground" />,
+            slots: studentSlots,
             slotReadOnly: effectiveReadOnly,
             allowMinistryEdit: true,
           })

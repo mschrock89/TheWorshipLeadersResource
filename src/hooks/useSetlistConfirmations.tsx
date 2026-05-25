@@ -6,6 +6,7 @@ import { getPriorUseCountsForSongs } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export interface SetlistConfirmation {
   id: string;
@@ -148,9 +149,10 @@ function shouldIncludeScheduledDateForMember(
 // Fetch published setlists for the current user's campuses
 export function usePublishedSetlists(campusId?: string, ministryType?: string, includePast: boolean = false) {
   const { user } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["published-setlists", user?.id, campusId, ministryType, includePast],
+    queryKey: ["published-setlists", user?.id, campusId, ministryType, includePast, resourceAppKey],
     queryFn: async (): Promise<PublishedSetlist[]> => {
       if (!user?.id) return [];
 
@@ -162,7 +164,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       const roles = (userRoles || []).map(r => r.role);
       const leadershipRoles = [
-        "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor",
+        "admin", "campus_admin", "campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor",
         "network_worship_pastor", "network_worship_leader", "leader",
         "video_director", "production_manager", "campus_pastor"
       ];
@@ -173,6 +175,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           "admin",
           "campus_admin",
           "campus_worship_pastor",
+          "student_pastor",
           "student_worship_pastor",
           "childrens_pastor",
           "network_worship_pastor",
@@ -198,6 +201,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .from("swap_requests")
         .select("original_date")
         .eq("accepted_by_id", user.id)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
 
       // User swaps in on swap_date when they're the requester
@@ -205,6 +209,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .from("swap_requests")
         .select("swap_date")
         .eq("requester_id", user.id)
+        .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted")
         .not("swap_date", "is", null);
 
@@ -813,6 +818,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
         const { data: teamSchedule } = await supabase
           .from("team_schedule")
           .select("team_id")
+          .eq("resource_app_key", resourceAppKey)
           .eq("schedule_date", draftSet.plan_date)
           .limit(1)
           .maybeSingle();
@@ -850,6 +856,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
             accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
           `)
           .eq("original_date", draftSet.plan_date)
+          .eq("resource_app_key", resourceAppKey)
           .eq("status", "accepted");
 
         // Get swaps where swap_date matches (accepted_by out, requester in)
@@ -862,6 +869,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
             accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
           `)
           .eq("swap_date", draftSet.plan_date)
+          .eq("resource_app_key", resourceAppKey)
           .eq("status", "accepted")
           .not("swap_date", "is", null);
 

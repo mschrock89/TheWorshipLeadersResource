@@ -16,6 +16,7 @@ import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { cn } from "@/lib/utils";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 export function BottomNav() {
   const location = useLocation();
@@ -25,6 +26,7 @@ export function BottomNav() {
   const { data: isApprover = false } = useIsApprover();
   const { data: pendingApprovalCount = 0 } = usePendingApprovalCount();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
+  const isStudentApp = isCurrentStudentResourceApp();
 
   const hiddenRoutes = new Set(["/chat", "/privacy", "/terms"]);
 
@@ -38,7 +40,7 @@ export function BottomNav() {
       ? [
           { to: "/bible", icon: BookOpen, label: "Bible" },
           { to: "/feed", icon: Newspaper, label: "Feed" },
-          { to: "/songs", icon: Music, label: "Songs" },
+          ...(!isStudentApp ? [{ to: "/songs", icon: Music, label: "Songs" }] : []),
           { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
         ]
       : [
@@ -49,7 +51,7 @@ export function BottomNav() {
         {
           to: "/my-setlists",
           icon: ListMusic,
-          label: "Setlists",
+          label: isStudentApp ? "Wednesday Flow" : "Setlists",
           badge: isApprover ? pendingApprovalCount : undefined,
           tourId: "nav-setlists",
         },

@@ -22,10 +22,12 @@ import {
 import {
   canAccessWeekendRundown,
   canReviewWeekendSongs,
+  getWednesdayRundownTargetDate,
   getWeekendRundownTargetSunday,
   WEEKEND_RUNDOWN_STATUS_OPTIONS,
 } from "@/lib/weekendRundown";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 type SongNotesState = Record<string, string>;
 type VocalNotesState = Record<string, string>;
@@ -46,10 +48,16 @@ export default function WeekendRundown() {
   const campusContext = useCampusSelectionOptional();
 
   const roleNames = roles.map((role) => role.role);
+  const isStudentApp = isCurrentStudentResourceApp();
+  const rundownName = isStudentApp ? "Wednesday Rundown" : "Weekend Rundown";
+  const rundownDayName = isStudentApp ? "Wednesday" : "weekend";
   const hasAccess = canAccessWeekendRundown(roleNames);
-  const canReviewSongs = canReviewWeekendSongs(roleNames);
+  const canReviewSongs = !isStudentApp && canReviewWeekendSongs(roleNames);
 
-  const initialWeekendDate = useMemo(() => getWeekendRundownTargetSunday(), []);
+  const initialWeekendDate = useMemo(
+    () => (isStudentApp ? getWednesdayRundownTargetDate() : getWeekendRundownTargetSunday()),
+    [isStudentApp],
+  );
   const [selectedWeekendDate] = useState<Date>(initialWeekendDate);
   const weekendDateStr = format(selectedWeekendDate, "yyyy-MM-dd");
 
@@ -176,10 +184,12 @@ export default function WeekendRundown() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-primary" />
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Weekend Rundown</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">{rundownName}</h1>
         </div>
         <p className="text-muted-foreground">
-          Sunday’s 1:45 PM recap space for worship, video, and production leadership.
+          {isStudentApp
+            ? "Wednesday night recap space for student ministry leadership."
+            : "Sunday’s 1:45 PM recap space for worship, video, and production leadership."}
         </p>
       </div>
 
@@ -190,7 +200,9 @@ export default function WeekendRundown() {
             <Badge variant="outline">{format(selectedWeekendDate, "EEEE, MMM d")}</Badge>
           </CardTitle>
           <CardDescription>
-            Capture how the weekend went, then use worship notes later when you’re building another set.
+            {isStudentApp
+              ? "Capture how Wednesday went and keep the notes available for your next student ministry planning pass."
+              : "Capture how the weekend went, then use worship notes later when you’re building another set."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -214,7 +226,7 @@ export default function WeekendRundown() {
 
           <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
-              <Label htmlFor="weekend-status">Weekend status</Label>
+              <Label htmlFor="weekend-status">{isStudentApp ? "Wednesday status" : "Weekend status"}</Label>
               <Select value={overallStatus} onValueChange={(value) => setOverallStatus(value as typeof overallStatus)}>
                 <SelectTrigger id="weekend-status">
                   <SelectValue />
@@ -230,10 +242,10 @@ export default function WeekendRundown() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="weekend-notes">Weekend notes</Label>
+              <Label htmlFor="weekend-notes">{isStudentApp ? "Wednesday notes" : "Weekend notes"}</Label>
               <Textarea
                 id="weekend-notes"
-                placeholder="Leave notes for the team about wins, misses, friction points, or anything to remember next time."
+                placeholder={`Leave notes for the team about ${isStudentApp ? "Wednesday" : "the weekend"} wins, misses, friction points, or anything to remember next time.`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 className="min-h-[140px]"
@@ -351,7 +363,7 @@ export default function WeekendRundown() {
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={!selectedCampus || saveWeekendRundown.isPending} className="gap-2">
               <Sparkles className="h-4 w-4" />
-              {saveWeekendRundown.isPending ? "Saving..." : "Save Weekend Rundown"}
+              {saveWeekendRundown.isPending ? "Saving..." : `Save ${rundownName}`}
             </Button>
           </div>
         </CardContent>
@@ -364,12 +376,12 @@ export default function WeekendRundown() {
             Team Notes
           </CardTitle>
           <CardDescription>
-            Shared rundown entries from other eligible leaders for this campus and weekend.
+            Shared rundown entries from other eligible leaders for this campus and {rundownDayName}.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {otherEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No other rundown entries have been added for this weekend yet.</p>
+            <p className="text-sm text-muted-foreground">No other rundown entries have been added for this {rundownDayName} yet.</p>
           ) : (
             <div className="space-y-3">
               {otherEntries.map((entry) => (

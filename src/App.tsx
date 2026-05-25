@@ -46,6 +46,8 @@ import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
+import { getRouterBasename } from "@/lib/constants";
+import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 const queryClient = new QueryClient();
 
@@ -113,6 +115,7 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 function MainContent({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const isChat = location.pathname === '/chat';
+  const isHome = location.pathname === '/';
   
   return (
     <div 
@@ -122,7 +125,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
       <div 
         className="flex-1"
         style={{ 
-          paddingBottom: isChat 
+          paddingBottom: isChat || isHome
             ? '0px' 
             : 'calc(80px + env(safe-area-inset-bottom, 0px))' 
         }}
@@ -136,6 +139,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
 type RouteDefinition = {
   path: string;
   component: ComponentType;
+  hideInStudentApps?: boolean;
 };
 
 const publicRoutes: RouteDefinition[] = [
@@ -155,7 +159,7 @@ const protectedRoutes: RouteDefinition[] = [
   { path: "/profile", component: Profile },
   { path: "/settings/planning-center", component: PlanningCenter },
   { path: "/swaps", component: SwapRequests },
-  { path: "/songs", component: Songs },
+  { path: "/songs", component: Songs, hideInStudentApps: true },
   { path: "/my-setlists", component: MySetlists },
   { path: "/set-planner", component: SetPlanner },
   { path: "/weekend-rundown", component: WeekendRundown },
@@ -177,6 +181,9 @@ const protectedRoutes: RouteDefinition[] = [
 ];
 
 function AppRoutes() {
+  const isStudentApp = isCurrentStudentResourceApp();
+  const availableProtectedRoutes = protectedRoutes.filter((route) => !(isStudentApp && route.hideInStudentApps));
+
   return (
     <Routes>
       {publicRoutes.map(({ path, component: Component }) => (
@@ -191,7 +198,7 @@ function AppRoutes() {
         />
       ))}
       <Route path="/planning-center" element={<Navigate to="/settings/planning-center" replace />} />
-      {protectedRoutes.map(({ path, component: Component }) => (
+      {availableProtectedRoutes.map(({ path, component: Component }) => (
         <Route
           key={path}
           path={path}
@@ -231,7 +238,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename={getRouterBasename()}>
         <AuthProvider>
           <AudioPlayerProvider>
             <MainContent>

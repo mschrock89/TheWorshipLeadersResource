@@ -92,6 +92,7 @@ const LEADER_SERVICE_OVERRIDE_ROLES = new Set([
   "admin",
   "campus_admin",
   "campus_worship_pastor",
+  "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
   "network_worship_pastor",

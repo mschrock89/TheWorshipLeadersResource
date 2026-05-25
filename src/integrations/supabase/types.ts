@@ -69,6 +69,7 @@ export type Database = {
           created_by: string | null
           display_order: number | null
           id: string
+          resource_app_key: string
           title: string
           updated_at: string
         }
@@ -78,6 +79,7 @@ export type Database = {
           created_by?: string | null
           display_order?: number | null
           id?: string
+          resource_app_key?: string
           title: string
           updated_at?: string
         }
@@ -87,6 +89,7 @@ export type Database = {
           created_by?: string | null
           display_order?: number | null
           id?: string
+          resource_app_key?: string
           title?: string
           updated_at?: string
         }
@@ -477,6 +480,7 @@ export type Database = {
           created_at: string
           id: string
           ministry_type: string | null
+          resource_app_key: string
           user_id: string
         }
         Insert: {
@@ -486,6 +490,7 @@ export type Database = {
           created_at?: string
           id?: string
           ministry_type?: string | null
+          resource_app_key?: string
           user_id: string
         }
         Update: {
@@ -495,6 +500,7 @@ export type Database = {
           created_at?: string
           id?: string
           ministry_type?: string | null
+          resource_app_key?: string
           user_id?: string
         }
         Relationships: [
@@ -1200,6 +1206,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          resource_app_key: string
           scripture_reference: string | null
           title: string
           updated_at: string
@@ -1213,6 +1220,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          resource_app_key?: string
           scripture_reference?: string | null
           title: string
           updated_at?: string
@@ -1226,6 +1234,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          resource_app_key?: string
           scripture_reference?: string | null
           title?: string
           updated_at?: string
@@ -1296,6 +1305,7 @@ export type Database = {
           id: string
           last_read_at: string
           ministry_type: string | null
+          resource_app_key: string
           user_id: string
         }
         Insert: {
@@ -1304,6 +1314,7 @@ export type Database = {
           id?: string
           last_read_at?: string
           ministry_type?: string | null
+          resource_app_key?: string
           user_id: string
         }
         Update: {
@@ -1312,6 +1323,7 @@ export type Database = {
           id?: string
           last_read_at?: string
           ministry_type?: string | null
+          resource_app_key?: string
           user_id?: string
         }
         Relationships: [
@@ -1586,6 +1598,7 @@ export type Database = {
           endpoint: string
           id: string
           p256dh: string
+          resource_app_key: string
           updated_at: string
           user_id: string
         }
@@ -1595,6 +1608,7 @@ export type Database = {
           endpoint: string
           id?: string
           p256dh: string
+          resource_app_key?: string
           updated_at?: string
           user_id: string
         }
@@ -1604,6 +1618,7 @@ export type Database = {
           endpoint?: string
           id?: string
           p256dh?: string
+          resource_app_key?: string
           updated_at?: string
           user_id?: string
         }
@@ -2252,6 +2267,7 @@ export type Database = {
           original_date: string
           position: string
           request_type: string
+          resource_app_key: string
           requester_id: string
           resolved_at: string | null
           status: Database["public"]["Enums"]["swap_request_status"]
@@ -2267,6 +2283,7 @@ export type Database = {
           original_date: string
           position: string
           request_type?: string
+          resource_app_key?: string
           requester_id: string
           resolved_at?: string | null
           status?: Database["public"]["Enums"]["swap_request_status"]
@@ -2282,6 +2299,7 @@ export type Database = {
           original_date?: string
           position?: string
           request_type?: string
+          resource_app_key?: string
           requester_id?: string
           resolved_at?: string | null
           status?: Database["public"]["Enums"]["swap_request_status"]
@@ -2588,6 +2606,7 @@ export type Database = {
           id: string
           ministry_type: string | null
           notes: string | null
+          resource_app_key: string
           rotation_period: string
           schedule_date: string
           team_id: string
@@ -2598,6 +2617,7 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           notes?: string | null
+          resource_app_key?: string
           rotation_period?: string
           schedule_date: string
           team_id: string
@@ -2608,6 +2628,7 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           notes?: string | null
+          resource_app_key?: string
           rotation_period?: string
           schedule_date?: string
           team_id?: string
@@ -2879,6 +2900,7 @@ export type Database = {
           id: string
           notes: string | null
           overall_status: string
+          resource_app_key: string
           updated_at: string
           user_id: string
           weekend_date: string
@@ -2889,6 +2911,7 @@ export type Database = {
           id?: string
           notes?: string | null
           overall_status: string
+          resource_app_key?: string
           updated_at?: string
           user_id: string
           weekend_date: string
@@ -2899,6 +2922,7 @@ export type Database = {
           id?: string
           notes?: string | null
           overall_status?: string
+          resource_app_key?: string
           updated_at?: string
           user_id?: string
           weekend_date?: string
@@ -2972,6 +2996,7 @@ export type Database = {
           icon: string
           id: string
           name: string
+          resource_app_key: string
           template_config: Json
         }
         Insert: {
@@ -2980,6 +3005,7 @@ export type Database = {
           icon: string
           id?: string
           name: string
+          resource_app_key?: string
           template_config?: Json
         }
         Update: {
@@ -2988,6 +3014,7 @@ export type Database = {
           icon?: string
           id?: string
           name?: string
+          resource_app_key?: string
           template_config?: Json
         }
         Relationships: []
@@ -3141,6 +3168,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_student_resource_app_admin: {
+        Args: { _resource_app_key: string; _user_id: string }
+        Returns: boolean
+      }
       is_scheduled_for_service: {
         Args: {
           _campus_id: string
@@ -3162,6 +3193,7 @@ export type Database = {
         | "campus_pastor"
         | "admin"
         | "campus_worship_pastor"
+        | "student_pastor"
         | "student_worship_pastor"
         | "childrens_pastor"
         | "speaker"
@@ -3348,6 +3380,7 @@ export const Constants = {
         "campus_pastor",
         "admin",
         "campus_worship_pastor",
+        "student_pastor",
         "student_worship_pastor",
         "childrens_pastor",
         "speaker",

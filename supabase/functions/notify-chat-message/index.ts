@@ -12,6 +12,16 @@ const MAX_PREVIEW_LENGTH = 120;
 
 const MINISTRY_LABELS: Record<string, string> = {
   weekend: "Weekend",
+  leader_chat: "Leader Chat",
+  student_leader_chat: "Student Leader Chat",
+  small_group_1: "Small Group 1",
+  small_group_2: "Small Group 2",
+  small_group_3: "Small Group 3",
+  small_group_4: "Small Group 4",
+  small_group_5: "Small Group 5",
+  small_group_6: "Small Group 6",
+  small_group_7: "Small Group 7",
+  small_group_8: "Small Group 8",
   encounter: "Encounter",
   evident: "Evident",
   eon: "EON",
@@ -21,6 +31,7 @@ const MINISTRY_LABELS: Record<string, string> = {
 
 interface NotifyChatMessageRequest {
   messageId: string;
+  resourceAppKey?: string;
 }
 
 interface ChatMessageRecord {
@@ -29,6 +40,7 @@ interface ChatMessageRecord {
   content: string | null;
   campus_id: string;
   ministry_type: string;
+  resource_app_key: string;
   attachments: string[] | null;
   created_at: string;
   profiles: {
@@ -72,7 +84,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { messageId }: NotifyChatMessageRequest = await req.json();
+    const { messageId, resourceAppKey }: NotifyChatMessageRequest = await req.json();
 
     if (!messageId) {
       return new Response(
@@ -93,6 +105,7 @@ serve(async (req: Request): Promise<Response> => {
         content,
         campus_id,
         ministry_type,
+        resource_app_key,
         attachments,
         created_at,
         profiles(full_name),
@@ -105,11 +118,15 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error(`Failed to load chat message: ${messageError?.message || "Not found"}`);
     }
 
+    if (resourceAppKey && message.resource_app_key !== resourceAppKey) {
+      throw new Error("Chat message does not belong to the requested app");
+    }
+
     const senderName = message.profiles?.full_name?.trim() || "Someone";
     const campusName = message.campuses?.name?.trim() || "your campus";
     const ministryLabel = MINISTRY_LABELS[message.ministry_type] || message.ministry_type;
     const chatLabel = `${campusName} ${ministryLabel}`.trim();
-    const chatKey = `${message.campus_id}:${message.ministry_type}`;
+    const chatKey = `${message.resource_app_key}:${message.campus_id}:${message.ministry_type}`;
 
     const { data: chatProfiles, error: chatProfilesError } = await supabase.rpc(
       "get_profiles_for_chat_mention",
@@ -174,6 +191,7 @@ serve(async (req: Request): Promise<Response> => {
             campusId: message.campus_id,
             ministryType: message.ministry_type,
             messageId: message.id,
+            resourceAppKey: message.resource_app_key,
           },
         }),
       });
@@ -192,6 +210,7 @@ serve(async (req: Request): Promise<Response> => {
       .select("id", { count: "exact", head: true })
       .eq("campus_id", message.campus_id)
       .eq("ministry_type", message.ministry_type)
+      .eq("resource_app_key", message.resource_app_key)
       .gte("created_at", windowStartIso);
 
     if (recentMessageError) {
@@ -238,6 +257,7 @@ serve(async (req: Request): Promise<Response> => {
               campusId: message.campus_id,
               ministryType: message.ministry_type,
               messageId: message.id,
+              resourceAppKey: message.resource_app_key,
               recentMessageCount: recentMessageCount || 0,
             },
           }),
@@ -273,6 +293,7 @@ serve(async (req: Request): Promise<Response> => {
             campusId: message.campus_id,
             ministryType: message.ministry_type,
             messageId: message.id,
+            resourceAppKey: message.resource_app_key,
           },
         }),
       });
