@@ -16,9 +16,10 @@ import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { PushNotificationBanner } from "@/components/settings/PushNotificationBanner";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { useIsApprover } from "@/hooks/useSetlistApprovals";
+import { useIsLifeGroupLeader } from "@/hooks/useLifeGroups";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -60,6 +61,7 @@ export default function Dashboard() {
   } = useProfilesWithCampuses();
   const drumTechAccess = useDrumTechAccess();
   const { data: isApprover = false } = useIsApprover();
+  const { data: isLifeGroupLeader = false } = useIsLifeGroupLeader();
   const [selectedCampusId, setSelectedCampusId] = useState<string>(() => {
     return localStorage.getItem("dashboard-campus-filter") || "all";
   });
@@ -118,6 +120,18 @@ export default function Dashboard() {
       iconClassName: "border-emerald-300/25 bg-emerald-400/15 text-emerald-100",
       buttonClassName: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
     },
+    ...(isStudentApp
+      ? [{
+          title: "Life Groups",
+          description: "Create groups, assign leaders and students, and track weekly care rhythms.",
+          to: "/life-groups",
+          icon: UsersRound,
+          actionLabel: "Open Life Groups",
+          cardClassName: "border-rose-300/35 bg-[linear-gradient(145deg,rgba(244,63,94,0.18),rgba(127,29,29,0.28))] text-white",
+          iconClassName: "border-rose-200/25 bg-rose-300/15 text-rose-100",
+          buttonClassName: "bg-rose-300 text-slate-950 hover:bg-rose-200",
+        }]
+      : []),
     {
       title: isStudentApp ? "Wednesday Rundown" : "Weekend Rundown",
       description: isStudentApp
@@ -174,6 +188,9 @@ export default function Dashboard() {
     }
     if (action.to === "/drum-tech") {
       return drumTechAccess.hasAnyAccess;
+    }
+    if (action.to === "/life-groups") {
+      return canManageTeam || isLifeGroupLeader;
     }
     return canManageTeam;
   });

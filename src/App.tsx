@@ -29,6 +29,7 @@ import Auditions from "./pages/Auditions";
 import ManageSets from "./pages/ManageSets";
 import MySetlists from "./pages/MySetlists";
 import TeamBuilder from "./pages/TeamBuilder";
+import LifeGroups from "./pages/LifeGroups";
 import Approvals from "./pages/Approvals";
 import AdminTools from "./pages/AdminTools";
 import Resources from "./pages/Resources";
@@ -167,6 +168,7 @@ const protectedRoutes: RouteDefinition[] = [
   { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner },
   { path: "/manage-sets", component: ManageSets },
   { path: "/team-builder", component: TeamBuilder },
+  { path: "/life-groups", component: LifeGroups },
   { path: "/approvals", component: Approvals },
   { path: "/admin-tools", component: AdminTools },
   { path: "/resources", component: Resources },

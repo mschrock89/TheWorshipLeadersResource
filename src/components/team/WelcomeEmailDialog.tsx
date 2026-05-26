@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmailPreviewDialog } from "./EmailPreviewDialog";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 interface WelcomeEmailDialogProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function WelcomeEmailDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<{ sent: number; failed: number } | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const resourceAppKey = getCurrentResourceAppKey();
 
   // Filter profiles that haven't received emails yet for bulk mode
   const eligibleProfiles = mode === "bulk" 
@@ -93,7 +95,7 @@ export function WelcomeEmailDialog({
       }
 
       const { data, error } = await supabase.functions.invoke("send-welcome-email", {
-        body: { userIds, isResend },
+        body: { userIds, isResend, resourceAppKey },
       });
 
       if (error) throw error;
@@ -295,6 +297,7 @@ export function WelcomeEmailDialog({
           ? selectedMember.email 
           : "john.smith@example.com"}
         isResend={mode === "resend" || (mode === "individual" && !!selectedMember?.welcome_email_sent_at)}
+        resourceAppKey={resourceAppKey}
       />
     </Dialog>
   );

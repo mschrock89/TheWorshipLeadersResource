@@ -2,9 +2,15 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const STUDENT_EMAIL_BACKGROUND_URL =
+  "https://fgemlokxbugfihaxbfyp.supabase.co/storage/v1/object/public/email-assets/experience-students-email-background.png";
+
+type ResourceAppKey = "my_church_resource" | "worship" | "students_hs" | "students_ms";
+
+const STUDENT_RESOURCE_APP_KEYS = new Set<ResourceAppKey>(["students_hs", "students_ms"]);
 
 // Helper to send email via Resend API
-async function sendEmail(to: string[], subject: string, html: string) {
+async function sendEmail(to: string[], subject: string, html: string, fromName = "ECC Worship") {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -12,7 +18,7 @@ async function sendEmail(to: string[], subject: string, html: string) {
       "Authorization": `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: "ECC Worship <worship@theworshipleadersresource.com>",
+      from: `${fromName} <worship@theworshipleadersresource.com>`,
       to,
       subject,
       html,
@@ -35,6 +41,7 @@ const corsHeaders = {
 interface SendEmailRequest {
   userIds: string[];
   isResend?: boolean;
+  resourceAppKey?: ResourceAppKey;
 }
 
 interface EmailResult {
@@ -44,27 +51,158 @@ interface EmailResult {
   error?: string;
 }
 
+interface WelcomeEmailTheme {
+  resourceAppKey: ResourceAppKey;
+  fromName: string;
+  appName: string;
+  appLabel: string;
+  portalLabel: string;
+  familyLabel: string;
+  teamDescription: string;
+  contactLabel: string;
+  signature: string;
+  footerReason: string;
+  accent: string;
+  accentDark: string;
+  warmAccent: string;
+  pageBackground: string;
+  tableBackground: string;
+  headerBackground: string;
+  headerText: string;
+  bodyText: string;
+  mutedText: string;
+  borderColor: string;
+  credentialsBackground: string;
+  backgroundImageUrl?: string;
+}
+
+function isStudentResourceAppKey(resourceAppKey: ResourceAppKey) {
+  return STUDENT_RESOURCE_APP_KEYS.has(resourceAppKey);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeBaseUrl(url: string) {
+  return url.replace(/\/+$/, "");
+}
+
+function getLoginUrl(resourceAppKey: ResourceAppKey) {
+  const baseUrl = normalizeBaseUrl(Deno.env.get("APP_URL") || "https://worshipleadersresource.lovable.app");
+  const url = new URL(baseUrl);
+  const appPrefix = resourceAppKey === "students_hs" ? "/hs" : resourceAppKey === "students_ms" ? "/ms" : "";
+  const normalizedPathname = url.pathname.replace(/\/+$/, "");
+  const hasPrefix = appPrefix && (normalizedPathname === appPrefix || normalizedPathname.startsWith(`${appPrefix}/`));
+  url.pathname = `${hasPrefix ? normalizedPathname : `${normalizedPathname}${appPrefix}`}/auth`.replace(/\/+/g, "/");
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function getWelcomeEmailTheme(resourceAppKey: ResourceAppKey): WelcomeEmailTheme {
+  if (isStudentResourceAppKey(resourceAppKey)) {
+    const gradeLabel = resourceAppKey === "students_hs" ? "HS" : "MS";
+
+    return {
+      resourceAppKey,
+      fromName: "ECC Students",
+      appName: `Experience Students ${gradeLabel}`,
+      appLabel: "Experience Students",
+      portalLabel: `${gradeLabel} Resource`,
+      familyLabel: `Experience Students ${gradeLabel}`,
+      teamDescription: "student ministry team",
+      contactLabel: "student pastor",
+      signature: "The ECC Students Team",
+      footerReason: "student ministry team",
+      accent: "#FF7A1A",
+      accentDark: "#E23A12",
+      warmAccent: "#FFB21A",
+      pageBackground: "#ffffff",
+      tableBackground: "#170B05",
+      headerBackground: "#FF7A1A",
+      headerText: "#ffffff",
+      bodyText: "#F8E9DD",
+      mutedText: "#F6C7A5",
+      borderColor: "#763114",
+      credentialsBackground: "#241007",
+      backgroundImageUrl: STUDENT_EMAIL_BACKGROUND_URL,
+    };
+  }
+
+  return {
+    resourceAppKey: "worship",
+    fromName: "ECC Worship",
+    appName: "Experience Music",
+    appLabel: "Experience Music",
+    portalLabel: "Worship Leader's Resource",
+    familyLabel: "Experience Community Worship",
+    teamDescription: "worship team",
+    contactLabel: "campus worship pastor",
+    signature: "The ECC Worship Team",
+    footerReason: "worship team",
+    accent: "#35B0E5",
+    accentDark: "#27749D",
+    warmAccent: "#FFB838",
+    pageBackground: "#000000",
+    tableBackground: "#000000",
+    headerBackground: "#000000",
+    headerText: "#ffffff",
+    bodyText: "#a3a3a3",
+    mutedText: "#a3a3a3",
+    borderColor: "#262626",
+    credentialsBackground: "#1a1a1a",
+  };
+}
+
+function getWelcomeEmailSubject(theme: WelcomeEmailTheme, isResend: boolean) {
+  if (isResend) {
+    return `Reminder: Welcome to ${theme.appName}!`;
+  }
+
+  return `Welcome to ${theme.appName}!`;
+}
+
 // Email HTML template generator - ECC Brand Style
-function generateWelcomeEmailHtml(firstName: string, campusName: string | undefined, loginUrl: string, userEmail: string, isResend: boolean): string {
-  // ECC Brand Colors: Blue #35B0E5, Dark Blue #27749D, Yellow #FFB838
-  return `
-<!DOCTYPE html>
-<html style="background-color: #000000;">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body bgcolor="#000000" style="margin: 0; padding: 0; font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background-color: #000000;">
-  <!-- Full-bleed background wrapper (helps email clients that ignore body bg) -->
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background-color: #000000; width: 100%;">
-    <tr>
-      <td align="center" bgcolor="#000000" style="background-color: #000000; padding: 0;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="width: 600px; max-width: 600px; background-color: #000000;">
+function generateWelcomeEmailHtml(
+  firstName: string,
+  campusName: string | undefined,
+  loginUrl: string,
+  userEmail: string,
+  isResend: boolean,
+  theme: WelcomeEmailTheme,
+): string {
+  const safeFirstName = escapeHtml(firstName);
+  const safeCampusName = campusName ? escapeHtml(campusName) : undefined;
+  const safeUserEmail = escapeHtml(userEmail);
+  const safeLoginUrl = escapeHtml(loginUrl);
+  const headerBackgroundImageAttributes = theme.backgroundImageUrl
+    ? ` background="${escapeHtml(theme.backgroundImageUrl)}"`
+    : "";
+  const headerBackgroundImageStyle = theme.backgroundImageUrl
+    ? ` background-image: url('${escapeHtml(theme.backgroundImageUrl)}'); background-size: cover; background-position: center 8%;`
+    : "";
+  const isStudentEmail = isStudentResourceAppKey(theme.resourceAppKey);
+  const headerHtml = isStudentEmail
+    ? `
     <!-- Brand Header -->
     <tr>
-      <td style="padding: 32px 48px 16px; text-align: center;">
-        <div style="color: #ffffff; font-size: 34px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.1; margin: 0;">
-          Experience Music
+      <td${headerBackgroundImageAttributes} height="400" style="height: 400px; padding: 0; text-align: center; background-color: ${theme.headerBackground};${headerBackgroundImageStyle} line-height: 0; font-size: 0;">
+        &nbsp;
+      </td>
+    </tr>
+    `
+    : `
+    <!-- Brand Header -->
+    <tr>
+      <td style="padding: 32px 48px 16px; text-align: center; background-color: ${theme.headerBackground};">
+        <div style="color: ${theme.headerText}; font-size: 34px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.1; margin: 0;">
+          ${theme.appLabel}
         </div>
       </td>
     </tr>
@@ -72,60 +210,76 @@ function generateWelcomeEmailHtml(firstName: string, campusName: string | undefi
     <!-- Header Text -->
     <tr>
       <td style="padding: 0 48px 24px; text-align: center;">
-        <p style="color: #35B0E5; font-size: 12px; font-weight: 600; letter-spacing: 3px; margin: 0; text-transform: uppercase;">Worship Leader's Resource</p>
+        <p style="color: ${theme.accent}; font-size: 12px; font-weight: 600; letter-spacing: 3px; margin: 0; text-transform: uppercase;">${theme.portalLabel}</p>
       </td>
     </tr>
     
     <!-- Accent Line -->
     <tr>
       <td style="padding: 0 48px;">
-        <div style="height: 2px; background: linear-gradient(90deg, transparent, #35B0E5, transparent);"></div>
+        <div style="height: 2px; background: linear-gradient(90deg, transparent, ${theme.accent}, transparent);"></div>
       </td>
     </tr>
+    `;
+
+  return `
+<!DOCTYPE html>
+<html style="background-color: ${theme.pageBackground};">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body bgcolor="${theme.pageBackground}" style="margin: 0; padding: 0; font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background-color: ${theme.pageBackground};">
+  <!-- Full-bleed background wrapper (helps email clients that ignore body bg) -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${theme.pageBackground}" style="background-color: ${theme.pageBackground}; width: 100%;">
+    <tr>
+      <td align="center" bgcolor="${theme.pageBackground}" style="background-color: ${theme.pageBackground}; padding: 0;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="${theme.tableBackground}" style="width: 600px; max-width: 600px; background-color: ${theme.tableBackground};">
+    ${headerHtml}
     
     <!-- Main Content -->
     <tr>
       <td style="padding: 32px 48px;">
-        <h2 style="color: #ffffff; font-size: 26px; font-weight: 700; line-height: 1.3; margin: 0 0 24px;">
-          ${isResend ? `Hey ${firstName}, just a reminder!` : `Welcome to the team, ${firstName}!`}
+        <h2 style="color: ${theme.headerText}; font-size: 26px; font-weight: 700; line-height: 1.3; margin: 0 0 24px;">
+          ${isResend ? `Hey ${safeFirstName}, just a reminder!` : `Welcome to the team, ${safeFirstName}!`}
         </h2>
         
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
           ${isResend 
-            ? `We wanted to make sure you got set up with the Experience Community Worship team portal${campusName ? ` at our <span style="color: #35B0E5; font-weight: 600;">${campusName}</span> campus` : ''}.`
-            : `We're thrilled to have you join the Experience Community Worship family${campusName ? ` at our <span style="color: #35B0E5; font-weight: 600;">${campusName}</span> campus` : ''}!`
+            ? `We wanted to make sure you got set up with the ${theme.familyLabel} team portal${safeCampusName ? ` at our <span style="color: ${theme.accent}; font-weight: 600;">${safeCampusName}</span> campus` : ''}.`
+            : `We're thrilled to have you join the ${theme.familyLabel} family${safeCampusName ? ` at our <span style="color: ${theme.accent}; font-weight: 600;">${safeCampusName}</span> campus` : ''}!`
           }
         </p>
 
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
-          As a member of our worship team, you'll have access to our team portal where you can:
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
+          As a member of our ${theme.teamDescription}, you'll have access to our team portal where you can:
         </p>
 
-        <ul style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 24px; padding-left: 24px;">
+        <ul style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 24px; padding-left: 24px;">
           <li style="margin-bottom: 8px;">View upcoming schedules and events</li>
           <li style="margin-bottom: 8px;">Connect with other team members</li>
           <li style="margin-bottom: 8px;">Update your profile and availability</li>
         </ul>
 
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
           To get started, use these credentials to sign in:
         </p>
 
         <!-- Credentials Box -->
         <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px;">
           <tr>
-            <td style="background-color: #1a1a1a; border: 1px solid #262626; border-radius: 12px; padding: 20px;">
+            <td style="background-color: ${theme.credentialsBackground}; border: 1px solid ${theme.borderColor}; border-radius: 12px; padding: 20px;">
               <p style="color: #d4d4d4; font-size: 14px; margin: 0 0 8px;">
-                <strong style="color: #737373;">Email:</strong> <span style="color: #35B0E5;">${userEmail}</span>
+                <strong style="color: ${theme.mutedText};">Email:</strong> <span style="color: ${theme.accent};">${safeUserEmail}</span>
               </p>
               <p style="color: #d4d4d4; font-size: 14px; margin: 0;">
-                <strong style="color: #737373;">Temporary Password:</strong> <code style="background: #262626; padding: 4px 10px; border-radius: 6px; font-family: monospace; color: #FFB838; font-weight: 600;">123456</code>
+                <strong style="color: ${theme.mutedText};">Temporary Password:</strong> <code style="background: ${theme.borderColor}; padding: 4px 10px; border-radius: 6px; font-family: monospace; color: ${theme.warmAccent}; font-weight: 600;">123456</code>
               </p>
             </td>
           </tr>
         </table>
 
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
           You'll be asked to create a new password when you first log in.
         </p>
 
@@ -133,20 +287,20 @@ function generateWelcomeEmailHtml(firstName: string, campusName: string | undefi
         <table width="100%" cellpadding="0" cellspacing="0" style="margin: 32px 0;">
           <tr>
             <td align="center">
-              <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #35B0E5, #27749D); border-radius: 10px; color: #ffffff; font-size: 16px; font-weight: 700; text-decoration: none; padding: 16px 40px; box-shadow: 0 4px 20px rgba(53, 176, 229, 0.3);">
+              <a href="${safeLoginUrl}" style="display: inline-block; background: linear-gradient(135deg, ${theme.accent}, ${theme.accentDark}); border-radius: 10px; color: #ffffff; font-size: 16px; font-weight: 700; text-decoration: none; padding: 16px 40px; box-shadow: 0 4px 20px rgba(255, 122, 26, 0.3);">
                 Sign In Now
               </a>
             </td>
           </tr>
         </table>
 
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
-          If you have any questions or need assistance, don't hesitate to reach out to your campus worship pastor. We're here to help you settle in and thrive!
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
+          If you have any questions or need assistance, don't hesitate to reach out to your ${theme.contactLabel}. We're here to help you settle in and thrive!
         </p>
 
-        <p style="color: #a3a3a3; font-size: 16px; line-height: 26px; margin: 32px 0 0;">
+        <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 32px 0 0;">
           See you soon,<br>
-          <strong style="color: #ffffff;">The ECC Worship Team</strong>
+          <strong style="color: ${theme.headerText};">${theme.signature}</strong>
         </p>
       </td>
     </tr>
@@ -154,17 +308,17 @@ function generateWelcomeEmailHtml(firstName: string, campusName: string | undefi
     <!-- Accent Line -->
     <tr>
       <td style="padding: 0 48px;">
-        <div style="height: 1px; background: linear-gradient(90deg, transparent, #262626, transparent);"></div>
+        <div style="height: 1px; background: linear-gradient(90deg, transparent, ${theme.borderColor}, transparent);"></div>
       </td>
     </tr>
     
     <!-- Footer -->
     <tr>
       <td style="padding: 24px 48px; text-align: center;">
-        <p style="color: #525252; font-size: 14px; margin: 0 0 8px;">Experience Community Church</p>
-        <p style="color: #404040; font-size: 12px; line-height: 18px; margin: 0;">
-          This email was sent because you were added to the worship team.<br>
-          If you believe this was a mistake, please contact your campus worship pastor.
+        <p style="color: ${theme.mutedText}; font-size: 14px; margin: 0 0 8px;">Experience Community Church</p>
+        <p style="color: ${theme.mutedText}; font-size: 12px; line-height: 18px; margin: 0;">
+          This email was sent because you were added to the ${theme.footerReason}.<br>
+          If you believe this was a mistake, please contact your ${theme.contactLabel}.
         </p>
       </td>
     </tr>
@@ -188,7 +342,9 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { userIds, isResend = false }: SendEmailRequest = await req.json();
+    const { userIds, isResend = false, resourceAppKey = "worship" }: SendEmailRequest = await req.json();
+    const normalizedResourceAppKey: ResourceAppKey = isStudentResourceAppKey(resourceAppKey) ? resourceAppKey : "worship";
+    const theme = getWelcomeEmailTheme(normalizedResourceAppKey);
 
     if (!userIds || userIds.length === 0) {
       return new Response(
@@ -238,9 +394,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // Get the app URL for login link - use the production app URL
-    const appUrl = Deno.env.get("APP_URL") || "https://worshipleadersresource.lovable.app";
-    const loginUrl = `${appUrl}/auth`;
+    const loginUrl = getLoginUrl(normalizedResourceAppKey);
 
     const results: EmailResult[] = [];
 
@@ -251,15 +405,14 @@ serve(async (req: Request): Promise<Response> => {
         const campusName = campusMap[profile.id];
 
         // Generate the email HTML
-        const html = generateWelcomeEmailHtml(firstName, campusName, loginUrl, profile.email, isResend);
+        const html = generateWelcomeEmailHtml(firstName, campusName, loginUrl, profile.email, isResend, theme);
 
         // Send the email
         await sendEmail(
           [profile.email],
-          isResend 
-            ? "Reminder: Welcome to the ECC Worship Team!" 
-            : "Welcome to the ECC Worship Team!",
-          html
+          getWelcomeEmailSubject(theme, isResend),
+          html,
+          theme.fromName
         );
 
         // Update the profile with sent timestamp
