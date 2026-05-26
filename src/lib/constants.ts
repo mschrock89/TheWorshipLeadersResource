@@ -10,7 +10,7 @@ export const ROLE_LABELS: Record<string, string> = {
   video_director: "Video Director",
   production_manager: "Production Manager",
   audition_candidate: "Audition Candidate",
-  volunteer: "Worship Volunteer",
+  volunteer: "Volunteer",
 };
 
 export const RESOURCE_APPS = {

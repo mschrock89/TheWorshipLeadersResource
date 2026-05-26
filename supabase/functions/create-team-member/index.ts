@@ -31,6 +31,7 @@ const allowedRequesterRoles = [
 const allowedBaseRoles = [
   "network_worship_pastor",
   "campus_worship_pastor",
+  "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
   "speaker",
@@ -44,6 +45,7 @@ const replaceableBaseRoles = [
   "member",
   "network_worship_pastor",
   "campus_worship_pastor",
+  "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
   "speaker",
