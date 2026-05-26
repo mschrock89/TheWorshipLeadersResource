@@ -26,12 +26,42 @@ function upsertHeadLink(rel: string, href: string, type?: string) {
   }
 }
 
+function upsertMeta(attribute: "name" | "property", key: string, content: string) {
+  let meta = document.querySelector<HTMLMetaElement>(`meta[${attribute}="${key}"]`);
+
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute(attribute, key);
+    document.head.appendChild(meta);
+  }
+
+  meta.content = content;
+}
+
 function setResourceAppMetadata() {
   const app = getResourceAppForLocation();
+  const currentPath = `${window.location.pathname}${window.location.search}`;
+  const appUrl = `${window.location.origin}${currentPath}`;
+  const shareImagePath = app.key === "students_hs" || app.key === "students_ms"
+    ? "/experience-students-share.png"
+    : app.iconPath;
+
+  document.title = app.name;
 
   upsertHeadLink("icon", app.iconPath, "image/png");
+  upsertHeadLink("shortcut icon", app.iconPath, "image/png");
   upsertHeadLink("apple-touch-icon", app.iconPath);
   upsertHeadLink("manifest", app.manifestPath);
+
+  upsertMeta("name", "description", app.description);
+  upsertMeta("name", "apple-mobile-web-app-title", app.shortName);
+  upsertMeta("property", "og:title", app.name);
+  upsertMeta("property", "og:description", app.description);
+  upsertMeta("property", "og:url", appUrl);
+  upsertMeta("property", "og:image", `${window.location.origin}${shareImagePath}`);
+  upsertMeta("name", "twitter:title", app.name);
+  upsertMeta("name", "twitter:description", app.description);
+  upsertMeta("name", "twitter:image", `${window.location.origin}${shareImagePath}`);
 
   const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   themeColor?.setAttribute("content", app.themeColor);

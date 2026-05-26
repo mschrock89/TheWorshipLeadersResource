@@ -28,6 +28,8 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, "index.html"),
+          studentsHs: path.resolve(__dirname, "students-hs.html"),
+          studentsMs: path.resolve(__dirname, "students-ms.html"),
           charts: path.resolve(__dirname, "charts/index.html"),
         },
       },

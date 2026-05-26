@@ -1,0 +1,25 @@
+{
+  "name": "Experience Students MS",
+  "short_name": "Students MS",
+  "description": "The central hub for Experience Students middle school ministry teams, follow-up, and connection.",
+  "start_url": "/ms",
+  "scope": "/ms",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/students-resource-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/students-resource-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

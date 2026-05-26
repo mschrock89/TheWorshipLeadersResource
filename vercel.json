@@ -3,6 +3,10 @@
   "buildCommand": "if [ \"$APP_TARGET\" = \"charts\" ]; then npm run build:charts:vercel; else npm run build; fi",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/hs", "destination": "/students-hs.html" },
+    { "source": "/hs/(.*)", "destination": "/students-hs.html" },
+    { "source": "/ms", "destination": "/students-ms.html" },
+    { "source": "/ms/(.*)", "destination": "/students-ms.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

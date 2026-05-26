@@ -1,0 +1,25 @@
+{
+  "name": "Experience Students HS",
+  "short_name": "Students HS",
+  "description": "The central hub for Experience Students high school ministry teams, follow-up, and connection.",
+  "start_url": "/hs",
+  "scope": "/hs",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#1d4ed8",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/students-resource-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/students-resource-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
