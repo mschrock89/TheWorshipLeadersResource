@@ -2,6 +2,21 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
+const LEGACY_CAMERA_POSITIONS = [
+  "camera_1",
+  "camera_2",
+  "camera_3",
+  "camera_4",
+  "camera_5",
+  "camera_6",
+  "Camera 1",
+  "Camera 2",
+  "Camera 3",
+  "Camera 4",
+  "Camera 5",
+  "Camera 6",
+] as const;
+
 const DB_POSITION_TO_UI_POSITION: Record<string, string> = {
   "Vocalist": "vocalist",
   "Announcements": "announcement",
@@ -14,12 +29,12 @@ const DB_POSITION_TO_UI_POSITION: Record<string, string> = {
   "EG 4": "electric_4",
   "Bass": "bass",
   "Broadcast": "broadcast",
-  "Camera 1": "camera_1",
-  "Camera 2": "camera_2",
-  "Camera 3": "camera_3",
-  "Camera 4": "camera_4",
-  "Camera 5": "camera_5",
-  "Camera 6": "camera_6",
+  "Camera 1": "tri_pod_camera",
+  "Camera 2": "tri_pod_camera",
+  "Camera 3": "tri_pod_camera",
+  "Camera 4": "tri_pod_camera",
+  "Camera 5": "tri_pod_camera",
+  "Camera 6": "tri_pod_camera",
   "Director": "director",
   "Drums": "drums",
   "Drum Tech": "drum_tech",
@@ -55,12 +70,12 @@ const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
   electric_4: "EG 4",
   bass: "Bass",
   broadcast: "Broadcast",
-  camera_1: "Camera 1",
-  camera_2: "Camera 2",
-  camera_3: "Camera 3",
-  camera_4: "Camera 4",
-  camera_5: "Camera 5",
-  camera_6: "Camera 6",
+  camera_1: "Tri-Pod Camera",
+  camera_2: "Tri-Pod Camera",
+  camera_3: "Tri-Pod Camera",
+  camera_4: "Tri-Pod Camera",
+  camera_5: "Tri-Pod Camera",
+  camera_6: "Tri-Pod Camera",
   drums: "Drums",
   drum_tech: "Drum Tech",
   keys: "Keys",
@@ -83,6 +98,12 @@ const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
 
 const LEGACY_POSITION_ALIASES: Record<string, string> = {
   closer: "closing_prayer",
+  camera_1: "tri_pod_camera",
+  camera_2: "tri_pod_camera",
+  camera_3: "tri_pod_camera",
+  camera_4: "tri_pod_camera",
+  camera_5: "tri_pod_camera",
+  camera_6: "tri_pod_camera",
 };
 
 function getNormalizedMinistryType(ministryType: string) {
@@ -91,23 +112,27 @@ function getNormalizedMinistryType(ministryType: string) {
     : ministryType;
 }
 
-function getNormalizedPosition(position: string) {
+export function getNormalizedCampusMinistryPosition(position: string) {
   return DB_POSITION_TO_UI_POSITION[position] ?? LEGACY_POSITION_ALIASES[position] ?? position;
 }
 
 function getStoredPosition(position: string) {
-  const normalizedPosition = getNormalizedPosition(position);
+  const normalizedPosition = getNormalizedCampusMinistryPosition(position);
   return UI_POSITION_TO_DB_POSITION[normalizedPosition] ?? position;
 }
 
 function getEquivalentPositions(position: string) {
-  const normalizedPosition = getNormalizedPosition(position);
+  const normalizedPosition = getNormalizedCampusMinistryPosition(position);
   const storedPosition = getStoredPosition(position);
   const positions = new Set([position, normalizedPosition, storedPosition]);
 
   if (normalizedPosition === "closing_prayer") {
     positions.add("closer");
     positions.add("Closing Prayer");
+  }
+
+  if (normalizedPosition === "tri_pod_camera") {
+    LEGACY_CAMERA_POSITIONS.forEach((legacyPosition) => positions.add(legacyPosition));
   }
 
   return [...positions];
@@ -139,7 +164,7 @@ export function useAllCampusMinistryPositions() {
       if (error) throw error;
       return (data as CampusMinistryPosition[]).map((item) => ({
         ...item,
-        position: getNormalizedPosition(item.position),
+        position: getNormalizedCampusMinistryPosition(item.position),
       }));
     },
   });
@@ -160,7 +185,7 @@ export function useUserCampusMinistryPositions(userId: string | undefined) {
       if (error) throw error;
       return (data as CampusMinistryPosition[]).map((item) => ({
         ...item,
-        position: getNormalizedPosition(item.position),
+        position: getNormalizedCampusMinistryPosition(item.position),
       }));
     },
     enabled: !!userId,
@@ -187,7 +212,7 @@ export function useToggleCampusMinistryPosition() {
     }) => {
       const equivalentMinistryTypes = getEquivalentMinistryTypes(ministryType);
       const normalizedMinistryType = getNormalizedMinistryType(ministryType);
-      const normalizedPosition = getNormalizedPosition(position);
+      const normalizedPosition = getNormalizedCampusMinistryPosition(position);
       const storedPosition = getStoredPosition(normalizedPosition);
       const positionsToMatch = getEquivalentPositions(normalizedPosition);
 
@@ -339,8 +364,9 @@ export function useAvailableMembersWithPositions(
         
         const user = userMap.get(userId)!;
         
-        if (!user.positions.includes(item.position)) {
-          user.positions.push(item.position);
+        const normalizedPosition = getNormalizedCampusMinistryPosition(item.position);
+        if (!user.positions.includes(normalizedPosition)) {
+          user.positions.push(normalizedPosition);
         }
         
         if (!user.ministry_types.includes(item.ministry_type)) {

@@ -20,6 +20,7 @@ import {
   compareRotationPeriods,
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey, hasOrgAdminPrivilegesForResourceApp, isStudentResourceAppKey } from "@/lib/resourceApp";
+import { getNormalizedCampusMinistryPosition } from "@/hooks/useCampusMinistryPositions";
 
 export interface TeamPeriodLock {
   id: string;
@@ -899,8 +900,9 @@ export function useAvailableMembers(campusId?: string | null, ministryType?: str
           if (!memberDataMap[a.user_id].ministry_types.includes(a.ministry_type)) {
             memberDataMap[a.user_id].ministry_types.push(a.ministry_type);
           }
-          if (!memberDataMap[a.user_id].positions.includes(a.position)) {
-            memberDataMap[a.user_id].positions.push(a.position);
+          const normalizedPosition = getNormalizedCampusMinistryPosition(a.position);
+          if (!memberDataMap[a.user_id].positions.includes(normalizedPosition)) {
+            memberDataMap[a.user_id].positions.push(normalizedPosition);
           }
         });
       }
