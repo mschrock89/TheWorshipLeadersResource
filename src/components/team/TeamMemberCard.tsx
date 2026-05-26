@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Phone, Cake, Heart, MapPin, Mail, CheckCircle, MessageCircle, KeyRound, Trash2, Shield } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { parseLocalDate } from "@/lib/utils";
+import { POSITION_LABELS } from "@/lib/constants";
 import {
   Tooltip,
   TooltipContent,
@@ -14,9 +15,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+export interface TeamMemberMinistryPositionGroup {
+  ministryType: string;
+  ministryLabel: string;
+  positions: string[];
+  campusNames: string[];
+}
+
 interface TeamMemberCardProps {
   member: Profile;
   campusNames?: string[];
+  ministryPositionGroups?: TeamMemberMinistryPositionGroup[];
   onSendEmail?: (member: Profile) => void;
   onResetPassword?: (member: Profile) => void;
   onDelete?: (member: Profile) => void;
@@ -26,6 +35,7 @@ interface TeamMemberCardProps {
 export function TeamMemberCard({
   member,
   campusNames = [],
+  ministryPositionGroups = [],
   onSendEmail,
   onResetPassword,
   onDelete,
@@ -226,6 +236,43 @@ export function TeamMemberCard({
 
             {/* Divider */}
             <div className="my-4 h-px bg-border" />
+
+            {/* Ministry positions */}
+            {ministryPositionGroups.length > 0 && (
+              <div className="mb-4 space-y-2 text-left">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Positions by Ministry
+                </p>
+                {ministryPositionGroups.map((group) => (
+                  <div
+                    key={group.ministryType}
+                    className="rounded-md border border-border/70 bg-muted/30 px-3 py-2"
+                  >
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {group.ministryLabel}
+                      </span>
+                      {group.campusNames.length > 1 && (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          {group.campusNames.length} campuses
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.positions.map((position) => (
+                        <Badge
+                          key={position}
+                          variant="secondary"
+                          className="rounded-md px-2 py-0.5 text-[11px] font-medium"
+                        >
+                          {POSITION_LABELS[position] || position}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Quick contact actions */}
             <div className="flex items-center justify-center gap-2">

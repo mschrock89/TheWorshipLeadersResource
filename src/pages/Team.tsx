@@ -6,7 +6,7 @@ import { useAllCampusMinistryPositions } from "@/hooks/useCampusMinistryPosition
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
-import { TeamMemberCard } from "@/components/team/TeamMemberCard";
+import { TeamMemberCard, TeamMemberMinistryPositionGroup } from "@/components/team/TeamMemberCard";
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
 import { CreateTeamMemberDialog } from "@/components/team/CreateTeamMemberDialog";
@@ -41,7 +41,7 @@ import {
 import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 const normalizePositionFilterValue = (value: string) =>
   value
@@ -70,6 +70,20 @@ const matchesPositionFilter = (positions: TeamPosition[] | undefined, positionFi
 
   return positions.some((position) => allowedValues.has(normalizePositionFilterValue(position)));
 };
+
+const DIRECTORY_WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
+
+const normalizeDirectoryMinistryType = (ministryType: string | null | undefined) => {
+  if (!ministryType) return ministryType;
+  return DIRECTORY_WEEKEND_MINISTRY_ALIASES.has(ministryType) ? "weekend_team" : ministryType;
+};
+
+const getDirectoryMinistryLabel = (ministryType: string) =>
+  MINISTRY_TYPES.find((ministry) => ministry.value === ministryType)?.label || getMinistryLabel(ministryType);
+
+const ministryDisplayOrder = new Map(
+  MINISTRY_TYPES.map((ministry, index) => [normalizeDirectoryMinistryType(ministry.value) || ministry.value, index]),
+);
 
 export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
@@ -295,6 +309,65 @@ export default function Team() {
         return nameA.localeCompare(nameB);
       });
   }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions]);
+
+  const ministryPositionGroupsByUser = useMemo(() => {
+    const campusNameById = new Map(campuses.map((campus) => [campus.id, campus.name]));
+    const groupsByUser = new Map<string, Map<string, {
+      positions: Set<string>;
+      campusNames: Set<string>;
+    }>>();
+
+    campusMinistryPositions.forEach(({ user_id, campus_id, ministry_type, position }) => {
+      if (campusFilter !== "all" && campus_id !== campusFilter) return;
+
+      const ministryType = normalizeDirectoryMinistryType(ministry_type);
+      if (!ministryType) return;
+
+      const userGroups = groupsByUser.get(user_id) || new Map<string, {
+        positions: Set<string>;
+        campusNames: Set<string>;
+      }>();
+      const group = userGroups.get(ministryType) || {
+        positions: new Set<string>(),
+        campusNames: new Set<string>(),
+      };
+
+      group.positions.add(position);
+
+      const campusName = campusNameById.get(campus_id);
+      if (campusName) {
+        group.campusNames.add(campusName);
+      }
+
+      userGroups.set(ministryType, group);
+      groupsByUser.set(user_id, userGroups);
+    });
+
+    return Array.from(groupsByUser.entries()).reduce((result, [userId, userGroups]) => {
+      const groups: TeamMemberMinistryPositionGroup[] = Array.from(userGroups.entries())
+        .map(([ministryType, group]) => ({
+          ministryType,
+          ministryLabel: getDirectoryMinistryLabel(ministryType),
+          positions: Array.from(group.positions).sort((a, b) =>
+            (POSITION_LABELS[a] || a).localeCompare(POSITION_LABELS[b] || b)
+          ),
+          campusNames: Array.from(group.campusNames).sort((a, b) => a.localeCompare(b)),
+        }))
+        .sort((a, b) => {
+          const orderA = ministryDisplayOrder.get(a.ministryType) ?? Number.MAX_SAFE_INTEGER;
+          const orderB = ministryDisplayOrder.get(b.ministryType) ?? Number.MAX_SAFE_INTEGER;
+
+          if (orderA !== orderB) {
+            return orderA - orderB;
+          }
+
+          return a.ministryLabel.localeCompare(b.ministryLabel);
+        });
+
+      result.set(userId, groups);
+      return result;
+    }, new Map<string, TeamMemberMinistryPositionGroup[]>());
+  }, [campuses, campusFilter, campusMinistryPositions]);
 
   const handleEmailSent = () => {
     refetch();
@@ -559,6 +632,7 @@ export default function Team() {
               key={member.id} 
               member={member} 
               campusNames={userCampusMap[member.id]?.names || []}
+              ministryPositionGroups={ministryPositionGroupsByUser.get(member.id) || []}
               onSendEmail={canManageTeam ? handleSendIndividualEmail : undefined}
               onResetPassword={canManageTeam ? handleResetPassword : undefined}
               onManageRoles={canManageTeam ? handleManageRoles : undefined}

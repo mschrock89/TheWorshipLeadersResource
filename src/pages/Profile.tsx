@@ -34,7 +34,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { areHapticsEnabled, HAPTICS_CHANGE_EVENT, isHapticsSupported, setHapticsEnabled } from "@/lib/haptics";
-import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
@@ -105,10 +104,7 @@ export default function Profile() {
   const canManageAssignments = canManageTeam;
   const bandTopRowPositions = ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass"];
   const bandBottomRowPositions = ["drums", "keys", "pad"];
-  const isStudentResourceApp = isStudentResourceAppKey(getCurrentResourceAppKey());
-  const visibleProfileMinistryOrder = isStudentResourceApp
-    ? [STUDENT_TEAM_BUILDER_MINISTRY_TYPE]
-    : PROFILE_MINISTRY_ORDER.filter((ministryType) => ministryType !== STUDENT_TEAM_BUILDER_MINISTRY_TYPE);
+  const visibleProfileMinistryOrder = PROFILE_MINISTRY_ORDER;
 
   const { data: profile, isLoading } = useProfile(profileId);
   const { data: campuses = [] } = useCampuses();
@@ -315,7 +311,7 @@ export default function Profile() {
       share_contact_with_campus: shareContactWithCampus,
       gender: gender,
       default_campus_id: defaultCampusId,
-    } as any);
+    });
 
     updateServingRequirements.mutate({
       userId: profileId,
