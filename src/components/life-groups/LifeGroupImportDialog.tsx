@@ -13,17 +13,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import {
+  AppRole,
   LifeGroup,
+  LifeGroupBaseRoleAssignment,
   LifeGroupGrade,
   LifeGroupMutationInput,
   LifeGroupPerson,
   useImportLifeGroups,
 } from "@/hooks/useLifeGroups";
 import { Profile } from "@/hooks/useProfiles";
+import { ROLE_LABELS } from "@/lib/constants";
 import { ParsedLifeGroupDraft, parseLifeGroupImportFile } from "@/lib/lifeGroupImport";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +54,19 @@ interface ResolvedDraft {
 }
 
 const ACCEPTED_FILE_TYPES = ".csv,.tsv,.txt,.pdf,.xlsx";
+const NO_ROLE_ASSIGNMENT = "none";
+const LIFE_GROUP_BASE_ROLE_OPTIONS = ["student", "ms_leader", "hs_leader"] as const;
+
+type LifeGroupImportBaseRole = Extract<AppRole, (typeof LIFE_GROUP_BASE_ROLE_OPTIONS)[number]>;
+type LifeGroupImportRoleValue = LifeGroupImportBaseRole | typeof NO_ROLE_ASSIGNMENT;
+
+function getDefaultLeaderBaseRole(gradeOptions: LifeGroupGrade[]): LifeGroupImportBaseRole {
+  return gradeOptions.includes(8) && gradeOptions.length === 1 ? "ms_leader" : "hs_leader";
+}
+
+function getRoleAssignmentLabel(role: LifeGroupImportRoleValue) {
+  return role === NO_ROLE_ASSIGNMENT ? "Do not update" : ROLE_LABELS[role] || role;
+}
 
 function normalizeName(value: string | null | undefined) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -113,6 +130,32 @@ function unmatchedNames(matches: MatchedName[]) {
   return matches.filter((match) => !match.profile).map((match) => match.name);
 }
 
+function buildBaseRoleAssignments(
+  drafts: ResolvedDraft[],
+  leaderBaseRole: LifeGroupImportRoleValue,
+  studentBaseRole: LifeGroupImportRoleValue,
+) {
+  const assignments = new Map<string, LifeGroupImportBaseRole>();
+
+  if (studentBaseRole !== NO_ROLE_ASSIGNMENT) {
+    drafts.forEach((item) => {
+      item.studentMatches.forEach((match) => {
+        if (match.profile) assignments.set(match.profile.id, studentBaseRole);
+      });
+    });
+  }
+
+  if (leaderBaseRole !== NO_ROLE_ASSIGNMENT) {
+    drafts.forEach((item) => {
+      item.leaderMatches.forEach((match) => {
+        if (match.profile) assignments.set(match.profile.id, leaderBaseRole);
+      });
+    });
+  }
+
+  return Array.from(assignments, ([userId, role]) => ({ userId, role })) satisfies LifeGroupBaseRoleAssignment[];
+}
+
 export function LifeGroupImportDialog({
   open,
   onOpenChange,
@@ -127,6 +170,8 @@ export function LifeGroupImportDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [drafts, setDrafts] = useState<ParsedLifeGroupDraft[]>([]);
+  const [leaderBaseRole, setLeaderBaseRole] = useState<LifeGroupImportRoleValue>(() => getDefaultLeaderBaseRole(gradeOptions));
+  const [studentBaseRole, setStudentBaseRole] = useState<LifeGroupImportRoleValue>("student");
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
 
@@ -160,10 +205,16 @@ export function LifeGroupImportDialog({
   const updateCount = resolvedDrafts.filter((item) => item.existingGroup).length;
   const unsupportedGradeDrafts = resolvedDrafts.filter((item) => !gradeOptions.includes(item.draft.gradeLevel));
   const allowedGradeLabel = gradeOptions.map((grade) => `${grade}th`).join(", ");
+  const baseRoleAssignments = useMemo(
+    () => buildBaseRoleAssignments(resolvedDrafts, leaderBaseRole, studentBaseRole),
+    [leaderBaseRole, resolvedDrafts, studentBaseRole],
+  );
 
   const resetState = () => {
     setFile(null);
     setDrafts([]);
+    setLeaderBaseRole(getDefaultLeaderBaseRole(gradeOptions));
+    setStudentBaseRole("student");
     setIsParsing(false);
     setParseError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -226,7 +277,10 @@ export function LifeGroupImportDialog({
       studentIds: item.studentMatches.flatMap((match) => (match.profile ? [match.profile.id] : [])),
     }));
 
-    await importLifeGroups.mutateAsync(inputs);
+    await importLifeGroups.mutateAsync({
+      groups: inputs,
+      baseRoleAssignments,
+    });
     handleOpenChange(false);
   };
 
@@ -295,6 +349,57 @@ export function LifeGroupImportDialog({
                   <div className="rounded-md border p-3">
                     <p className="text-2xl font-semibold">{unmatchedCount}</p>
                     <p className="text-xs text-muted-foreground">Need profile match</p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Base role assignment</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {baseRoleAssignments.length} matched profile{baseRoleAssignments.length === 1 ? "" : "s"} will be updated.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:w-[520px]">
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Leaders</p>
+                        <Select
+                          value={leaderBaseRole}
+                          onValueChange={(value) => setLeaderBaseRole(value as LifeGroupImportRoleValue)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Leader role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ROLE_ASSIGNMENT}>{getRoleAssignmentLabel(NO_ROLE_ASSIGNMENT)}</SelectItem>
+                            {LIFE_GROUP_BASE_ROLE_OPTIONS.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {getRoleAssignmentLabel(role)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Students</p>
+                        <Select
+                          value={studentBaseRole}
+                          onValueChange={(value) => setStudentBaseRole(value as LifeGroupImportRoleValue)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Student role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ROLE_ASSIGNMENT}>{getRoleAssignmentLabel(NO_ROLE_ASSIGNMENT)}</SelectItem>
+                            {LIFE_GROUP_BASE_ROLE_OPTIONS.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {getRoleAssignmentLabel(role)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

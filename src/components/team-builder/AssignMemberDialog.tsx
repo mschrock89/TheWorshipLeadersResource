@@ -18,6 +18,7 @@ import { AvailableMember, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import {
   POSITION_LABELS,
   MINISTRY_TYPES,
+  STUDENT_POSITION_VALUES,
   memberMatchesMinistryFilter,
   resolveTeamBuilderSlotMinistryType,
 } from "@/lib/constants";
@@ -158,11 +159,8 @@ export function AssignMemberDialog({
       if (slotType === "producer") return pLower === "producer" || pLower === "broadcast";
       if (slotType === "switcher") return pLower === "switcher" || pLower === "broadcast";
       // Student Resource slots
-      if (slotType === "student_team_lead") {
-        return pLower === "student_team_lead" || pLower === "student_team_member";
-      }
-      if (slotType === "student_member") {
-        return pLower === "student_team_member" || pLower === "student_team_lead";
+      if (STUDENT_POSITION_VALUES.includes(slotType as typeof STUDENT_POSITION_VALUES[number])) {
+        return pLower === slotType;
       }
       return false;
     });

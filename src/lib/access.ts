@@ -1,5 +1,10 @@
 export const AUDITION_CANDIDATE_ROLE = "audition_candidate";
 export const STUDENT_BASE_ROLE = "student";
+export const STUDENT_BASE_ROLES = new Set([
+  STUDENT_BASE_ROLE,
+  "ms_leader",
+  "hs_leader",
+]);
 const WEEKEND_GROUP_TEXT_MINISTRY_ALIASES = new Set([
   "weekend",
   "weekend_team",
@@ -48,7 +53,7 @@ export function canAuditionCandidateAccessPath(pathname: string) {
 }
 
 export function isStudentBaseRole(roles: string[]) {
-  return roles.includes(STUDENT_BASE_ROLE);
+  return roles.some((role) => STUDENT_BASE_ROLES.has(role));
 }
 
 export function canStudentBaseRoleAccessPath(pathname: string) {

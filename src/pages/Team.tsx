@@ -672,6 +672,7 @@ export default function Team() {
       <TeamImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
+        existingMembers={profiles}
         onImportComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["profiles"] });
           queryClient.invalidateQueries({ queryKey: ["user-roles"] });

@@ -15,7 +15,8 @@ export type TeamPosition =
   | "broadcast" | "camera_1" | "camera_2" | "camera_3" | "camera_4" | "camera_5" | "camera_6"
   | "tri_pod_camera" | "hand_held_camera"
   | "director" | "graphics" | "producer" | "switcher"
-  | "audio_shadow" | "mon";
+  | "audio_shadow" | "mon"
+  | "student_cafe" | "student_hype" | "student_prayer" | "student_hospitality" | "student_small_group_leader";
 
 export interface Profile {
   id: string;

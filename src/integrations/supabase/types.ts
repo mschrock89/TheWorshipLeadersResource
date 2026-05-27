@@ -3205,6 +3205,8 @@ export type Database = {
         | "production_manager"
         | "audition_candidate"
         | "student"
+        | "ms_leader"
+        | "hs_leader"
       swap_request_status: "pending" | "accepted" | "declined" | "cancelled"
       team_position:
         | "lead_vocals"
@@ -3248,6 +3250,11 @@ export type Database = {
         | "tri_pod_camera"
         | "hand_held_camera"
         | "vocalist"
+        | "student_cafe"
+        | "student_hype"
+        | "student_prayer"
+        | "student_hospitality"
+        | "student_small_group_leader"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3393,6 +3400,8 @@ export const Constants = {
         "production_manager",
         "audition_candidate",
         "student",
+        "ms_leader",
+        "hs_leader",
       ],
       swap_request_status: ["pending", "accepted", "declined", "cancelled"],
       team_position: [
@@ -3437,6 +3446,11 @@ export const Constants = {
         "tri_pod_camera",
         "hand_held_camera",
         "vocalist",
+        "student_cafe",
+        "student_hype",
+        "student_prayer",
+        "student_hospitality",
+        "student_small_group_leader",
       ],
     },
   },

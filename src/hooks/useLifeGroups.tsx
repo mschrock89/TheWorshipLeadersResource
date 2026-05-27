@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
+import { BASE_ROLES } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 type QueryResult<T> = {
@@ -30,6 +32,7 @@ const db = supabase as unknown as {
 export type LifeGroupGender = "male" | "female" | "coed";
 export type LifeGroupGrade = 8 | 9 | 10 | 11 | 12;
 export type AttendanceStatus = "present" | "absent";
+export type AppRole = Database["public"]["Enums"]["app_role"];
 
 export interface LifeGroupPerson {
   id: string;
@@ -119,6 +122,16 @@ export interface LifeGroupMutationInput {
   studentIds: string[];
 }
 
+export interface LifeGroupBaseRoleAssignment {
+  userId: string;
+  role: AppRole;
+}
+
+export interface LifeGroupImportInput {
+  groups: LifeGroupMutationInput[];
+  baseRoleAssignments?: LifeGroupBaseRoleAssignment[];
+}
+
 interface WeeklyReportInput {
   groupId: string;
   meetingDate: string;
@@ -126,6 +139,8 @@ interface WeeklyReportInput {
   feedback: string;
   attendance: Array<{ studentId: string; status: AttendanceStatus }>;
 }
+
+const REPLACEABLE_BASE_ROLES = [...BASE_ROLES, "leader", "member"] as AppRole[];
 
 async function saveLifeGroupRecord(
   input: LifeGroupMutationInput,
@@ -185,6 +200,41 @@ async function saveLifeGroupRecord(
   }
 
   return groupId;
+}
+
+async function assignBaseRoles(assignments: LifeGroupBaseRoleAssignment[]) {
+  const assignmentsByUserId = new Map<string, AppRole>();
+
+  assignments.forEach((assignment) => {
+    if (!assignment.userId || !REPLACEABLE_BASE_ROLES.includes(assignment.role)) return;
+    assignmentsByUserId.set(assignment.userId, assignment.role);
+  });
+
+  const roleRows = Array.from(assignmentsByUserId, ([userId, role]) => ({
+    user_id: userId,
+    role,
+    admin_campus_id: null,
+  }));
+
+  if (roleRows.length === 0) return 0;
+
+  const userIds = roleRows.map((row) => row.user_id);
+
+  const { error: deleteError } = await db
+    .from("user_roles")
+    .delete()
+    .in("user_id", userIds)
+    .in("role", REPLACEABLE_BASE_ROLES);
+
+  if (deleteError) throw deleteError;
+
+  const { error: insertError } = await db
+    .from("user_roles")
+    .insert(roleRows);
+
+  if (insertError) throw insertError;
+
+  return roleRows.length;
 }
 
 function getProfileFromRelation(row: PersonRelationRow): LifeGroupPerson {
@@ -393,20 +443,26 @@ export function useImportLifeGroups() {
   const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
-    mutationFn: async (groups: LifeGroupMutationInput[]) => {
+    mutationFn: async (input: LifeGroupImportInput | LifeGroupMutationInput[]) => {
+      const groups = Array.isArray(input) ? input : input.groups;
+      const baseRoleAssignments = Array.isArray(input) ? [] : input.baseRoleAssignments || [];
       const savedGroupIds: string[] = [];
       for (const group of groups) {
         const groupId = await saveLifeGroupRecord(group, resourceAppKey, user?.id);
         savedGroupIds.push(groupId);
       }
-      return savedGroupIds;
+      const assignedRoleCount = await assignBaseRoles(baseRoleAssignments);
+      return { savedGroupIds, assignedRoleCount };
     },
-    onSuccess: (savedGroupIds) => {
+    onSuccess: ({ savedGroupIds, assignedRoleCount }) => {
       queryClient.invalidateQueries({ queryKey: ["life-groups"] });
       queryClient.invalidateQueries({ queryKey: ["life-group-leader-status"] });
+      queryClient.invalidateQueries({ queryKey: ["user-role"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["leadership-roles"] });
       toast({
         title: "Life groups imported",
-        description: `${savedGroupIds.length} group${savedGroupIds.length === 1 ? "" : "s"} saved from the upload.`,
+        description: `${savedGroupIds.length} group${savedGroupIds.length === 1 ? "" : "s"} saved${assignedRoleCount > 0 ? ` and ${assignedRoleCount} base role${assignedRoleCount === 1 ? "" : "s"} assigned` : ""}.`,
       });
     },
     onError: (error) => {

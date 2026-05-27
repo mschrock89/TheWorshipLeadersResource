@@ -11,6 +11,8 @@ export const ROLE_LABELS: Record<string, string> = {
   production_manager: "Production Manager",
   audition_candidate: "Audition Candidate",
   student: "Student",
+  ms_leader: "MS Leader",
+  hs_leader: "HS Leader",
   volunteer: "Volunteer",
 };
 
@@ -71,6 +73,13 @@ export const DEFAULT_RESOURCE_APP_KEY: ResourceAppKey = "worship";
 export const STUDENT_RESOURCE_APP_KEYS: ResourceAppKey[] = ["students_hs", "students_ms"];
 export const STUDENT_TEAM_BUILDER_MINISTRY_TYPE = "students";
 export const STUDENT_TEAM_NAMES = ["Hospitality", "Hype", "Prayer", "Cafe"] as const;
+export const STUDENT_POSITION_VALUES = [
+  "student_cafe",
+  "student_hype",
+  "student_prayer",
+  "student_hospitality",
+  "student_small_group_leader",
+] as const;
 
 function normalizePathPrefix(prefix: string) {
   if (!prefix || prefix === "/") return "/";
@@ -125,7 +134,7 @@ export function getAppUrl(path: string) {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'student', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'student', 'ms_leader', 'hs_leader', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -179,8 +188,11 @@ export const POSITION_LABELS: Record<string, string> = {
   producer: "Producer",
   switcher: "Switcher",
   chat_member: "Chat Member",
-  student_team_lead: "Lead",
-  student_team_member: "Team Member",
+  student_cafe: "Cafe",
+  student_hype: "Hype",
+  student_prayer: "Prayer",
+  student_hospitality: "Hospitality",
+  student_small_group_leader: "Small Group Leader",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -238,8 +250,11 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   graphics_4: "Graphics 4",
   producer: "Producer",
   switcher: "Switcher",
-  student_team_lead: "Lead",
-  student_team_member: "Member",
+  student_cafe: "Cafe",
+  student_hype: "Hype",
+  student_prayer: "Prayer",
+  student_hospitality: "Hospitality",
+  student_small_group_leader: "Small Group",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -252,7 +267,7 @@ export const POSITION_CATEGORIES = {
   instruments: ["acoustic_1", "acoustic_2", "electric_1", "electric_2", "electric_3", "bass", "drums", "keys", "pad"],
   audio: ["sound_tech", "mon", "broadcast", "audio_shadow", "lighting", "media", "producer"],
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
-  students: ["student_team_lead", "student_team_member"],
+  students: [...STUDENT_POSITION_VALUES],
 };
 
 // Team Builder position slots - these map to position_slot column in team_members table
@@ -313,15 +328,11 @@ export const POSITION_SLOTS: {
   { slot: "switcher_3", label: "Switcher 3", category: "Video", position: "switcher" },
   { slot: "switcher_4", label: "Switcher 4", category: "Video", position: "switcher" },
   // Student Resource slots
-  { slot: "student_team_lead", label: "Lead", category: "Students", position: "student_team_lead" },
-  { slot: "student_member_1", label: "Member 1", category: "Students", position: "student_team_member" },
-  { slot: "student_member_2", label: "Member 2", category: "Students", position: "student_team_member" },
-  { slot: "student_member_3", label: "Member 3", category: "Students", position: "student_team_member" },
-  { slot: "student_member_4", label: "Member 4", category: "Students", position: "student_team_member" },
-  { slot: "student_member_5", label: "Member 5", category: "Students", position: "student_team_member" },
-  { slot: "student_member_6", label: "Member 6", category: "Students", position: "student_team_member" },
-  { slot: "student_member_7", label: "Member 7", category: "Students", position: "student_team_member" },
-  { slot: "student_member_8", label: "Member 8", category: "Students", position: "student_team_member" },
+  { slot: "student_cafe", label: "Cafe", category: "Students", position: "student_cafe" },
+  { slot: "student_hype", label: "Hype", category: "Students", position: "student_hype" },
+  { slot: "student_prayer", label: "Prayer", category: "Students", position: "student_prayer" },
+  { slot: "student_hospitality", label: "Hospitality", category: "Students", position: "student_hospitality" },
+  { slot: "student_small_group_leader", label: "Small Group Leader", category: "Students", position: "student_small_group_leader" },
 ];
 
 export const MINISTRY_TYPES = [

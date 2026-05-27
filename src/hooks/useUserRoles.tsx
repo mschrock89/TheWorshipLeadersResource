@@ -21,6 +21,8 @@ const BASE_APP_ROLES: AppRole[] = [
   'production_manager',
   'audition_candidate',
   'student',
+  'ms_leader',
+  'hs_leader',
   'volunteer',
   'leader',
   'member',
@@ -43,7 +45,7 @@ export function useUserRole(userId: string | undefined) {
       const roles = data || [];
       
       // Return highest priority role for display
-      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'leader', 'audition_candidate', 'student', 'volunteer', 'member'];
+      const priorityOrder: AppRole[] = ['admin', 'campus_admin', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'leader', 'audition_candidate', 'student', 'ms_leader', 'hs_leader', 'volunteer', 'member'];
       for (const priorityRole of priorityOrder) {
         const matchedRole = roles.find(r => r.role === priorityRole);
         if (matchedRole) {

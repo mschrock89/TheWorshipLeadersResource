@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-resource-app-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 interface TeamMember {
@@ -19,7 +19,69 @@ interface TeamMember {
 interface ImportResult {
   email: string;
   success: boolean;
+  skipped?: boolean;
   error?: string;
+}
+
+function normalizeEmail(email: string | null | undefined): string {
+  return (email || '').trim().toLowerCase();
+}
+
+function normalizeName(name: string | null | undefined): string {
+  return (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function loadDirectoryFingerprints(adminClient: ReturnType<typeof createClient>) {
+  const emails = new Set<string>();
+  const names = new Set<string>();
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await adminClient
+      .from('profiles')
+      .select('email, full_name')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    (data || []).forEach((profile) => {
+      const email = normalizeEmail(profile.email);
+      const name = normalizeName(profile.full_name);
+      if (email) emails.add(email);
+      if (name) names.add(name);
+    });
+
+    if (!data || data.length < pageSize) {
+      break;
+    }
+  }
+
+  return { emails, names };
+}
+
+async function loadAuthEmails(adminClient: ReturnType<typeof createClient>) {
+  const emails = new Set<string>();
+  const perPage = 1000;
+
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    data.users.forEach((user) => {
+      const email = normalizeEmail(user.email);
+      if (email) emails.add(email);
+    });
+
+    if (data.users.length < perPage) {
+      break;
+    }
+  }
+
+  return emails;
 }
 
 serve(async (req) => {
@@ -108,30 +170,54 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
+    const [directoryFingerprints, authEmails] = await Promise.all([
+      loadDirectoryFingerprints(adminClient),
+      loadAuthEmails(adminClient),
+    ]);
+    const importEmails = new Set<string>();
+    const importNames = new Set<string>();
     const results: ImportResult[] = [];
 
     for (const member of members) {
-      const email = member.email?.trim().toLowerCase();
+      const email = normalizeEmail(member.email);
       const firstName = member.firstName?.trim() || '';
       const lastName = member.lastName?.trim() || '';
       const fullName = [firstName, lastName].filter(Boolean).join(' ');
+      const normalizedName = normalizeName(fullName);
       
-      if (!email) {
+      if (!email || !email.includes('@')) {
         results.push({ email: member.email || 'unknown', success: false, error: 'Invalid email' });
         continue;
       }
 
+      if (directoryFingerprints.emails.has(email) || authEmails.has(email)) {
+        console.log(`Skipping existing user by email: ${email}`);
+        results.push({ email, success: false, skipped: true, error: 'Email already in directory' });
+        continue;
+      }
+
+      if (normalizedName && directoryFingerprints.names.has(normalizedName)) {
+        console.log(`Skipping existing user by name: ${fullName}`);
+        results.push({ email, success: false, skipped: true, error: 'Name already in directory' });
+        continue;
+      }
+
+      if (importEmails.has(email)) {
+        console.log(`Skipping duplicate import email: ${email}`);
+        results.push({ email, success: false, skipped: true, error: 'Duplicate email in import' });
+        continue;
+      }
+
+      if (normalizedName && importNames.has(normalizedName)) {
+        console.log(`Skipping duplicate import name: ${fullName}`);
+        results.push({ email, success: false, skipped: true, error: 'Duplicate name in import' });
+        continue;
+      }
+
+      importEmails.add(email);
+      if (normalizedName) importNames.add(normalizedName);
+
       try {
-        // Check if user already exists
-        const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-        const existingUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email);
-
-        if (existingUser) {
-          console.log(`User already exists: ${email}`);
-          results.push({ email, success: false, error: 'User already exists' });
-          continue;
-        }
-
         // Use default password "123456"
         const defaultPassword = "123456";
 
@@ -184,6 +270,9 @@ serve(async (req) => {
         }
 
         results.push({ email, success: true });
+        directoryFingerprints.emails.add(email);
+        authEmails.add(email);
+        if (normalizedName) directoryFingerprints.names.add(normalizedName);
       } catch (err) {
         console.error(`Error processing ${email}:`, err);
         results.push({ email, success: false, error: 'Unexpected error' });
@@ -191,12 +280,13 @@ serve(async (req) => {
     }
 
     const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
+    const skippedCount = results.filter(r => r.skipped).length;
+    const failCount = results.filter(r => !r.success && !r.skipped).length;
 
-    console.log(`Import complete: ${successCount} succeeded, ${failCount} failed`);
+    console.log(`Import complete: ${successCount} succeeded, ${skippedCount} skipped, ${failCount} failed`);
 
     return new Response(
-      JSON.stringify({ results, successCount, failCount }),
+      JSON.stringify({ results, successCount, skippedCount, failCount }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

@@ -38,6 +38,8 @@ const allowedBaseRoles = [
   "video_director",
   "production_manager",
   "student",
+  "ms_leader",
+  "hs_leader",
   "volunteer",
 ];
 
@@ -54,6 +56,8 @@ const replaceableBaseRoles = [
   "production_manager",
   "audition_candidate",
   "student",
+  "ms_leader",
+  "hs_leader",
   "volunteer",
 ];
 
