@@ -493,7 +493,7 @@ export default function Feed() {
         <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1.25fr)_390px]">
           <div>
             <div className="space-y-3">
-              <h1 className="max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
+              <h1 className="mx-auto max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text text-center font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
                 THE FEED
               </h1>
             </div>

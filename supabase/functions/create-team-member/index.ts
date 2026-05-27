@@ -37,6 +37,7 @@ const allowedBaseRoles = [
   "speaker",
   "video_director",
   "production_manager",
+  "student",
   "volunteer",
 ];
 
@@ -52,6 +53,7 @@ const replaceableBaseRoles = [
   "video_director",
   "production_manager",
   "audition_candidate",
+  "student",
   "volunteer",
 ];
 

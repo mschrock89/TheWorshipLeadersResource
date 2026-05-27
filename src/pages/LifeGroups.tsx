@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
+  ArrowUpDown,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Edit,
   Loader2,
@@ -52,15 +54,24 @@ import {
   useSaveLifeGroupWeeklyReport,
 } from "@/hooks/useLifeGroups";
 import { Profile, useProfiles } from "@/hooks/useProfiles";
-import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { cn } from "@/lib/utils";
 
-const GRADE_OPTIONS: LifeGroupGrade[] = [8, 9, 10, 11, 12];
+const LIFE_GROUP_GRADE_OPTIONS: Record<string, LifeGroupGrade[]> = {
+  students_ms: [8],
+  students_hs: [9, 10, 11, 12],
+};
 const GENDER_OPTIONS: Array<{ value: LifeGroupGender; label: string }> = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
   { value: "coed", label: "Coed" },
 ];
+const GENDER_SORT_ORDER: Record<LifeGroupGender, number> = {
+  female: 0,
+  male: 1,
+  coed: 2,
+};
+type LifeGroupSortOption = "grade" | "gender";
 
 function todayInputValue() {
   const now = new Date();
@@ -115,6 +126,7 @@ interface LifeGroupDialogProps {
   campusId: string | null;
   profiles: Profile[];
   meetingLocations: string[];
+  gradeOptions: LifeGroupGrade[];
 }
 
 function LifeGroupDialog({
@@ -124,6 +136,7 @@ function LifeGroupDialog({
   campusId,
   profiles,
   meetingLocations,
+  gradeOptions,
 }: LifeGroupDialogProps) {
   const saveLifeGroup = useSaveLifeGroup();
   const [name, setName] = useState("");
@@ -141,14 +154,14 @@ function LifeGroupDialog({
 
     setName(group?.name || "");
     setGender(group?.gender || "female");
-    setGradeLevel(group?.grade_level || 8);
+    setGradeLevel(group?.grade_level || gradeOptions[0] || 8);
     setLocation(group?.meeting_location || "Student Center");
     setCustomLocation("");
     setLeaderIds(group?.leaders.map((leader) => leader.id) || []);
     setStudentIds(group?.students.map((student) => student.id) || []);
     setLeaderSearch("");
     setStudentSearch("");
-  }, [group, open]);
+  }, [gradeOptions, group, open]);
 
   const selectedLocation = location === "__custom__" ? customLocation : location;
   const searchableProfiles = useMemo(() => sortProfiles(profiles), [profiles]);
@@ -188,13 +201,21 @@ function LifeGroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] max-w-4xl overflow-hidden p-0">
-        <DialogHeader className="px-6 pt-6">
+      <DialogContent
+        className="grid h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:h-[min(92dvh,760px)] sm:max-h-[92dvh] sm:w-full"
+        onInteractOutside={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("[data-toast-root], [data-toast-viewport]")) {
+            event.preventDefault();
+          }
+        }}
+      >
+        <DialogHeader className="px-6 pb-4 pt-6">
           <DialogTitle>{group ? "Edit Life Group" : "Create Life Group"}</DialogTitle>
           <DialogDescription>Build the group, assign leaders, and place students.</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(92dvh-9rem)] px-6">
+        <ScrollArea className="min-h-0 px-6">
           <div className="space-y-6 pb-6">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -229,7 +250,7 @@ function LifeGroupDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {GRADE_OPTIONS.map((grade) => (
+                      {gradeOptions.map((grade) => (
                         <SelectItem key={grade} value={String(grade)}>
                           {grade}th
                         </SelectItem>
@@ -337,7 +358,7 @@ function LifeGroupDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="border-t px-6 py-4">
+        <DialogFooter className="shrink-0 border-t px-6 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -488,7 +509,7 @@ function ReportHistory({ group, isAdmin }: { group: LifeGroup; isAdmin: boolean 
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <CalendarDays className="h-5 w-5 text-primary" />
-          Weekly History
+          Weekly History: {group.name}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -526,15 +547,121 @@ function ReportHistory({ group, isAdmin }: { group: LifeGroup; isAdmin: boolean 
   );
 }
 
+interface LifeGroupDetailCardProps {
+  group: LifeGroup;
+  campusName: string;
+  canManageGroups: boolean;
+  canSubmit: boolean;
+  isAdmin: boolean;
+  detailsOpen: boolean;
+  contentId: string;
+  onToggleDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function LifeGroupDetailCard({
+  group,
+  campusName,
+  canManageGroups,
+  canSubmit,
+  isAdmin,
+  detailsOpen,
+  contentId,
+  onToggleDetails,
+  onEdit,
+  onDelete,
+}: LifeGroupDetailCardProps) {
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-2xl">{group.name}</CardTitle>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge>{genderLabel(group.gender)}</Badge>
+                <Badge variant="secondary">{group.grade_level}th Grade</Badge>
+                <Badge variant="outline">{campusName}</Badge>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {canManageGroups && (
+                <>
+                  <Button variant="outline" size="icon" onClick={onEdit}>
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">Edit</span>
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={onDelete}>
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete</span>
+                  </Button>
+                </>
+              )}
+              <Button
+                variant="outline"
+                onClick={onToggleDetails}
+                aria-expanded={detailsOpen}
+                aria-controls={contentId}
+                className="gap-2"
+              >
+                <ChevronDown className={cn("h-4 w-4 transition-transform", detailsOpen && "rotate-180")} />
+                {detailsOpen ? "Hide details" : "Show details"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        {detailsOpen && (
+          <CardContent id={contentId} className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-sm font-medium">Leaders</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.leaders.map((leader) => <PersonPill key={leader.id} person={leader} />)}
+                  {group.leaders.length === 0 && <p className="text-sm text-muted-foreground">No leaders assigned.</p>}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Students</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.students.slice(0, 12).map((student) => <PersonPill key={student.id} person={student} />)}
+                  {group.students.length > 12 && <Badge variant="outline">+{group.students.length - 12}</Badge>}
+                  {group.students.length === 0 && <p className="text-sm text-muted-foreground">No students assigned.</p>}
+                </div>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4" />
+              Meets at {group.meeting_location}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+      {detailsOpen && (
+        <>
+          <WeeklyCheckIn group={group} isAdmin={isAdmin} canSubmit={canSubmit} />
+          <ReportHistory group={group} isAdmin={isAdmin} />
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function LifeGroups() {
   const { user, isAdmin } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
+  const resourceAppKey = getCurrentResourceAppKey();
+  const gradeOptions = LIFE_GROUP_GRADE_OPTIONS[resourceAppKey] || [8, 9, 10, 11, 12];
   const { data: allCampuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const { data: profileCampusMap = {} } = useProfilesWithCampuses();
   const { data: profiles = [] } = useProfiles();
   const [selectedCampusId, setSelectedCampusId] = useState<string>(() => {
     return localStorage.getItem("life-groups-campus-filter") || "all";
+  });
+  const [sortOption, setSortOption] = useState<LifeGroupSortOption>(() => {
+    return (localStorage.getItem("life-groups-sort") as LifeGroupSortOption | null) || "grade";
   });
   const { data: groups = [], isLoading } = useLifeGroups(selectedCampusId);
   const meetingLocations = useLifeGroupMeetingLocations(groups);
@@ -543,25 +670,41 @@ export default function LifeGroups() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<LifeGroup | null>(null);
+  const [groupOverviewOpen, setGroupOverviewOpen] = useState(true);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
+  const displayedGroups = useMemo(() => {
+    const compareByGradeName = (a: LifeGroup, b: LifeGroup) =>
+      a.grade_level - b.grade_level || a.name.localeCompare(b.name);
+
+    return [...groups].sort((a, b) => {
+      if (sortOption === "gender") {
+        const genderCompare = GENDER_SORT_ORDER[a.gender] - GENDER_SORT_ORDER[b.gender];
+        if (genderCompare !== 0) return genderCompare;
+      }
+
+      return compareByGradeName(a, b);
+    });
+  }, [groups, sortOption]);
+
   useEffect(() => {
-    if (groups.length === 0) {
+    if (displayedGroups.length === 0) {
       setSelectedGroupId(null);
       return;
     }
 
-    if (!selectedGroupId || !groups.some((group) => group.id === selectedGroupId)) {
-      setSelectedGroupId(groups[0].id);
+    if (!selectedGroupId || !displayedGroups.some((group) => group.id === selectedGroupId)) {
+      setSelectedGroupId(displayedGroups[0].id);
     }
-  }, [groups, selectedGroupId]);
+  }, [displayedGroups, selectedGroupId]);
 
   const availableCampuses = isAdmin ? allCampuses : userCampuses.map((item) => item.campuses).filter(Boolean);
   const selectedCampus = availableCampuses.find((campus) => campus?.id === selectedCampusId);
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) || null;
+  const selectedCampusName = selectedCampus?.name || "All Campuses";
   const canManageGroups = isStudentApp && isAdmin;
   const canSubmitSelectedGroup = !!selectedGroup && (isAdmin || selectedGroup.isCurrentUserLeader);
 
@@ -583,6 +726,11 @@ export default function LifeGroups() {
   const handleCampusChange = (value: string) => {
     setSelectedCampusId(value);
     localStorage.setItem("life-groups-campus-filter", value);
+  };
+
+  const handleSortChange = (value: string) => {
+    setSortOption(value as LifeGroupSortOption);
+    localStorage.setItem("life-groups-sort", value);
   };
 
   const handleDelete = async (group: LifeGroup) => {
@@ -631,6 +779,16 @@ export default function LifeGroups() {
               </SelectContent>
             </Select>
           ) : null}
+          <Select value={sortOption} onValueChange={handleSortChange}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <ArrowUpDown className="mr-2 h-4 w-4 text-muted-foreground" />
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="grade">Sort by Grade</SelectItem>
+              <SelectItem value="gender">Sort by Gender</SelectItem>
+            </SelectContent>
+          </Select>
           {canManageGroups && (
             <>
               <Button variant="outline" onClick={() => setImportDialogOpen(true)} className="gap-2">
@@ -669,16 +827,53 @@ export default function LifeGroups() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+        <>
+          <div className="space-y-6 lg:hidden">
+            {displayedGroups.map((group) => {
+              const isSelected = group.id === selectedGroupId;
+              const detailsOpen = isSelected && groupOverviewOpen;
+              const canSubmitGroup = isAdmin || group.isCurrentUserLeader;
+
+              return (
+                <div key={group.id}>
+                  <LifeGroupDetailCard
+                    group={group}
+                    campusName={selectedCampusName}
+                    canManageGroups={canManageGroups}
+                    canSubmit={canSubmitGroup}
+                    isAdmin={isAdmin}
+                    detailsOpen={detailsOpen}
+                    contentId={`life-group-overview-details-${group.id}`}
+                    onToggleDetails={() => {
+                      if (isSelected) {
+                        setGroupOverviewOpen((open) => !open);
+                        return;
+                      }
+
+                      setSelectedGroupId(group.id);
+                      setGroupOverviewOpen(true);
+                    }}
+                    onEdit={() => openEditDialog(group)}
+                    onDelete={() => handleDelete(group)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden gap-6 lg:grid lg:grid-cols-[380px_1fr]">
           <div className="space-y-3">
-            {groups.map((group) => {
+            {displayedGroups.map((group) => {
               const latestReport = group.reports[0];
               const isSelected = group.id === selectedGroupId;
               return (
                 <button
                   key={group.id}
                   type="button"
-                  onClick={() => setSelectedGroupId(group.id)}
+                  onClick={() => {
+                    setSelectedGroupId(group.id);
+                    setGroupOverviewOpen(true);
+                  }}
                   className={cn(
                     "w-full rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/40",
                     isSelected && "border-primary/60 bg-primary/5",
@@ -709,62 +904,22 @@ export default function LifeGroups() {
 
           {selectedGroup && (
             <div className="space-y-6">
-              <Card>
-                <CardHeader className="space-y-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <CardTitle className="text-2xl">{selectedGroup.name}</CardTitle>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge>{genderLabel(selectedGroup.gender)}</Badge>
-                        <Badge variant="secondary">{selectedGroup.grade_level}th Grade</Badge>
-                        <Badge variant="outline">{selectedCampus?.name || "All Campuses"}</Badge>
-                      </div>
-                    </div>
-                    {canManageGroups && (
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="icon" onClick={() => openEditDialog(selectedGroup)}>
-                          <Edit className="h-4 w-4" />
-                          <span className="sr-only">Edit</span>
-                        </Button>
-                        <Button variant="outline" size="icon" onClick={() => handleDelete(selectedGroup)}>
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Delete</span>
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <p className="mb-2 text-sm font-medium">Leaders</p>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedGroup.leaders.map((leader) => <PersonPill key={leader.id} person={leader} />)}
-                        {selectedGroup.leaders.length === 0 && <p className="text-sm text-muted-foreground">No leaders assigned.</p>}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-2 text-sm font-medium">Students</p>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedGroup.students.slice(0, 12).map((student) => <PersonPill key={student.id} person={student} />)}
-                        {selectedGroup.students.length > 12 && <Badge variant="outline">+{selectedGroup.students.length - 12}</Badge>}
-                        {selectedGroup.students.length === 0 && <p className="text-sm text-muted-foreground">No students assigned.</p>}
-                      </div>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    Meets at {selectedGroup.meeting_location}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <WeeklyCheckIn group={selectedGroup} isAdmin={isAdmin} canSubmit={canSubmitSelectedGroup} />
-              <ReportHistory group={selectedGroup} isAdmin={isAdmin} />
+              <LifeGroupDetailCard
+                group={selectedGroup}
+                campusName={selectedCampusName}
+                canManageGroups={canManageGroups}
+                canSubmit={canSubmitSelectedGroup}
+                isAdmin={isAdmin}
+                detailsOpen={groupOverviewOpen}
+                contentId="life-group-overview-details"
+                onToggleDetails={() => setGroupOverviewOpen((open) => !open)}
+                onEdit={() => openEditDialog(selectedGroup)}
+                onDelete={() => handleDelete(selectedGroup)}
+              />
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       <LifeGroupDialog
@@ -774,6 +929,7 @@ export default function LifeGroups() {
         campusId={selectedCampusId === "all" ? null : selectedCampusId}
         profiles={campusFilteredProfiles}
         meetingLocations={meetingLocations}
+        gradeOptions={gradeOptions}
       />
       <LifeGroupImportDialog
         open={importDialogOpen}
@@ -782,6 +938,7 @@ export default function LifeGroups() {
         profiles={campusFilteredProfiles}
         existingGroups={groups}
         meetingLocations={meetingLocations}
+        gradeOptions={gradeOptions}
       />
     </div>
   );

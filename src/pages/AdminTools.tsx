@@ -44,6 +44,7 @@ function getRoleBadgeLabel(role: string): string {
     case "campus_worship_pastor": return "Worship Pastor";
     case "student_pastor": return "Student Pastor";
     case "student_worship_pastor": return "Student Leader";
+    case "student": return "Student";
     case "childrens_pastor": return "Children's Pastor";
     default: return role;
   }

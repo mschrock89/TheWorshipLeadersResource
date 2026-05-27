@@ -10,6 +10,7 @@ export const ROLE_LABELS: Record<string, string> = {
   video_director: "Video Director",
   production_manager: "Production Manager",
   audition_candidate: "Audition Candidate",
+  student: "Student",
   volunteer: "Volunteer",
 };
 
@@ -124,7 +125,7 @@ export function getAppUrl(path: string) {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'audition_candidate', 'student', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",

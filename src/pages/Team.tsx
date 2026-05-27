@@ -10,6 +10,7 @@ import { TeamMemberCard, TeamMemberMinistryPositionGroup } from "@/components/te
 import { TeamFilters } from "@/components/team/TeamFilters";
 import { CreateAuditionCandidateDialog } from "@/components/team/CreateAuditionCandidateDialog";
 import { CreateTeamMemberDialog } from "@/components/team/CreateTeamMemberDialog";
+import { TeamImportDialog } from "@/components/team/TeamImportDialog";
 import { ManageBaseRolesDialog } from "@/components/team/ManageBaseRolesDialog";
 import { WelcomeEmailDialog } from "@/components/team/WelcomeEmailDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
@@ -38,7 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus } from "lucide-react";
+import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { MINISTRY_TYPES, POSITION_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
@@ -98,6 +99,7 @@ export default function Team() {
   const hasRestoredScrollRef = useRef(false);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
   const [createMemberDialogOpen, setCreateMemberDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailDialogMode, setEmailDialogMode] = useState<"bulk" | "individual" | "resend">("bulk");
   const [selectedMemberForEmail, setSelectedMemberForEmail] = useState<Profile | undefined>();
@@ -554,6 +556,10 @@ export default function Team() {
               <UserPlus className="h-4 w-4 mr-2" />
               New Candidate
             </Button>
+            <Button className="w-full" variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import Users
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="w-full justify-between sm:justify-center" variant="outline">
@@ -657,6 +663,16 @@ export default function Team() {
         onOpenChange={setCreateMemberDialogOpen}
         campuses={campuses}
         onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+          queryClient.invalidateQueries({ queryKey: ["user-campuses"] });
+        }}
+      />
+
+      <TeamImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImportComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["profiles"] });
           queryClient.invalidateQueries({ queryKey: ["user-roles"] });
           queryClient.invalidateQueries({ queryKey: ["user-campuses"] });

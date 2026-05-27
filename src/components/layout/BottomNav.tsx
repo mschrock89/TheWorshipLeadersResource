@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useUnreadMessages } from "@/hooks/useUnreadMessages";
-import { isAuditionCandidateRole } from "@/lib/access";
+import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { cn } from "@/lib/utils";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -26,6 +26,7 @@ export function BottomNav() {
   const { data: isApprover = false } = useIsApprover();
   const { data: pendingApprovalCount = 0 } = usePendingApprovalCount();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
+  const isStudentBase = isStudentBaseRole(roles.map((r) => r.role));
   const isStudentApp = isCurrentStudentResourceApp();
 
   const hiddenRoutes = new Set(["/chat", "/privacy", "/terms"]);
@@ -42,6 +43,19 @@ export function BottomNav() {
           { to: "/feed", icon: Newspaper, label: "Feed" },
           ...(!isStudentApp ? [{ to: "/songs", icon: Music, label: "Songs" }] : []),
           { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
+        ]
+      : isStudentBase
+      ? [
+          { to: "/bible", icon: BookOpen, label: "Bible" },
+          { to: "/feed", icon: Newspaper, label: "Feed" },
+          { to: "/resources", icon: Music, label: "Audio" },
+          { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
+          {
+            to: "/my-setlists",
+            icon: ListMusic,
+            label: isStudentApp ? "Wednesday Flow" : "Setlists",
+            tourId: "nav-setlists",
+          },
         ]
       : [
         { to: "/bible", icon: BookOpen, label: "Bible" },

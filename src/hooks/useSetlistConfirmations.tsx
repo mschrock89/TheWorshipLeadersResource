@@ -7,6 +7,7 @@ import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { filterStudentWednesdayFlows } from "@/lib/studentFlow";
 
 export interface SetlistConfirmation {
   id: string;
@@ -428,6 +429,8 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           return true;
         })
         .sort((a, b) => a.plan_date.localeCompare(b.plan_date));
+
+      setlists = filterStudentWednesdayFlows(setlists, resourceAppKey);
 
       // Guard against invalid single-day service dates for a campus.
       // Weekend setlists are stored on a shared weekend anchor date, so a Sunday-only

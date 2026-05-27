@@ -15,6 +15,8 @@ import {
   Users,
   Wrench,
   ArrowLeftRight,
+  BookOpen,
+  ListMusic,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -31,7 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
-import { isAuditionCandidateRole } from "@/lib/access";
+import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import {
   getResourceAppForLocation,
@@ -106,8 +108,10 @@ export default function Home() {
   const { data: pendingApprovalCount } = usePendingApprovalCount();
   const { data: pendingSwaps = 0 } = usePendingSwapRequestsCount();
   const drumTechAccess = useDrumTechAccess();
-  const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
-  const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
+  const roleNames = roles.map((role) => role.role);
+  const isAuditionCandidate = isAuditionCandidateRole(roleNames);
+  const isStudentBase = isStudentBaseRole(roleNames);
+  const canOpenWeekendRundown = canAccessWeekendRundown(roleNames);
 
   const getInitials = () => {
     if (profile?.full_name) {
@@ -159,7 +163,7 @@ export default function Home() {
         {homeConfig.heroOverlay && <div className={`absolute inset-0 ${homeConfig.heroOverlay}`} />}
         <div className="relative z-10 flex h-full flex-col px-6 pt-8 sm:px-10 sm:pt-12">
           <div className="flex items-start justify-end gap-3">
-            {user && <NotificationBell />}
+            {user && !isStudentBase && <NotificationBell />}
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -171,7 +175,7 @@ export default function Home() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 bg-popover">
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && !isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/dashboard" className="flex items-center gap-2">
                         <LayoutDashboard className="h-4 w-4" />
@@ -179,7 +183,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && !isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/team" className="flex items-center gap-2">
                         <Users className="h-4 w-4" />
@@ -195,7 +199,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && !isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/swaps" className="flex items-center gap-2">
                         <ArrowLeftRight className="h-4 w-4" />
@@ -214,6 +218,14 @@ export default function Home() {
                       THE FEED
                     </Link>
                   </DropdownMenuItem>
+                  {isStudentBase && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/bible" className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" />
+                        Bible
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {!isStudentApp && (
                     <DropdownMenuItem asChild>
                       <Link to="/songs" className="flex items-center gap-2">
@@ -228,7 +240,15 @@ export default function Home() {
                       Audio Library
                     </Link>
                   </DropdownMenuItem>
-                  {!isAuditionCandidate && drumTechAccess.hasAnyAccess && (
+                  {isStudentBase && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/my-setlists" className="flex items-center gap-2">
+                        <ListMusic className="h-4 w-4" />
+                        {isStudentApp ? "Wednesday Flow" : "Setlists"}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && !isStudentBase && drumTechAccess.hasAnyAccess && (
                     <DropdownMenuItem asChild>
                       <Link to="/drum-tech" className="flex items-center gap-2">
                         <Wrench className="h-4 w-4" />
@@ -236,7 +256,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && canOpenWeekendRundown && (
+                  {!isAuditionCandidate && !isStudentBase && canOpenWeekendRundown && (
                     <DropdownMenuItem asChild>
                       <Link to="/weekend-rundown" className="flex items-center gap-2">
                         <ClipboardList className="h-4 w-4" />
@@ -244,7 +264,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && !isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/games" className="flex items-center gap-2">
                         <Gamepad2 className="h-4 w-4" />
@@ -252,7 +272,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && isApprover && (
+                  {!isAuditionCandidate && !isStudentBase && isApprover && (
                     <DropdownMenuItem asChild>
                       <Link to="/approvals" className="flex items-center gap-2">
                         <FileCheck className="h-4 w-4" />
@@ -265,7 +285,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {!isAuditionCandidate && (
+                  {!isAuditionCandidate && !isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/settings/planning-center" className="flex items-center gap-2">
                         <Link2 className="h-4 w-4" />

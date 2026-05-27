@@ -9,7 +9,12 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
-import { canAuditionCandidateAccessPath, isAuditionCandidateRole } from "@/lib/access";
+import {
+  canAuditionCandidateAccessPath,
+  canStudentBaseRoleAccessPath,
+  isAuditionCandidateRole,
+  isStudentBaseRole,
+} from "@/lib/access";
 import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import Auth from "./pages/Auth";
@@ -70,6 +75,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
   const roleNames = roles.map((r) => r.role);
   const isAuditionCandidate = isAuditionCandidateRole(roleNames);
+  const isStudentBase = isStudentBaseRole(roleNames);
 
   if (isLoading || (user && rolesLoading)) {
     return (
@@ -85,6 +91,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (isAuditionCandidate && !canAuditionCandidateAccessPath(location.pathname)) {
     return <Navigate to="/calendar" replace />;
+  }
+
+  if (isStudentBase && !isAuditionCandidate && !canStudentBaseRoleAccessPath(location.pathname)) {
+    return <Navigate to="/feed" replace />;
   }
 
   return <>{children}</>;
@@ -141,6 +151,7 @@ type RouteDefinition = {
   path: string;
   component: ComponentType;
   hideInStudentApps?: boolean;
+  hideForStudentBaseRole?: boolean;
 };
 
 const publicRoutes: RouteDefinition[] = [
@@ -151,35 +162,35 @@ const publicRoutes: RouteDefinition[] = [
 ];
 
 const protectedRoutes: RouteDefinition[] = [
-  { path: "/chat", component: Chat },
+  { path: "/chat", component: Chat, hideForStudentBaseRole: true },
   { path: "/calendar", component: Calendar },
   { path: "/schedule", component: Schedule },
-  { path: "/dashboard", component: Dashboard },
-  { path: "/team", component: Team },
-  { path: "/team/:id", component: Profile },
+  { path: "/dashboard", component: Dashboard, hideForStudentBaseRole: true },
+  { path: "/team", component: Team, hideForStudentBaseRole: true },
+  { path: "/team/:id", component: Profile, hideForStudentBaseRole: true },
   { path: "/profile", component: Profile },
-  { path: "/settings/planning-center", component: PlanningCenter },
-  { path: "/swaps", component: SwapRequests },
-  { path: "/songs", component: Songs, hideInStudentApps: true },
+  { path: "/settings/planning-center", component: PlanningCenter, hideForStudentBaseRole: true },
+  { path: "/swaps", component: SwapRequests, hideForStudentBaseRole: true },
+  { path: "/songs", component: Songs, hideInStudentApps: true, hideForStudentBaseRole: true },
   { path: "/my-setlists", component: MySetlists },
-  { path: "/set-planner", component: SetPlanner },
-  { path: "/weekend-rundown", component: WeekendRundown },
-  { path: "/auditions", component: Auditions },
-  { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner },
-  { path: "/manage-sets", component: ManageSets },
-  { path: "/team-builder", component: TeamBuilder },
-  { path: "/life-groups", component: LifeGroups },
-  { path: "/approvals", component: Approvals },
-  { path: "/admin-tools", component: AdminTools },
+  { path: "/set-planner", component: SetPlanner, hideForStudentBaseRole: true },
+  { path: "/weekend-rundown", component: WeekendRundown, hideForStudentBaseRole: true },
+  { path: "/auditions", component: Auditions, hideForStudentBaseRole: true },
+  { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner, hideForStudentBaseRole: true },
+  { path: "/manage-sets", component: ManageSets, hideForStudentBaseRole: true },
+  { path: "/team-builder", component: TeamBuilder, hideForStudentBaseRole: true },
+  { path: "/life-groups", component: LifeGroups, hideForStudentBaseRole: true },
+  { path: "/approvals", component: Approvals, hideForStudentBaseRole: true },
+  { path: "/admin-tools", component: AdminTools, hideForStudentBaseRole: true },
   { path: "/resources", component: Resources },
   { path: "/feed", component: Feed },
-  { path: "/drum-tech", component: DrumTech },
+  { path: "/drum-tech", component: DrumTech, hideForStudentBaseRole: true },
   { path: "/bible", component: Bible },
-  { path: "/service-flow", component: ServiceFlow },
-  { path: "/snake", component: Snake },
-  { path: "/pong", component: Pong },
-  { path: "/galaga", component: Galaga },
-  { path: "/games", component: Games },
+  { path: "/service-flow", component: ServiceFlow, hideForStudentBaseRole: true },
+  { path: "/snake", component: Snake, hideForStudentBaseRole: true },
+  { path: "/pong", component: Pong, hideForStudentBaseRole: true },
+  { path: "/galaga", component: Galaga, hideForStudentBaseRole: true },
+  { path: "/games", component: Games, hideForStudentBaseRole: true },
 ];
 
 function AppRoutes() {

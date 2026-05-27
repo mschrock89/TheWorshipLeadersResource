@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useApproveSetlist, usePendingApprovals, useRejectSetlist } from "@/hooks/useSetlistApprovals";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { isWednesdayFlowDate } from "@/lib/studentFlow";
 
 interface SetlistReviewWidgetProps {
   selectedCampusId: string;
@@ -161,9 +162,18 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
     return pendingApprovals.filter((approval) => {
       if (!approval.draft_set?.plan_date || approval.draft_set.plan_date < today) return false;
       if (selectedCampusId !== "all" && approval.draft_set.campus_id !== selectedCampusId) return false;
+      if (isStudentApp && !isWednesdayFlowDate(approval.draft_set.plan_date)) return false;
       return true;
     });
-  }, [pendingApprovals, selectedCampusId, today]);
+  }, [isStudentApp, pendingApprovals, selectedCampusId, today]);
+
+  const visibleApprovedSetlists = useMemo(
+    () =>
+      isStudentApp
+        ? approvedSetlists.filter((setlist) => isWednesdayFlowDate(setlist.plan_date))
+        : approvedSetlists,
+    [approvedSetlists, isStudentApp],
+  );
 
   const handleReject = async (approvalId: string, draftSetId: string) => {
     const notes = (rejectNotesBySetId[draftSetId] || "").trim();
@@ -328,15 +338,15 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">{publishedLabel}</h3>
-              <Badge variant="secondary">{approvedSetlists.length}</Badge>
+              <Badge variant="secondary">{visibleApprovedSetlists.length}</Badge>
             </div>
 
-            {approvedSetlists.length === 0 ? (
+            {visibleApprovedSetlists.length === 0 ? (
               <Card>
                 <CardContent className="py-6 text-sm text-muted-foreground">{emptyPublishedLabel}</CardContent>
               </Card>
             ) : (
-              approvedSetlists.map((setlist) => (
+              visibleApprovedSetlists.map((setlist) => (
                 <Card key={setlist.id}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-3">

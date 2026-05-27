@@ -8,7 +8,7 @@ import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -16,7 +16,7 @@ import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { useMemo, useEffect, useState } from "react";
 import { useCampusSelectionOptional } from "./CampusSelectionContext";
-import { isAuditionCandidateRole } from "@/lib/access";
+import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 interface MainHeaderProps {
@@ -37,6 +37,7 @@ export function MainHeader({
   const location = useLocation();
   const { data: roles = [] } = useUserRoles(user?.id);
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
+  const isStudentBase = isStudentBaseRole(roles.map((r) => r.role));
   const {
     data: profile
   } = useProfile(user?.id);
@@ -126,7 +127,7 @@ export function MainHeader({
         {/* Right side - Notification bell and User menu */}
         <div className="flex items-center gap-2">
           {/* Notification bell */}
-          {!isAuditionCandidate && <NotificationBell />}
+          {!isAuditionCandidate && !isStudentBase && <NotificationBell />}
           
           {/* User menu */}
           <DropdownMenu>
@@ -136,7 +137,7 @@ export function MainHeader({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-popover">
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && !isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/dashboard" className="flex items-center gap-2">
                     <LayoutDashboard className="h-4 w-4" />
@@ -144,7 +145,7 @@ export function MainHeader({
                   </Link>
                 </DropdownMenuItem>
               )}
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && !isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/team" className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
@@ -160,7 +161,7 @@ export function MainHeader({
                   </Link>
                 </DropdownMenuItem>
               )}
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && !isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/swaps" className="flex items-center gap-2">
                     <ArrowLeftRight className="h-4 w-4" />
@@ -177,6 +178,14 @@ export function MainHeader({
                   THE FEED
                 </Link>
               </DropdownMenuItem>
+              {isStudentBase && (
+                <DropdownMenuItem asChild>
+                  <Link to="/bible" className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Bible
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {!isStudentApp && (
                 <DropdownMenuItem asChild>
                   <Link to="/songs" className="flex items-center gap-2">
@@ -191,7 +200,15 @@ export function MainHeader({
                   Audio Library
                 </Link>
               </DropdownMenuItem>
-              {!isAuditionCandidate && drumTechAccess.hasAnyAccess && (
+              {isStudentBase && (
+                <DropdownMenuItem asChild>
+                  <Link to="/my-setlists" className="flex items-center gap-2">
+                    <ListMusic className="h-4 w-4" />
+                    {isStudentApp ? "Wednesday Flow" : "Setlists"}
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isAuditionCandidate && !isStudentBase && drumTechAccess.hasAnyAccess && (
                 <DropdownMenuItem asChild>
                   <Link to="/drum-tech" className="flex items-center gap-2">
                     <Wrench className="h-4 w-4" />
@@ -199,7 +216,7 @@ export function MainHeader({
                   </Link>
                 </DropdownMenuItem>
               )}
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && !isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/games" className="flex items-center gap-2">
                     <Gamepad2 className="h-4 w-4" />
@@ -207,7 +224,7 @@ export function MainHeader({
                   </Link>
                 </DropdownMenuItem>
               )}
-              {!isAuditionCandidate && isApprover && <DropdownMenuItem asChild>
+              {!isAuditionCandidate && !isStudentBase && isApprover && <DropdownMenuItem asChild>
                   <Link to="/approvals" className="flex items-center gap-2">
                     <FileCheck className="h-4 w-4" />
                     Approvals
@@ -216,7 +233,7 @@ export function MainHeader({
                       </Badge>}
                   </Link>
                 </DropdownMenuItem>}
-              {!isAuditionCandidate && <DropdownMenuItem asChild>
+              {!isAuditionCandidate && !isStudentBase && <DropdownMenuItem asChild>
                   <Link to="/settings/planning-center" className="flex items-center gap-2">
                     <Link2 className="h-4 w-4" />
                     Integrations

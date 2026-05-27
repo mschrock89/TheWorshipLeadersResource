@@ -1,4 +1,5 @@
 export const AUDITION_CANDIDATE_ROLE = "audition_candidate";
+export const STUDENT_BASE_ROLE = "student";
 const WEEKEND_GROUP_TEXT_MINISTRY_ALIASES = new Set([
   "weekend",
   "weekend_team",
@@ -28,12 +29,30 @@ export const AUDITION_ALLOWED_PATHS = new Set([
   "/resources",
 ]);
 
+export const STUDENT_ALLOWED_PATHS = new Set([
+  "/bible",
+  "/calendar",
+  "/feed",
+  "/my-setlists",
+  "/profile",
+  "/resources",
+  "/schedule",
+]);
+
 export function isAuditionCandidateRole(roles: string[]) {
   return roles.includes(AUDITION_CANDIDATE_ROLE);
 }
 
 export function canAuditionCandidateAccessPath(pathname: string) {
   return AUDITION_ALLOWED_PATHS.has(pathname);
+}
+
+export function isStudentBaseRole(roles: string[]) {
+  return roles.includes(STUDENT_BASE_ROLE);
+}
+
+export function canStudentBaseRoleAccessPath(pathname: string) {
+  return STUDENT_ALLOWED_PATHS.has(pathname);
 }
 
 const PRODUCTION_POSITION_KEYWORDS = [

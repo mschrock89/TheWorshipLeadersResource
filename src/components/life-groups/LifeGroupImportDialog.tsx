@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import {
   LifeGroup,
+  LifeGroupGrade,
   LifeGroupMutationInput,
   LifeGroupPerson,
   useImportLifeGroups,
@@ -33,6 +34,7 @@ interface LifeGroupImportDialogProps {
   profiles: Profile[];
   existingGroups: LifeGroup[];
   meetingLocations: string[];
+  gradeOptions: LifeGroupGrade[];
 }
 
 interface MatchedName {
@@ -118,6 +120,7 @@ export function LifeGroupImportDialog({
   profiles,
   existingGroups,
   meetingLocations,
+  gradeOptions,
 }: LifeGroupImportDialogProps) {
   const { toast } = useToast();
   const importLifeGroups = useImportLifeGroups();
@@ -155,6 +158,8 @@ export function LifeGroupImportDialog({
     0,
   );
   const updateCount = resolvedDrafts.filter((item) => item.existingGroup).length;
+  const unsupportedGradeDrafts = resolvedDrafts.filter((item) => !gradeOptions.includes(item.draft.gradeLevel));
+  const allowedGradeLabel = gradeOptions.map((grade) => `${grade}th`).join(", ");
 
   const resetState = () => {
     setFile(null);
@@ -227,15 +232,15 @@ export function LifeGroupImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[92dvh] max-w-5xl overflow-hidden p-0">
-        <DialogHeader className="px-6 pt-6">
+      <DialogContent className="top-[max(env(safe-area-inset-top),0.75rem)] z-[60] flex max-h-[calc(100dvh-5.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:top-[50%] sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-5xl sm:translate-y-[-50%]">
+        <DialogHeader className="shrink-0 px-4 pb-3 pt-5 pr-10 sm:px-6 sm:pt-6">
           <DialogTitle>Import Life Groups</DialogTitle>
           <DialogDescription>
             Upload a CSV, TSV, TXT, PDF, or Excel file to create groups and match rosters to existing profiles.
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(92dvh-10rem)] px-6">
+        <ScrollArea className="min-h-0 flex-1 px-4 sm:px-6">
           <div className="space-y-5 pb-6">
             <div
               className={cn(
@@ -302,6 +307,16 @@ export function LifeGroupImportDialog({
                   </Alert>
                 )}
 
+                {unsupportedGradeDrafts.length > 0 && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      This app only accepts {allowedGradeLabel} Life Groups. Remove {unsupportedGradeDrafts.length} unsupported group
+                      {unsupportedGradeDrafts.length === 1 ? "" : "s"} from the upload before importing.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
@@ -342,7 +357,9 @@ export function LifeGroupImportDialog({
                               )}
                             </TableCell>
                             <TableCell className="align-top">
-                              {item.existingGroup ? (
+                              {!gradeOptions.includes(item.draft.gradeLevel) ? (
+                                <Badge variant="destructive">Wrong app</Badge>
+                              ) : item.existingGroup ? (
                                 <Badge variant="outline">Update</Badge>
                               ) : (
                                 <Badge className="gap-1">
@@ -362,10 +379,10 @@ export function LifeGroupImportDialog({
           </div>
         </ScrollArea>
 
-        <Separator />
-        <DialogFooter className="px-6 py-4">
+        <Separator className="shrink-0" />
+        <DialogFooter className="shrink-0 gap-2 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-4">
           {file && (
-            <Button type="button" variant="ghost" onClick={resetState} className="mr-auto gap-2">
+            <Button type="button" variant="ghost" onClick={resetState} className="sm:mr-auto gap-2">
               <X className="h-4 w-4" />
               Clear
             </Button>
@@ -373,7 +390,7 @@ export function LifeGroupImportDialog({
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleImport} disabled={resolvedDrafts.length === 0 || importLifeGroups.isPending}>
+          <Button onClick={handleImport} disabled={resolvedDrafts.length === 0 || unsupportedGradeDrafts.length > 0 || importLifeGroups.isPending}>
             {importLifeGroups.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Import Groups
           </Button>

@@ -3204,6 +3204,7 @@ export type Database = {
         | "video_director"
         | "production_manager"
         | "audition_candidate"
+        | "student"
       swap_request_status: "pending" | "accepted" | "declined" | "cancelled"
       team_position:
         | "lead_vocals"
@@ -3391,6 +3392,7 @@ export const Constants = {
         "video_director",
         "production_manager",
         "audition_candidate",
+        "student",
       ],
       swap_request_status: ["pending", "accepted", "declined", "cancelled"],
       team_position: [
