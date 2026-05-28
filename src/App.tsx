@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
+import { AttendanceTrackingProvider } from "@/components/attendance/AttendanceTrackingProvider";
 import {
   canAuditionCandidateAccessPath,
   canStudentBaseRoleAccessPath,
@@ -42,6 +43,7 @@ import ServiceFlow from "./pages/ServiceFlow";
 import DrumTech from "./pages/DrumTech";
 import Bible from "./pages/Bible";
 import Feed from "./pages/Feed";
+import Attendance from "./pages/Attendance";
 import Snake from "./pages/Snake";
 import Pong from "./pages/Pong";
 import Galaga from "./pages/Galaga";
@@ -184,6 +186,7 @@ const protectedRoutes: RouteDefinition[] = [
   { path: "/admin-tools", component: AdminTools, hideForStudentBaseRole: true },
   { path: "/resources", component: Resources },
   { path: "/feed", component: Feed },
+  { path: "/attendance", component: Attendance },
   { path: "/drum-tech", component: DrumTech, hideForStudentBaseRole: true },
   { path: "/bible", component: Bible },
   { path: "/service-flow", component: ServiceFlow, hideForStudentBaseRole: true },
@@ -253,14 +256,16 @@ const App = () => (
       <Sonner />
       <BrowserRouter basename={getRouterBasename()}>
         <AuthProvider>
-          <AudioPlayerProvider>
-            <MainContent>
-              <AppRoutes />
-            </MainContent>
-            <AudioPlayerWrapper />
-            <BottomNav />
-            <AppOnboardingTour />
-          </AudioPlayerProvider>
+          <AttendanceTrackingProvider>
+            <AudioPlayerProvider>
+              <MainContent>
+                <AppRoutes />
+              </MainContent>
+              <AudioPlayerWrapper />
+              <BottomNav />
+              <AppOnboardingTour />
+            </AudioPlayerProvider>
+          </AttendanceTrackingProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

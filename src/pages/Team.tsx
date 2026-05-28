@@ -3,6 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useProfiles, TeamPosition, Profile } from "@/hooks/useProfiles";
 import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
 import { useAllCampusMinistryPositions } from "@/hooks/useCampusMinistryPositions";
+import { useDirectoryBaseRoles } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -42,7 +43,7 @@ import {
 import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { MINISTRY_TYPES, POSITION_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_LABELS, ROLE_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 const normalizePositionFilterValue = (value: string) =>
   value
@@ -90,6 +91,7 @@ export default function Team() {
   const { data: profiles = [], isLoading, refetch } = useProfiles();
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
   const { data: campusMinistryPositions = [] } = useAllCampusMinistryPositions();
+  const { data: directoryBaseRoles = [] } = useDirectoryBaseRoles();
   const { data: campuses = [] } = useCampuses();
   const { canManageTeam, isAdmin } = useAuth();
   const location = useLocation();
@@ -239,6 +241,22 @@ export default function Team() {
 
     const selectedMinistrySort = sortBy.startsWith("ministry:") ? sortBy.replace("ministry:", "") : null;
 
+    const baseRoleLabelsByUser = new Map<string, string[]>();
+    directoryBaseRoles.forEach(({ user_id, role }) => {
+      const existingLabels = baseRoleLabelsByUser.get(user_id) || [];
+      const roleLabel = ROLE_LABELS[role] || role;
+
+      if (!existingLabels.includes(roleLabel)) {
+        baseRoleLabelsByUser.set(
+          user_id,
+          [...existingLabels, roleLabel].sort((a, b) => a.localeCompare(b)),
+        );
+      }
+    });
+
+    const getBaseRoleSortValue = (profile: Profile) =>
+      baseRoleLabelsByUser.get(profile.id)?.[0]?.toLowerCase() || "zzzz";
+
     return profiles
       .filter((profile) => {
         // Search filter
@@ -306,11 +324,17 @@ export default function Team() {
           if (ministryCompare !== 0) {
             return ministryCompare;
           }
+        } else if (sortBy === "base_role") {
+          const baseRoleCompare = getBaseRoleSortValue(a).localeCompare(getBaseRoleSortValue(b));
+
+          if (baseRoleCompare !== 0) {
+            return baseRoleCompare;
+          }
         }
 
         return nameA.localeCompare(nameB);
       });
-  }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions]);
+  }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions, directoryBaseRoles]);
 
   const ministryPositionGroupsByUser = useMemo(() => {
     const campusNameById = new Map(campuses.map((campus) => [campus.id, campus.name]));

@@ -9,6 +9,7 @@ import {
   Music,
   BookOpen,
   Newspaper,
+  MapPinned,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -48,6 +49,7 @@ export function BottomNav() {
       ? [
           { to: "/bible", icon: BookOpen, label: "Bible" },
           { to: "/feed", icon: Newspaper, label: "Feed" },
+          { to: "/attendance", icon: MapPinned, label: "Attendance" },
           { to: "/resources", icon: Music, label: "Audio" },
           { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
           {
@@ -83,7 +85,7 @@ export function BottomNav() {
       <div
         className={cn(
           "container grid h-14 items-center gap-1 px-2 sm:flex sm:items-center sm:justify-around",
-          navItems.length === 5 ? "grid-cols-5" : "grid-cols-4"
+          navItems.length === 6 ? "grid-cols-6" : navItems.length === 5 ? "grid-cols-5" : "grid-cols-4"
         )}
       >
         {navItems.map(({ to, icon: Icon, label, badge, tourId }) => {

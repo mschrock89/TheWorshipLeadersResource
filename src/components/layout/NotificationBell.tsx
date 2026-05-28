@@ -30,6 +30,8 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       return <CalendarPlus className="h-4 w-4 text-blue-500" />;
     case "team_schedule_update":
       return <Megaphone className="h-4 w-4 text-sky-500" />;
+    case "admin_ping":
+      return <Megaphone className="h-4 w-4 text-primary" />;
     case "pending_approval":
       return <Clock className="h-4 w-4 text-amber-500" />;
     case "approval_status":

@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
+import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
@@ -1470,6 +1471,8 @@ export default function AdminTools() {
           </div>
         </CardContent>
       </Card>
+
+      <AdminPingCard />
 
       <Card className="mb-6">
         <CardHeader className="pb-2">

@@ -8,7 +8,7 @@ import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import emLogo from "@/assets/em-logo-transparent-new.png";
@@ -178,6 +178,14 @@ export function MainHeader({
                   THE FEED
                 </Link>
               </DropdownMenuItem>
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/attendance" className="flex items-center gap-2">
+                    <MapPinned className="h-4 w-4" />
+                    Attendance
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/bible" className="flex items-center gap-2">

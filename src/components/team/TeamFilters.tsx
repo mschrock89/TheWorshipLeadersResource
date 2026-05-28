@@ -92,6 +92,7 @@ export function TeamFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="name">Sort: Name</SelectItem>
+          <SelectItem value="base_role">Sort: Base Role</SelectItem>
           <SelectItem value="ministry">Sort: Ministry (A-Z)</SelectItem>
           {ministrySortOptions.map(([value, label]) => (
             <SelectItem key={value} value={`ministry:${value}`}>

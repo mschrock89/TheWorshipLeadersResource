@@ -38,6 +38,7 @@ export const STUDENT_ALLOWED_PATHS = new Set([
   "/bible",
   "/calendar",
   "/feed",
+  "/attendance",
   "/my-setlists",
   "/profile",
   "/resources",

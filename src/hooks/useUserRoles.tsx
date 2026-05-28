@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
 
-type AppRole = Database["public"]["Enums"]["app_role"];
+export type AppRole = Database["public"]["Enums"]["app_role"];
 
 interface UserRoleData {
   role: AppRole;
@@ -101,6 +101,26 @@ export function useUserRoles(userId: string | undefined) {
       return data?.map(r => ({ role: r.role as AppRole, admin_campus_id: r.admin_campus_id })) || [];
     },
     enabled: !!userId,
+  });
+}
+
+export function useDirectoryBaseRoles() {
+  return useQuery({
+    queryKey: ["user-roles", "directory-base"],
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .in("role", BASE_APP_ROLES);
+
+      if (error) throw error;
+
+      return (data || []).map((row) => ({
+        user_id: row.user_id,
+        role: row.role as AppRole,
+      }));
+    },
   });
 }
 

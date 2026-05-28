@@ -23,6 +23,7 @@ export type NotificationType =
   | "new_set" 
   | "new_event"
   | "team_schedule_update"
+  | "admin_ping"
   | "pending_approval"
   | "approval_status"
   | "setlist_confirmed";
@@ -94,7 +95,7 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
+      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, adminPingsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
@@ -133,6 +134,13 @@ export function useNotifications() {
         supabase
           .from("manual_team_schedule_notifications")
           .select("id, title, message, link, created_at")
+          .eq("user_id", user.id)
+          .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(20),
+        (supabase as any)
+          .from("admin_ping_recipients")
+          .select("id, created_at, admin_pings(id, title, message, created_at, resource_app_key, campus_id)")
           .eq("user_id", user.id)
           .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .order("created_at", { ascending: false })
@@ -186,6 +194,7 @@ export function useNotifications() {
       if (newSetsResult.error) throw newSetsResult.error;
       if (newEventsResult.error) throw newEventsResult.error;
       if (manualScheduleNotificationsResult.error) throw manualScheduleNotificationsResult.error;
+      if (adminPingsResult.error) throw adminPingsResult.error;
       if (userCampusesResult.error) throw userCampusesResult.error;
       if (directSwapRequestsResult.error) throw directSwapRequestsResult.error;
 
@@ -193,6 +202,7 @@ export function useNotifications() {
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
       const manualScheduleNotifications = manualScheduleNotificationsResult.data || [];
+      const adminPings = adminPingsResult.data || [];
       const directSwapRequests = directSwapRequestsResult.data || [];
 
       const requesterIds = [...new Set(directSwapRequests.map((request) => request.requester_id).filter(Boolean))];
@@ -326,6 +336,24 @@ export function useNotifications() {
         });
       });
 
+      adminPings.forEach((recipientRow: any) => {
+        const ping = Array.isArray(recipientRow.admin_pings)
+          ? recipientRow.admin_pings[0]
+          : recipientRow.admin_pings;
+        if (!ping || ping.resource_app_key !== resourceAppKey) return;
+
+        const notifId = `admin-ping-recipient-${recipientRow.id}`;
+        notifs.push({
+          id: notifId,
+          type: "admin_ping",
+          title: ping.title || "Leader Ping",
+          message: ping.message || "",
+          timestamp: ping.created_at || recipientRow.created_at || new Date().toISOString(),
+          read: currentReadIds.has(notifId),
+          link: "/",
+        });
+      });
+
       directSwapRequests.forEach((swapRequest) => {
         const requesterName = requesterNameById.get(swapRequest.requester_id) || "A team member";
         const requesterFirstName = requesterName.split(/\s+/)[0] || "Someone";
@@ -389,6 +417,16 @@ export function useNotifications() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "manual_team_schedule_notifications" },
+        () => fetchNotifications()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "admin_ping_recipients" },
+        () => fetchNotifications()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "admin_pings" },
         () => fetchNotifications()
       )
       .on(
