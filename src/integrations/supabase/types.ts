@@ -1892,6 +1892,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           created_from_template_id: string | null
+          custom_service_id: string | null
           draft_set_id: string | null
           id: string
           ministry_type: string
@@ -1903,6 +1904,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_from_template_id?: string | null
+          custom_service_id?: string | null
           draft_set_id?: string | null
           id?: string
           ministry_type?: string
@@ -1914,6 +1916,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_from_template_id?: string | null
+          custom_service_id?: string | null
           draft_set_id?: string | null
           id?: string
           ministry_type?: string
@@ -1940,6 +1943,13 @@ export type Database = {
             columns: ["created_from_template_id"]
             isOneToOne: false
             referencedRelation: "service_flow_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_flows_custom_service_id_fkey"
+            columns: ["custom_service_id"]
+            isOneToOne: false
+            referencedRelation: "custom_services"
             referencedColumns: ["id"]
           },
           {

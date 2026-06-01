@@ -4,6 +4,12 @@ import { Button } from "@/components/ui/button";
 import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
 
@@ -165,24 +171,24 @@ export default function ServiceFlow() {
       </div>
 
       {/* Screen-only header - hidden on print */}
-      <div className="screen-header flex items-center justify-between print:hidden">
-        <div className="flex items-center gap-3">
+      <div className="screen-header flex flex-col gap-4 print:hidden sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
           <Button
             variant="ghost"
             size="icon"
             onClick={handleBack}
-            className="shrink-0"
+            className="mt-1 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold">Service Flow</h1>
             <p className="text-muted-foreground">
               Plan your order of service with timing and song integration.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-start">
           <div className="hidden rounded-full border border-border bg-muted/40 p-1 sm:flex">
             <button
               type="button"
@@ -209,14 +215,38 @@ export default function ServiceFlow() {
               Edit
             </button>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">Print</span>
-          </Button>
+          <TooltipProvider delayDuration={150}>
+            <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/50 p-1 shadow-sm">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleExport}
+                    aria-label="Export service flow"
+                    className="h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Export</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handlePrint}
+                    aria-label="Print service flow"
+                    className="h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Print</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       </div>
 

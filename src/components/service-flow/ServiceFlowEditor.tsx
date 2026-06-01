@@ -27,6 +27,7 @@ import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
+import { useCustomServiceOccurrences } from "@/hooks/useCustomServices";
 import { buildBibleHref } from "@/lib/bible";
 import {
   useServiceFlow,
@@ -198,6 +199,7 @@ export function ServiceFlowEditor({
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedLiveTemplateSync = useRef(false);
+  const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedVocalists = useRef(false);
   const hasInvalidatedOnLive = useRef(false);
 
@@ -239,6 +241,115 @@ export function ServiceFlowEditor({
   }, [campusTemplates, ministryType, effectiveInitialMinistry, initialMinistryType]);
 
   const serviceDateStr = format(selectedDate, "yyyy-MM-dd");
+  const shouldResolveCustomService =
+    !initialCustomServiceId &&
+    !!effectiveCampusId &&
+    (ministryType === "kids_camp" || ministryType === "prayer_night");
+  const {
+    data: customServiceOccurrences = [],
+    isLoading: customServiceOccurrencesLoading,
+  } = useCustomServiceOccurrences({
+    campusId: effectiveCampusId || undefined,
+    ministryType,
+    startDate: serviceDateStr,
+    endDate: serviceDateStr,
+  });
+  const autoResolvedCustomService = useMemo(() => {
+    if (!shouldResolveCustomService) return null;
+    return customServiceOccurrences.length === 1 ? customServiceOccurrences[0] : null;
+  }, [customServiceOccurrences, shouldResolveCustomService]);
+  const {
+    data: autoResolvedDraftSet = null,
+    isLoading: autoResolvedDraftSetLoading,
+  } = useQuery({
+    queryKey: [
+      "service-flow-auto-draft-set",
+      effectiveCampusId,
+      ministryType,
+      serviceDateStr,
+      autoResolvedCustomService?.id || null,
+    ],
+    enabled: shouldResolveCustomService,
+    queryFn: async () => {
+      let draftSetQuery = supabase
+        .from("draft_sets")
+        .select("id, custom_service_id")
+        .eq("campus_id", effectiveCampusId!)
+        .eq("ministry_type", ministryType)
+        .eq("plan_date", serviceDateStr)
+        .eq("status", "published")
+        .not("custom_service_id", "is", null)
+        .order("published_at", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (autoResolvedCustomService?.id) {
+        draftSetQuery = draftSetQuery.eq("custom_service_id", autoResolvedCustomService.id);
+      }
+
+      const { data, error } = await draftSetQuery.maybeSingle();
+      if (error) throw error;
+      return (data as { id: string; custom_service_id: string | null } | null) || null;
+    },
+  });
+
+  useEffect(() => {
+    if (initialCustomServiceId) return;
+    if (autoResolvedDraftSet?.custom_service_id) {
+      if (resolvedCustomServiceId !== autoResolvedDraftSet.custom_service_id) {
+        setResolvedCustomServiceId(autoResolvedDraftSet.custom_service_id);
+      }
+      return;
+    }
+    if (!autoResolvedCustomService?.id) return;
+    if (resolvedCustomServiceId === autoResolvedCustomService.id) return;
+    setResolvedCustomServiceId(autoResolvedCustomService.id);
+  }, [
+    autoResolvedCustomService?.id,
+    autoResolvedDraftSet?.custom_service_id,
+    initialCustomServiceId,
+    resolvedCustomServiceId,
+  ]);
+
+  useEffect(() => {
+    if (initialDraftSetId) return;
+    if (!autoResolvedDraftSet?.id) return;
+    if (resolvedDraftSetId === autoResolvedDraftSet.id) return;
+    setResolvedDraftSetId(autoResolvedDraftSet.id);
+  }, [autoResolvedDraftSet?.id, initialDraftSetId, resolvedDraftSetId]);
+
+  const effectiveCustomServiceId =
+    resolvedCustomServiceId ||
+    initialCustomServiceId ||
+    autoResolvedDraftSet?.custom_service_id ||
+    autoResolvedCustomService?.id ||
+    null;
+
+  const { data: directCustomServiceFlow = null } = useQuery({
+    queryKey: [
+      "service-flow-direct-custom-service",
+      effectiveCampusId,
+      ministryType,
+      serviceDateStr,
+      effectiveCustomServiceId,
+    ],
+    enabled: !!effectiveCampusId && !!serviceDateStr && !!effectiveCustomServiceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("service_flows")
+        .select("*")
+        .eq("campus_id", effectiveCampusId!)
+        .eq("service_date", serviceDateStr)
+        .eq("custom_service_id", effectiveCustomServiceId!)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data || null;
+    },
+  });
+
   const { data: teachingWeek } = useTeachingWeekForDate(
     effectiveCampusId,
     ministryType,
@@ -261,13 +372,13 @@ export function ServiceFlowEditor({
     endDate: serviceDateStr,
   });
   const { data: customServiceStartTime = null } = useQuery({
-    queryKey: ["custom-service-start-time", resolvedCustomServiceId],
-    enabled: !!resolvedCustomServiceId,
+    queryKey: ["custom-service-start-time", effectiveCustomServiceId],
+    enabled: !!effectiveCustomServiceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("custom_services")
         .select("start_time")
-        .eq("id", resolvedCustomServiceId!)
+        .eq("id", effectiveCustomServiceId!)
         .maybeSingle();
 
       if (error) throw error;
@@ -330,6 +441,7 @@ export function ServiceFlowEditor({
   useEffect(() => {
     hasAttemptedAutoGenerate.current = false;
     hasAttemptedLiveTemplateSync.current = false;
+    hasAttemptedEmptyBackfill.current = false;
     hasSyncedVocalists.current = false;
     hasInvalidatedOnLive.current = false;
     setResolvedDraftSetId(initialDraftSetId || null);
@@ -342,16 +454,16 @@ export function ServiceFlowEditor({
     ministryType,
     serviceDateStr,
     resolvedDraftSetId,
-    resolvedCustomServiceId
+    effectiveCustomServiceId
   );
 
   // When opened via Live button, force refetch to get latest data
   useEffect(() => {
     if (!cameFromLive || !effectiveCampusId || !serviceDateStr) return;
       queryClient.invalidateQueries({
-      queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId],
+      queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
     });
-  }, [cameFromLive, effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId, queryClient]);
+  }, [cameFromLive, effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId, queryClient]);
 
   // Invalidate service flow items when opened via Live (after flow is loaded)
   useEffect(() => {
@@ -368,15 +480,22 @@ export function ServiceFlowEditor({
     const run = async () => {
       if (flowLoading) return;
       if (!user?.id || !effectiveCampusId || !serviceDateStr) return;
-      if (serviceFlow) return;
+      if (serviceFlow || directCustomServiceFlow) return;
       if (hasAttemptedAutoGenerate.current) return;
+      if (shouldResolveCustomService && (customServiceOccurrencesLoading || autoResolvedDraftSetLoading)) return;
+      if ((autoResolvedDraftSet?.custom_service_id || autoResolvedCustomService?.id) && !effectiveCustomServiceId) return;
 
       hasAttemptedAutoGenerate.current = true;
       setIsAutoGenerating(true);
 
       try {
-        let draftSetId = initialDraftSetId || null;
-        let draftSetCustomServiceId = initialCustomServiceId || null;
+        let draftSetId = initialDraftSetId || autoResolvedDraftSet?.id || null;
+        let draftSetCustomServiceId =
+          initialCustomServiceId ||
+          effectiveCustomServiceId ||
+          autoResolvedDraftSet?.custom_service_id ||
+          autoResolvedCustomService?.id ||
+          null;
 
         if (!draftSetId) {
           let draftSetQuery = supabase
@@ -387,8 +506,8 @@ export function ServiceFlowEditor({
             .eq("plan_date", serviceDateStr)
             .eq("status", "published");
 
-          if (initialCustomServiceId) {
-            draftSetQuery = draftSetQuery.eq("custom_service_id", initialCustomServiceId);
+          if (draftSetCustomServiceId) {
+            draftSetQuery = draftSetQuery.eq("custom_service_id", draftSetCustomServiceId);
           }
 
           const { data: draftSet, error: draftSetError } = await draftSetQuery
@@ -401,22 +520,25 @@ export function ServiceFlowEditor({
           draftSetCustomServiceId = (draftSet as any)?.custom_service_id || null;
         }
 
-        if (!draftSetId) {
+        if (!draftSetId && !draftSetCustomServiceId) {
           return;
         }
 
-        setResolvedDraftSetId(draftSetId);
+        if (draftSetId) {
+          setResolvedDraftSetId(draftSetId);
+        }
         if (draftSetCustomServiceId) {
           setResolvedCustomServiceId(draftSetCustomServiceId);
         }
 
-        const songs = await loadDraftSongsWithVocalists(draftSetId);
+        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
 
         const generatedFlowId = await generateServiceFlowFromTemplate({
           campusId: effectiveCampusId,
           ministryType,
           serviceDate: serviceDateStr,
           draftSetId,
+          customServiceId: draftSetCustomServiceId || effectiveCustomServiceId || initialCustomServiceId || null,
           createdBy: user.id,
           forceTemplateResync: true,
           songs,
@@ -426,7 +548,7 @@ export function ServiceFlowEditor({
         // Ensure the UI refetches after creating the flow/items
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, draftSetId, draftSetCustomServiceId || resolvedCustomServiceId],
+            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, draftSetId, draftSetCustomServiceId || effectiveCustomServiceId],
           }),
           queryClient.invalidateQueries({
             queryKey: ["service-flow-items"],
@@ -449,9 +571,29 @@ export function ServiceFlowEditor({
     };
 
     run();
-  }, [effectiveCampusId, flowLoading, ministryType, queryClient, serviceDateStr, serviceFlow, toast, user?.id, initialDraftSetId, initialCustomServiceId, resolvedCustomServiceId, loadDraftSongsWithVocalists]);
+  }, [
+    effectiveCampusId,
+    flowLoading,
+    ministryType,
+    queryClient,
+    serviceDateStr,
+    serviceFlow,
+    toast,
+    user?.id,
+    initialDraftSetId,
+    initialCustomServiceId,
+    effectiveCustomServiceId,
+    autoResolvedDraftSet?.id,
+    autoResolvedDraftSet?.custom_service_id,
+    autoResolvedDraftSetLoading,
+    autoResolvedCustomService?.id,
+    customServiceOccurrencesLoading,
+    shouldResolveCustomService,
+    directCustomServiceFlow,
+    loadDraftSongsWithVocalists,
+  ]);
 
-  const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || null;
+  const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || directCustomServiceFlow?.id || null;
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(activeServiceFlowId);
 
   // When opened via LIVE and a flow already exists, run one sync pass to ensure
@@ -477,6 +619,7 @@ export function ServiceFlowEditor({
           ministryType,
           serviceDate: serviceDateStr,
           draftSetId,
+          customServiceId: effectiveCustomServiceId || null,
           createdBy: user.id,
           forceTemplateResync: true,
           songs,
@@ -484,7 +627,7 @@ export function ServiceFlowEditor({
 
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, resolvedCustomServiceId],
+            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
           }),
           queryClient.invalidateQueries({
             queryKey: ["service-flow-items", serviceFlow.id],
@@ -507,30 +650,72 @@ export function ServiceFlowEditor({
     ministryType,
     serviceDateStr,
     queryClient,
-    resolvedCustomServiceId,
+    effectiveCustomServiceId,
     loadDraftSongsWithVocalists,
   ]);
 
   // If a flow already exists but is empty, backfill it from the linked setlist/template.
   useEffect(() => {
     const backfillEmptyFlow = async () => {
-      if (!cameFromLive) return;
       if (!user?.id || !effectiveCampusId) return;
       if (!activeServiceFlowId) return;
       if (itemsLoading) return;
       if (items.length > 0) return;
+      if (hasAttemptedEmptyBackfill.current) return;
+      if (shouldResolveCustomService && (customServiceOccurrencesLoading || autoResolvedDraftSetLoading)) return;
+      if ((autoResolvedDraftSet?.custom_service_id || autoResolvedCustomService?.id) && !effectiveCustomServiceId) return;
 
-      const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId;
-      if (!draftSetId) return;
+      hasAttemptedEmptyBackfill.current = true;
 
       try {
-        const songs = await loadDraftSongsWithVocalists(draftSetId);
+        let draftSetId = serviceFlow?.draft_set_id || resolvedDraftSetId || autoResolvedDraftSet?.id;
+        let draftSetCustomServiceId =
+          effectiveCustomServiceId ||
+          autoResolvedDraftSet?.custom_service_id ||
+          autoResolvedCustomService?.id ||
+          initialCustomServiceId ||
+          null;
+
+        if (!draftSetId) {
+          let draftSetQuery = supabase
+            .from("draft_sets")
+            .select("id, custom_service_id")
+            .eq("campus_id", effectiveCampusId)
+            .eq("ministry_type", ministryType)
+            .eq("plan_date", serviceDateStr)
+            .eq("status", "published");
+
+          if (draftSetCustomServiceId) {
+            draftSetQuery = draftSetQuery.eq("custom_service_id", draftSetCustomServiceId);
+          }
+
+          const { data: draftSet, error: draftSetError } = await draftSetQuery
+            .order("published_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (draftSetError) throw draftSetError;
+          draftSetId = draftSet?.id || null;
+          draftSetCustomServiceId = (draftSet as any)?.custom_service_id || draftSetCustomServiceId;
+        }
+
+        if (!draftSetId && !draftSetCustomServiceId) return;
+
+        if (draftSetId) {
+          setResolvedDraftSetId(draftSetId);
+        }
+        if (draftSetCustomServiceId) {
+          setResolvedCustomServiceId(draftSetCustomServiceId);
+        }
+
+        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
 
         await generateServiceFlowFromTemplate({
           campusId: effectiveCampusId,
           ministryType,
           serviceDate: serviceDateStr,
           draftSetId,
+          customServiceId: draftSetCustomServiceId,
           createdBy: user.id,
           forceTemplateResync: true,
           songs,
@@ -545,7 +730,27 @@ export function ServiceFlowEditor({
     };
 
     backfillEmptyFlow();
-  }, [activeServiceFlowId, cameFromLive, effectiveCampusId, items, itemsLoading, ministryType, queryClient, resolvedDraftSetId, serviceDateStr, serviceFlow?.draft_set_id, user?.id, loadDraftSongsWithVocalists]);
+  }, [
+    activeServiceFlowId,
+    effectiveCampusId,
+    items,
+    itemsLoading,
+    ministryType,
+    queryClient,
+    resolvedDraftSetId,
+    effectiveCustomServiceId,
+    serviceDateStr,
+    serviceFlow?.draft_set_id,
+    user?.id,
+    initialCustomServiceId,
+    autoResolvedDraftSet?.id,
+    autoResolvedDraftSet?.custom_service_id,
+    autoResolvedDraftSetLoading,
+    autoResolvedCustomService?.id,
+    customServiceOccurrencesLoading,
+    shouldResolveCustomService,
+    loadDraftSongsWithVocalists,
+  ]);
 
   // Keep service flow song vocalist assignments synced with the linked draft set.
   // This ensures co-leads and swaps persist even when opening Service Flow outside LIVE.
@@ -825,7 +1030,7 @@ export function ServiceFlowEditor({
           ministryType,
           serviceDate: serviceDateStr,
           createdBy: user.id,
-          customServiceId: resolvedCustomServiceId || null,
+          customServiceId: effectiveCustomServiceId || null,
         });
         flowId = newFlow.id;
       }
@@ -840,7 +1045,7 @@ export function ServiceFlowEditor({
         song_key: newItem.song_key,
       });
     },
-    [activeServiceFlowId, serviceFlow?.id, effectiveCampusId, ministryType, serviceDateStr, user?.id, localItems.length, createFlow, saveItem]
+    [activeServiceFlowId, serviceFlow?.id, effectiveCampusId, ministryType, serviceDateStr, user?.id, localItems.length, effectiveCustomServiceId, createFlow, saveItem]
   );
 
   const handleUpdateItem = useCallback(
