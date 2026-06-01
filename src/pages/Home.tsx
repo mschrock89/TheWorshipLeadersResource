@@ -100,6 +100,11 @@ function getHomePageVariant(resourceAppKey: ResourceAppKey) {
   return STUDENT_RESOURCE_APP_KEYS.includes(resourceAppKey) ? "students" : "worship";
 }
 
+const studentsHomeBackgroundStyle = {
+  background:
+    "radial-gradient(circle at 72% 10%, #ffbd2f 0%, #f97931 42%, #f91c2d 100%)",
+};
+
 export default function Home() {
   const { user, signOut } = useAuth();
   const { data: profile } = useProfile(user?.id);
@@ -135,12 +140,15 @@ export default function Home() {
   const hasHeroImage = Boolean(homeConfig.heroImage);
 
   return (
-    <div className="relative flex flex-col overflow-hidden bg-background" style={{ height: "100dvh" }}>
+    <div
+      className="relative flex flex-col overflow-hidden bg-background"
+      style={{ height: "100dvh", ...(isStudentsHome ? studentsHomeBackgroundStyle : {}) }}
+    >
       {isStudentsHome && homeConfig.heroImage && (
         <img
           src={homeConfig.heroImage}
           alt={homeConfig.heroAlt}
-          className={`absolute inset-0 z-0 h-full w-full object-cover ${homeConfig.mobileObjectPosition ?? ""}`}
+          className={`absolute left-1/2 top-0 z-0 h-full w-full max-w-none -translate-x-1/2 object-cover lg:w-auto lg:object-contain lg:[-webkit-mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] lg:[mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] ${homeConfig.mobileObjectPosition ?? ""}`}
         />
       )}
       <section

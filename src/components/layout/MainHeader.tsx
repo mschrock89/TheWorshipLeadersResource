@@ -178,7 +178,7 @@ export function MainHeader({
                   THE FEED
                 </Link>
               </DropdownMenuItem>
-              {!isAuditionCandidate && (
+              {!isAuditionCandidate && isStudentApp && (
                 <DropdownMenuItem asChild>
                   <Link to="/attendance" className="flex items-center gap-2">
                     <MapPinned className="h-4 w-4" />

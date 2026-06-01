@@ -42,14 +42,16 @@ function setResourceAppMetadata() {
   const app = getResourceAppForLocation();
   const currentPath = `${window.location.pathname}${window.location.search}`;
   const appUrl = `${window.location.origin}${currentPath}`;
+  const isStudentsApp = app.key === "students_hs" || app.key === "students_ms";
+  const browserIconPath = isStudentsApp ? `${app.iconPath}?v=20260601-es` : app.iconPath;
   const shareImagePath = app.key === "students_hs" || app.key === "students_ms"
     ? "/experience-students-share.png"
     : app.iconPath;
 
   document.title = app.name;
 
-  upsertHeadLink("icon", app.iconPath, "image/png");
-  upsertHeadLink("shortcut icon", app.iconPath, "image/png");
+  upsertHeadLink("icon", browserIconPath, "image/png");
+  upsertHeadLink("shortcut icon", browserIconPath, "image/png");
   upsertHeadLink("apple-touch-icon", app.iconPath);
   upsertHeadLink("manifest", app.manifestPath);
 

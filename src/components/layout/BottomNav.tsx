@@ -49,7 +49,7 @@ export function BottomNav() {
       ? [
           { to: "/bible", icon: BookOpen, label: "Bible" },
           { to: "/feed", icon: Newspaper, label: "Feed" },
-          { to: "/attendance", icon: MapPinned, label: "Attendance" },
+          ...(isStudentApp ? [{ to: "/attendance", icon: MapPinned, label: "Attendance" }] : []),
           { to: "/resources", icon: Music, label: "Audio" },
           { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
           {

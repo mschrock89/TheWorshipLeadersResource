@@ -19,7 +19,7 @@ import { useIsApprover } from "@/hooks/useSetlistApprovals";
 import { useIsLifeGroupLeader } from "@/hooks/useLifeGroups";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound, MapPinned } from "lucide-react";
+import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -153,16 +153,6 @@ export default function Dashboard() {
       cardClassName: "border-sky-300/30 bg-[linear-gradient(145deg,rgba(14,165,233,0.18),rgba(15,23,42,0.32))] text-white",
       iconClassName: "border-sky-200/20 bg-sky-400/15 text-sky-100",
       buttonClassName: "bg-sky-300 text-slate-950 hover:bg-sky-200",
-    },
-    {
-      title: "Attendance",
-      description: "Monitor live student presence and configure campus geofences for automatic check-in.",
-      to: "/attendance",
-      icon: MapPinned,
-      actionLabel: "Open Attendance",
-      cardClassName: "border-lime-300/35 bg-[linear-gradient(145deg,rgba(132,204,22,0.16),rgba(20,83,45,0.3))] text-white",
-      iconClassName: "border-lime-200/25 bg-lime-300/15 text-lime-100",
-      buttonClassName: "bg-lime-300 text-slate-950 hover:bg-lime-200",
     },
     {
       title: isStudentApp ? "On Boarding" : "Auditions",

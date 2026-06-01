@@ -153,6 +153,7 @@ type RouteDefinition = {
   path: string;
   component: ComponentType;
   hideInStudentApps?: boolean;
+  studentAppOnly?: boolean;
   hideForStudentBaseRole?: boolean;
 };
 
@@ -186,7 +187,7 @@ const protectedRoutes: RouteDefinition[] = [
   { path: "/admin-tools", component: AdminTools, hideForStudentBaseRole: true },
   { path: "/resources", component: Resources },
   { path: "/feed", component: Feed },
-  { path: "/attendance", component: Attendance },
+  { path: "/attendance", component: Attendance, studentAppOnly: true },
   { path: "/drum-tech", component: DrumTech, hideForStudentBaseRole: true },
   { path: "/bible", component: Bible },
   { path: "/service-flow", component: ServiceFlow, hideForStudentBaseRole: true },
@@ -198,7 +199,11 @@ const protectedRoutes: RouteDefinition[] = [
 
 function AppRoutes() {
   const isStudentApp = isCurrentStudentResourceApp();
-  const availableProtectedRoutes = protectedRoutes.filter((route) => !(isStudentApp && route.hideInStudentApps));
+  const availableProtectedRoutes = protectedRoutes.filter((route) => {
+    if (isStudentApp && route.hideInStudentApps) return false;
+    if (!isStudentApp && route.studentAppOnly) return false;
+    return true;
+  });
 
   return (
     <Routes>

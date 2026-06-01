@@ -166,6 +166,28 @@ const addDays = (date: Date, amount: number) => {
   return nextDate;
 };
 
+const resolveSetlistPushMinistryType = (ministryType?: string) => {
+  if (!ministryType || ministryType === "all" || ministryType === "weekend_team") {
+    return "weekend_team";
+  }
+
+  if (ministryType === "production" || ministryType === "video") {
+    return "weekend_team";
+  }
+
+  return normalizeWeekendWorshipMinistryType(ministryType) === "weekend"
+    ? "weekend_team"
+    : ministryType;
+};
+
+const getEffectiveCustomServiceMinistryType = (ministryType: string, serviceName: string) => {
+  if (ministryType === "prayer_night") return "prayer_night";
+  if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
+  if (ministryType === "kids_camp") return "kids_camp";
+  if (/\bkids\s*camp\b/i.test(serviceName || "")) return "kids_camp";
+  return ministryType;
+};
+
 type CalendarAudition = {
   id: string;
   candidate_id: string;
@@ -1556,6 +1578,8 @@ function StandardCalendar() {
                         <CustomServiceRoster
                           customServiceId={service.id}
                           assignmentDate={service.occurrence_date}
+                          campusId={service.campus_id}
+                          ministryType={service.ministry_type}
                           serviceLabel={service.service_name}
                         />
                       </div>
@@ -2061,6 +2085,109 @@ export default function Calendar() {
   return <StandardCalendar />;
 }
 
+function SetlistPushButton({
+  date,
+  campusId,
+  ministryType,
+  customServiceId = null,
+  serviceLabel,
+  className,
+}: {
+  date: Date;
+  campusId?: string;
+  ministryType?: string;
+  customServiceId?: string | null;
+  serviceLabel?: string;
+  className?: string;
+}) {
+  const { isAdmin, canManageTeam } = useAuth();
+  const [isSending, setIsSending] = useState(false);
+  const dateStr = formatDateForStorage(date);
+  const lookupMinistryType = resolveSetlistPushMinistryType(ministryType);
+  const shouldCheckSet = Boolean(campusId && (isAdmin || canManageTeam));
+  const { data: existingSet, isLoading } = useExistingSet(
+    shouldCheckSet ? campusId || null : null,
+    lookupMinistryType,
+    dateStr,
+    customServiceId,
+  );
+
+  if (!shouldCheckSet) {
+    return null;
+  }
+
+  const isPublishedSet = existingSet?.status === "published";
+  const songCount = existingSet?.draft_set_songs?.length || 0;
+  const canSend = Boolean(existingSet?.id && isPublishedSet && songCount > 0);
+  const disabledTitle = !isPublishedSet
+    ? "Publish a setlist before sending a push notification."
+    : songCount === 0
+      ? "Add songs to the published setlist before sending a push notification."
+      : undefined;
+
+  const handleSend = async () => {
+    if (!existingSet?.id || !canSend) {
+      toast.error(disabledTitle || "No published setlist is available for this date.");
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("notify-setlist-published", {
+        body: {
+          draftSetId: existingSet.id,
+          manual: true,
+        },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const notifiedCount = data?.teamMembersNotified || 0;
+      toast.success(
+        notifiedCount > 0
+          ? `Setlist push sent to ${notifiedCount} roster member${notifiedCount === 1 ? "" : "s"}.`
+          : "No roster members were eligible for this setlist push.",
+      );
+    } catch (error) {
+      console.error("Failed to send manual setlist push:", error);
+      let message = error instanceof Error ? error.message : "Failed to send setlist push.";
+      const response = (error as { context?: Response })?.context;
+      if (response) {
+        try {
+          const details = await response.json();
+          if (typeof details?.error === "string") {
+            message = details.error;
+          }
+        } catch {
+          // Keep the original error message if the edge response body is not JSON.
+        }
+      }
+      toast.error(message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={className || "gap-1.5"}
+      onClick={handleSend}
+      disabled={isLoading || isSending || !canSend}
+      title={disabledTitle || `Send ${serviceLabel || "setlist"} push to the roster`}
+    >
+      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+      Push
+    </Button>
+  );
+}
+
 // Band Roster Component
 function BandRoster({
   date,
@@ -2249,6 +2376,29 @@ function BandRoster({
         roleNames,
       }),
     [isAdmin, roleNames, roster],
+  );
+  const rosterActions = (
+    <div className="flex flex-wrap justify-end gap-2">
+      <SetlistPushButton
+        date={date}
+        campusId={campusId}
+        ministryType={ministryFilter}
+        serviceLabel={serviceLabel}
+      />
+      <GroupTextButton
+        phoneNumbers={groupTextMembers.map((member) => member.phone)}
+        rosterMembers={groupTextMembers.map((member) => ({
+          name: member.memberName,
+          phone: member.phone,
+          ministryTypes: member.ministryTypes,
+          positions: member.positions,
+        }))}
+        defaultMessage={buildRosterGroupTextTemplate({
+          date,
+          serviceLabel,
+        })}
+      />
+    </div>
   );
   if (!teamId) return null;
   if (isLoading) {
@@ -2614,21 +2764,7 @@ function BandRoster({
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
-        <div className="flex justify-end">
-          <GroupTextButton
-            phoneNumbers={groupTextMembers.map((member) => member.phone)}
-            rosterMembers={groupTextMembers.map((member) => ({
-              name: member.memberName,
-              phone: member.phone,
-              ministryTypes: member.ministryTypes,
-              positions: member.positions,
-            }))}
-            defaultMessage={buildRosterGroupTextTemplate({
-              date,
-              serviceLabel,
-            })}
-          />
-        </div>
+        {rosterActions}
         <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
           {/* Left Column: Vocalists + Band by Ministry */}
           <div className="space-y-6">
@@ -2654,21 +2790,7 @@ function BandRoster({
   : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !fallbackProductionVideoMembers.includes(m)); // Exclude production/video from band list
 
   return <div className="mb-4">
-      <div className="mb-3 flex justify-end">
-        <GroupTextButton
-          phoneNumbers={groupTextMembers.map((member) => member.phone)}
-          rosterMembers={groupTextMembers.map((member) => ({
-            name: member.memberName,
-            phone: member.phone,
-            ministryTypes: member.ministryTypes,
-            positions: member.positions,
-          }))}
-          defaultMessage={buildRosterGroupTextTemplate({
-            date,
-            serviceLabel,
-          })}
-        />
-      </div>
+      <div className="mb-3">{rosterActions}</div>
       <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
         {/* Left Column: Vocalists + Band */}
         <div>
@@ -2780,13 +2902,10 @@ function CustomServiceSongsPreview({
   serviceName: string;
   readOnly?: boolean;
 }) {
-  const effectiveMinistryType = useMemo(() => {
-    if (ministryType === "prayer_night") return "prayer_night";
-    if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
-    if (ministryType === "kids_camp") return "kids_camp";
-    if (/\bkids\s*camp\b/i.test(serviceName || "")) return "kids_camp";
-    return ministryType;
-  }, [ministryType, serviceName]);
+  const effectiveMinistryType = useMemo(
+    () => getEffectiveCustomServiceMinistryType(ministryType, serviceName),
+    [ministryType, serviceName],
+  );
 
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
@@ -2977,10 +3096,14 @@ function CustomServiceFlowTitleEditor({
 function CustomServiceRoster({
   customServiceId,
   assignmentDate,
+  campusId,
+  ministryType,
   serviceLabel,
 }: {
   customServiceId: string;
   assignmentDate: string;
+  campusId: string;
+  ministryType: string;
   serviceLabel?: string;
 }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -2997,6 +3120,10 @@ function CustomServiceRoster({
   const safePhoneMap = useMemo(
     () => new Map(safeProfiles.map((profile) => [profile.id, profile.phone])),
     [safeProfiles]
+  );
+  const effectiveMinistryType = useMemo(
+    () => getEffectiveCustomServiceMinistryType(ministryType, serviceLabel || ""),
+    [ministryType, serviceLabel],
   );
 
   if (isLoading) {
@@ -3038,15 +3165,23 @@ function CustomServiceRoster({
           <MicVocal className="h-3.5 w-3.5" />
           Team Roster
         </h3>
-        <GroupTextButton
-          phoneNumbers={grouped.map((member) => member.phone)}
-          rosterMembers={grouped.map((member) => ({ name: member.name, phone: member.phone }))}
-          defaultMessage={buildRosterGroupTextTemplate({
-            date: new Date(`${assignmentDate}T12:00:00`),
-            serviceLabel,
-          })}
-          className="ml-auto"
-        />
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <SetlistPushButton
+            date={new Date(`${assignmentDate}T12:00:00`)}
+            campusId={campusId}
+            ministryType={effectiveMinistryType}
+            customServiceId={customServiceId}
+            serviceLabel={serviceLabel}
+          />
+          <GroupTextButton
+            phoneNumbers={grouped.map((member) => member.phone)}
+            rosterMembers={grouped.map((member) => ({ name: member.name, phone: member.phone }))}
+            defaultMessage={buildRosterGroupTextTemplate({
+              date: new Date(`${assignmentDate}T12:00:00`),
+              serviceLabel,
+            })}
+          />
+        </div>
       </div>
       <div className="space-y-1.5">
         {grouped.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2">

@@ -8,6 +8,7 @@ const corsHeaders = {
 
 interface NotifyRequest {
   draftSetId: string;
+  manual?: boolean;
 }
 
 const WEEKEND_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
@@ -17,6 +18,32 @@ const LEADERSHIP_ROLES = [
   "network_worship_pastor", "network_worship_leader", "leader",
   "video_director", "production_manager", "campus_pastor",
 ];
+const MANUAL_NOTIFY_ROLES = new Set(LEADERSHIP_ROLES);
+const NETWORK_ADMIN_ROLES = new Set([
+  "admin",
+  "network_worship_pastor",
+  "network_worship_leader",
+]);
+const CAMPUS_ADMIN_LIKE_ROLES = new Set([
+  "admin",
+  "campus_admin",
+  "campus_worship_pastor",
+  "student_pastor",
+  "student_worship_pastor",
+  "childrens_pastor",
+  "network_worship_pastor",
+  "network_worship_leader",
+]);
+const CAMPUS_WIDE_MANUAL_NOTIFY_ROLES = new Set([
+  "campus_worship_pastor",
+  "student_pastor",
+  "student_worship_pastor",
+  "childrens_pastor",
+  "leader",
+  "video_director",
+  "production_manager",
+  "campus_pastor",
+]);
 
 function getServiceDates(planDate: string): string[] {
   const serviceDates = new Set([planDate]);
@@ -186,6 +213,83 @@ async function getScheduledRecipientUserIds(
   return filterVolunteerMemberUserIds(supabase, potentialUserIds);
 }
 
+async function verifyManualNotifyPermission(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  authHeader: string | null,
+  campusId: string | null,
+): Promise<{ allowed: true } | { allowed: false; status: number; error: string }> {
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { allowed: false, status: 401, error: "Missing authorization header" };
+  }
+
+  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const {
+    data: { user },
+    error: userError,
+  } = await userClient.auth.getUser();
+
+  if (userError || !user) {
+    return { allowed: false, status: 401, error: "Unauthorized" };
+  }
+
+  const [roleResult, campusResult] = await Promise.all([
+    supabase
+      .from("user_roles")
+      .select("role, admin_campus_id")
+      .eq("user_id", user.id),
+    supabase
+      .from("user_campuses")
+      .select("campus_id")
+      .eq("user_id", user.id),
+  ]);
+
+  if (roleResult.error || campusResult.error) {
+    console.error("Failed to verify manual setlist notification permission:", {
+      roleError: roleResult.error,
+      campusError: campusResult.error,
+    });
+    return { allowed: false, status: 500, error: "Failed to verify notification permissions" };
+  }
+
+  const roleRows = roleResult.data || [];
+  const userCampusIds = new Set((campusResult.data || []).map((row) => row.campus_id).filter(Boolean));
+  const hasManualNotifyRole = roleRows.some((row) => MANUAL_NOTIFY_ROLES.has(row.role));
+  const hasNetworkAccess = roleRows.some((row) => NETWORK_ADMIN_ROLES.has(row.role));
+  const hasCampusAdminLikeAccess = roleRows.some((row) =>
+    CAMPUS_ADMIN_LIKE_ROLES.has(row.role) &&
+    (
+      row.role !== "campus_admin" ||
+      !campusId ||
+      row.admin_campus_id === campusId
+    ),
+  );
+  const hasCampusWideManagerRole = roleRows.some((row) =>
+    CAMPUS_WIDE_MANUAL_NOTIFY_ROLES.has(row.role),
+  );
+  const hasCampusAccess =
+    hasNetworkAccess ||
+    hasCampusAdminLikeAccess ||
+    hasCampusWideManagerRole ||
+    !campusId ||
+    userCampusIds.has(campusId) ||
+    roleRows.some((row) => row.role === "campus_admin" && row.admin_campus_id === campusId);
+
+  if (!hasManualNotifyRole || !hasCampusAccess) {
+    return {
+      allowed: false,
+      status: 403,
+      error: "You do not have permission to send this setlist notification",
+    };
+  }
+
+  return { allowed: true };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -193,12 +297,13 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse request body
-    const { draftSetId }: NotifyRequest = await req.json();
+    const { draftSetId, manual = false }: NotifyRequest = await req.json();
 
     if (!draftSetId) {
       return new Response(
@@ -230,6 +335,23 @@ serve(async (req) => {
       );
     }
 
+    if (manual) {
+      const permission = await verifyManualNotifyPermission(
+        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
+        req.headers.get("authorization") ?? req.headers.get("Authorization"),
+        draftSet.campus_id,
+      );
+
+      if (!permission.allowed) {
+        return new Response(
+          JSON.stringify({ error: permission.error }),
+          { status: permission.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // 2. Get the songs in this setlist
     const { data: setlistSongs, error: songsError } = await supabase
       .from("draft_set_songs")
@@ -245,6 +367,9 @@ serve(async (req) => {
     }
 
     const songCount = setlistSongs?.length || 0;
+    const songTitles = (setlistSongs || [])
+      .map((setlistSong) => (setlistSong.songs as { title?: string } | null)?.title)
+      .filter((title): title is string => Boolean(title));
 
     // 3. Build notification recipient list
     let userIdsToNotify: string[] = [];
@@ -341,19 +466,25 @@ serve(async (req) => {
         day: "numeric",
       });
 
+      const songSummary = songTitles.length > 0
+        ? `${songTitles.slice(0, 3).join(", ")}${songTitles.length > 3 ? ` +${songTitles.length - 3} more` : ""}`
+        : `${songCount} song${songCount === 1 ? "" : "s"}`;
       const notificationPayload = {
-        title: "New Setlist Published",
-        message: `${songCount} songs for ${formattedDate}${campusName ? ` at ${campusName}` : ""}`,
+        title: manual ? "Setlist Reminder" : "New Setlist Published",
+        message: manual
+          ? `${formattedDate}${campusName ? ` at ${campusName}` : ""}: ${songSummary}`
+          : `${songCount} songs for ${formattedDate}${campusName ? ` at ${campusName}` : ""}`,
         url: `/my-setlists?setId=${draftSetId}`,
-        tag: `setlist-${draftSetId}`,
+        tag: manual ? `setlist-manual-${draftSetId}-${Date.now()}` : `setlist-${draftSetId}`,
         userIds: userIdsToNotify,
-        contextType: "setlist-published",
+        contextType: manual ? "setlist-manual-reminder" : "setlist-published",
         contextId: draftSetId,
         metadata: {
           draftSetId,
           campusId: draftSet.campus_id,
           planDate: draftSet.plan_date,
           ministryType: draftSet.ministry_type,
+          manual,
         },
       };
 
@@ -389,6 +520,7 @@ serve(async (req) => {
         planDate: draftSet.plan_date,
         ministryType: draftSet.ministry_type,
         playlistCreated: true,
+        manual,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
