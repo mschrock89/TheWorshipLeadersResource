@@ -11,6 +11,10 @@ const STUDENT_RESOURCE_APP_KEYS = new Set<ResourceAppKey>(["students_hs", "stude
 
 // Helper to send email via Resend API
 async function sendEmail(to: string[], subject: string, html: string, fromName = "ECC Worship") {
+  if (!RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -35,7 +39,18 @@ async function sendEmail(to: string[], subject: string, html: string, fromName =
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": [
+    "authorization",
+    "x-client-info",
+    "apikey",
+    "content-type",
+    "x-resource-app-key",
+    "x-supabase-client-platform",
+    "x-supabase-client-platform-version",
+    "x-supabase-client-runtime",
+    "x-supabase-client-runtime-version",
+  ].join(", "),
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface SendEmailRequest {
