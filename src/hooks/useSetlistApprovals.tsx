@@ -265,7 +265,7 @@ export function useSubmitForApproval() {
             approved_at: publishTimestamp,
           })
           .eq("id", draftSetId)
-          .select("campus_id, ministry_type, plan_date")
+          .select("campus_id, ministry_type, plan_date, custom_service_id")
           .single();
 
         if (publishError) throw publishError;
@@ -288,6 +288,7 @@ export function useSubmitForApproval() {
             ministryType: publishedSet.ministry_type,
             serviceDate: publishedSet.plan_date,
             draftSetId,
+            customServiceId: publishedSet.custom_service_id,
             createdBy: user.id,
             songs: (songs || []).map((song) => ({
               id: song.song_id,
@@ -474,7 +475,7 @@ export function useApproveSetlist() {
           approved_at: new Date().toISOString(),
         })
         .eq("id", draftSetId)
-        .select("campus_id, ministry_type, plan_date")
+        .select("campus_id, ministry_type, plan_date, custom_service_id")
         .single();
 
       if (updateError) throw updateError;
@@ -499,6 +500,7 @@ export function useApproveSetlist() {
           ministryType: draftSet.ministry_type,
           serviceDate: draftSet.plan_date,
           draftSetId,
+          customServiceId: draftSet.custom_service_id,
           createdBy: user.id,
           songs: (songs || []).map((s) => ({
             id: s.song_id,

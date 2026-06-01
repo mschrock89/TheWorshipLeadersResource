@@ -2,6 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
+const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
+
 function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
   return (
@@ -120,6 +123,24 @@ export function useServiceFlow(
         } catch (error) {
           if (!isMissingServiceFlowCustomServiceColumn(error)) {
             throw error;
+          }
+        }
+
+        if (ministryType === "prayer_night" || ministryType === "kids_camp") {
+          try {
+            const legacySpecialtyCustom = await fetchSingle(
+              supabase
+                .from("service_flows")
+                .eq("campus_id", campusId)
+                .eq("ministry_type", "weekend")
+                .eq("service_date", serviceDate)
+                .eq("custom_service_id", customServiceId)
+            );
+            if (legacySpecialtyCustom) return legacySpecialtyCustom;
+          } catch (error) {
+            if (!isMissingServiceFlowCustomServiceColumn(error)) {
+              throw error;
+            }
           }
         }
 
@@ -574,7 +595,8 @@ export async function generateServiceFlowFromTemplate(params: {
   campusId: string;
   ministryType: string;
   serviceDate: string;
-  draftSetId: string;
+  draftSetId?: string | null;
+  customServiceId?: string | null;
   createdBy: string;
   forceTemplateResync?: boolean;
   songs: Array<{
@@ -585,8 +607,6 @@ export async function generateServiceFlowFromTemplate(params: {
     vocalistIds?: string[];
   }>;
 }) {
-  const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
-
   const resolveTemplateForCandidate = async (campusId: string, candidateMinistry: string) => {
     const { data: candidateTemplates, error: templateError } = await supabase
       .from("service_flow_templates")
@@ -613,26 +633,45 @@ export async function generateServiceFlowFromTemplate(params: {
     return candidateTemplates[0] as any;
   };
 
-  // Detect whether this published set is tied to a Prayer Night custom service.
-  const { data: setContext } = await supabase
-    .from("draft_sets")
-    .select("custom_service_id, custom_services(ministry_type, service_name)")
-    .eq("id", params.draftSetId)
-    .maybeSingle();
+  // Detect whether this published set is tied to a specialty custom service.
+  const { data: setContext } = params.draftSetId
+    ? await supabase
+      .from("draft_sets")
+      .select("custom_service_id, custom_services(ministry_type, service_name)")
+      .eq("id", params.draftSetId)
+      .maybeSingle()
+    : { data: null };
 
-  const resolvedCustomServiceId = (setContext as any)?.custom_service_id || null;
-  const customService = (setContext as any)?.custom_services;
+  const resolvedCustomServiceId = (setContext as any)?.custom_service_id || params.customServiceId || null;
+  let customService = (setContext as any)?.custom_services;
+
+  if (!customService && resolvedCustomServiceId) {
+    const { data: fetchedCustomService } = await supabase
+      .from("custom_services")
+      .select("ministry_type, service_name")
+      .eq("id", resolvedCustomServiceId)
+      .maybeSingle();
+    customService = fetchedCustomService;
+  }
+
   const isPrayerNightService =
     customService?.ministry_type === "prayer_night" ||
-    PRAYER_NIGHT_PATTERN.test(customService?.service_name || "");
+    PRAYER_NIGHT_PATTERN.test(customService?.service_name || "") ||
+    params.ministryType === "prayer_night";
+  const isKidsCampService =
+    customService?.ministry_type === "kids_camp" ||
+    KIDS_CAMP_PATTERN.test(customService?.service_name || "") ||
+    params.ministryType === "kids_camp";
 
   // Resolve template ministry:
-  // - Prayer Night services should use prayer_night templates only.
+  // - Specialty custom services should use their own templates only.
   //   If missing, we'll still generate a flow from songs without applying weekend templates.
   const templateMinistryCandidates = Array.from(
     new Set(
       isPrayerNightService
         ? ["prayer_night"]
+        : isKidsCampService
+          ? ["kids_camp"]
         : [params.ministryType]
     )
   );
@@ -650,9 +689,12 @@ export async function generateServiceFlowFromTemplate(params: {
     }
   }
 
-  // If it's prayer night without a template, still classify generated flow as prayer_night.
+  // If a specialty service has no template, still classify the generated flow correctly.
   if (!template && isPrayerNightService) {
     resolvedMinistryType = "prayer_night";
+  }
+  if (!template && isKidsCampService) {
+    resolvedMinistryType = "kids_camp";
   }
 
   // Get song durations from reference track markers
@@ -664,6 +706,8 @@ export async function generateServiceFlowFromTemplate(params: {
   );
 
   const syncServiceFlowSongVocalists = async (serviceFlowId: string) => {
+    if (!params.draftSetId) return;
+
     const { data: draftSongs, error: draftSongsError } = await supabase
       .from("draft_set_songs")
       .select("id, sequence_order, vocalist_id")
@@ -780,11 +824,59 @@ export async function generateServiceFlowFromTemplate(params: {
   };
 
   // Check if service flow already exists
-  let { data: existingFlow } = await supabase
-    .from("service_flows")
-    .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
-    .eq("draft_set_id", params.draftSetId)
-    .maybeSingle();
+  let existingFlow: {
+    id: string;
+    ministry_type?: string | null;
+    custom_service_id?: string | null;
+    created_from_template_id?: string | null;
+    updated_at?: string | null;
+  } | null = null;
+
+  if (params.draftSetId) {
+    const existingByDraftSet = await supabase
+      .from("service_flows")
+      .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
+      .eq("draft_set_id", params.draftSetId)
+      .maybeSingle();
+    if (existingByDraftSet.error) throw existingByDraftSet.error;
+    existingFlow = existingByDraftSet.data;
+  }
+
+  if (existingFlow && resolvedCustomServiceId) {
+    const existingFlowMeta = existingFlow as {
+      id: string;
+      ministry_type?: string | null;
+      custom_service_id?: string | null;
+    };
+    const hasMismatchedScope =
+      (existingFlowMeta.ministry_type || null) !== resolvedMinistryType ||
+      (existingFlowMeta.custom_service_id || null) !== resolvedCustomServiceId;
+
+    if (hasMismatchedScope) {
+      const scopedFlow = await supabase
+        .from("service_flows")
+        .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
+        .eq("campus_id", params.campusId)
+        .eq("ministry_type", resolvedMinistryType)
+        .eq("service_date", params.serviceDate)
+        .eq("custom_service_id", resolvedCustomServiceId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (scopedFlow.error) {
+        if (!isMissingServiceFlowCustomServiceColumn(scopedFlow.error)) {
+          throw scopedFlow.error;
+        }
+      } else if (scopedFlow.data && scopedFlow.data.id !== existingFlowMeta.id) {
+        await supabase
+          .from("service_flows")
+          .update({ draft_set_id: null })
+          .eq("id", existingFlowMeta.id);
+        existingFlow = scopedFlow.data;
+      }
+    }
+  }
 
   // If not directly linked yet, reuse an existing flow in the same service scope
   // (campus + ministry + date [+ custom service]) to avoid unique index collisions.
@@ -862,7 +954,7 @@ export async function generateServiceFlowFromTemplate(params: {
       templateUpdatedAt > flowUpdatedAt;
 
     const updatePayloadWithCustom = {
-      draft_set_id: params.draftSetId,
+      draft_set_id: params.draftSetId || null,
       ministry_type: resolvedMinistryType,
       custom_service_id: resolvedCustomServiceId,
       created_from_template_id: template?.id || null,
@@ -878,7 +970,7 @@ export async function generateServiceFlowFromTemplate(params: {
       const { error: updateFallbackError } = await supabase
         .from("service_flows")
         .update({
-          draft_set_id: params.draftSetId,
+          draft_set_id: params.draftSetId || null,
           ministry_type: resolvedMinistryType,
           created_from_template_id: template?.id || null,
         })
@@ -994,6 +1086,17 @@ export async function generateServiceFlowFromTemplate(params: {
                   vocalist_id: song.vocalistId || null,
                 });
                 songIndex++;
+              } else {
+                flowItems.push({
+                  service_flow_id: newFlow.id,
+                  item_type: "item",
+                  title: templateItem.title,
+                  duration_seconds: templateItem.default_duration_seconds,
+                  sequence_order: templateItem.sequence_order,
+                  song_id: null,
+                  song_key: null,
+                  vocalist_id: null,
+                });
               }
             } else {
               flowItems.push({
@@ -1066,7 +1169,7 @@ export async function generateServiceFlowFromTemplate(params: {
     campus_id: params.campusId,
     ministry_type: resolvedMinistryType,
     service_date: params.serviceDate,
-    draft_set_id: params.draftSetId,
+    draft_set_id: params.draftSetId || null,
     custom_service_id: resolvedCustomServiceId,
     created_from_template_id: template?.id || null,
     created_by: params.createdBy,
@@ -1089,7 +1192,7 @@ export async function generateServiceFlowFromTemplate(params: {
         campus_id: params.campusId,
         ministry_type: resolvedMinistryType,
         service_date: params.serviceDate,
-        draft_set_id: params.draftSetId,
+        draft_set_id: params.draftSetId || null,
         created_from_template_id: template?.id || null,
         created_by: params.createdBy,
       })
@@ -1147,6 +1250,17 @@ export async function generateServiceFlowFromTemplate(params: {
               vocalist_id: song.vocalistId || null,
             });
             songIndex++;
+          } else {
+            flowItems.push({
+              service_flow_id: newFlow.id,
+              item_type: "item",
+              title: templateItem.title,
+              duration_seconds: templateItem.default_duration_seconds,
+              sequence_order: templateItem.sequence_order,
+              song_id: null,
+              song_key: null,
+              vocalist_id: null,
+            });
           }
         } else {
           flowItems.push({
