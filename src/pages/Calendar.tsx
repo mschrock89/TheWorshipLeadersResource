@@ -2801,23 +2801,16 @@ function CustomServiceSongsPreview({
   }
 
   if (!existingSet || draftSongs.length === 0) {
-    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center justify-end">
-          {readOnly ? (
-            <Badge variant="outline" className="text-xs">
-              View only
-            </Badge>
-          ) : (
-            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-              </span>
-              Service Flow
-            </Link>
-          )}
-        </div>
-        No setlist has been saved for this custom service yet.
+    if (readOnly) return null;
+
+    return <div className="mb-4 flex justify-end">
+        <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+          </span>
+          Service Flow
+        </Link>
       </div>;
   }
 
@@ -3007,11 +3000,7 @@ function CustomServiceRoster({
       </div>;
   }
 
-  if (assignments.length === 0) {
-    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        No team members assigned to this custom service yet.
-      </div>;
-  }
+  if (assignments.length === 0) return null;
 
   const grouped = Array.from(assignments.reduce((map, assignment) => {
     const existing = map.get(assignment.user_id) || {
