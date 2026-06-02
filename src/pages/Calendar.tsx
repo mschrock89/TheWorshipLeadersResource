@@ -1340,6 +1340,7 @@ function StandardCalendar() {
             position: userSchedule.position,
             teamId: userSchedule.teamId
           } : null;
+          const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
           return <div className="rounded-lg border border-border bg-card p-3 sm:p-4">
                 {/* Header Row */}
                 <div className="flex items-start justify-between mb-2 gap-2">
@@ -1558,32 +1559,43 @@ function StandardCalendar() {
 
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-5 mb-4">
-                    {selectedDayServices.map((service) => (
-                      <div key={service.occurrence_key} className="rounded-md border border-border/70 p-3 sm:p-4">
-                        <div className="mb-2">
-                          <p className="text-sm font-medium text-foreground">{service.service_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {service.start_time ? formatTime(service.start_time) : "Time TBD"}
-                            {service.end_time ? ` - ${formatTime(service.end_time)}` : ""}
-                          </p>
+                    {selectedDayServices.map((service) => {
+                      const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
+                      return (
+                        <div key={service.occurrence_key} className="rounded-md border border-border/70 p-3 sm:p-4">
+                          <div className="mb-2 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">{service.service_name}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {campusName} • {getMinistryLabel(service.ministry_type)}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {service.start_time ? formatTime(service.start_time) : "Time TBD"}
+                                {service.end_time ? ` - ${formatTime(service.end_time)}` : ""}
+                              </p>
+                            </div>
+                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>}
+                          </div>
+                          <CustomServiceSongsPreview
+                            customServiceId={service.id}
+                            planDate={service.occurrence_date}
+                            campusId={service.campus_id}
+                            ministryType={service.ministry_type}
+                            serviceName={service.service_name}
+                            readOnly={isCrossCampusReadOnly}
+                          />
+                          <CustomServiceRoster
+                            customServiceId={service.id}
+                            assignmentDate={service.occurrence_date}
+                            campusId={service.campus_id}
+                            ministryType={service.ministry_type}
+                            serviceLabel={service.service_name}
+                          />
                         </div>
-                        <CustomServiceSongsPreview
-                          customServiceId={service.id}
-                          planDate={service.occurrence_date}
-                          campusId={service.campus_id}
-                          ministryType={service.ministry_type}
-                          serviceName={service.service_name}
-                          readOnly={isCrossCampusReadOnly}
-                        />
-                        <CustomServiceRoster
-                          customServiceId={service.id}
-                          assignmentDate={service.occurrence_date}
-                          campusId={service.campus_id}
-                          ministryType={service.ministry_type}
-                          serviceLabel={service.service_name}
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (() => {
                   return (
@@ -1621,9 +1633,9 @@ function StandardCalendar() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      {selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length === 0
+                      {selectedDayEventListCount === 0
                         ? "No events"
-                        : `${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length} item${selectedDayEvents.length + selectedDayServices.length + selectedDayAuditions.length + selectedDateOverrides.length > 1 ? "s" : ""}`}
+                        : `${selectedDayEventListCount} item${selectedDayEventListCount > 1 ? "s" : ""}`}
                     </p>
                     {canManageTeam && <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
@@ -1814,26 +1826,6 @@ function StandardCalendar() {
                             </p>}
                         </div>
                         <Badge variant="secondary">Audition</Badge>
-                      </div>;
-                  })}
-                  {selectedDayServices.map(service => {
-                    const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
-                    return <div key={service.occurrence_key} className="flex items-start justify-between rounded-md border-l-4 border-sky-500 bg-muted/50 p-3">
-                        <div className="flex items-center justify-between gap-3 w-full">
-                          <div>
-                            <h3 className="font-medium text-foreground">{service.service_name}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{campusName} • Service</p>
-                            {(service.start_time || service.end_time) && <p className="mt-1 text-xs text-primary">
-                                {formatTime(service.start_time)}
-                                {service.start_time && service.end_time && " – "}
-                                {formatTime(service.end_time)}
-                              </p>}
-                          </div>
-                          <Badge variant="secondary">Service</Badge>
-                        </div>
-                        {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>}
                       </div>;
                   })}
                   {selectedDayEvents.map(event => <div key={event.id} className="flex items-start justify-between rounded-md border-l-4 border-primary bg-muted/50 p-3">
@@ -2920,23 +2912,16 @@ function CustomServiceSongsPreview({
   }
 
   if (!existingSet || draftSongs.length === 0) {
-    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        <div className="mb-2 flex items-center justify-end">
-          {readOnly ? (
-            <Badge variant="outline" className="text-xs">
-              View only
-            </Badge>
-          ) : (
-            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-              </span>
-              Service Flow
-            </Link>
-          )}
-        </div>
-        No setlist has been saved for this custom service yet.
+    if (readOnly) return null;
+
+    return <div className="mb-4 flex justify-end">
+        <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
+          </span>
+          Service Flow
+        </Link>
       </div>;
   }
 
@@ -3134,11 +3119,7 @@ function CustomServiceRoster({
       </div>;
   }
 
-  if (assignments.length === 0) {
-    return <div className="mb-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        No team members assigned to this custom service yet.
-      </div>;
-  }
+  if (assignments.length === 0) return null;
 
   const grouped = Array.from(assignments.reduce((map, assignment) => {
     const existing = map.get(assignment.user_id) || {
