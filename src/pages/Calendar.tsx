@@ -2138,11 +2138,11 @@ function SetlistPushButton({
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      const notifiedCount = data?.teamMembersNotified || 0;
+      const notifiedCount = data?.pushRecipientUserCount ?? data?.teamMembersNotified ?? 0;
       toast.success(
         notifiedCount > 0
-          ? `Setlist push sent to ${notifiedCount} roster member${notifiedCount === 1 ? "" : "s"}.`
-          : "No roster members were eligible for this setlist push.",
+          ? `Setlist push sent to ${notifiedCount} roster member${notifiedCount === 1 ? "" : "s"} with push enabled.`
+          : "No roster members with push enabled were available for this setlist push.",
       );
     } catch (error) {
       console.error("Failed to send manual setlist push:", error);

@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-resource-app-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface NotifyRequest {
@@ -45,8 +46,12 @@ const CAMPUS_WIDE_MANUAL_NOTIFY_ROLES = new Set([
   "campus_pastor",
 ]);
 
-function getServiceDates(planDate: string): string[] {
+function getServiceDates(planDate: string, includeWeekendPair = true): string[] {
   const serviceDates = new Set([planDate]);
+  if (!includeWeekendPair) {
+    return Array.from(serviceDates);
+  }
+
   const date = new Date(`${planDate}T12:00:00Z`);
 
   if (Number.isNaN(date.getTime())) {
@@ -67,8 +72,12 @@ function getServiceDates(planDate: string): string[] {
   return Array.from(serviceDates);
 }
 
-function getRelevantMinistryTypes(ministryType: string, includePrimaryMinistry = true): string[] {
-  const ministryTypes = new Set<string>(SUPPORT_MINISTRIES);
+function getRelevantMinistryTypes(
+  ministryType: string,
+  includePrimaryMinistry = true,
+  includeSupportMinistries = true,
+): string[] {
+  const ministryTypes = new Set<string>(includeSupportMinistries ? SUPPORT_MINISTRIES : []);
 
   if (includePrimaryMinistry) {
     ministryTypes.add(ministryType);
@@ -131,14 +140,16 @@ async function getScheduledRecipientUserIds(
   supabase: ReturnType<typeof createClient>,
   draftSet: { campus_id: string | null; plan_date: string; ministry_type: string },
   includePrimaryMinistry = true,
+  includeWeekendPair = true,
+  includeSupportMinistries = true,
 ): Promise<string[]> {
   if (!draftSet.campus_id) {
     return [];
   }
 
-  const serviceDates = getServiceDates(draftSet.plan_date);
+  const serviceDates = getServiceDates(draftSet.plan_date, includeWeekendPair);
   const relevantMinistryTypes = new Set(
-    getRelevantMinistryTypes(draftSet.ministry_type, includePrimaryMinistry),
+    getRelevantMinistryTypes(draftSet.ministry_type, includePrimaryMinistry, includeSupportMinistries),
   );
 
   const { data: teamSchedules, error: scheduleError } = await supabase
@@ -367,9 +378,6 @@ serve(async (req) => {
     }
 
     const songCount = setlistSongs?.length || 0;
-    const songTitles = (setlistSongs || [])
-      .map((setlistSong) => (setlistSong.songs as { title?: string } | null)?.title)
-      .filter((title): title is string => Boolean(title));
 
     // 3. Build notification recipient list
     let userIdsToNotify: string[] = [];
@@ -398,7 +406,9 @@ serve(async (req) => {
         console.error("Error fetching custom service assignments:", assignmentsError);
       }
 
-      const supportUserIds = await getScheduledRecipientUserIds(supabase, draftSet, false);
+      const supportUserIds = manual
+        ? []
+        : await getScheduledRecipientUserIds(supabase, draftSet, false);
 
       userIdsToNotify = Array.from(
         new Set((assignments || []).map((a) => a.user_id).filter(Boolean))
@@ -408,7 +418,7 @@ serve(async (req) => {
         [...userIdsToNotify, ...supportUserIds],
       );
     } else {
-      userIdsToNotify = await getScheduledRecipientUserIds(supabase, draftSet);
+      userIdsToNotify = await getScheduledRecipientUserIds(supabase, draftSet, true, !manual, !manual);
     }
 
     // Final guard across ALL set types:
@@ -457,6 +467,7 @@ serve(async (req) => {
     // 8. Send push notifications via OneSignal
     let pushSent = 0;
     let pushFailed = 0;
+    let pushRecipientUserCount = 0;
 
     if (userIdsToNotify.length > 0) {
       const campusName = (draftSet.campuses as { name?: string } | null)?.name || "";
@@ -466,13 +477,10 @@ serve(async (req) => {
         day: "numeric",
       });
 
-      const songSummary = songTitles.length > 0
-        ? `${songTitles.slice(0, 3).join(", ")}${songTitles.length > 3 ? ` +${songTitles.length - 3} more` : ""}`
-        : `${songCount} song${songCount === 1 ? "" : "s"}`;
       const notificationPayload = {
-        title: manual ? "Setlist Reminder" : "New Setlist Published",
+        title: "Setlist Posted",
         message: manual
-          ? `${formattedDate}${campusName ? ` at ${campusName}` : ""}: ${songSummary}`
+          ? `The setlist for ${formattedDate}${campusName ? ` at ${campusName}` : ""} is posted.`
           : `${songCount} songs for ${formattedDate}${campusName ? ` at ${campusName}` : ""}`,
         url: `/my-setlists?setId=${draftSetId}`,
         tag: manual ? `setlist-manual-${draftSetId}-${Date.now()}` : `setlist-${draftSetId}`,
@@ -502,6 +510,7 @@ serve(async (req) => {
         console.log("Push notification result:", pushResult);
         pushSent = pushResult.sent || 0;
         pushFailed = pushResult.failed || 0;
+        pushRecipientUserCount = pushResult.recipientUserCount || 0;
       } catch (error) {
         console.error("Error calling send-push-notification:", error);
       }
@@ -514,6 +523,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         teamMembersNotified: userIdsToNotify.length,
+        pushRecipientUserCount,
         pushSent,
         pushFailed,
         draftSetId,
