@@ -4,9 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "@/hooks/use-toast";
 import {
-  MINISTRY_SLOT_CATEGORIES,
   POSITION_SLOTS,
   STUDENT_TEAM_NAMES,
+  getTeamBuilderSlotCategories,
   memberMatchesMinistryFilter,
   normalizeWeekendWorshipMinistryType,
 } from "@/lib/constants";
@@ -1998,6 +1998,8 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   hand_held_camera: ["hand_held_camera_1", "hand_held_camera_2", "hand_held_camera_3", "hand_held_camera_4"],
   director: ["director", "director_2", "director_3", "director_4"],
   switcher: ["switcher", "switcher_2", "switcher_3", "switcher_4"],
+  photo_team: ["photo_team"],
+  art_team: ["art_team"],
 };
 
 // Get all slots a member can fill based on their positions
@@ -2419,10 +2421,9 @@ export function useAutoBuildTeams() {
         "teacher", "announcement", "closing_prayer",
         "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
         "tri_pod_camera", "hand_held_camera",
-        "director", "graphics", "switcher",
+        "director", "graphics", "switcher", "photo_team", "art_team",
       ];
-      const allowedCategories =
-        MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
+      const allowedCategories = getTeamBuilderSlotCategories(ministryType);
       const visibleSlotsByTeam = new Map(
         teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config, templateContext)]),
       );

@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles } from "lucide-react";
+import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAudioPlayer, Track } from "@/hooks/useAudioPlayer";
 import { SetlistPlaylistWithTracks, ReferenceTrack } from "@/hooks/useSetlistPlaylists";
 import { MINISTRY_TYPES } from "@/lib/constants";
@@ -18,6 +25,7 @@ import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDial
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
 import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
 import { canManageReferenceTracks, isAuditionCandidateRole } from "@/lib/access";
+import { StemDAW } from "./StemDAW";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +35,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 interface SetlistPlaylistCardProps {
@@ -42,6 +49,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [editMarkersOpen, setEditMarkersOpen] = useState(false);
   const [selectedRefTrack, setSelectedRefTrack] = useState<ReferenceTrack | null>(null);
+  const [trackToDelete, setTrackToDelete] = useState<ReferenceTrack | null>(null);
   const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
   const deleteRefTrack = useDeleteReferenceTrack();
   const autoReorderCharts = useAutoReorderChartsFromReferenceTrack();
@@ -175,7 +183,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               </div>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Headphones className="h-5 w-5 text-primary" />
-                {customServiceName ? `${customServiceName} Playlist` : "Our Versions"}
+                {customServiceName ? `${customServiceName} Playlist` : "Practice Hub"}
               </CardTitle>
               <div className="flex items-center gap-2 mt-2">
                 <Badge variant="secondary" className="text-xs font-medium">
@@ -189,25 +197,6 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                 )}
               </div>
             </div>
-
-            <Button
-              onClick={handlePlayAll}
-              disabled={!hasAudioTracks}
-              size="sm"
-              className="rounded-full gap-2 shadow-md shadow-primary/20"
-            >
-              {isThisPlaylistPlaying && isPlaying ? (
-                <>
-                  <Pause className="h-4 w-4" />
-                  Pause
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 fill-current" />
-                  Play All
-                </>
-              )}
-            </Button>
           </div>
         </CardHeader>
 
@@ -230,16 +219,29 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                   Add Weekend Track
                 </Button>
               )}
+
+              <StemDAW
+                playlistId={playlist.id}
+                canManage={canManageTracks}
+                serviceDate={formattedDate}
+                setlistSongs={setlistSongs}
+              />
             </div>
           ) : (
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground mb-3">
-                {playlist.songsWithAudio} of {playlist.totalSongs} songs have audio
-                {referenceTracks.length > 0 && (
-                  <> • {referenceTracks.length} weekend track{referenceTracks.length !== 1 ? 's' : ''}</>
-                )}
-              </p>
-              
+              {/* SoundCloud Versions header */}
+              <div className="pt-4 mt-2 border-t border-border/40">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary/15 flex-shrink-0">
+                    <Music2 className="h-4 w-4 text-primary" />
+                  </div>
+                  <p className="text-sm font-semibold text-primary">SoundCloud Versions</p>
+                  <Badge variant="secondary" className="text-[11px] font-semibold px-1.5 py-0 h-5 min-w-5 justify-center bg-primary/15 text-primary border-0">
+                    {playlist.songsWithAudio}
+                  </Badge>
+                </div>
+              </div>
+
               {/* Setlist Songs */}
               {playlist.tracks.map((track, index) => {
                 const isCurrentTrack = currentTrack?.id === track.id;
@@ -250,28 +252,23 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                     key={track.id}
                     onClick={() => handlePlayTrack(track, index)}
                     className={cn(
-                      "group flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all",
-                      "hover:bg-muted/50 active:bg-muted/70",
-                      isCurrentTrack && "bg-primary/5"
+                      "group flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all border",
+                      "hover:bg-primary/10 active:bg-primary/15",
+                      isCurrentTrack
+                        ? "bg-primary/10 border-primary/40"
+                        : "bg-primary/5 border-primary/20 hover:border-primary/40"
                     )}
                   >
-                    {/* Track Number / Playing Indicator */}
-                    <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                    {/* Play button circle */}
+                    <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-full bg-primary/20 group-hover:bg-primary/30">
                       {isTrackPlaying ? (
                         <div className="flex items-center gap-[2px]">
                           <span className="w-[2px] h-3 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
                           <span className="w-[2px] h-4 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.15s]" />
                           <span className="w-[2px] h-2 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
                         </div>
-                      ) : isCurrentTrack ? (
-                        <Play className="h-4 w-4 text-primary fill-current" />
                       ) : (
-                        <>
-                          <span className="text-xs text-muted-foreground group-hover:hidden tabular-nums">
-                            {index + 1}
-                          </span>
-                          <Play className="h-4 w-4 text-foreground hidden group-hover:block" />
-                        </>
+                        <Play className="h-4 w-4 text-primary fill-primary" />
                       )}
                     </div>
 
@@ -279,7 +276,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                     <div className="flex-1 min-w-0">
                       <p
                         className={cn(
-                          "font-medium truncate text-sm",
+                          "font-semibold truncate text-sm",
                           isCurrentTrack ? "text-primary" : "text-foreground"
                         )}
                       >
@@ -296,15 +293,15 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
               {/* Weekend Tracks Section */}
               {referenceTracks.length > 0 && (
-                <div className="pt-4 mt-4 border-t-2 border-primary/30">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/15">
-                      <FileAudio className="h-3.5 w-3.5 text-primary" />
+                <div className="pt-4 mt-2 border-t border-border/40">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="flex items-center justify-center h-7 w-7 rounded-full bg-amber-500/15 flex-shrink-0">
+                      <FileAudio className="h-4 w-4 text-amber-400" />
                     </div>
-                    <p className="text-sm font-semibold text-primary">
+                    <p className="text-sm font-semibold text-amber-400">
                       Weekend Tracks
                     </p>
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/15 text-primary border-0">
+                    <Badge variant="secondary" className="text-[11px] font-semibold px-1.5 py-0 h-5 min-w-5 justify-center bg-amber-500/15 text-amber-400 border-0">
                       {referenceTracks.length}
                     </Badge>
                   </div>
@@ -320,10 +317,10 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                         <div
                           className={cn(
                             "group flex items-center gap-3 p-2.5 rounded-lg transition-all border",
-                            "hover:bg-primary/10 active:bg-primary/15",
-                            isCurrentTrack 
-                              ? "bg-primary/10 border-primary/40" 
-                              : "bg-primary/5 border-primary/20 hover:border-primary/40"
+                            "hover:bg-amber-500/10 active:bg-amber-500/15",
+                            isCurrentTrack
+                              ? "bg-amber-500/10 border-amber-500/40"
+                              : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40"
                           )}
                         >
                           {/* Expand/Collapse for markers */}
@@ -335,9 +332,9 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               onClick={() => toggleMarkerExpand(track.id)}
                             >
                               {isExpanded ? (
-                                <ChevronDown className="h-4 w-4 text-primary" />
+                                <ChevronDown className="h-4 w-4 text-amber-400" />
                               ) : (
-                                <ChevronRight className="h-4 w-4 text-primary" />
+                                <ChevronRight className="h-4 w-4 text-amber-400" />
                               )}
                             </Button>
                           ) : (
@@ -346,19 +343,17 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
                           {/* Play button area */}
                           <div 
-                            className="w-8 h-8 flex items-center justify-center flex-shrink-0 cursor-pointer rounded-full bg-primary/20 group-hover:bg-primary/30"
+                            className="w-8 h-8 flex items-center justify-center flex-shrink-0 cursor-pointer rounded-full bg-amber-500/20 group-hover:bg-amber-500/30"
                             onClick={() => handlePlayTrack(track, trackIndex)}
                           >
                             {isTrackPlaying ? (
                               <div className="flex items-center gap-[2px]">
-                                <span className="w-[2px] h-3 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
-                                <span className="w-[2px] h-4 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.15s]" />
-                                <span className="w-[2px] h-2 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
+                                <span className="w-[2px] h-3 bg-amber-400 rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
+                                <span className="w-[2px] h-4 bg-amber-400 rounded-full animate-[pulse_1s_ease-in-out_infinite_0.15s]" />
+                                <span className="w-[2px] h-2 bg-amber-400 rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
                               </div>
-                            ) : isCurrentTrack ? (
-                              <Play className="h-4 w-4 text-primary fill-primary" />
                             ) : (
-                              <Play className="h-4 w-4 text-primary fill-primary" />
+                              <Play className="h-4 w-4 text-amber-400 fill-amber-400" />
                             )}
                           </div>
 
@@ -370,7 +365,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             <p
                               className={cn(
                                 "font-semibold truncate text-sm",
-                                isCurrentTrack ? "text-primary" : "text-foreground"
+                                isCurrentTrack ? "text-amber-400" : "text-foreground"
                               )}
                             >
                               {track.title}
@@ -379,7 +374,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               Full set audio
                               {hasMarkers && (
                                 <span 
-                                  className="ml-1.5 text-primary cursor-pointer hover:underline font-medium"
+                                  className="ml-1.5 text-amber-400 cursor-pointer hover:underline font-medium"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     toggleMarkerExpand(track.id);
@@ -390,34 +385,6 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               )}
                             </p>
                           </div>
-
-                          {/* Download Button - available to all users */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload(track);
-                            }}
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </Button>
-
-                          {/* Reference Track Edit Markers Button */}
-                          {canManageTracks && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-foreground"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEditMarkers(track);
-                              }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
 
                           {/* Admin AI Sync Charts */}
                           {isAdmin && hasMarkers && (
@@ -440,43 +407,71 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                             </Button>
                           )}
 
-                          {/* Reference Track Delete Button */}
-                          {canManageTracks && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
+                          {/* Overflow actions */}
+                          {canManageTracks ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <MoreVertical className="h-4 w-4" />
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Weekend Track</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete "{track.title}"? This will permanently remove the file.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteRefTrack.mutate(track.referenceTrackId)}
-                                    className="bg-destructive hover:bg-destructive/90"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownload(track);
+                                  }}
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditMarkers(track);
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  Edit markers
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="gap-2 text-destructive focus:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTrackToDelete(track);
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(track);
+                              }}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
                           )}
                         </div>
 
                         {/* Markers List (collapsible) */}
                         {hasMarkers && isExpanded && (
-                          <div className="ml-6 pl-6 border-l-2 border-primary/20 space-y-1 pb-2 mt-1">
+                          <div className="ml-6 pl-6 border-l-2 border-amber-500/20 space-y-1 pb-2 mt-1">
                             {track.markers.map((marker) => (
                               <Button
                                 key={marker.id}
@@ -485,8 +480,8 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                                 onClick={() => handleMarkerClick(track, marker.timestampSeconds)}
                                 className={cn(
                                   "w-full justify-start gap-2 h-9 px-3 text-left",
-                                  "hover:bg-primary/10 active:bg-primary/20",
-                                  currentTrack?.id === track.id && "border-l-2 border-primary -ml-[2px] pl-[10px]"
+                                  "hover:bg-amber-500/10 active:bg-amber-500/20",
+                                  currentTrack?.id === track.id && "border-l-2 border-amber-400 -ml-[2px] pl-[10px]"
                                 )}
                               >
                                 <Badge variant="secondary" className="text-xs tabular-nums px-1.5 py-0 h-5 shrink-0">
@@ -504,7 +499,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               )}
 
               {/* Reference Track Add Weekend Track Button */}
-              {canUploadReferenceTrack && (
+              {canUploadReferenceTrack && referenceTracks.length === 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -515,6 +510,14 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                   Add Weekend Track
                 </Button>
               )}
+
+              {/* Stem DAW */}
+              <StemDAW
+                playlistId={playlist.id}
+                canManage={canManageTracks}
+                serviceDate={formattedDate}
+                setlistSongs={setlistSongs}
+              />
             </div>
           )}
         </CardContent>
@@ -538,6 +541,32 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
           setlistSongs={setlistSongs}
         />
       )}
+
+      <AlertDialog
+        open={!!trackToDelete}
+        onOpenChange={(open) => !open && setTrackToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Weekend Track</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{trackToDelete?.title}"? This will permanently remove the file.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (trackToDelete) deleteRefTrack.mutate(trackToDelete.referenceTrackId);
+                setTrackToDelete(null);
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

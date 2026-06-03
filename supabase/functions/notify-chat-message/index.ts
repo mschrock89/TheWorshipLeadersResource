@@ -22,9 +22,9 @@ const MINISTRY_LABELS: Record<string, string> = {
   small_group_6: "Small Group 6",
   small_group_7: "Small Group 7",
   small_group_8: "Small Group 8",
-  encounter: "Encounter",
+  encounter: "HS Worship",
   evident: "Evident",
-  eon: "EON",
+  eon: "MS Worship",
   production: "Production",
   video: "Video",
 };

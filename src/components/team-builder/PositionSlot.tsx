@@ -63,6 +63,8 @@ export function PositionSlot({
     ? ministryTypes.map((mt) => MINISTRY_TYPES.find((m) => m.value === mt)).filter(Boolean)
     : [];
   const hasWeekendSplit = scheduleDates.length > 0;
+  const effectiveSelectedView =
+    isEmpty && selectedView === "all" && firstOverrideDate ? firstOverrideDate : selectedView;
 
   useEffect(() => {
     if (selectedView !== "all" && !scheduleDates.includes(selectedView)) {
@@ -76,29 +78,30 @@ export function PositionSlot({
     }
   }, [firstOverrideDate, isEmpty, selectedView]);
 
-  const selectedOverride = selectedView !== "all" ? dateOverrides[selectedView] : undefined;
+  const selectedOverride =
+    effectiveSelectedView !== "all" ? dateOverrides[effectiveSelectedView] : undefined;
   const selectedOverrideIsBlank = isBlankTeamBuilderAssignment(selectedOverride);
-  const baseAssignmentIsBlank = selectedView === "all" && isBlankTeamBuilderMemberName(memberName);
+  const baseAssignmentIsBlank = effectiveSelectedView === "all" && isBlankTeamBuilderMemberName(memberName);
   const selectedAssignmentIsBlank = selectedOverrideIsBlank || baseAssignmentIsBlank;
-  const effectiveIsEmpty = isEmpty && !selectedOverride;
+  const effectiveIsEmpty = isEmpty && !hasAnyDateOverrides;
   const selectedMemberName = selectedAssignmentIsBlank
     ? "No one assigned"
     : selectedOverride?.member_name || memberName;
   const selectedAvatarUrl = selectedOverride && !selectedOverrideIsBlank ? null : avatarUrl;
   const selectedConflictDates = useMemo(() => {
-    if (selectedView === "all") {
+    if (effectiveSelectedView === "all") {
       return conflictDates;
     }
 
     if (selectedOverride) {
-      return dateOverrideConflictDates[selectedView] || [];
+      return dateOverrideConflictDates[effectiveSelectedView] || [];
     }
 
-    return conflictDates.includes(selectedView) ? [selectedView] : [];
-  }, [conflictDates, dateOverrideConflictDates, selectedOverride, selectedView]);
+    return conflictDates.includes(effectiveSelectedView) ? [effectiveSelectedView] : [];
+  }, [conflictDates, dateOverrideConflictDates, effectiveSelectedView, selectedOverride]);
 
   const hasConflicts = selectedConflictDates.length > 0;
-  const isDateView = selectedView !== "all";
+  const isDateView = effectiveSelectedView !== "all";
   const showSplitButton = isDateView && !!onAssignDate && !readOnly;
   const showBlankButton = isDateView && !!onLeaveBlankDate && !readOnly && !selectedOverrideIsBlank;
   const showFullBlankButton = !isDateView && !effectiveIsEmpty && !!onLeaveBlank && !readOnly && !baseAssignmentIsBlank;
@@ -176,7 +179,7 @@ export function PositionSlot({
                 type="button"
                 className={cn(
                   "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
-                  selectedView === "all"
+                  effectiveSelectedView === "all"
                     ? "border-primary/50 bg-primary/10 text-foreground"
                     : "border-border bg-background text-muted-foreground hover:bg-muted/50",
                 )}
@@ -196,7 +199,7 @@ export function PositionSlot({
                     type="button"
                     className={cn(
                       "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
-                      selectedView === date
+                      effectiveSelectedView === date
                         ? "border-primary/50 bg-primary/10 text-foreground"
                         : "border-border bg-background text-muted-foreground hover:bg-muted/50",
                       hasOverride && "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
@@ -264,10 +267,10 @@ export function PositionSlot({
                 {isDateView && (
                   <span className="ml-1">
                     · {selectedOverrideIsBlank
-                      ? `Blank for ${format(parseISO(selectedView), "MMM d")}`
+                      ? `Blank for ${format(parseISO(effectiveSelectedView), "MMM d")}`
                       : selectedOverride
-                      ? `Split for ${format(parseISO(selectedView), "MMM d")}`
-                      : format(parseISO(selectedView), "MMM d")}
+                      ? `Split for ${format(parseISO(effectiveSelectedView), "MMM d")}`
+                      : format(parseISO(effectiveSelectedView), "MMM d")}
                   </span>
                 )}
               </p>
@@ -300,7 +303,7 @@ export function PositionSlot({
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
-                onClick={() => onAssignDate?.(selectedView)}
+                onClick={() => onAssignDate?.(effectiveSelectedView)}
               >
                 <SplitSquareVertical className="mr-1 h-3.5 w-3.5" />
                 {selectedOverrideIsBlank ? "Assign" : selectedOverride ? "Change" : "Split"}
@@ -311,8 +314,8 @@ export function PositionSlot({
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-xs text-muted-foreground hover:bg-muted"
-                onClick={() => onLeaveBlankDate?.(selectedView)}
-                title={`Leave ${label} blank for ${format(parseISO(selectedView), "MMM d")}`}
+                onClick={() => onLeaveBlankDate?.(effectiveSelectedView)}
+                title={`Leave ${label} blank for ${format(parseISO(effectiveSelectedView), "MMM d")}`}
               >
                 <Minus className="mr-1 h-3.5 w-3.5" />
                 Blank
@@ -330,7 +333,7 @@ export function PositionSlot({
                 }
                 onClick={() => {
                   if (isDateView && selectedOverride) {
-                    onRemoveDateOverride?.(selectedView);
+                    onRemoveDateOverride?.(effectiveSelectedView);
                     return;
                   }
                   onRemove();

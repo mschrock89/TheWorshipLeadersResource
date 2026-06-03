@@ -19,6 +19,12 @@ interface SongAvailabilityListProps {
   publishedSetlistSongIds?: Set<string>;
   isLoading?: boolean;
   allowSchedulingOverrides?: boolean;
+  /**
+   * Lifts all rotation/recency scheduling restrictions so a song can be added
+   * as often as needed (e.g. Kids Camp). Songs already on active setlists or
+   * scheduled for the target date can still be re-added.
+   */
+  unrestrictedScheduling?: boolean;
   referenceDate?: Date;
   goodFitHighlights?: Record<string, string[]>;
   readOnly?: boolean;
@@ -33,10 +39,14 @@ export function SongAvailabilityList({
   publishedSetlistSongIds = new Set(),
   isLoading,
   allowSchedulingOverrides = false,
+  unrestrictedScheduling = false,
   referenceDate = new Date(),
   goodFitHighlights = {},
   readOnly = false,
 }: SongAvailabilityListProps) {
+  // When scheduling is unrestricted, songs already on active setlists or
+  // scheduled for the target date can still be re-added.
+  const overridesEnabled = allowSchedulingOverrides || unrestrictedScheduling;
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortDirection, setSortDirection] = useState<SortDirection>('recent-first');
@@ -79,8 +89,8 @@ export function SongAvailabilityList({
         filtered = filtered.filter(a =>
           a.isInRegularRotation &&
           !a.isNewSong &&
-          (a.status === 'available' || a.status === 'warning') &&
-          (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))
+          (unrestrictedScheduling || a.status === 'available' || a.status === 'warning') &&
+          (overridesEnabled || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
       }
@@ -92,7 +102,7 @@ export function SongAvailabilityList({
           !a.isInRegularRotation &&
           a.totalUses > 0 && 
           a.totalUses < 4 && 
-          (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id))
+          (overridesEnabled || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
       }
@@ -102,7 +112,7 @@ export function SongAvailabilityList({
         filtered = filtered.filter(a => {
           if (!a.lastUsedDate) return false; // Never played = not a deep cut
           const weeksSince = getWeeksSinceScheduled(a.lastUsedDate);
-          return (weeksSince ?? -1) >= 52 && (allowSchedulingOverrides || !publishedSetlistSongIds.has(a.song.id));
+          return (weeksSince ?? -1) >= 52 && (overridesEnabled || !publishedSetlistSongIds.has(a.song.id));
         });
         // Sort by total plays (most to least) for deep cuts
         return [...filtered].sort((a, b) => b.totalUses - a.totalUses);
@@ -127,7 +137,7 @@ export function SongAvailabilityList({
         return bWeeks - aWeeks;
       }
     });
-  }, [availability, search, filter, sortDirection, publishedSetlistSongIds, allowSchedulingOverrides, getWeeksSinceScheduled]);
+  }, [availability, search, filter, sortDirection, publishedSetlistSongIds, overridesEnabled, unrestrictedScheduling, getWeeksSinceScheduled]);
 
   // Helper to calculate weeks since last played and get theme-aligned colors
   const getWeeksInfo = (lastUsedDate: string | null, isNewSong: boolean) => {
@@ -230,8 +240,8 @@ export function SongAvailabilityList({
               const hasGoodFitMatch = goodFitNames.length > 0;
               const isDisabled =
                 isAdded ||
-                item.status === 'upcoming' ||
-                (isScheduledOnActiveSet && !allowSchedulingOverrides);
+                (item.status === 'upcoming' && !overridesEnabled) ||
+                (isScheduledOnActiveSet && !overridesEnabled);
               const weeksInfo = getWeeksInfo(item.lastUsedDate, item.isNewSong);
 
               return (

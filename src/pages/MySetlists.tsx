@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
@@ -48,6 +48,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
+const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
 const TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME = "Empty";
 const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
@@ -766,6 +767,16 @@ function SetlistTeamRoster({
   const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
+  const isWeekendSetlist = normalizeWeekendWorshipMinistryType(ministryType) === "weekend";
+  const weekendPairDate = useMemo(() => {
+    if (!isWeekendSetlist) return null;
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) return null;
+
+    const pair = new Date(date);
+    pair.setDate(day === 6 ? date.getDate() + 1 : date.getDate() - 1);
+    return format(pair, "yyyy-MM-dd");
+  }, [date, isWeekendSetlist]);
 
   const { data: customAssignments = [], isLoading: loadingCustomAssignments } = useQuery({
     queryKey: ["my-setlists-custom-service-roster", customServiceId, planDate],
@@ -791,8 +802,25 @@ function SetlistTeamRoster({
     enabled: !!customServiceId && !!planDate,
   });
 
-  const { data: teamEntry, isLoading: loadingTeam } = useQuery({
-    queryKey: ["my-setlists-team-entry", planDate, campusId, ministryType, resourceAppKey],
+  const { data: activeRotationPeriodName } = useQuery({
+    queryKey: ["my-setlists-active-rotation-period", campusId, resourceAppKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rotation_periods")
+        .select("name")
+        .eq("campus_id", campusId)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data?.name ?? null;
+    },
+    enabled: !!campusId && !customServiceId,
+  });
+
+  const { data: teamEntries = [], isLoading: loadingTeam } = useQuery({
+    queryKey: ["my-setlists-team-entries", planDate, campusId, ministryType, activeRotationPeriodName, resourceAppKey, "v3"],
     queryFn: async () => {
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const datesToCheck = [planDate];
@@ -801,18 +829,18 @@ function SetlistTeamRoster({
       if (isWeekendDate) {
         const pair = new Date(date);
         pair.setDate(date.getDay() === 6 ? date.getDate() + 1 : date.getDate() - 1);
-        datesToCheck.push(pair.toISOString().split("T")[0]);
+        datesToCheck.push(format(pair, "yyyy-MM-dd"));
       }
 
       let query = supabase
         .from("team_schedule")
-        .select("team_id, campus_id, ministry_type, schedule_date")
+        .select("team_id, campus_id, ministry_type, schedule_date, rotation_period, created_at")
         .eq("resource_app_key", resourceAppKey)
         .in("schedule_date", datesToCheck)
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
 
       if (ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "sunday_am") {
-        query = query.in("ministry_type", weekendAliases);
+        query = query.in("ministry_type", [...weekendAliases, ...WEEKEND_SUPPORT_MINISTRY_TYPES]);
       } else {
         query = query.eq("ministry_type", ministryType);
       }
@@ -820,20 +848,85 @@ function SetlistTeamRoster({
       const { data, error } = await query;
       if (error) throw error;
 
-      if (!data || data.length === 0) return null;
+      if (!data || data.length === 0) return [];
 
-      const sorted = [...data].sort((a, b) => {
+      const rows = activeRotationPeriodName
+        ? data.filter((entry) => {
+            const dateEntries = data.filter((candidate) => candidate.schedule_date === entry.schedule_date);
+            const activeDateEntries = dateEntries.filter(
+              (candidate) => candidate.rotation_period === activeRotationPeriodName
+            );
+            return activeDateEntries.length === 0 || entry.rotation_period === activeRotationPeriodName;
+          })
+        : data;
+
+      return [...rows].sort((a, b) => {
         const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
         if (campusPriority !== 0) return campusPriority;
         if (a.schedule_date === planDate && b.schedule_date !== planDate) return -1;
         if (b.schedule_date === planDate && a.schedule_date !== planDate) return 1;
-        return 0;
+        const aCreatedAt = new Date(a.created_at || 0).getTime();
+        const bCreatedAt = new Date(b.created_at || 0).getTime();
+        return bCreatedAt - aCreatedAt;
       });
-
-      return sorted[0];
     },
-    enabled: !!planDate && !!campusId && !customServiceId,
+    enabled: !!planDate && !!campusId && !customServiceId && activeRotationPeriodName !== undefined,
   });
+
+  const teamEntry = useMemo(() => {
+    if (!teamEntries || teamEntries.length === 0) return null;
+    if (!isWeekendSetlist) return teamEntries[0];
+
+    const weekendAliases = new Set(["weekend", "sunday_am", "weekend_team"]);
+    return teamEntries.find((entry) => weekendAliases.has(entry.ministry_type || "")) || teamEntries[0];
+  }, [isWeekendSetlist, teamEntries]);
+
+  const productionTeamEntry = useMemo(
+    () => (isWeekendSetlist ? teamEntries.find((entry) => entry.ministry_type === "production") : null),
+    [isWeekendSetlist, teamEntries]
+  );
+
+  const videoTeamEntry = useMemo(
+    () => (isWeekendSetlist ? teamEntries.find((entry) => entry.ministry_type === "video") : null),
+    [isWeekendSetlist, teamEntries]
+  );
+
+  const productionPairTeamEntry = useMemo(
+    () =>
+      isWeekendSetlist && weekendPairDate
+        ? teamEntries.find((entry) => entry.ministry_type === "production" && entry.schedule_date === weekendPairDate)
+        : null,
+    [isWeekendSetlist, teamEntries, weekendPairDate]
+  );
+
+  const videoPairTeamEntry = useMemo(
+    () =>
+      isWeekendSetlist && weekendPairDate
+        ? teamEntries.find((entry) => entry.ministry_type === "video" && entry.schedule_date === weekendPairDate)
+        : null,
+    [isWeekendSetlist, teamEntries, weekendPairDate]
+  );
+
+  const teamRosterDate = useMemo(
+    () => parseLocalDate(teamEntry?.schedule_date || planDate),
+    [planDate, teamEntry?.schedule_date]
+  );
+  const productionRosterDate = useMemo(
+    () => parseLocalDate(productionTeamEntry?.schedule_date || planDate),
+    [planDate, productionTeamEntry?.schedule_date]
+  );
+  const videoRosterDate = useMemo(
+    () => parseLocalDate(videoTeamEntry?.schedule_date || planDate),
+    [planDate, videoTeamEntry?.schedule_date]
+  );
+  const productionPairRosterDate = useMemo(
+    () => parseLocalDate(productionPairTeamEntry?.schedule_date || planDate),
+    [planDate, productionPairTeamEntry?.schedule_date]
+  );
+  const videoPairRosterDate = useMemo(
+    () => parseLocalDate(videoPairTeamEntry?.schedule_date || planDate),
+    [planDate, videoPairTeamEntry?.schedule_date]
+  );
 
   const { data: auditionCandidates = [], isLoading: loadingAuditions } = useQuery({
     queryKey: ["my-setlists-audition-roster", planDate, campusId, ministryType],
@@ -878,10 +971,49 @@ function SetlistTeamRoster({
   );
 
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
-    date,
+    teamRosterDate,
     teamEntry?.team_id,
     normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType,
-    campusId
+    campusId,
+    teamEntry?.rotation_period || null
+  );
+
+  const { data: productionRoster = [], isLoading: loadingProductionRoster } = useTeamRosterForDate(
+    productionRosterDate,
+    productionTeamEntry?.team_id,
+    "production",
+    campusId,
+    productionTeamEntry?.rotation_period || null
+  );
+
+  const { data: videoRoster = [], isLoading: loadingVideoRoster } = useTeamRosterForDate(
+    videoRosterDate,
+    videoTeamEntry?.team_id,
+    "video",
+    campusId,
+    videoTeamEntry?.rotation_period || null
+  );
+
+  const { data: productionPairRoster = [], isLoading: loadingProductionPairRoster } = useTeamRosterForDate(
+    productionPairRosterDate,
+    productionPairTeamEntry &&
+      productionPairTeamEntry.schedule_date !== productionTeamEntry?.schedule_date
+      ? productionPairTeamEntry.team_id
+      : undefined,
+    "production",
+    campusId,
+    productionPairTeamEntry?.rotation_period || null
+  );
+
+  const { data: videoPairRoster = [], isLoading: loadingVideoPairRoster } = useTeamRosterForDate(
+    videoPairRosterDate,
+    videoPairTeamEntry &&
+      videoPairTeamEntry.schedule_date !== videoTeamEntry?.schedule_date
+      ? videoPairTeamEntry.team_id
+      : undefined,
+    "video",
+    campusId,
+    videoPairTeamEntry?.rotation_period || null
   );
 
   const slotCategoryBySlot = useMemo(
@@ -911,7 +1043,7 @@ function SetlistTeamRoster({
     []
   );
 
-  const getPositionMinistryTypes = (
+  const getPositionMinistryTypes = useCallback((
     positions: Iterable<string>,
     positionSlots: Iterable<string>,
   ) => {
@@ -939,7 +1071,7 @@ function SetlistTeamRoster({
     });
 
     return Array.from(ministryTypes);
-  };
+  }, [slotCategoryBySlot]);
 
   const rosterRows = useMemo(() => {
     if (customServiceId) {
@@ -1067,7 +1199,20 @@ function SetlistTeamRoster({
       }
       >();
 
-    const allMembers = roster;
+    const allMembers = [
+      ...roster.filter((member) => {
+        const hasProductionRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Production") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Production" && (slot.position === position || slot.slot === position)));
+        const hasVideoRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Video") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Video" && (slot.position === position || slot.slot === position)));
+
+        if (productionRoster.length > 0 && hasProductionRole) return false;
+        if (videoRoster.length > 0 && hasVideoRole) return false;
+        return true;
+      }),
+      ...productionRoster,
+      ...productionPairRoster,
+      ...videoRoster,
+      ...videoPairRoster,
+    ];
     for (const member of allMembers) {
       const key = member.memberName.trim().toLowerCase();
       const existing = byPerson.get(key);
@@ -1120,7 +1265,7 @@ function SetlistTeamRoster({
         ministryTypes: Array.from(member.ministryTypes),
       };
     });
-  }, [customServiceId, ministryType, customAssignments, auditionCandidates, roster, slotCategoryBySlot, bandFallbackPositions, speakerPositions]);
+  }, [customServiceId, ministryType, customAssignments, auditionCandidates, roster, productionRoster, productionPairRoster, videoRoster, videoPairRoster, slotCategoryBySlot, bandFallbackPositions, speakerPositions, getPositionMinistryTypes, safePhoneMap]);
 
   const vocalistRows = useMemo(
     () => rosterRows.filter((member) => member.hasVocalistRole),
@@ -1147,6 +1292,82 @@ function SetlistTeamRoster({
     [rosterRows]
   );
 
+  const getVideoRowsForRoster = useCallback((members: typeof videoRoster) => {
+    return members
+      .map((member) => {
+        const positions = new Set(member.positions);
+        const positionSlots = new Set(member.positionSlots);
+        const inferredMinistryTypes = getPositionMinistryTypes(member.positions, member.positionSlots);
+        const ministryTypes = inferredMinistryTypes.length > 0 ? inferredMinistryTypes : member.ministryTypes;
+        const hasVideoRole =
+          member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Video") ||
+          member.positions.some((position) =>
+            POSITION_SLOTS.some(
+              (slot) => slot.category === "Video" && (slot.position === position || slot.slot === position)
+            )
+          );
+        const roleLabels = Array.from(positions)
+          .map((position) => POSITION_LABELS_SHORT[position] || POSITION_LABELS[position] || position)
+          .filter((label, idx, arr) => arr.indexOf(label) === idx);
+
+        return {
+          id: member.id,
+          memberName: member.memberName,
+          avatarUrl: member.avatarUrl,
+          phone: member.phone,
+          isSwapped: member.isSwapped,
+          positions,
+          positionSlots,
+          ministryTypes,
+          hasVideoRole,
+          roleLabels,
+        };
+      })
+      .filter((member) => member.hasVideoRole);
+  }, [getPositionMinistryTypes, slotCategoryBySlot]);
+
+  const primaryVideoRows = useMemo(
+    () => getVideoRowsForRoster(videoRoster),
+    [getVideoRowsForRoster, videoRoster]
+  );
+
+  const pairVideoRows = useMemo(
+    () => getVideoRowsForRoster(videoPairRoster),
+    [getVideoRowsForRoster, videoPairRoster]
+  );
+
+  const videoDaySections = useMemo(() => {
+    if (!isWeekendSetlist) {
+      return videoRows.length > 0 ? [{ key: "video", label: null as string | null, rows: videoRows }] : [];
+    }
+
+    const sections = [
+      {
+        key: videoTeamEntry?.schedule_date || planDate,
+        date: videoTeamEntry?.schedule_date || planDate,
+        rows: primaryVideoRows,
+      },
+      {
+        key: videoPairTeamEntry?.schedule_date || "pair",
+        date: videoPairTeamEntry?.schedule_date,
+        rows: pairVideoRows,
+      },
+    ]
+      .filter((section) => section.rows.length > 0)
+      .sort((a, b) => {
+        const aDay = a.date ? getDay(parseLocalDate(a.date)) : 99;
+        const bDay = b.date ? getDay(parseLocalDate(b.date)) : 99;
+        const dayOrder = (day: number) => (day === 6 ? 0 : day === 0 ? 1 : 2);
+        return dayOrder(aDay) - dayOrder(bDay);
+      });
+
+    return sections.map((section) => ({
+      key: section.key,
+      label: section.date ? format(parseLocalDate(section.date), "EEEE") : "Video",
+      rows: section.rows,
+    }));
+  }, [isWeekendSetlist, pairVideoRows, planDate, primaryVideoRows, videoPairTeamEntry?.schedule_date, videoRows, videoTeamEntry?.schedule_date]);
+
   const serviceLabel = useMemo(() => {
     if (customServiceId) return "this custom service";
     if (ministryType === "audition") return "this audition";
@@ -1161,7 +1382,7 @@ function SetlistTeamRoster({
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (!customServiceId && ministryType !== "audition" && (loadingTeam || loadingRoster)) {
+  if (!customServiceId && ministryType !== "audition" && (loadingTeam || loadingRoster || loadingProductionRoster || loadingProductionPairRoster || loadingVideoRoster || loadingVideoPairRoster)) {
     return <Skeleton className="h-20 w-full" />;
   }
 
@@ -1329,33 +1550,44 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {videoRows.length > 0 && (
+      {videoDaySections.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Video className="h-4 w-4" />
             <p className="text-sm font-medium">Video</p>
           </div>
-          <div className="space-y-1">
-            {videoRows.map((member) => (
-              <div
-                key={`video-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={member.avatarUrl || undefined} />
-                    <AvatarFallback className="text-[11px]">
-                      {getInitials(getRosterMemberDisplayName(member.memberName))}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
-                  {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+          <div className="space-y-3">
+            {videoDaySections.map((section) => (
+              <div key={`video-section-${section.key}`} className="space-y-1.5">
+                {section.label && (
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {section.label}
+                  </p>
+                )}
+                <div className="space-y-1">
+                  {section.rows.map((member) => (
+                    <div
+                      key={`video-${section.key}-${member.id}-${member.memberName}`}
+                      className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
+                        member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={member.avatarUrl || undefined} />
+                          <AvatarFallback className="text-[11px]">
+                            {getInitials(getRosterMemberDisplayName(member.memberName))}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
+                        {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+                      </div>
+                      <span className="text-xs text-muted-foreground text-right">
+                        {member.roleLabels.join(", ")}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <span className="text-xs text-muted-foreground text-right">
-                  {member.roleLabels.join(", ")}
-                </span>
               </div>
             ))}
           </div>

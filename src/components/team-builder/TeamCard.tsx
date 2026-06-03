@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,8 @@ import {
   TeamMemberAssignment,
   AvailableMember,
 } from "@/hooks/useTeamBuilder";
-import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
+import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
+import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 
 const TEAM_ICONS: Record<string, React.ReactNode> = {
@@ -71,7 +72,7 @@ export function TeamCard({
   titleOverride,
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
-  const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
+  const allowedCategories = getTeamBuilderSlotCategories(ministryFilter);
   
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
@@ -79,6 +80,7 @@ export function TeamCard({
   // Only show Production/Video when they are in the allowed categories for the selected ministry filter
   const showProduction = allowedCategories.includes("Production");
   const showVideo = allowedCategories.includes("Video");
+  const showCreative = allowedCategories.includes("Creative");
   const showStudents = allowedCategories.includes("Students");
 
   const templateSlots = getTeamTemplateSlotConfigs(team.template_config, {
@@ -90,6 +92,7 @@ export function TeamCard({
   const bandSlots = useMemo(() => templateSlots.bandSlots, [templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
+  const creativeSlots = POSITION_SLOTS.filter(s => s.category === "Creative");
   const studentSlots = POSITION_SLOTS.filter(s => s.category === "Students");
 
   // Filter members by ministry type when a specific ministry is selected
@@ -189,12 +192,24 @@ export function TeamCard({
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
+    ...(showCreative ? creativeSlots : []),
     ...(showStudents ? studentSlots : []),
   ];
   const totalSlots = visibleSlots.length;
   
-  // Count filled slots only from visible categories
-  const filledCount = visibleSlots.filter(slot => getMemberForSlot(slot.slot)).length;
+  const isSlotFilled = (slot: string) => {
+    const member = getMemberForSlot(slot);
+    if (member && !isBlankTeamBuilderAssignment(member)) {
+      return true;
+    }
+
+    return Object.values(slotDateOverrides[slot] || {}).some(
+      (override) => !isBlankTeamBuilderAssignment(override),
+    );
+  };
+
+  // Count filled slots only from visible categories, including date-specific splits.
+  const filledCount = visibleSlots.filter(slot => isSlotFilled(slot.slot)).length;
   const teamConflictCount = Object.values(slotConflictDates).filter((dates) => dates.length > 0).length;
 
   return (
@@ -330,6 +345,16 @@ export function TeamCard({
             slotReadOnly: broadcastReadOnly,
             allowMinistryEdit: canEditBroadcast,
             emptyMessage: broadcastReadOnly && !isLocked ? "(View only)" : undefined,
+          })
+        )}
+
+        {showCreative && (
+          renderSlotGroup({
+            title: "Creative",
+            icon: <Palette className="h-4 w-4 text-muted-foreground" />,
+            slots: creativeSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
           })
         )}
       </CardContent>

@@ -273,8 +273,8 @@ export function AssignMemberDialog({
   };
 
   const ministryLabel = effectiveMinistryFilter === 'weekend' ? 'Weekend Worship'
-    : effectiveMinistryFilter === 'eon' ? 'EON'
-    : effectiveMinistryFilter === 'encounter' ? 'Encounter'
+    : effectiveMinistryFilter === 'eon' ? 'MS Worship'
+    : effectiveMinistryFilter === 'encounter' ? 'HS Worship'
     : effectiveMinistryFilter === 'students' ? 'Students'
     : effectiveMinistryFilter || 'All';
   const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;

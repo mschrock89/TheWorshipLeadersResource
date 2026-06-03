@@ -13,11 +13,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Send, Loader2, Users, AlertTriangle, Clock, Undo2 } from "lucide-react";
-import { useIsApprover, useSubmitForApproval, useWithdrawSetlistSubmission } from "@/hooks/useSetlistApprovals";
+import { useCanPublishSetlistDirectly, useSubmitForApproval, useWithdrawSetlistSubmission } from "@/hooks/useSetlistApprovals";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
+import { isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
 import { format } from "date-fns";
 
 interface PublishSetlistDialogProps {
@@ -45,14 +46,16 @@ export function PublishSetlistDialog({
   const [isPendingApproval, setIsPendingApproval] = useState(false);
   const submitForApproval = useSubmitForApproval();
   const withdrawSubmission = useWithdrawSetlistSubmission();
-  const { data: isApprover = false } = useIsApprover();
+  const { data: canPublishDirectly = false } = useCanPublishSetlistDirectly(ministryType);
+  const rosterMinistryType = normalizeKidsCampSetMinistryType(ministryType) || ministryType;
+  const useScheduledRosterForNotifications = !customServiceId || isKidsCampSetMinistryType(ministryType);
 
   // Get scheduled team for this date (campus-specific)
-  const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId, ministryType);
+  const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId, rosterMinistryType);
   const { data: roster } = useTeamRosterForDate(
     targetDate,
     scheduledTeam?.teamId,
-    ministryType,
+    rosterMinistryType,
     campusId
   );
   const planDate = format(targetDate, "yyyy-MM-dd");
@@ -89,7 +92,8 @@ export function PublishSetlistDialog({
     }
   }, [draftSetId]);
 
-  const teamMemberCount = customServiceId ? customAssignedCount : (roster?.length || 0);
+  const teamMemberCount = useScheduledRosterForNotifications ? (roster?.length || 0) : customAssignedCount;
+  const recipientLabel = useScheduledRosterForNotifications ? "scheduled team members" : "assigned custom service members";
 
   // Check for existing in-progress draft sets when dialog opens
   useEffect(() => {
@@ -122,8 +126,8 @@ export function PublishSetlistDialog({
   const handleSubmit = async () => {
     if (!draftSetId) return;
     
-    await submitForApproval.mutateAsync(draftSetId);
-    setIsPendingApproval(!isApprover);
+    const result = await submitForApproval.mutateAsync(draftSetId);
+    setIsPendingApproval(!result?.autoPublished);
     setOpen(false);
     onPublished?.();
   };
@@ -145,7 +149,7 @@ export function PublishSetlistDialog({
         className="gap-2"
       >
         <Send className="h-4 w-4" />
-        {isApprover ? "Publish Setlist" : "Submit for Approval"}
+        {canPublishDirectly ? "Publish Setlist" : "Submit for Approval"}
       </Button>
     );
   }
@@ -195,14 +199,14 @@ export function PublishSetlistDialog({
           className="gap-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-lg"
         >
           <Send className="h-4 w-4" />
-          {isApprover ? "Publish Setlist" : "Submit for Approval"}
+          {canPublishDirectly ? "Publish Setlist" : "Submit for Approval"}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-amber-600" />
-            {isApprover ? "Publish Setlist" : "Submit for Approval"}
+            {canPublishDirectly ? "Publish Setlist" : "Submit for Approval"}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
@@ -221,16 +225,16 @@ export function PublishSetlistDialog({
               )}
 
               <p>
-                {isApprover ? (
+                {canPublishDirectly ? (
                   <>
                     This will publish the setlist immediately and send push notifications to all{" "}
-                    {customServiceId ? "assigned custom service members" : "scheduled team members"}.
+                    {recipientLabel}.
                   </>
                 ) : (
                   <>
                     This will submit the setlist to <span className="font-semibold">Kyle Elkins</span> for approval.
                     Once approved, push notifications will be sent to all{" "}
-                    {customServiceId ? "assigned custom service members" : "scheduled team members"}.
+                    {recipientLabel}.
                   </>
                 )}
               </p>
@@ -239,7 +243,7 @@ export function PublishSetlistDialog({
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Users className="h-4 w-4" />
                   <span>
-                    {teamMemberCount} team members will be notified {isApprover ? "right away" : "after approval"}
+                    {teamMemberCount} team members will be notified {canPublishDirectly ? "right away" : "after approval"}
                   </span>
                 </div>
                 
@@ -255,7 +259,7 @@ export function PublishSetlistDialog({
               </div>
 
               <p className="text-sm text-muted-foreground">
-                {isApprover
+                {canPublishDirectly
                   ? "Publishing will make the setlist visible to volunteers immediately."
                   : "You'll be notified when the setlist is approved or if revisions are needed."}
               </p>
@@ -272,17 +276,17 @@ export function PublishSetlistDialog({
             {submitForApproval.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isApprover ? "Publishing..." : "Submitting..."}
+                {canPublishDirectly ? "Publishing..." : "Submitting..."}
               </>
             ) : existingPublishedCount > 0 ? (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                {isApprover ? "Replace & Publish" : "Replace & Submit"}
+                {canPublishDirectly ? "Replace & Publish" : "Replace & Submit"}
               </>
             ) : (
               <>
                 <Send className="mr-2 h-4 w-4" />
-                {isApprover ? "Publish Setlist" : "Submit for Approval"}
+                {canPublishDirectly ? "Publish Setlist" : "Submit for Approval"}
               </>
             )}
           </AlertDialogAction>

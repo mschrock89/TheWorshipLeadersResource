@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { format, parseISO, getDay, eachDayOfInterval } from "date-fns";
 import { Calendar, Plus, Trash2, Info, Globe2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,7 +69,20 @@ interface DisplayScheduleEntry {
 }
 
 const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
-const ENCOUNTER_EON_MINISTRY_TYPES = ["encounter", "eon"] as const;
+const HS_MS_WORSHIP_MINISTRY_TYPES = ["encounter", "eon"] as const;
+
+function isWeekdayDate(date: Date) {
+  const dayOfWeek = getDay(date);
+  return dayOfWeek >= 1 && dayOfWeek <= 5;
+}
+
+function isWednesdayWorshipMinistry(ministryType: string) {
+  return (
+    ministryType === "encounter" ||
+    ministryType === "eon" ||
+    ministryType === ENCOUNTER_EON_COMBINED
+  );
+}
 
 function normalizeScheduleMinistryFilter(ministryFilter: string | null) {
   if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
@@ -130,33 +143,48 @@ export function TeamScheduleWidget({
     setNewMinistryType(activeScheduleMinistry);
   }, [activeScheduleMinistry]);
 
-  const preloadableDates = useMemo(() => {
-    if (!selectedCampus || !rotationPeriodStartDate || !rotationPeriodEndDate) {
+  const rotationDates = useMemo(() => {
+    if (!rotationPeriodStartDate || !rotationPeriodEndDate) {
       return [];
     }
-
-    const preloadWeekday =
-      activeScheduleMinistry === "encounter" ||
-      activeScheduleMinistry === "eon" ||
-      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
-        ? 3
-        : null;
 
     return eachDayOfInterval({
       start: parseISO(rotationPeriodStartDate),
       end: parseISO(rotationPeriodEndDate),
-    })
+    });
+  }, [rotationPeriodEndDate, rotationPeriodStartDate]);
+
+  const getSelectableDatesForMinistry = useCallback((ministryType: string) => {
+    if (!selectedCampus) {
+      return [];
+    }
+
+    return rotationDates
       .filter((date) => {
         const dayOfWeek = getDay(date);
-        if (preloadWeekday !== null) {
-          return dayOfWeek === preloadWeekday;
+
+        if (ministryType === "kids_camp") {
+          return isWeekdayDate(date);
         }
+
+        if (isWednesdayWorshipMinistry(ministryType)) {
+          return dayOfWeek === 3;
+        }
+
         if (dayOfWeek === 6) return selectedCampus.has_saturday_service;
         if (dayOfWeek === 0) return selectedCampus.has_sunday_service;
         return false;
       })
       .map((date) => format(date, "yyyy-MM-dd"));
-  }, [activeScheduleMinistry, rotationPeriodEndDate, rotationPeriodStartDate, selectedCampus]);
+  }, [rotationDates, selectedCampus]);
+
+  const preloadableDates = useMemo(() => {
+    if (activeScheduleMinistry === "kids_camp") {
+      return [];
+    }
+
+    return getSelectableDatesForMinistry(activeScheduleMinistry);
+  }, [activeScheduleMinistry, getSelectableDatesForMinistry]);
 
   // Filter out Saturday/Sunday entries for campuses that don't have service on those days
   // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
@@ -179,8 +207,8 @@ export function TeamScheduleWidget({
         .filter((entry) => {
           const entryMinistryType = entry.ministry_type || "weekend";
           if (newMinistryType === ENCOUNTER_EON_COMBINED) {
-            return ENCOUNTER_EON_MINISTRY_TYPES.includes(
-              entryMinistryType as (typeof ENCOUNTER_EON_MINISTRY_TYPES)[number],
+            return HS_MS_WORSHIP_MINISTRY_TYPES.includes(
+              entryMinistryType as (typeof HS_MS_WORSHIP_MINISTRY_TYPES)[number],
             );
           }
           return entryMinistryType === newMinistryType;
@@ -188,8 +216,8 @@ export function TeamScheduleWidget({
         .map((entry) => entry.schedule_date),
     );
 
-    return preloadableDates.filter((date) => !usedDates.has(date));
-  }, [filteredEntries, newMinistryType, preloadableDates]);
+    return getSelectableDatesForMinistry(newMinistryType).filter((date) => !usedDates.has(date));
+  }, [filteredEntries, getSelectableDatesForMinistry, newMinistryType]);
   const displayEntries = useMemo<DisplayScheduleEntry[]>(() => {
     const existingEntriesByDate = new Map(
       filteredEntries.map((entry) => [entry.schedule_date, entry]),
@@ -276,7 +304,7 @@ export function TeamScheduleWidget({
 
     const ministryTypes =
       newMinistryType === ENCOUNTER_EON_COMBINED
-        ? [...ENCOUNTER_EON_MINISTRY_TYPES]
+        ? [...HS_MS_WORSHIP_MINISTRY_TYPES]
         : [newMinistryType];
 
     Promise.all(
@@ -312,9 +340,7 @@ export function TeamScheduleWidget({
     if (!campusId || !rotationPeriodName) return;
 
     const ministryTypes =
-      activeScheduleMinistry === "encounter" ||
-      activeScheduleMinistry === "eon" ||
-      activeScheduleMinistry === ENCOUNTER_EON_COMBINED
+      isWednesdayWorshipMinistry(activeScheduleMinistry)
         ? ["encounter", "eon"]
         : [activeScheduleMinistry];
 
@@ -367,9 +393,9 @@ export function TeamScheduleWidget({
                 <SelectItem value="kids_camp">Kids Camp</SelectItem>
                 <SelectItem value="production">Production</SelectItem>
                 <SelectItem value="video">Video</SelectItem>
-                <SelectItem value="encounter">Encounter</SelectItem>
-                <SelectItem value="eon">EON</SelectItem>
-                <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
+                <SelectItem value="encounter">HS Worship</SelectItem>
+                <SelectItem value="eon">MS Worship</SelectItem>
+                <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                 <SelectItem value="student">Student</SelectItem>
               </SelectContent>
             </Select>
@@ -381,8 +407,7 @@ export function TeamScheduleWidget({
                 disabled={publishNetworkWide.isPending}
               >
                 <Globe2 className="h-4 w-4 mr-1" />
-                {activeScheduleMinistry === "encounter" || activeScheduleMinistry === "eon"
-                || activeScheduleMinistry === ENCOUNTER_EON_COMBINED
+                {isWednesdayWorshipMinistry(activeScheduleMinistry)
                   ? "Publish Combined"
                   : "Publish Network Wide"}
               </Button>
@@ -463,9 +488,9 @@ export function TeamScheduleWidget({
                         <SelectItem value="kids_camp">Kids Camp</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
                         <SelectItem value="video">Video</SelectItem>
-                        <SelectItem value="encounter">Encounter</SelectItem>
-                        <SelectItem value="eon">EON</SelectItem>
-                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (Encounter + EON)</SelectItem>
+                        <SelectItem value="encounter">HS Worship</SelectItem>
+                        <SelectItem value="eon">MS Worship</SelectItem>
+                        <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
                     </Select>

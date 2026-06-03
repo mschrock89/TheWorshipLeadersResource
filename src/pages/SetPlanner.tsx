@@ -31,15 +31,32 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday, subMonths, addMonths } from "date-fns";
 import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
+
+const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) =>
+  option.value === "kids_camp"
+    ? [
+        { value: "kids_camp_morning", label: "Kids Camp Morning" },
+        { value: "kids_camp_afternoon", label: "Kids Camp Afternoon" },
+      ]
+    : [option],
+);
+
+function customServiceMatchesSelectedMinistry(serviceMinistryType: string, selectedMinistry: string) {
+  if (isKidsCampSetMinistryType(selectedMinistry)) {
+    return serviceMinistryType === "kids_camp" || serviceMinistryType === selectedMinistry;
+  }
+
+  return serviceMinistryType === selectedMinistry;
+}
 
 const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   value: Database["public"]["Enums"]["team_position"];
@@ -65,6 +82,8 @@ const CUSTOM_SERVICE_ROLE_OPTIONS: Array<{
   { value: "director", label: "Director" },
   { value: "graphics", label: "Graphics" },
   { value: "switcher", label: "Switcher" },
+  { value: "photo_team", label: "Photography Team" },
+  { value: "art_team", label: "Art Team" },
 ];
 
 const CUSTOM_SERVICE_VOCAL_ROLES = new Set<Database["public"]["Enums"]["team_position"]>([
@@ -107,6 +126,7 @@ export default function SetPlanner() {
   const { user, isAdmin } = useAuth();
   const { data: userRole, isLoading: roleLoading } = useUserRole(user?.id);
   const { data: allUserRoles = [] } = useUserRoles(user?.id);
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: campuses } = useCampuses();
   
@@ -118,6 +138,7 @@ export default function SetPlanner() {
   const [selectedMinistry, setSelectedMinistry] = useState<string>('weekend');
   const [lastSavedSetId, setLastSavedSetId] = useState<string | null>(null);
   const isPrayerNightMinistry = selectedMinistry === "prayer_night";
+  const baseSelectedMinistry = normalizeKidsCampSetMinistryType(selectedMinistry) || selectedMinistry;
   const [teachingWeek, setTeachingWeek] = useState<TeachingWeekRow | null>(null);
   const [isTeachingLoading, setIsTeachingLoading] = useState(false);
   const [isSuggestingSongs, setIsSuggestingSongs] = useState(false);
@@ -129,6 +150,9 @@ export default function SetPlanner() {
   // Determine ministry scheduling behavior
   const isMidweekMinistry = selectedMinistry === 'encounter' || selectedMinistry === 'eon';
   const isWeekendStyleMinistry = selectedMinistry === 'weekend' || selectedMinistry === 'eon_weekend';
+  // Kids Camp songs can be repeated as often as needed, so lift the usual
+  // rotation/recency restrictions when scheduling for any Kids Camp set.
+  const isKidsCampMinistry = isKidsCampSetMinistryType(selectedMinistry);
   
   // Get appropriate default date based on ministry type
   const defaultDate = useMemo(() => {
@@ -286,8 +310,18 @@ export default function SetPlanner() {
     [buildingSongs]
   );
 
-  // Track the plan date to detect changes and force reload
-  const [loadedForPlanDate, setLoadedForPlanDate] = useState<string | null>(null);
+  const selectedSetScopeKey = useMemo(
+    () => [
+      effectiveCampusId || "none",
+      selectedMinistry,
+      planDateStr,
+      selectedCustomServiceIdForQuery || "none",
+    ].join("|"),
+    [effectiveCampusId, selectedMinistry, planDateStr, selectedCustomServiceIdForQuery],
+  );
+
+  // Track the full set scope to prevent Morning/Afternoon variants from sharing local songs.
+  const [loadedForSetScope, setLoadedForSetScope] = useState<string | null>(null);
 
   // Load existing set when one is found for the selected date/campus/ministry
   useEffect(() => {
@@ -298,19 +332,18 @@ export default function SetPlanner() {
     
     // If no existing set, clear building songs (fresh start for this date)
     if (!existingSet) {
-      // Only clear if we had a previously saved set (switching from a date with set to one without)
-      if (lastSavedSetId) {
+      if (loadedForSetScope !== selectedSetScopeKey) {
         setBuildingSongs([]);
         setNotes('');
         setLastSavedSetId(null);
         setIsEditingPublishedSet(false);
       }
-      setLoadedForPlanDate(planDateStr);
+      setLoadedForSetScope(selectedSetScopeKey);
       return;
     }
     
-    // Force reload if the plan date changed OR if we haven't loaded this set yet
-    const needsReload = loadedForPlanDate !== planDateStr || 
+    // Force reload if the selected set scope changed OR if we haven't loaded this set yet
+    const needsReload = loadedForSetScope !== selectedSetScopeKey ||
                         lastSavedSetId !== existingSet.id || 
                         buildingSongs.length === 0;
     
@@ -369,8 +402,8 @@ export default function SetPlanner() {
     setNotes(existingSet.notes || '');
     setLastSavedSetId(existingSet.id);
     setIsEditingPublishedSet(false);
-    setLoadedForPlanDate(planDateStr);
-  }, [existingSet, existingSetLoading, availability, planDateStr]);
+    setLoadedForSetScope(selectedSetScopeKey);
+  }, [existingSet, existingSetLoading, availability, selectedSetScopeKey]);
 
   // Redirect volunteers away from this page
   const isVolunteer = userRole === "volunteer" || userRole === "member";
@@ -392,13 +425,13 @@ export default function SetPlanner() {
   // When campus changes, reset the loaded date to force reload
   useEffect(() => {
     if (selectedCampusId) {
-      setLoadedForPlanDate(null);
+      setLoadedForSetScope(null);
     }
   }, [selectedCampusId]);
 
   // When ministry changes, reset the loaded date to force reload  
   useEffect(() => {
-    setLoadedForPlanDate(null);
+    setLoadedForSetScope(null);
   }, [selectedMinistry]);
 
   useEffect(() => {
@@ -450,12 +483,12 @@ export default function SetPlanner() {
   }, []);
 
   // For weekend campuses, ensure we always store Saturday as the reference
-  // For midweek ministries (Encounter/EON), only allow Wednesdays
+  // For midweek ministries (HS/MS Worship), only allow Wednesdays
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
     
     if (isMidweekMinistry) {
-      // For Encounter/EON, snap to nearest Wednesday
+      // For HS/MS Worship, snap to nearest Wednesday
       if (isWednesday(date)) {
         setSelectedDate(date);
       } else {
@@ -492,7 +525,7 @@ export default function SetPlanner() {
   // Disable dates based on ministry type (allow today and past dates for viewing)
   const isDateDisabled = (date: Date) => {
     if (isMidweekMinistry) {
-      // Only allow Wednesdays for Encounter/EON
+      // Only allow Wednesdays for HS/MS Worship
       return !isWednesday(date);
     }
     
@@ -540,14 +573,24 @@ export default function SetPlanner() {
   };
 
   const handlePublished = () => {
-    // Keep the set loaded for continued editing - just update the status indicator
-    // The existing set query will refresh and show the published status
+    const existingSetQueryKey = [
+      "existing-set",
+      effectiveCampusId,
+      selectedMinistry,
+      planDateStr,
+      selectedCustomServiceIdForQuery || null,
+    ];
+
+    queryClient.setQueryData(existingSetQueryKey, (current: any) =>
+      current ? { ...current, status: "published", published_at: current.published_at || new Date().toISOString() } : current,
+    );
+    queryClient.invalidateQueries({ queryKey: existingSetQueryKey });
   };
 
   const availableCustomServices = useMemo(
     () =>
       customServiceOccurrences.filter((s) => {
-        if (s.ministry_type !== selectedMinistry) return false;
+        if (!customServiceMatchesSelectedMinistry(s.ministry_type, selectedMinistry)) return false;
         return s.occurrence_date >= planDateStr;
       }),
     [customServiceOccurrences, selectedMinistry, planDateStr],
@@ -564,7 +607,7 @@ export default function SetPlanner() {
   const servicesOnSelectedDate = useMemo(
     () =>
       customServiceOccurrences.filter(
-        (s) => s.ministry_type === selectedMinistry && s.occurrence_date === planDateStr,
+        (s) => customServiceMatchesSelectedMinistry(s.ministry_type, selectedMinistry) && s.occurrence_date === planDateStr,
       ),
     [customServiceOccurrences, selectedMinistry, planDateStr],
   );
@@ -578,7 +621,11 @@ export default function SetPlanner() {
     if (!service) return;
 
     setSelectedCustomServiceKey(serviceKey);
-    setSelectedMinistry(service.ministry_type);
+    setSelectedMinistry(
+      service.ministry_type === "kids_camp" && isKidsCampSetMinistryType(selectedMinistry)
+        ? selectedMinistry
+        : service.ministry_type,
+    );
     setSelectedDate(new Date(`${service.occurrence_date}T12:00:00`));
   };
 
@@ -594,7 +641,7 @@ export default function SetPlanner() {
 
   const { data: customServiceCampusMembers = [] } = useCustomServiceCampusMembers(
     selectedCustomService?.campus_id || effectiveCampusId || undefined,
-    selectedMinistry,
+    baseSelectedMinistry,
   );
 
   const groupedCustomServiceAssignments = useMemo(() => {
@@ -631,7 +678,9 @@ export default function SetPlanner() {
   }, [customServiceAssignments]);
 
   const effectiveVocalists = useMemo(() => {
-    if (!selectedCustomService) return scheduledVocalists;
+    // Kids Camp sets may be linked to a custom service for service-flow/date
+    // scoping, but their roster always comes from the Team Builder schedule.
+    if (!selectedCustomService || isKidsCampMinistry) return scheduledVocalists;
 
     const byUser = new Map<string, { userId: string; name: string; avatarUrl: string | null; position: string; isSwappedIn?: boolean }>();
     for (const assignment of customServiceAssignments) {
@@ -646,7 +695,7 @@ export default function SetPlanner() {
       });
     }
     return Array.from(byUser.values());
-  }, [selectedCustomService, scheduledVocalists, customServiceAssignments]);
+  }, [selectedCustomService, isKidsCampMinistry, scheduledVocalists, customServiceAssignments]);
 
   const canOverrideScheduledSongs = isAdmin && !!selectedCustomService;
   const { data: goodFitHighlights = {} } = useWeekendRundownGoodFitHighlights(
@@ -671,7 +720,7 @@ export default function SetPlanner() {
           .from("teaching_weeks")
           .select("*")
           .eq("campus_id", effectiveCampusId)
-          .eq("ministry_type", selectedMinistry)
+          .eq("ministry_type", baseSelectedMinistry)
           .eq("weekend_date", teachingDateStr)
           .order("updated_at", { ascending: false })
           .limit(1)
@@ -686,7 +735,7 @@ export default function SetPlanner() {
             .from("teaching_week_announcements")
             .select("psa_highlight, announcer_name")
             .eq("campus_id", effectiveCampusId)
-            .eq("ministry_type", selectedMinistry)
+            .eq("ministry_type", baseSelectedMinistry)
             .eq("weekend_date", teachingDateStr)
             .maybeSingle();
           week.psa_highlight = announcement?.psa_highlight ?? null;
@@ -712,7 +761,7 @@ export default function SetPlanner() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveCampusId, selectedMinistry, teachingDateStr]);
+  }, [effectiveCampusId, baseSelectedMinistry, teachingDateStr]);
 
   const handleSuggestSongs = async () => {
     if (!teachingWeek) return;
@@ -904,7 +953,7 @@ export default function SetPlanner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SET_PLANNER_MINISTRY_OPTIONS.map(opt => (
+                    {SET_BUILDER_MINISTRY_OPTIONS.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>
@@ -1144,7 +1193,8 @@ export default function SetPlanner() {
         )}
 
         {/* Custom Service Team Assignments */}
-        {selectedCustomService && !isPrayerNightMinistry && (
+        {/* Kids Camp pulls its roster from Team Builder, so no manual assignment here. */}
+        {selectedCustomService && !isPrayerNightMinistry && !isKidsCampMinistry && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1477,6 +1527,7 @@ export default function SetPlanner() {
                 publishedSetlistSongIds={publishedSetlistSongIds}
                 isLoading={isLoading}
                 allowSchedulingOverrides={canOverrideScheduledSongs}
+                unrestrictedScheduling={isKidsCampMinistry}
                 referenceDate={selectedDate}
                 goodFitHighlights={goodFitHighlights}
                 readOnly={existingSet?.status === "published" && !isEditingPublishedSet}

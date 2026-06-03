@@ -4,14 +4,23 @@ import { useAuth } from "./useAuth";
 import { isStudentChatMinistryType } from "@/lib/chat";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
+const CREATIVE_MINISTRY_ALIASES = ["creative", "photo_team"] as const;
 
 function getNormalizedMinistryType(ministryType: string) {
+  if (CREATIVE_MINISTRY_ALIASES.includes(ministryType as typeof CREATIVE_MINISTRY_ALIASES[number])) {
+    return "creative";
+  }
+
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? "weekend_team"
     : ministryType;
 }
 
 function getEquivalentMinistryTypes(ministryType: string) {
+  if (CREATIVE_MINISTRY_ALIASES.includes(ministryType as typeof CREATIVE_MINISTRY_ALIASES[number])) {
+    return [...CREATIVE_MINISTRY_ALIASES];
+  }
+
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? [...WEEKEND_MINISTRY_ALIASES]
     : [ministryType];

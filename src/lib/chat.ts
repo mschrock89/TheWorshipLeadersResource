@@ -4,9 +4,9 @@ import { isStudentResourceAppKey } from "@/lib/resourceApp";
 export const WORSHIP_CHAT_MINISTRY_TYPES = [
   { value: "weekend", label: "Weekend" },
   { value: "kids_camp", label: "Kids Camp" },
-  { value: "encounter", label: "Encounter" },
+  { value: "encounter", label: "HS Worship" },
   { value: "evident", label: "Evident" },
-  { value: "eon", label: "EON" },
+  { value: "eon", label: "MS Worship" },
   { value: "production", label: "Production" },
   { value: "video", label: "Video" },
 ] as const;

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { normalizeKidsCampSetMinistryType } from "@/lib/constants";
 
 interface ScheduledTeamScheduleRow {
   id: string;
@@ -33,14 +34,16 @@ function ministryMatchesScheduleEntry(
   entryMinistryType: string | null | undefined,
   requestedMinistryType: string | null | undefined,
 ) {
-  if (!requestedMinistryType) return true;
+  const normalizedRequestedMinistryType = normalizeKidsCampSetMinistryType(requestedMinistryType);
+
+  if (!normalizedRequestedMinistryType) return true;
   if (!entryMinistryType) return false;
 
-  if (WEEKEND_MINISTRY_ALIASES.has(requestedMinistryType)) {
+  if (WEEKEND_MINISTRY_ALIASES.has(normalizedRequestedMinistryType)) {
     return WEEKEND_MINISTRY_ALIASES.has(entryMinistryType);
   }
 
-  return entryMinistryType === requestedMinistryType;
+  return entryMinistryType === normalizedRequestedMinistryType;
 }
 
 export function resolveScheduledTeamEntry(

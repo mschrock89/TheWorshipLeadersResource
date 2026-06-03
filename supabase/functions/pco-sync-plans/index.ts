@@ -351,15 +351,15 @@ serve(async (req) => {
       }
       
       // Student ministry events - map based on abbreviations in parentheses
-      if (lowerName.includes('eon') || lowerName.includes('encounter') || lowerName.includes('er') || lowerName.includes('evident')) {
-        // Handle abbreviations like "Encounter (CC)" for Cannon County
+      if (lowerName.includes('ms worship') || lowerName.includes('eon') || lowerName.includes('hs worship') || lowerName.includes('encounter') || lowerName.includes('er') || lowerName.includes('evident')) {
+        // Handle abbreviations like "HS Worship (CC)" for Cannon County
         if (lowerName.includes('(cc)') || lowerName.includes(' cc)')) {
           const cannonCounty = campuses.find(c => c.name.toLowerCase().includes('cannon'));
           if (cannonCounty) return cannonCounty.id;
         }
         
         // Handle Boro abbreviation for Murfreesboro Central
-        if (lowerName.includes('(boro)') || lowerName.includes(' boro)') || lowerName.includes('eon boro')) {
+        if (lowerName.includes('(boro)') || lowerName.includes(' boro)') || lowerName.includes('eon boro') || lowerName.includes('ms worship boro')) {
           const central = campuses.find(c => c.name.toLowerCase().includes('central'));
           if (central) return central.id;
         }
@@ -540,7 +540,7 @@ serve(async (req) => {
     const allSongsMap = new Map<string, any>(); // pco_song_id -> song data
     const planSongsData: { planPcoId: string; songs: any[] }[] = [];
 
-    // Process only the requested ministries: Worship Nights, Weekend (campus services), Evident, Encounter, EON
+    // Process only the requested ministries: Worship Nights, Weekend (campus services), Evident, HS Worship, MS Worship
     const campusNameTokens = (campuses || []).map(c => c.name.toLowerCase());
 
     const isAllowedServiceType = (serviceTypeName: string) => {
@@ -555,11 +555,11 @@ serve(async (req) => {
       const isWeekend = campusNameTokens.some(token => token && lower.includes(token));
 
       const isWorshipNight = lower.includes('worship night') || lower.includes('worship nights');
-      const isEncounter = lower.includes('encounter');
-      const isEon = /\beon\b/.test(lower) || lower.includes('eon ');
+      const isHsWorship = lower.includes('hs worship') || lower.includes('encounter');
+      const isMsWorship = lower.includes('ms worship') || /\beon\b/.test(lower) || lower.includes('eon ');
       const isEvident = /\bevident\b/.test(lower) || /\ber\b/.test(lower);
 
-      return isWeekend || isWorshipNight || isEncounter || isEon || isEvident;
+      return isWeekend || isWorshipNight || isHsWorship || isMsWorship || isEvident;
     };
 
     const serviceTypesToProcess = serviceTypes.filter((st: any) => isAllowedServiceType(st.attributes?.name || ''));

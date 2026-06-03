@@ -14,7 +14,7 @@ export type TeamPosition =
   | "sound_tech" | "lighting" | "media" | "other"
   | "broadcast" | "camera_1" | "camera_2" | "camera_3" | "camera_4" | "camera_5" | "camera_6"
   | "tri_pod_camera" | "hand_held_camera"
-  | "director" | "graphics" | "producer" | "switcher"
+  | "director" | "graphics" | "producer" | "switcher" | "photo_team" | "art_team"
   | "audio_shadow" | "mon"
   | "student_cafe" | "student_hype" | "student_prayer" | "student_hospitality" | "student_small_group_leader";
 

@@ -144,6 +144,13 @@ export function TeamFilters({
               {POSITION_LABELS[pos]}
             </SelectItem>
           ))}
+
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Creative</div>
+          {POSITION_CATEGORIES.creative.map((pos) => (
+            <SelectItem key={pos} value={pos}>
+              {POSITION_LABELS[pos]}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 

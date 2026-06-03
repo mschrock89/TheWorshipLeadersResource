@@ -4,10 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen, Palette } from "lucide-react";
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import { cn } from "@/lib/utils";
-import { MINISTRY_SLOT_CATEGORIES, memberMatchesMinistryFilter } from "@/lib/constants";
+import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 import { BreakRequestDialog } from "./BreakRequestDialog";
 import { BreakRequestsList } from "./BreakRequestsList";
@@ -60,8 +60,7 @@ function CondensedTeamCard({
   canEditBroadcast?: boolean;
   titleOverride?: string;
 }) {
-  const allowedCategories =
-    MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
+  const allowedCategories = getTeamBuilderSlotCategories(ministryFilter);
 
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
@@ -70,6 +69,7 @@ function CondensedTeamCard({
   const showProduction = allowedCategories.includes("Production");
   // Only show Video when explicitly in the allowed categories (not when viewing Production)
   const showVideo = allowedCategories.includes("Video");
+  const showCreative = allowedCategories.includes("Creative");
 
   const visibleMembers = members.filter((member) =>
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
@@ -84,6 +84,7 @@ function CondensedTeamCard({
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
+  const creativeSlots = POSITION_SLOTS.filter(s => s.category === "Creative");
 
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
@@ -91,6 +92,7 @@ function CondensedTeamCard({
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
+    ...(showCreative ? creativeSlots : []),
   ];
 
   const getMemberForSlot = (slot: string) =>
@@ -159,6 +161,7 @@ function CondensedTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
+        {showCreative && renderSection("Creative", Palette, creativeSlots)}
       </CardContent>
     </Card>
   );
@@ -188,8 +191,7 @@ function FullTeamCard({
   canEditBroadcast?: boolean;
   titleOverride?: string;
 }) {
-  const allowedCategories =
-    MINISTRY_SLOT_CATEGORIES[ministryFilter] || MINISTRY_SLOT_CATEGORIES.all;
+  const allowedCategories = getTeamBuilderSlotCategories(ministryFilter);
 
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
@@ -198,6 +200,7 @@ function FullTeamCard({
   const showProduction = allowedCategories.includes("Production");
   // Only show Video when explicitly in the allowed categories (not when viewing Production)
   const showVideo = allowedCategories.includes("Video");
+  const showCreative = allowedCategories.includes("Creative");
 
   const visibleMembers = members.filter((member) =>
     memberMatchesMinistryFilter(member.ministry_types, ministryFilter)
@@ -212,6 +215,7 @@ function FullTeamCard({
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
+  const creativeSlots = POSITION_SLOTS.filter(s => s.category === "Creative");
 
   const getMemberForSlot = (slot: string) =>
     visibleMembers.find(m => m.position_slot === slot);
@@ -292,6 +296,7 @@ function FullTeamCard({
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
+        {showCreative && renderSection("Creative", Palette, creativeSlots)}
       </CardContent>
     </Card>
   );

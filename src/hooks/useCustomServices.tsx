@@ -3,6 +3,7 @@ import { addWeeks, format, isAfter, isBefore, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeKidsCampSetMinistryType } from "@/lib/constants";
 
 export interface CustomService {
   id: string;
@@ -138,6 +139,7 @@ export function useCustomServiceOccurrences({
     queryKey: ["custom-service-occurrences", campusId, ministryType, startDate, endDate],
     enabled: !!startDate && !!endDate,
     queryFn: async () => {
+      const normalizedMinistryType = normalizeKidsCampSetMinistryType(ministryType) || ministryType;
       let query = supabase
         .from("custom_services")
         .select("*")
@@ -150,16 +152,16 @@ export function useCustomServiceOccurrences({
       }
       // Prayer Night supports legacy custom services that may still be stored as weekend
       // but named "Prayer Night". Filter after normalization for that case.
-      if (ministryType && ministryType !== "prayer_night" && ministryType !== "kids_camp") {
-        query = query.eq("ministry_type", ministryType);
+      if (normalizedMinistryType && normalizedMinistryType !== "prayer_night" && normalizedMinistryType !== "kids_camp") {
+        query = query.eq("ministry_type", normalizedMinistryType);
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
       const expanded = expandServiceOccurrences((data || []) as CustomService[], startDate, endDate);
-      if (!ministryType) return expanded;
-      return expanded.filter((service) => service.ministry_type === ministryType);
+      if (!normalizedMinistryType) return expanded;
+      return expanded.filter((service) => service.ministry_type === normalizedMinistryType);
     },
   });
 }

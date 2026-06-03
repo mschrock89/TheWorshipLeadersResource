@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
+const CREATIVE_MINISTRY_ALIASES = ["creative", "photo_team"] as const;
 const LEGACY_CAMERA_POSITIONS = [
   "camera_1",
   "camera_2",
@@ -52,6 +53,9 @@ const DB_POSITION_TO_UI_POSITION: Record<string, string> = {
   "Audio Shadow": "audio_shadow",
   "Tri-Pod Camera": "tri_pod_camera",
   "Hand-Held Camera": "hand_held_camera",
+  "Photography Team": "photo_team",
+  "Photo Team": "photo_team",
+  "Art Team": "art_team",
 };
 
 const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
@@ -92,6 +96,8 @@ const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
   director: "Director",
   graphics: "Graphics",
   switcher: "Switcher",
+  photo_team: "Photography Team",
+  art_team: "Art Team",
   other: "Other",
   other_instrument: "Other Instrument",
 };
@@ -107,6 +113,10 @@ const LEGACY_POSITION_ALIASES: Record<string, string> = {
 };
 
 function getNormalizedMinistryType(ministryType: string) {
+  if (CREATIVE_MINISTRY_ALIASES.includes(ministryType as typeof CREATIVE_MINISTRY_ALIASES[number])) {
+    return "creative";
+  }
+
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? "weekend_team"
     : ministryType;
@@ -139,6 +149,10 @@ function getEquivalentPositions(position: string) {
 }
 
 function getEquivalentMinistryTypes(ministryType: string) {
+  if (CREATIVE_MINISTRY_ALIASES.includes(ministryType as typeof CREATIVE_MINISTRY_ALIASES[number])) {
+    return [...CREATIVE_MINISTRY_ALIASES];
+  }
+
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? [...WEEKEND_MINISTRY_ALIASES]
     : [ministryType];

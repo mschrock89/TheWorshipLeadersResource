@@ -689,7 +689,13 @@ export default function TeamBuilder() {
   }, [scheduleEntries, selectedMinistryType]);
 
   const dateOverridesByTeamSlot = useMemo(() => {
-    return dateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
+    const visibleDateOverrides = selectedMinistryType === "all"
+      ? dateOverrides
+      : dateOverrides.filter((override) =>
+          memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
+        );
+
+    return visibleDateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
       const scheduleBucketKey = isWeekend(override.schedule_date) &&
         shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
           ? getWeekendKey(override.schedule_date)
@@ -723,7 +729,13 @@ export default function TeamBuilder() {
   }, [dateOverrides, selectedMinistryType]);
 
   const blackoutConflictDatesByTeamSlotDateOverride = useMemo(() => {
-    return dateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
+    const visibleDateOverrides = selectedMinistryType === "all"
+      ? dateOverrides
+      : dateOverrides.filter((override) =>
+          memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
+        );
+
+    return visibleDateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
       if (!override.user_id) return acc;
 
       const scheduleBucketKey = isWeekend(override.schedule_date) &&
@@ -785,7 +797,7 @@ export default function TeamBuilder() {
     const snapshots: Record<string, Record<string, Record<string, string>>> = {};
 
     displayTeams.forEach((team) => {
-      const teamMembers = members.filter((member) => member.team_id === team.id);
+      const teamMembers = visibleAssignments.filter((member) => member.team_id === team.id);
       const bucketKeys = scheduleDatesByTeam[team.id] || [];
 
       snapshots[team.id] = {};
@@ -817,7 +829,7 @@ export default function TeamBuilder() {
     });
 
     return snapshots;
-  }, [dateOverridesByTeamSlot, displayTeams, members, scheduleDatesByTeam]);
+  }, [dateOverridesByTeamSlot, displayTeams, visibleAssignments, scheduleDatesByTeam]);
 
   const rotationPushPreviewRecipients = useMemo(() => {
     const recipientMap = new Map<
@@ -1249,14 +1261,14 @@ export default function TeamBuilder() {
   // Get members by team. Rotation periods are already campus-scoped, so keep
   // cross-campus fill-ins visible here so admins can edit/remove them.
   const getMembersForTeam = (teamId: string) => {
-    return members.filter((member) => member.team_id === teamId);
+    return visibleAssignments.filter((member) => member.team_id === teamId);
   };
 
   const getMembersForTeamServiceDay = (
     teamId: string,
     serviceDay: "saturday" | "sunday" | null,
   ) => {
-    return members.filter((member) => {
+    return visibleAssignments.filter((member) => {
       if (member.team_id !== teamId) return false;
       if (!serviceDay) return true;
       return member.service_day === serviceDay;

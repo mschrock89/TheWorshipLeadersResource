@@ -22,6 +22,17 @@ export interface ServiceFlowTemplateItem {
   created_at: string;
 }
 
+// Bump the parent template's updated_at so dependent service flows know to regenerate.
+// Editing only the item rows does not touch the template row, which would otherwise leave
+// already-published service flows stale (the resync compares template vs flow updated_at).
+async function touchServiceFlowTemplate(templateId: string) {
+  const { error } = await supabase
+    .from("service_flow_templates")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", templateId);
+  if (error) throw error;
+}
+
 export function useServiceFlowTemplates(campusId?: string | null, ministryType?: string | null) {
   return useQuery({
     queryKey: ["service-flow-templates", campusId, ministryType],
@@ -208,6 +219,7 @@ export function useSaveServiceFlowTemplateItem() {
           .single();
 
         if (error) throw error;
+        await touchServiceFlowTemplate(item.template_id);
         return data as ServiceFlowTemplateItem;
       } else {
         const { data, error } = await supabase
@@ -223,6 +235,7 @@ export function useSaveServiceFlowTemplateItem() {
           .single();
 
         if (error) throw error;
+        await touchServiceFlowTemplate(item.template_id);
         return data as ServiceFlowTemplateItem;
       }
     },
@@ -253,6 +266,7 @@ export function useDeleteServiceFlowTemplateItem() {
         .eq("id", params.id);
 
       if (error) throw error;
+      await touchServiceFlowTemplate(params.templateId);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
@@ -288,6 +302,7 @@ export function useReorderServiceFlowTemplateItems() {
       const results = await Promise.all(updates);
       const errors = results.filter((r) => r.error);
       if (errors.length > 0) throw errors[0].error;
+      await touchServiceFlowTemplate(params.templateId);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({

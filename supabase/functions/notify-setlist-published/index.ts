@@ -10,10 +10,15 @@ const corsHeaders = {
 interface NotifyRequest {
   draftSetId: string;
   manual?: boolean;
+  previewOnly?: boolean;
 }
 
-const WEEKEND_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
-const SUPPORT_MINISTRIES = ["production", "video"] as const;
+interface RecipientPreview {
+  userId: string;
+  name: string;
+  hasPushSubscription: boolean;
+}
+
 const LEADERSHIP_ROLES = [
   "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor",
   "network_worship_pastor", "network_worship_leader", "leader",
@@ -46,63 +51,7 @@ const CAMPUS_WIDE_MANUAL_NOTIFY_ROLES = new Set([
   "campus_pastor",
 ]);
 
-function getServiceDates(planDate: string, includeWeekendPair = true): string[] {
-  const serviceDates = new Set([planDate]);
-  if (!includeWeekendPair) {
-    return Array.from(serviceDates);
-  }
-
-  const date = new Date(`${planDate}T12:00:00Z`);
-
-  if (Number.isNaN(date.getTime())) {
-    return Array.from(serviceDates);
-  }
-
-  const dayOfWeek = date.getUTCDay();
-  if (dayOfWeek === 6) {
-    const sunday = new Date(date);
-    sunday.setUTCDate(sunday.getUTCDate() + 1);
-    serviceDates.add(sunday.toISOString().slice(0, 10));
-  } else if (dayOfWeek === 0) {
-    const saturday = new Date(date);
-    saturday.setUTCDate(saturday.getUTCDate() - 1);
-    serviceDates.add(saturday.toISOString().slice(0, 10));
-  }
-
-  return Array.from(serviceDates);
-}
-
-function getRelevantMinistryTypes(
-  ministryType: string,
-  includePrimaryMinistry = true,
-  includeSupportMinistries = true,
-): string[] {
-  const ministryTypes = new Set<string>(includeSupportMinistries ? SUPPORT_MINISTRIES : []);
-
-  if (includePrimaryMinistry) {
-    ministryTypes.add(ministryType);
-    if (WEEKEND_ALIASES.has(ministryType)) {
-      for (const alias of WEEKEND_ALIASES) {
-        ministryTypes.add(alias);
-      }
-    }
-  }
-
-  return Array.from(ministryTypes);
-}
-
-function memberMatchesRelevantMinistries(
-  ministryTypes: string[] | null,
-  relevantMinistryTypes: Set<string>,
-): boolean {
-  if (!ministryTypes || ministryTypes.length === 0) {
-    return true;
-  }
-
-  return ministryTypes.some((ministryType) => relevantMinistryTypes.has(ministryType));
-}
-
-async function filterVolunteerMemberUserIds(
+async function filterNotifiableRosterUserIds(
   supabase: ReturnType<typeof createClient>,
   userIds: string[],
 ): Promise<string[]> {
@@ -132,96 +81,11 @@ async function filterVolunteerMemberUserIds(
     const roles = userRolesMap.get(userId) || [];
     const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.includes(role));
     const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-    return isVolunteer && !hasLeadershipRole;
+    // Notify everyone on the roster — volunteers/members as well as rostered leaders.
+    // Roster membership is already guaranteed by get_setlist_notifiable_user_ids;
+    // this guard just prevents notifying stale accounts with no recognised role.
+    return isVolunteer || hasLeadershipRole;
   });
-}
-
-async function getScheduledRecipientUserIds(
-  supabase: ReturnType<typeof createClient>,
-  draftSet: { campus_id: string | null; plan_date: string; ministry_type: string },
-  includePrimaryMinistry = true,
-  includeWeekendPair = true,
-  includeSupportMinistries = true,
-): Promise<string[]> {
-  if (!draftSet.campus_id) {
-    return [];
-  }
-
-  const serviceDates = getServiceDates(draftSet.plan_date, includeWeekendPair);
-  const relevantMinistryTypes = new Set(
-    getRelevantMinistryTypes(draftSet.ministry_type, includePrimaryMinistry, includeSupportMinistries),
-  );
-
-  const { data: teamSchedules, error: scheduleError } = await supabase
-    .from("team_schedule")
-    .select("team_id, ministry_type, campus_id, schedule_date")
-    .in("schedule_date", serviceDates)
-    .or(`campus_id.eq.${draftSet.campus_id},campus_id.is.null`);
-
-  if (scheduleError) {
-    console.error("Error fetching team schedule:", scheduleError);
-    return [];
-  }
-
-  const matchingTeamIds = Array.from(
-    new Set(
-      (teamSchedules || [])
-        .filter((schedule) => {
-          if (!schedule.team_id) {
-            return false;
-          }
-
-          if (schedule.ministry_type == null) {
-            return includePrimaryMinistry;
-          }
-
-          return relevantMinistryTypes.has(schedule.ministry_type);
-        })
-        .map((schedule) => schedule.team_id),
-    ),
-  );
-
-  if (matchingTeamIds.length === 0) {
-    return [];
-  }
-
-  const { data: rotationPeriods, error: rotationError } = await supabase
-    .from("rotation_periods")
-    .select("id")
-    .eq("campus_id", draftSet.campus_id)
-    .lte("start_date", draftSet.plan_date)
-    .gte("end_date", draftSet.plan_date);
-
-  if (rotationError) {
-    console.error("Error fetching rotation periods:", rotationError);
-    return [];
-  }
-
-  const rotationPeriodIds = (rotationPeriods || []).map((rotationPeriod) => rotationPeriod.id);
-
-  const teamMembersQuery = supabase
-    .from("team_members")
-    .select("user_id, ministry_types")
-    .in("team_id", matchingTeamIds)
-    .not("user_id", "is", null);
-
-  const { data: teamMembers, error: membersError } = rotationPeriodIds.length > 0
-    ? await teamMembersQuery.or(
-        `rotation_period_id.is.null,rotation_period_id.in.(${rotationPeriodIds.join(",")})`,
-      )
-    : await teamMembersQuery.is("rotation_period_id", null);
-
-  if (membersError) {
-    console.error("Error fetching team members:", membersError);
-    return [];
-  }
-
-  const potentialUserIds = (teamMembers || [])
-    .filter((member) => memberMatchesRelevantMinistries(member.ministry_types, relevantMinistryTypes))
-    .map((member) => member.user_id)
-    .filter(Boolean) as string[];
-
-  return filterVolunteerMemberUserIds(supabase, potentialUserIds);
 }
 
 async function verifyManualNotifyPermission(
@@ -301,6 +165,48 @@ async function verifyManualNotifyPermission(
   return { allowed: true };
 }
 
+async function buildRecipientPreview(
+  supabase: ReturnType<typeof createClient>,
+  userIdsToNotify: string[],
+): Promise<RecipientPreview[]> {
+  const dedupedUserIds = Array.from(new Set(userIdsToNotify.filter(Boolean)));
+  if (dedupedUserIds.length === 0) {
+    return [];
+  }
+
+  const [{ data: profiles, error: profilesError }, { data: subscriptions, error: subscriptionsError }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", dedupedUserIds),
+    supabase
+      .from("push_subscriptions")
+      .select("user_id")
+      .in("user_id", dedupedUserIds),
+  ]);
+
+  if (profilesError) {
+    console.error("Error fetching notification recipient profiles:", profilesError);
+  }
+
+  if (subscriptionsError) {
+    console.error("Error fetching notification recipient push subscriptions:", subscriptionsError);
+  }
+
+  const profileNameById = new Map(
+    (profiles || []).map((profile) => [profile.id, profile.full_name || "Team Member"]),
+  );
+  const pushEnabledUserIds = new Set((subscriptions || []).map((subscription) => subscription.user_id).filter(Boolean));
+
+  return dedupedUserIds
+    .map((userId) => ({
+      userId,
+      name: profileNameById.get(userId) || "Team Member",
+      hasPushSubscription: pushEnabledUserIds.has(userId),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -314,7 +220,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse request body
-    const { draftSetId, manual = false }: NotifyRequest = await req.json();
+    const { draftSetId, manual = false, previewOnly = false }: NotifyRequest = await req.json();
 
     if (!draftSetId) {
       return new Response(
@@ -346,7 +252,7 @@ serve(async (req) => {
       );
     }
 
-    if (manual) {
+    if (manual || previewOnly) {
       const permission = await verifyManualNotifyPermission(
         supabase,
         supabaseUrl,
@@ -379,72 +285,50 @@ serve(async (req) => {
 
     const songCount = setlistSongs?.length || 0;
 
-    // 3. Build notification recipient list
+    // 3. Build notification recipient list using the authoritative roster function.
+    // get_setlist_notifiable_user_ids handles all set types (audition, custom service,
+    // team builder), applies accepted swaps / date overrides, and includes support
+    // teams — all in a single DB round-trip.
     let userIdsToNotify: string[] = [];
 
-    if (draftSet.ministry_type === "audition") {
-      const { data: assignments, error: assignmentError } = await supabase
-        .from("audition_setlist_assignments")
-        .select("user_id")
-        .eq("draft_set_id", draftSetId);
+    const { data: rosterRows, error: rosterError } = await supabase.rpc(
+      "get_setlist_notifiable_user_ids",
+      { p_draft_set_id: draftSetId },
+    );
 
-      if (assignmentError) {
-        console.error("Error fetching audition assignments:", assignmentError);
-      }
-
-      userIdsToNotify = Array.from(
-        new Set((assignments || []).map((assignment) => assignment.user_id).filter(Boolean))
-      ) as string[];
-    } else if (draftSet.custom_service_id) {
-      const { data: assignments, error: assignmentsError } = await supabase
-        .from("custom_service_assignments")
-        .select("user_id")
-        .eq("custom_service_id", draftSet.custom_service_id)
-        .eq("assignment_date", draftSet.plan_date);
-
-      if (assignmentsError) {
-        console.error("Error fetching custom service assignments:", assignmentsError);
-      }
-
-      const supportUserIds = manual
-        ? []
-        : await getScheduledRecipientUserIds(supabase, draftSet, false);
-
-      userIdsToNotify = Array.from(
-        new Set((assignments || []).map((a) => a.user_id).filter(Boolean))
-      ) as string[];
-      userIdsToNotify = await filterVolunteerMemberUserIds(
-        supabase,
-        [...userIdsToNotify, ...supportUserIds],
-      );
+    if (rosterError) {
+      console.error("Error fetching setlist notifiable user IDs:", rosterError);
     } else {
-      userIdsToNotify = await getScheduledRecipientUserIds(supabase, draftSet, true, !manual, !manual);
-    }
+      const allRosterUserIds = (rosterRows || [])
+        .map((row: { user_id: string }) => row.user_id)
+        .filter(Boolean) as string[];
 
-    // Final guard across ALL set types:
-    // only notify users who are actually on this set's roster.
-    if (userIdsToNotify.length > 0) {
-      const dedupedUserIds = Array.from(new Set(userIdsToNotify));
-      const rosterChecks = await Promise.all(
-        dedupedUserIds.map(async (userId) => {
-          const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
-            p_draft_set_id: draftSetId,
-            p_user_id: userId,
-          });
-
-          if (error) {
-            console.error("Final roster check failed for user", userId, error);
-            return null;
-          }
-
-          return data ? userId : null;
-        })
-      );
-
-      userIdsToNotify = rosterChecks.filter(Boolean) as string[];
+      // Filter to users with a recognised role (volunteer / member / leadership).
+      // This prevents notifying stale accounts that have no role in the system.
+      userIdsToNotify = await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
     }
 
     console.log(`Found ${userIdsToNotify.length} team members to notify for setlist ${draftSetId}`);
+
+    if (previewOnly) {
+      const recipients = await buildRecipientPreview(supabase, userIdsToNotify);
+      const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          previewOnly: true,
+          recipients,
+          teamMembersNotified: userIdsToNotify.length,
+          pushRecipientUserCount,
+          draftSetId,
+          planDate: draftSet.plan_date,
+          ministryType: draftSet.ministry_type,
+          manual,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // 7. Always create setlist playlist for published setlists
     // Audio resolution happens on the client side using album_tracks matching

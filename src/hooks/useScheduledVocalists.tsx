@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
-import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { normalizeKidsCampSetMinistryType, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 export interface ScheduledVocalist {
   userId: string;
@@ -23,8 +23,9 @@ export function useScheduledVocalists(
   ministryType: string,
   campusId: string | null
 ) {
+  const normalizedMinistryType = normalizeKidsCampSetMinistryType(ministryType) || ministryType;
   const rosterMinistryScope =
-    normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType;
+    normalizeWeekendWorshipMinistryType(normalizedMinistryType) === "weekend" ? "weekend_team" : normalizedMinistryType;
 
   const { data: scheduledTeam, isLoading: teamLoading } = useScheduledTeamForDate(
     targetDate,

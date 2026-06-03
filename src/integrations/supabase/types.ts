@@ -2092,6 +2092,108 @@ export type Database = {
           },
         ]
       }
+      setlist_stem_sessions: {
+        Row: {
+          bpm: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          playlist_id: string
+          song_markers: Json
+          title: string
+        }
+        Insert: {
+          bpm?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          playlist_id: string
+          song_markers?: Json
+          title?: string
+        }
+        Update: {
+          bpm?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          playlist_id?: string
+          song_markers?: Json
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setlist_stem_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setlist_stem_sessions_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: true
+            referencedRelation: "setlist_playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      setlist_stems: {
+        Row: {
+          audio_url: string
+          created_at: string
+          created_by: string | null
+          duration_seconds: number | null
+          file_name: string
+          id: string
+          is_muted: boolean
+          sequence_order: number
+          session_id: string
+          stem_type: "drums" | "perc" | "bass" | "sub_bass" | "guitars" | "piano" | "keys" | "aux" | "vocals" | "click"
+          volume: number
+        }
+        Insert: {
+          audio_url: string
+          created_at?: string
+          created_by?: string | null
+          duration_seconds?: number | null
+          file_name: string
+          id?: string
+          is_muted?: boolean
+          sequence_order?: number
+          session_id: string
+          stem_type: "drums" | "perc" | "bass" | "sub_bass" | "guitars" | "piano" | "keys" | "aux" | "vocals" | "click"
+          volume?: number
+        }
+        Update: {
+          audio_url?: string
+          created_at?: string
+          created_by?: string | null
+          duration_seconds?: number | null
+          file_name?: string
+          id?: string
+          is_muted?: boolean
+          sequence_order?: number
+          session_id?: string
+          stem_type?: "drums" | "perc" | "bass" | "sub_bass" | "guitars" | "piano" | "keys" | "aux" | "vocals" | "click"
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setlist_stems_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setlist_stems_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "setlist_stem_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       setlist_playlist_reference_tracks: {
         Row: {
           audio_url: string
@@ -3213,6 +3315,7 @@ export type Database = {
         | "network_worship_pastor"
         | "video_director"
         | "production_manager"
+        | "creative_team_lead"
         | "audition_candidate"
         | "student"
         | "ms_leader"
@@ -3265,6 +3368,8 @@ export type Database = {
         | "student_prayer"
         | "student_hospitality"
         | "student_small_group_leader"
+        | "photo_team"
+        | "art_team"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3408,6 +3513,7 @@ export const Constants = {
         "network_worship_pastor",
         "video_director",
         "production_manager",
+        "creative_team_lead",
         "audition_candidate",
         "student",
         "ms_leader",
@@ -3461,6 +3567,8 @@ export const Constants = {
         "student_prayer",
         "student_hospitality",
         "student_small_group_leader",
+        "photo_team",
+        "art_team",
       ],
     },
   },

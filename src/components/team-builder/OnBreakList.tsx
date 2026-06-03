@@ -146,7 +146,7 @@ export function OnBreakList({
   // Exclude members who only have tech positions
   const onBreakMembers = useMemo(() => {
     // Filter assigned members by ministry type BEFORE building the set
-    // This ensures members assigned to other ministries (e.g., EON) appear in "On Break" when viewing Weekend
+    // This ensures members assigned to other ministries (e.g., MS Worship) appear in "On Break" when viewing Weekend
     const ministryFilteredAssignedMembers = ministryFilter && ministryFilter !== "all"
       ? assignedMembers.filter((member) =>
           memberMatchesMinistryFilter(member.ministry_types, ministryFilter)

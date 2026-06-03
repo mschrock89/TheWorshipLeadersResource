@@ -1889,15 +1889,15 @@ export default function AdminTools() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="flex w-full items-center justify-between rounded-md px-4 py-3 text-left"
+                  className="flex h-auto w-full items-center justify-between gap-2 whitespace-normal rounded-md px-4 py-3 text-left"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">Edit</p>
                     <p className="text-xs text-muted-foreground">
                       Manual single-week review, editing, announcer updates, and PDF attachment.
                     </p>
                   </div>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${isTeachingEditOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isTeachingEditOpen ? "rotate-180" : ""}`} />
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-5 border-t border-border p-4">

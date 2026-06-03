@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatPositionLabel, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { getMinistryLabel } from "@/lib/constants";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
 
@@ -264,7 +265,7 @@ export function useNotifications() {
           id: notifId,
           type: "new_set",
           title: "New Set Published",
-          message: `${campusName ? campusName + " - " : ""}${set.ministry_type} set for ${parseLocalDate(set.plan_date).toLocaleDateString()}`,
+          message: `${campusName ? campusName + " - " : ""}${getMinistryLabel(set.ministry_type)} set for ${parseLocalDate(set.plan_date).toLocaleDateString()}`,
           timestamp: set.published_at || new Date().toISOString(),
           read: currentReadIds.has(notifId),
           link: `/my-setlists?setId=${set.id}`,

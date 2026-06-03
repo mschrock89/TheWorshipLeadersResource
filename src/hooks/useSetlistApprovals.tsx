@@ -1,11 +1,70 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { generateServiceFlowFromTemplate } from "./useServiceFlow";
+import { isKidsCampSetMinistryType } from "@/lib/constants";
 
 // Kyle Elkins' user ID - the designated approver
 export const APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
+
+const DIRECT_PUBLISHER_FIRST_NAMES = new Set(["eli", "christian"]);
+const DIRECT_PUBLISH_MINISTRY_TYPES = new Set(["kids_camp", "encounter", "eon", "eon_weekend"]);
+
+interface SetlistPublisherProfile {
+  full_name: string | null;
+  email: string | null;
+}
+
+function normalizeIdentityValue(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase();
+}
+
+function getFirstName(fullName: string | null | undefined) {
+  return normalizeIdentityValue(fullName).split(/\s+/)[0] || "";
+}
+
+function canPublishSetlistDirectly(
+  userId: string | undefined,
+  profile: SetlistPublisherProfile,
+  ministryType?: string | null,
+) {
+  if (!userId) return false;
+  if (userId === APPROVER_USER_ID) return true;
+  if (ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isKidsCampSetMinistryType(ministryType))) return true;
+
+  const firstName = getFirstName(profile.full_name);
+
+  if (DIRECT_PUBLISHER_FIRST_NAMES.has(firstName)) {
+    return true;
+  }
+
+  return false;
+}
+
+async function getSetlistPublisherProfile(user: User): Promise<SetlistPublisherProfile> {
+  const fallbackProfile = {
+    full_name: typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
+    email: user.email || null,
+  };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Unable to load profile for direct setlist publishing check:", error);
+    return fallbackProfile;
+  }
+
+  return {
+    full_name: data?.full_name ?? fallbackProfile.full_name,
+    email: data?.email ?? fallbackProfile.email,
+  };
+}
 
 export interface SetlistApproval {
   id: string;
@@ -175,6 +234,25 @@ export function useIsApprover() {
   });
 }
 
+export function useCanPublishSetlistDirectly(ministryType?: string | null) {
+  const { user } = useAuth();
+  const canPublishMinistryDirectly =
+    !!ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isKidsCampSetMinistryType(ministryType));
+
+  return useQuery({
+    queryKey: ["can-publish-setlist-directly", user?.id, ministryType],
+    queryFn: async () => {
+      if (canPublishMinistryDirectly) return true;
+      if (!user) return false;
+
+      const profile = await getSetlistPublisherProfile(user);
+      return canPublishSetlistDirectly(user.id, profile, ministryType);
+    },
+    enabled: canPublishMinistryDirectly || !!user?.id,
+    initialData: canPublishMinistryDirectly ? true : undefined,
+  });
+}
+
 // Fetch pending approvals for the approver
 export function usePendingApprovals() {
   const { user } = useAuth();
@@ -253,7 +331,10 @@ export function useSubmitForApproval() {
           .in("id", idsToDelete);
       }
 
-      if (user.id === APPROVER_USER_ID) {
+      const publisherProfile = await getSetlistPublisherProfile(user);
+      const shouldPublishDirectly = canPublishSetlistDirectly(user.id, publisherProfile, thisSet.ministry_type);
+
+      if (shouldPublishDirectly) {
         const publishTimestamp = new Date().toISOString();
         const { data: publishedSet, error: publishError } = await supabase
           .from("draft_sets")

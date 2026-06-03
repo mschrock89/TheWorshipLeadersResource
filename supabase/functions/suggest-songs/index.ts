@@ -35,14 +35,16 @@ function weeksBetween(fromIso: string, toIso: string): number {
 function serviceMatchesMinistry(serviceTypeName: string, ministryType: string): boolean {
   const serviceName = (serviceTypeName || "").toLowerCase();
 
-  if (ministryType === "encounter") return serviceName.includes("encounter");
-  if (ministryType === "eon") return serviceName.includes("eon");
+  if (ministryType === "encounter") return serviceName.includes("hs worship") || serviceName.includes("encounter");
+  if (ministryType === "eon") return serviceName.includes("ms worship") || serviceName.includes("eon");
   if (ministryType === "evident") return serviceName.includes("evident");
   if (ministryType === "prayer_night") return serviceName.includes("prayer");
 
   if (ministryType === "weekend") {
     return (
+      !serviceName.includes("hs worship") &&
       !serviceName.includes("encounter") &&
+      !serviceName.includes("ms worship") &&
       !serviceName.includes("eon") &&
       !serviceName.includes("evident") &&
       !serviceName.includes("worship night") &&

@@ -98,6 +98,13 @@ const positionMapping: Record<string, TeamPosition> = {
   'lyric': 'media',
   'lyrics': 'media',
   'propresenter': 'media',
+  'photo': 'photo_team',
+  'photos': 'photo_team',
+  'photographer': 'photo_team',
+  'photo team': 'photo_team',
+  'art': 'art_team',
+  'artist': 'art_team',
+  'art team': 'art_team',
   
   // Default
   'other': 'other'

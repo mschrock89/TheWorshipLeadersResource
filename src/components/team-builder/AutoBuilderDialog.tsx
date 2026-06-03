@@ -20,7 +20,7 @@ import {
   AvailableMember,
   TeamMemberAssignment,
 } from "@/hooks/useTeamBuilder";
-import { MINISTRY_SLOT_CATEGORIES, MINISTRY_TYPES, POSITION_SLOTS, memberMatchesMinistryFilter } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_SLOTS, getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 
 interface AutoBuilderDialogProps {
@@ -73,6 +73,8 @@ const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   hand_held_camera: ["hand_held_camera"],
   director: ["director"],
   switcher: ["switcher"],
+  photo_team: ["photo_team"],
+  art_team: ["art_team"],
 };
 
 const AUTO_BUILD_SLOT_PRIORITY = [
@@ -82,7 +84,7 @@ const AUTO_BUILD_SLOT_PRIORITY = [
   "teacher", "announcement", "closing_prayer",
   "foh", "mon", "broadcast", "audio_shadow", "lighting", "propresenter", "producer",
   "tri_pod_camera", "hand_held_camera",
-  "director", "graphics", "switcher",
+  "director", "graphics", "switcher", "photo_team", "art_team",
 ] as const;
 
 function getMemberAvailableSlots(positions: string[]): string[] {
@@ -467,7 +469,7 @@ export function AutoBuilderDialog({
   );
 
   const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
-  const allowedCategories = MINISTRY_SLOT_CATEGORIES[ministryType] || MINISTRY_SLOT_CATEGORIES.all;
+  const allowedCategories = getTeamBuilderSlotCategories(ministryType);
   const visibleSlotsByTeam = useMemo(
     () => new Map(teams.map((team) => [team.id, getTeamTemplateSlotConfigs(team.template_config, templateContext)])),
     [teams, templateContext],
@@ -1220,6 +1222,7 @@ export function AutoBuilderDialog({
     blackoutDatesByUser,
     teamScheduledDatesByTeam,
     multiTeamUserIds,
+    templateContext,
   ]);
 
   return (

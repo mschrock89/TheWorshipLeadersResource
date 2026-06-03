@@ -110,6 +110,10 @@ export function isMurfreesboroCentralWorshipNightTemplateContext(context?: TeamT
   );
 }
 
+function usesGenderedVocalSlots(context?: TeamTemplateContext | null) {
+  return context?.ministryType !== "kids_camp";
+}
+
 export function getSupportedVocalSlotIds(context?: TeamTemplateContext | null) {
   return isMurfreesboroCentralWorshipNightTemplateContext(context)
     ? EXTENDED_VOCAL_SLOT_IDS
@@ -190,18 +194,19 @@ export function getTeamTemplateSlotConfigs(
       if (!slotConfig) return null;
 
       vocalGenderCounts[templateSlot.gender] += 1;
+      const genderedLabel = `${templateSlot.gender === "male" ? "Male" : "Female"} Vocal ${vocalGenderCounts[templateSlot.gender]}`;
 
       return {
         ...slotConfig,
-        label: `${templateSlot.gender === "male" ? "Male" : "Female"} Vocal ${vocalGenderCounts[templateSlot.gender]}`,
-        vocalGender: templateSlot.gender,
+        label: usesGenderedVocalSlots(context) ? genderedLabel : slotConfig.label,
+        vocalGender: usesGenderedVocalSlots(context) ? templateSlot.gender : null,
       };
     })
     .filter(
       (
         slot,
       ): slot is (typeof POSITION_SLOTS)[number] & {
-        vocalGender: VocalSlotGender;
+        vocalGender: VocalSlotGender | null;
       } => Boolean(slot),
     );
 
@@ -234,6 +239,10 @@ export function getRequiredGenderForSlot(
   slotId: string,
   context?: TeamTemplateContext | null,
 ): VocalSlotGender | null {
+  if (!usesGenderedVocalSlots(context)) {
+    return null;
+  }
+
   const template = normalizeTeamTemplateConfig(teamTemplateConfig, context);
   return template.vocalSlots.find((slot) => slot.slot === slotId)?.gender || null;
 }

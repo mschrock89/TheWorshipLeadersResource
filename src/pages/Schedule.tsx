@@ -125,9 +125,9 @@ function formatMinistryTypes(ministryTypes: string[]): string {
   const labels: Record<string, string> = {
     weekend: "Weekend Worship",
     kids_camp: "Kids Camp",
-    encounter: "Encounter",
-    eon: "EON",
-    eon_weekend: "EON Weekend",
+    encounter: "HS Worship",
+    eon: "MS Worship",
+    eon_weekend: "MS Worship Weekend",
     evident: "Evident",
     er: "ER",
     speaker: "Speaker",
@@ -142,7 +142,7 @@ function formatMinistryTypes(ministryTypes: string[]): string {
 function getMinistryTypeForDate(date: Date, storedMinistryTypes: string[]): string[] {
   const dayOfWeek = getDay(date); // 0 = Sunday, 6 = Saturday
   
-  // Wednesday = Encounter or EON (check if EON is in stored types)
+  // Wednesday = HS Worship or MS Worship (check if MS Worship is in stored types)
   if (dayOfWeek === 3) {
     if (storedMinistryTypes?.some(t => t.toLowerCase() === 'eon')) {
       return ['eon'];

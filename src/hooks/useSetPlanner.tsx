@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useToast } from "./use-toast";
 import { format } from "date-fns";
 import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
+import { KIDS_CAMP_SET_MINISTRY_TYPES, isKidsCampSetMinistryType } from "@/lib/constants";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -94,15 +95,17 @@ export function useSongAvailability(
          const serviceName = (u.service_type_name || '').toLowerCase();
          const matchesMinistry = (() => {
            if (ministryType === 'all') return true;
-           if (ministryType === 'encounter') return serviceName.includes('encounter');
-           if (ministryType === 'eon') return serviceName.includes('eon');
+           if (ministryType === 'encounter') return serviceName.includes('hs worship') || serviceName.includes('encounter');
+           if (ministryType === 'eon') return serviceName.includes('ms worship') || serviceName.includes('eon');
            if (ministryType === 'evident') return serviceName.includes('evident');
-           if (ministryType === 'kids_camp') return serviceName.includes('kids camp');
+           if (isKidsCampSetMinistryType(ministryType)) return serviceName.includes('kids camp');
 
            // "Weekend" = main services (exclude specialty service types)
            if (ministryType === 'weekend') {
              return (
+               !serviceName.includes('hs worship') &&
                !serviceName.includes('encounter') &&
+               !serviceName.includes('ms worship') &&
                !serviceName.includes('eon') &&
                !serviceName.includes('evident') &&
                !serviceName.includes('audition') &&
@@ -356,7 +359,9 @@ export function useExistingSet(
       }
 
       // Fallback for legacy custom-service sets (e.g. old Prayer Night saved as weekend).
-      if (!data && customServiceId) {
+      // Kids Camp Morning/Afternoon must stay isolated because they can share one
+      // Kids Camp custom service on the same date.
+      if (!data && customServiceId && ministryType === "prayer_night") {
         try {
           data = await runLookup({ includeMinistry: false, includeYoutubeUrl: true });
         } catch (error) {
@@ -689,6 +694,8 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
 
       if (weekendAliases.includes(ministryType)) {
         setQuery = setQuery.in('ministry_type', weekendAliases);
+      } else if (isKidsCampSetMinistryType(ministryType)) {
+        setQuery = setQuery.in('ministry_type', [...KIDS_CAMP_SET_MINISTRY_TYPES]);
       } else {
         setQuery = setQuery.eq('ministry_type', ministryType);
       }

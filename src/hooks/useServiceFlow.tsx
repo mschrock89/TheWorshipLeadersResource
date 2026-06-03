@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { isKidsCampSetMinistryType } from "@/lib/constants";
 
 const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
 const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
@@ -478,10 +479,85 @@ function isTemplateSongPlaceholder(templateItem: {
   title?: string | null;
 }): boolean {
   if (templateItem.item_type === "song_placeholder") return true;
+  // Headers are never song placeholders.
+  if (templateItem.item_type === "header") return false;
+  // For "item" (or untyped) rows, a literal "Song 1" / "Song 2" label still counts as a
+  // song placeholder. Renaming the row to anything else (e.g. "Morning Meeting") turns it
+  // into a plain item, which is how a template author opts a row out of being a song slot.
   const title = (templateItem.title || "").trim();
-  // Backward compatibility: older templates used literal labels like "Song 1", "Song 2"
-  // as placeholder rows instead of item_type = "song_placeholder".
   return /^song\s*\d+\b/i.test(title);
+}
+
+// Headers that mark the start of the afternoon portion of a full-day Kids Camp template.
+const KIDS_CAMP_AFTERNOON_SECTION_PATTERN = /\b(afternoon|pm\b|lunch|evening|session\s*[2-9])\b/i;
+
+type TemplatePlaceholderItem = {
+  item_type?: string | null;
+  title?: string | null;
+  sequence_order: number;
+};
+
+// A combined Kids Camp flow spans both sessions, so its template's song placeholders
+// must be split by section: placeholders under morning headers receive the Morning set's
+// songs and placeholders under an afternoon header receive the Afternoon set's songs.
+// This prevents the Morning set from spilling into afternoon slots (and vice versa) when
+// the per-session song counts don't line up with raw placeholder order.
+function buildKidsCampPlaceholderSongMap<TSong>(
+  templateItems: TemplatePlaceholderItem[],
+  morningSongs: TSong[],
+  afternoonSongs: TSong[],
+): { byOrder: Map<number, TSong>; assigned: Set<TSong> } {
+  const morningPlaceholderOrders: number[] = [];
+  const afternoonPlaceholderOrders: number[] = [];
+  let inAfternoon = false;
+
+  for (const item of templateItems) {
+    if (item.item_type === "header") {
+      if (KIDS_CAMP_AFTERNOON_SECTION_PATTERN.test(item.title || "")) {
+        inAfternoon = true;
+      }
+      continue;
+    }
+    if (isTemplateSongPlaceholder(item)) {
+      (inAfternoon ? afternoonPlaceholderOrders : morningPlaceholderOrders).push(item.sequence_order);
+    }
+  }
+
+  const byOrder = new Map<number, TSong>();
+  const assigned = new Set<TSong>();
+
+  // No afternoon section detected: keep the legacy behavior of filling placeholders in
+  // order with Morning songs first, then Afternoon songs.
+  if (afternoonPlaceholderOrders.length === 0) {
+    morningPlaceholderOrders.forEach((order, index) => {
+      const song =
+        index < morningSongs.length
+          ? morningSongs[index]
+          : afternoonSongs[index - morningSongs.length];
+      if (song) {
+        byOrder.set(order, song);
+        assigned.add(song);
+      }
+    });
+    return { byOrder, assigned };
+  }
+
+  morningPlaceholderOrders.forEach((order, index) => {
+    const song = morningSongs[index];
+    if (song) {
+      byOrder.set(order, song);
+      assigned.add(song);
+    }
+  });
+  afternoonPlaceholderOrders.forEach((order, index) => {
+    const song = afternoonSongs[index];
+    if (song) {
+      byOrder.set(order, song);
+      assigned.add(song);
+    }
+  });
+
+  return { byOrder, assigned };
 }
 
 // Helper to calculate song durations from reference track markers
@@ -661,7 +737,7 @@ export async function generateServiceFlowFromTemplate(params: {
   const isKidsCampService =
     customService?.ministry_type === "kids_camp" ||
     KIDS_CAMP_PATTERN.test(customService?.service_name || "") ||
-    params.ministryType === "kids_camp";
+    isKidsCampSetMinistryType(params.ministryType);
 
   // Resolve template ministry:
   // - Specialty custom services should use their own templates only.
@@ -684,7 +760,12 @@ export async function generateServiceFlowFromTemplate(params: {
 
     if (candidateTemplate) {
       template = candidateTemplate;
-      resolvedMinistryType = candidate;
+      resolvedMinistryType =
+        isKidsCampService && resolvedCustomServiceId
+          ? "kids_camp"
+          : (candidate === "kids_camp" && params.ministryType !== "kids_camp" && isKidsCampSetMinistryType(params.ministryType))
+            ? params.ministryType
+            : candidate;
       break;
     }
   }
@@ -694,7 +775,86 @@ export async function generateServiceFlowFromTemplate(params: {
     resolvedMinistryType = "prayer_night";
   }
   if (!template && isKidsCampService) {
-    resolvedMinistryType = "kids_camp";
+    resolvedMinistryType = resolvedCustomServiceId
+      ? "kids_camp"
+      : isKidsCampSetMinistryType(params.ministryType) ? params.ministryType : "kids_camp";
+  }
+
+  // For Kids Camp, combine morning + afternoon session songs into one ordered list.
+  // The morning session's songs fill the template's morning-section song placeholders and
+  // the afternoon session's songs fill the afternoon-section placeholders (see
+  // buildKidsCampPlaceholderSongMap). The combined list is also used as a fallback for
+  // templates that don't separate the sessions.
+  const isKidsCampCombinedFlow = isKidsCampService && resolvedCustomServiceId !== null;
+  let effectiveSongs = params.songs;
+  let kidsCampMorningSongs: typeof effectiveSongs | null = null;
+  let kidsCampAfternoonSongs: typeof effectiveSongs | null = null;
+
+  if (isKidsCampCombinedFlow) {
+    // Match sessions by campus + date + session ministry rather than strictly by the
+    // resolved custom service. Morning and Afternoon sets are not always linked to the
+    // same Kids Camp custom service (or any), so a strict custom_service_id filter can
+    // miss a session and leave its placeholders empty. We still prefer the set tied to
+    // the resolved custom service when more than one exists for a session.
+    const { data: sessionSets } = await supabase
+      .from("draft_sets")
+      .select("id, ministry_type, custom_service_id, published_at")
+      .eq("campus_id", params.campusId)
+      .eq("plan_date", params.serviceDate)
+      .eq("status", "published")
+      .in("ministry_type", ["kids_camp_morning", "kids_camp_afternoon"])
+      .order("published_at", { ascending: false });
+
+    if (sessionSets && sessionSets.length > 0) {
+      const pickSessionSet = (ministry: string): { id: string } | undefined => {
+        const matches = (sessionSets as any[]).filter((s) => s.ministry_type === ministry);
+        if (matches.length === 0) return undefined;
+        return (
+          matches.find((s) => s.custom_service_id === resolvedCustomServiceId) || matches[0]
+        ) as { id: string };
+      };
+
+      const morningSet = pickSessionSet("kids_camp_morning");
+      const afternoonSet = pickSessionSet("kids_camp_afternoon");
+
+      const fetchSessionSongs = async (setId: string): Promise<typeof effectiveSongs> => {
+        const { data: setRows } = await supabase
+          .from("draft_set_songs")
+          .select("id, song_id, song_key, vocalist_id, songs(id, title), sequence_order")
+          .eq("draft_set_id", setId)
+          .order("sequence_order", { ascending: true });
+
+        const rowIds = (setRows || []).map((r: any) => r.id as string);
+        const { data: vocalistRows } = await supabase
+          .from("draft_set_song_vocalists")
+          .select("draft_set_song_id, vocalist_id")
+          .in("draft_set_song_id", rowIds.length > 0 ? rowIds : ["00000000-0000-0000-0000-000000000000"]);
+
+        const vocalistMap = new Map<string, string[]>();
+        for (const va of vocalistRows || []) {
+          const existing = vocalistMap.get((va as any).draft_set_song_id) || [];
+          existing.push((va as any).vocalist_id);
+          vocalistMap.set((va as any).draft_set_song_id, existing);
+        }
+
+        return (setRows || []).map((r: any) => ({
+          id: r.song_id as string,
+          title: (r.songs as { id: string; title: string } | null)?.title || "Unknown Song",
+          key: (r.song_key as string | null) || null,
+          vocalistId: (r.vocalist_id as string | null) || null,
+          vocalistIds: (vocalistMap.get(r.id) || []).filter(Boolean) as string[],
+        }));
+      };
+
+      const morningSongs = morningSet ? await fetchSessionSongs(morningSet.id) : [];
+      const afternoonSongs = afternoonSet ? await fetchSessionSongs(afternoonSet.id) : [];
+      const combined = [...morningSongs, ...afternoonSongs];
+      if (combined.length > 0) {
+        effectiveSongs = combined;
+        kidsCampMorningSongs = morningSongs;
+        kidsCampAfternoonSongs = afternoonSongs;
+      }
+    }
   }
 
   // Get song durations from reference track markers
@@ -704,6 +864,137 @@ export async function generateServiceFlowFromTemplate(params: {
     params.serviceDate,
     params.draftSetId
   );
+
+  // Helper to get duration for a song from markers (title match first, positional fallback).
+  const getDurationForSong = (songTitle: string, songIndex?: number): number | null => {
+    const normalized = normalizeTitle(songTitle);
+    return (
+      markerDurations.byTitle.get(normalized) ??
+      (typeof songIndex === "number" ? markerDurations.ordered[songIndex] ?? null : null)
+    );
+  };
+
+  type ServiceFlowItemInsert = {
+    service_flow_id: string;
+    item_type: string;
+    title: string;
+    duration_seconds: number | null;
+    sequence_order: number;
+    song_id: string | null;
+    song_key: string | null;
+    vocalist_id: string | null;
+  };
+
+  const buildSongFlowItem = (
+    serviceFlowId: string,
+    song: (typeof effectiveSongs)[number],
+    sequenceOrder: number,
+    durationSeconds: number | null,
+  ): ServiceFlowItemInsert => ({
+    service_flow_id: serviceFlowId,
+    item_type: "song",
+    title: song.title,
+    duration_seconds: durationSeconds,
+    sequence_order: sequenceOrder,
+    song_id: song.id,
+    song_key: song.key || null,
+    vocalist_id: song.vocalistId || null,
+  });
+
+  // Populate a flow purely from the setlist songs (used when there is no template,
+  // or a template exists but has no items yet).
+  const buildSongOnlyFlowItems = (serviceFlowId: string): ServiceFlowItemInsert[] =>
+    effectiveSongs.map((song, index) =>
+      buildSongFlowItem(serviceFlowId, song, index, getDurationForSong(song.title, index)),
+    );
+
+  // Expand a template into flow items, filling its song placeholders with the setlist songs.
+  // For combined Kids Camp flows, placeholders are filled per session (morning vs afternoon)
+  // instead of in one running order so songs land in the correct sections.
+  const buildTemplateFlowItems = (
+    serviceFlowId: string,
+    templateItems: any[],
+  ): ServiceFlowItemInsert[] => {
+    const placeholderMap =
+      isKidsCampCombinedFlow && kidsCampMorningSongs && kidsCampAfternoonSongs
+        ? buildKidsCampPlaceholderSongMap(templateItems, kidsCampMorningSongs, kidsCampAfternoonSongs)
+        : null;
+
+    const flowItems: ServiceFlowItemInsert[] = [];
+    const usedSongs = new Set<(typeof effectiveSongs)[number]>();
+    let songIndex = 0;
+
+    for (const templateItem of templateItems) {
+      if (isTemplateSongPlaceholder(templateItem)) {
+        let song: (typeof effectiveSongs)[number] | undefined;
+        if (placeholderMap) {
+          song = placeholderMap.byOrder.get(templateItem.sequence_order);
+        } else if (songIndex < effectiveSongs.length) {
+          song = effectiveSongs[songIndex];
+          songIndex++;
+        }
+
+        if (song) {
+          const songPosition = effectiveSongs.indexOf(song);
+          const markerDuration = getDurationForSong(
+            song.title,
+            songPosition >= 0 ? songPosition : undefined,
+          );
+          flowItems.push(
+            buildSongFlowItem(
+              serviceFlowId,
+              song,
+              templateItem.sequence_order,
+              markerDuration ?? templateItem.default_duration_seconds,
+            ),
+          );
+          usedSongs.add(song);
+        } else {
+          // No song for this placeholder: keep the template's label as a plain item.
+          flowItems.push({
+            service_flow_id: serviceFlowId,
+            item_type: "item",
+            title: templateItem.title,
+            duration_seconds: templateItem.default_duration_seconds,
+            sequence_order: templateItem.sequence_order,
+            song_id: null,
+            song_key: null,
+            vocalist_id: null,
+          });
+        }
+      } else {
+        flowItems.push({
+          service_flow_id: serviceFlowId,
+          item_type: templateItem.item_type,
+          title: templateItem.title,
+          duration_seconds: templateItem.default_duration_seconds,
+          sequence_order: templateItem.sequence_order,
+          song_id: null,
+          song_key: null,
+          vocalist_id: null,
+        });
+      }
+    }
+
+    // Append any songs that didn't land in a placeholder so nothing is dropped.
+    const leftoverSongs = placeholderMap
+      ? effectiveSongs.filter((song) => !usedSongs.has(song))
+      : effectiveSongs.slice(songIndex);
+
+    for (const song of leftoverSongs) {
+      const songPosition = effectiveSongs.indexOf(song);
+      flowItems.push(
+        buildSongFlowItem(
+          serviceFlowId,
+          song,
+          flowItems.length,
+          getDurationForSong(song.title, songPosition >= 0 ? songPosition : undefined),
+        ),
+      );
+    }
+
+    return flowItems;
+  };
 
   const syncServiceFlowSongVocalists = async (serviceFlowId: string) => {
     if (!params.draftSetId) return;
@@ -803,9 +1094,9 @@ export async function generateServiceFlowFromTemplate(params: {
     if (insertedSongItemsError || !insertedSongItems) return;
 
     const vocalistRows: Array<{ service_flow_item_id: string; vocalist_id: string }> = [];
-    for (let idx = 0; idx < Math.min(insertedSongItems.length, params.songs.length); idx++) {
+    for (let idx = 0; idx < Math.min(insertedSongItems.length, effectiveSongs.length); idx++) {
       const item = insertedSongItems[idx];
-      const song = params.songs[idx];
+      const song = effectiveSongs[idx];
       const vocalistIds = getSongVocalistIds(song);
       for (const vocalistId of vocalistIds) {
         vocalistRows.push({ service_flow_item_id: item.id, vocalist_id: vocalistId });
@@ -989,10 +1280,20 @@ export async function generateServiceFlowFromTemplate(params: {
       /^song\s*\d+\b/i.test((item.title || "").trim())
     );
 
+    // For Kids Camp combined flows, resync if the number of songs in the flow no longer
+    // matches the combined morning+afternoon session song count (e.g. second session was
+    // just published after the first was already stored).
+    const existingFlowSongCount = (existingItems || []).filter((i: any) => i.item_type === "song").length;
+    const kidsCampSongsChanged =
+      isKidsCampCombinedFlow &&
+      effectiveSongs.length > 0 &&
+      existingFlowSongCount !== effectiveSongs.length;
+
     const requiresTemplateResync =
       !!template &&
       (
         params.forceTemplateResync === true ||
+        kidsCampSongsChanged ||
         (existingFlowMeta.created_from_template_id || null) !== (template.id || null) ||
         (existingFlowMeta.ministry_type || null) !== resolvedMinistryType ||
         (existingFlowMeta.custom_service_id || null) !== (resolvedCustomServiceId || null) ||
@@ -1022,7 +1323,9 @@ export async function generateServiceFlowFromTemplate(params: {
       if (updates.length > 0) {
         await Promise.all(updates);
       }
-      await syncServiceFlowSongVocalists(existingFlow.id);
+      if (!isKidsCampCombinedFlow) {
+        await syncServiceFlowSongVocalists(existingFlow.id);
+      }
       return existingFlow.id;
     }
 
@@ -1044,12 +1347,6 @@ export async function generateServiceFlowFromTemplate(params: {
     if (reusedFlow) {
       const newFlow = reusedFlow as { id: string };
 
-      // Helper to get duration for a song from markers
-      const getDurationForSong = (songTitle: string, songIndex?: number): number | null => {
-        const normalized = normalizeTitle(songTitle);
-        return markerDurations.byTitle.get(normalized) ?? (typeof songIndex === "number" ? markerDurations.ordered[songIndex] ?? null : null);
-      };
-
       if (template) {
         const { data: templateItems } = await supabase
           .from("service_flow_template_items")
@@ -1057,108 +1354,21 @@ export async function generateServiceFlowFromTemplate(params: {
           .eq("template_id", template.id)
           .order("sequence_order", { ascending: true });
 
-        if (templateItems && templateItems.length > 0) {
-          let songIndex = 0;
-          const flowItems: Array<{
-            service_flow_id: string;
-            item_type: string;
-            title: string;
-            duration_seconds: number | null;
-            sequence_order: number;
-            song_id: string | null;
-            song_key: string | null;
-            vocalist_id: string | null;
-          }> = [];
-
-          for (const templateItem of templateItems) {
-            if (isTemplateSongPlaceholder(templateItem)) {
-              if (songIndex < params.songs.length) {
-                const song = params.songs[songIndex];
-                const markerDuration = getDurationForSong(song.title, songIndex);
-                flowItems.push({
-                  service_flow_id: newFlow.id,
-                  item_type: "song",
-                  title: song.title,
-                  duration_seconds: markerDuration ?? templateItem.default_duration_seconds,
-                  sequence_order: templateItem.sequence_order,
-                  song_id: song.id,
-                  song_key: song.key || null,
-                  vocalist_id: song.vocalistId || null,
-                });
-                songIndex++;
-              } else {
-                flowItems.push({
-                  service_flow_id: newFlow.id,
-                  item_type: "item",
-                  title: templateItem.title,
-                  duration_seconds: templateItem.default_duration_seconds,
-                  sequence_order: templateItem.sequence_order,
-                  song_id: null,
-                  song_key: null,
-                  vocalist_id: null,
-                });
-              }
-            } else {
-              flowItems.push({
-                service_flow_id: newFlow.id,
-                item_type: templateItem.item_type,
-                title: templateItem.title,
-                duration_seconds: templateItem.default_duration_seconds,
-                sequence_order: templateItem.sequence_order,
-                song_id: null,
-                song_key: null,
-                vocalist_id: null,
-              });
-            }
-          }
-
-          while (songIndex < params.songs.length) {
-            const song = params.songs[songIndex];
-            const markerDuration = getDurationForSong(song.title, songIndex);
-            flowItems.push({
-              service_flow_id: newFlow.id,
-              item_type: "song",
-              title: song.title,
-              duration_seconds: markerDuration,
-              sequence_order: flowItems.length,
-              song_id: song.id,
-              song_key: song.key || null,
-              vocalist_id: song.vocalistId || null,
-            });
-            songIndex++;
-          }
-
-          await insertFlowItemsWithVocalists(newFlow.id, flowItems);
-        } else {
-          const flowItems = params.songs.map((song, index) => ({
-            service_flow_id: newFlow.id,
-            item_type: "song" as const,
-            title: song.title,
-            duration_seconds: getDurationForSong(song.title, index),
-            sequence_order: index,
-            song_id: song.id,
-            song_key: song.key || null,
-            vocalist_id: song.vocalistId || null,
-          }));
-
-          await insertFlowItemsWithVocalists(newFlow.id, flowItems);
-        }
-      } else {
-        const flowItems = params.songs.map((song, index) => ({
-          service_flow_id: newFlow.id,
-          item_type: "song" as const,
-          title: song.title,
-          duration_seconds: getDurationForSong(song.title, index),
-          sequence_order: index,
-          song_id: song.id,
-          song_key: song.key || null,
-          vocalist_id: song.vocalistId || null,
-        }));
+        const flowItems =
+          templateItems && templateItems.length > 0
+            ? buildTemplateFlowItems(newFlow.id, templateItems)
+            : buildSongOnlyFlowItems(newFlow.id);
 
         await insertFlowItemsWithVocalists(newFlow.id, flowItems);
+      } else {
+        await insertFlowItemsWithVocalists(newFlow.id, buildSongOnlyFlowItems(newFlow.id));
       }
 
-      await syncServiceFlowSongVocalists(newFlow.id);
+      // Kids Camp combined flows have vocalist data baked into effectiveSongs from both
+      // sessions; the single-set syncServiceFlowSongVocalists would mis-map positions.
+      if (!isKidsCampCombinedFlow) {
+        await syncServiceFlowSongVocalists(newFlow.id);
+      }
     }
 
     return existingFlow.id;
@@ -1205,12 +1415,6 @@ export async function generateServiceFlowFromTemplate(params: {
     newFlow = withCustomResult.data;
   }
 
-  // Helper to get duration for a song from markers
-  const getDurationForSong = (songTitle: string, songIndex?: number): number | null => {
-    const normalized = normalizeTitle(songTitle);
-    return markerDurations.byTitle.get(normalized) ?? (typeof songIndex === "number" ? markerDurations.ordered[songIndex] ?? null : null);
-  };
-
   if (template) {
     // Fetch template items
     const { data: templateItems } = await supabase
@@ -1220,112 +1424,25 @@ export async function generateServiceFlowFromTemplate(params: {
       .order("sequence_order", { ascending: true });
 
     if (templateItems && templateItems.length > 0) {
-      let songIndex = 0;
-      const flowItems: Array<{
-        service_flow_id: string;
-        item_type: string;
-        title: string;
-        duration_seconds: number | null;
-        sequence_order: number;
-        song_id: string | null;
-        song_key: string | null;
-        vocalist_id: string | null;
-      }> = [];
-
-      for (const templateItem of templateItems) {
-        if (isTemplateSongPlaceholder(templateItem)) {
-          // Expand song placeholders into actual songs
-          if (songIndex < params.songs.length) {
-            const song = params.songs[songIndex];
-            // Try to get duration from markers, fallback to template default
-            const markerDuration = getDurationForSong(song.title, songIndex);
-            flowItems.push({
-              service_flow_id: newFlow.id,
-              item_type: "song",
-              title: song.title,
-              duration_seconds: markerDuration ?? templateItem.default_duration_seconds,
-              sequence_order: templateItem.sequence_order,
-              song_id: song.id,
-              song_key: song.key || null,
-              vocalist_id: song.vocalistId || null,
-            });
-            songIndex++;
-          } else {
-            flowItems.push({
-              service_flow_id: newFlow.id,
-              item_type: "item",
-              title: templateItem.title,
-              duration_seconds: templateItem.default_duration_seconds,
-              sequence_order: templateItem.sequence_order,
-              song_id: null,
-              song_key: null,
-              vocalist_id: null,
-            });
-          }
-        } else {
-          flowItems.push({
-            service_flow_id: newFlow.id,
-            item_type: templateItem.item_type,
-            title: templateItem.title,
-            duration_seconds: templateItem.default_duration_seconds,
-            sequence_order: templateItem.sequence_order,
-            song_id: null,
-            song_key: null,
-            vocalist_id: null,
-          });
-        }
-      }
-
-      // Add any remaining songs not covered by placeholders
-      while (songIndex < params.songs.length) {
-        const song = params.songs[songIndex];
-        const markerDuration = getDurationForSong(song.title, songIndex);
-        flowItems.push({
-          service_flow_id: newFlow.id,
-          item_type: "song",
-          title: song.title,
-          duration_seconds: markerDuration,
-          sequence_order: flowItems.length,
-          song_id: song.id,
-          song_key: song.key || null,
-          vocalist_id: song.vocalistId || null,
-        });
-        songIndex++;
-      }
+      const flowItems = buildTemplateFlowItems(newFlow.id, templateItems);
 
       await insertFlowItemsWithVocalists(newFlow.id, flowItems);
     } else {
       // Template exists but has no items yet: still populate flow with setlist songs.
-      const flowItems = params.songs.map((song, index) => ({
-        service_flow_id: newFlow.id,
-        item_type: "song" as const,
-        title: song.title,
-        duration_seconds: getDurationForSong(song.title, index),
-        sequence_order: index,
-        song_id: song.id,
-        song_key: song.key || null,
-        vocalist_id: song.vocalistId || null,
-      }));
+      const flowItems = buildSongOnlyFlowItems(newFlow.id);
 
       await insertFlowItemsWithVocalists(newFlow.id, flowItems);
     }
   } else {
     // No template - just add songs with marker-based durations
-    const flowItems = params.songs.map((song, index) => ({
-      service_flow_id: newFlow.id,
-      item_type: "song" as const,
-      title: song.title,
-      duration_seconds: getDurationForSong(song.title, index),
-      sequence_order: index,
-      song_id: song.id,
-      song_key: song.key || null,
-      vocalist_id: song.vocalistId || null,
-    }));
-
-    await insertFlowItemsWithVocalists(newFlow.id, flowItems);
+    await insertFlowItemsWithVocalists(newFlow.id, buildSongOnlyFlowItems(newFlow.id));
   }
 
-  await syncServiceFlowSongVocalists(newFlow.id);
+  // Kids Camp combined flows have vocalist data baked into effectiveSongs from both
+  // sessions; the single-set syncServiceFlowSongVocalists would mis-map positions.
+  if (!isKidsCampCombinedFlow) {
+    await syncServiceFlowSongVocalists(newFlow.id);
+  }
 
   return newFlow.id;
 }

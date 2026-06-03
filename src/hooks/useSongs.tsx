@@ -237,11 +237,11 @@ export function useSongsWithStats() {
           case "kids_camp":
             return "Kids Camp";
           case "encounter":
-            return "Encounter";
+            return "HS Worship";
           case "eon":
-            return "EON";
+            return "MS Worship";
           case "eon_weekend":
-            return "EON Weekend";
+            return "MS Worship Weekend";
           case "evident":
             return "Evident";
           case "er":
@@ -331,11 +331,11 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
           case "kids_camp":
             return "Kids Camp";
           case "encounter":
-            return "Encounter";
+            return "HS Worship";
           case "eon":
-            return "EON";
+            return "MS Worship";
           case "eon_weekend":
-            return "EON Weekend";
+            return "MS Worship Weekend";
           case "evident":
             return "Evident";
           case "er":
@@ -441,15 +441,35 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
   const ministry = options.ministry ?? "all";
 
   // Ministry filtering for PCO service_plans
-  const studentServiceTypes = [
-    "EON Boro",
-    "EON",
-    "EON Tullahoma",
-    "EON Shelbyville",
+  const hsWorshipServiceTypes = [
+    "HS Worship Boro",
+    "HS Worship (Boro)",
+    "HS Worship CC",
+    "HS Worship (CC)",
+    "HS Worship Tullahoma",
+    "HS Worship (Tullahoma)",
+    "HS Worship",
     "Encounter (Boro)",
     "Encounter",
     "Encounter (CC)",
     "Encounter (Tullahoma)",
+  ];
+  const msWorshipServiceTypes = [
+    "MS Worship Boro",
+    "MS Worship (Boro)",
+    "MS Worship Tullahoma",
+    "MS Worship (Tullahoma)",
+    "MS Worship Shelbyville",
+    "MS Worship (Shelbyville)",
+    "MS Worship",
+    "EON Boro",
+    "EON",
+    "EON Tullahoma",
+    "EON Shelbyville",
+  ];
+  const studentServiceTypes = [
+    ...msWorshipServiceTypes,
+    ...hsWorshipServiceTypes,
     "Evident",
     "ER",
   ];
@@ -465,20 +485,15 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
   }
 
   if (ministry === "weekend") {
-    const list = `(${studentServiceTypes.map((v) => `"${v.replace(/\"/g, "\\\"")}"`)
+    const list = `(${studentServiceTypes.map((v) => `"${v.replace(/"/g, '\\"')}"`)
       .join(",")})`;
     pcoQuery = pcoQuery.not("service_type_name", "in", list);
   } else if (ministry === "encounter") {
-    pcoQuery = pcoQuery.in("service_type_name", [
-      "Encounter (Boro)",
-      "Encounter (CC)",
-      "Encounter (Tullahoma)",
-      "Encounter",
-    ]);
+    pcoQuery = pcoQuery.in("service_type_name", hsWorshipServiceTypes);
   } else if (ministry === "kids_camp") {
     pcoQuery = pcoQuery.ilike("service_type_name", "%Kids Camp%");
   } else if (ministry === "eon") {
-    pcoQuery = pcoQuery.in("service_type_name", ["EON Boro", "EON Tullahoma", "EON Shelbyville", "EON"]);
+    pcoQuery = pcoQuery.in("service_type_name", msWorshipServiceTypes);
   } else if (ministry === "evident") {
     pcoQuery = pcoQuery.in("service_type_name", ["Evident", "ER"]);
   }
@@ -650,8 +665,8 @@ export function usePlanSongs(planId: string | null, pcoPlanId?: string) {
 function getMinistryTypeFromServiceName(serviceTypeName: string): string {
   const lowerName = serviceTypeName.toLowerCase();
   
-  if (lowerName.includes('eon')) return 'eon';
-  if (lowerName.includes('encounter')) return 'encounter';
+  if (lowerName.includes('ms worship') || lowerName.includes('eon')) return 'eon';
+  if (lowerName.includes('hs worship') || lowerName.includes('encounter')) return 'encounter';
   if (lowerName.includes('kids camp')) return 'kids_camp';
   if (lowerName.includes('evident')) return 'evident';
   if (lowerName.includes(' er ') || lowerName.endsWith(' er') || lowerName.startsWith('er ')) return 'er';
@@ -1097,9 +1112,9 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         const ministryLabels: Record<string, string> = {
           weekend: "Weekend Worship",
           kids_camp: "Kids Camp",
-          encounter: "Encounter",
-          eon: "EON",
-          eon_weekend: "EON Weekend",
+          encounter: "HS Worship",
+          eon: "MS Worship",
+          eon_weekend: "MS Worship Weekend",
           sunday_am: "Sunday AM"
         };
 

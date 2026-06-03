@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Monitor, Volume2, Video, Building2, CalendarDays, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -208,6 +208,12 @@ type ScheduleNotificationTarget = {
   ministryType: "production" | "video";
   teamId: string;
   teamName: string;
+};
+
+type SetlistPushRecipientPreview = {
+  userId: string;
+  name: string;
+  hasPushSubscription: boolean;
 };
 
 const defaultNewEventState = {
@@ -856,7 +862,7 @@ function StandardCalendar() {
     : [];
 
   // Get team schedule for a specific day
-  // Note: Midweek ministries (e.g. Encounter) should still show even if the user isn't personally scheduled.
+  // Note: Midweek ministries (e.g. HS Worship) should still show even if the user isn't personally scheduled.
   const getTeamForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const dateForDay = new Date(year, month, day);
@@ -903,7 +909,7 @@ function StandardCalendar() {
       ];
     }
 
-    // Pick a single entry (Encounter/EON first when multiple exist)
+    // Pick a single entry (HS/MS Worship first when multiple exist)
     const ministryPriority = ["encounter", "eon", "eon_weekend", "weekend", "sunday_am", "production", "video"];
     const teamEntry = entries.sort((a, b) => {
       const aIdx = ministryPriority.indexOf(a.ministry_type);
@@ -918,7 +924,7 @@ function StandardCalendar() {
     }
 
     // If a specific campus is selected, only show team if user is scheduled at that campus
-    // OR if it's a weekend rotation OR a midweek scheduled ministry (Encounter/EON/etc.)
+    // OR if it's a weekend rotation OR a midweek scheduled ministry (HS/MS Worship/etc.)
     const userScheduleForDay = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
     const isWeekend = isSaturday || isSunday;
     if (userScheduleForDay || isWeekend || isMidweek || hasServiceOverride) {
@@ -2094,6 +2100,10 @@ function SetlistPushButton({
 }) {
   const { isAdmin, canManageTeam } = useAuth();
   const [isSending, setIsSending] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewRecipients, setPreviewRecipients] = useState<SetlistPushRecipientPreview[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const dateStr = formatDateForStorage(date);
   const lookupMinistryType = resolveSetlistPushMinistryType(ministryType);
   const shouldCheckSet = Boolean(campusId && (isAdmin || canManageTeam));
@@ -2120,7 +2130,7 @@ function SetlistPushButton({
   const handleSend = async () => {
     if (!existingSet?.id || !canSend) {
       toast.error(disabledTitle || "No published setlist is available for this date.");
-      return;
+      return false;
     }
 
     setIsSending(true);
@@ -2144,6 +2154,7 @@ function SetlistPushButton({
           ? `Setlist push sent to ${notifiedCount} roster member${notifiedCount === 1 ? "" : "s"} with push enabled.`
           : "No roster members with push enabled were available for this setlist push.",
       );
+      return true;
     } catch (error) {
       console.error("Failed to send manual setlist push:", error);
       let message = error instanceof Error ? error.message : "Failed to send setlist push.";
@@ -2159,24 +2170,162 @@ function SetlistPushButton({
         }
       }
       toast.error(message);
+      return false;
     } finally {
       setIsSending(false);
     }
   };
 
+  const loadPreview = async () => {
+    if (!existingSet?.id || !canSend) {
+      toast.error(disabledTitle || "No published setlist is available for this date.");
+      return;
+    }
+
+    setIsPreviewOpen(true);
+    setIsLoadingPreview(true);
+    setPreviewError(null);
+    setPreviewRecipients([]);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("notify-setlist-published", {
+        body: {
+          draftSetId: existingSet.id,
+          manual: true,
+          previewOnly: true,
+        },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setPreviewRecipients(Array.isArray(data?.recipients) ? data.recipients : []);
+    } catch (error) {
+      console.error("Failed to prepare setlist push preview:", error);
+      let message = error instanceof Error ? error.message : "Failed to prepare setlist push preview.";
+      const response = (error as { context?: Response })?.context;
+      if (response) {
+        try {
+          const details = await response.json();
+          if (typeof details?.error === "string") {
+            message = details.error;
+          }
+        } catch {
+          // Keep the original error message if the edge response body is not JSON.
+        }
+      }
+      setPreviewError(message);
+      toast.error(message);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const pushEnabledRecipients = previewRecipients.filter((recipient) => recipient.hasPushSubscription);
+  const pushUnavailableRecipients = previewRecipients.filter((recipient) => !recipient.hasPushSubscription);
+  const recipientCount = pushEnabledRecipients.length;
+
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className={className || "gap-1.5"}
-      onClick={handleSend}
-      disabled={isLoading || isSending || !canSend}
-      title={disabledTitle || `Send ${serviceLabel || "setlist"} push to the roster`}
-    >
-      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-      Push
-    </Button>
+    <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={className || "gap-1.5"}
+        onClick={loadPreview}
+        disabled={isLoading || isLoadingPreview || isSending || !canSend}
+        title={disabledTitle || `Prepare ${serviceLabel || "setlist"} push to the roster`}
+      >
+        {isLoadingPreview || isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+        Push
+      </Button>
+      <DialogContent className="max-h-[85vh] overflow-hidden bg-card sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Confirm Setlist Push</DialogTitle>
+          <DialogDescription>
+            Review who will receive the {serviceLabel || "setlist"} push before sending it.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+          {isLoadingPreview ? (
+            <div className="flex items-center gap-2 rounded-md border border-border p-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing push preview...
+            </div>
+          ) : previewError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {previewError}
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-sm font-medium text-foreground">
+                  {recipientCount} recipient{recipientCount === 1 ? "" : "s"} with push enabled
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These roster members have an active push subscription and will receive the notification.
+                </p>
+              </div>
+
+              {pushEnabledRecipients.length > 0 ? (
+                <div className="space-y-1.5">
+                  {pushEnabledRecipients.map((recipient) => (
+                    <div key={recipient.userId} className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
+                      <span className="truncate text-foreground">{recipient.name}</span>
+                      <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
+                        Push enabled
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+                  No roster members with push enabled are available for this setlist push.
+                </p>
+              )}
+
+              {pushUnavailableRecipients.length > 0 && (
+                <div className="space-y-2 rounded-md border border-border/70 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    On roster without push enabled
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pushUnavailableRecipients.map((recipient) => (
+                      <Badge key={recipient.userId} variant="outline" className="text-xs">
+                        {recipient.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="outline" onClick={() => setIsPreviewOpen(false)} disabled={isSending}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={async () => {
+              const sent = await handleSend();
+              if (sent) {
+                setIsPreviewOpen(false);
+              }
+            }}
+            disabled={isLoadingPreview || isSending || !!previewError || recipientCount === 0}
+          >
+            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
+            Send Push
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2438,15 +2587,15 @@ function BandRoster({
       order: 2
     },
     eon_weekend: {
-      label: "EON Weekend",
+      label: "MS Worship Weekend",
       order: 3
     },
     encounter: {
-      label: "Encounter",
+      label: "HS Worship",
       order: 4
     },
     eon: {
-      label: "EON",
+      label: "MS Worship",
       order: 5
     },
     sunday_am: {

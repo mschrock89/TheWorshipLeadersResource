@@ -346,19 +346,19 @@ export function TemplateManager() {
         </Card>
       ) : (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg">{template.name}</CardTitle>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <CardTitle className="text-lg truncate">{template.name}</CardTitle>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="h-7 w-7 shrink-0"
                 onClick={handleOpenEditTemplateName}
               >
                 <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 sm:shrink-0">
               <Button
                 variant="default"
                 size="sm"

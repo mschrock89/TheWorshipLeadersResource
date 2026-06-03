@@ -148,7 +148,7 @@ export default function Home() {
         <img
           src={homeConfig.heroImage}
           alt={homeConfig.heroAlt}
-          className={`absolute left-1/2 top-0 z-0 h-full w-full max-w-none -translate-x-1/2 object-cover lg:w-auto lg:object-contain lg:[-webkit-mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] lg:[mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] ${homeConfig.mobileObjectPosition ?? ""}`}
+          className={`absolute left-1/2 top-0 z-0 h-full w-full max-w-none -translate-x-1/2 object-cover sm:w-auto sm:object-contain lg:[-webkit-mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] lg:[mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] ${homeConfig.mobileObjectPosition ?? ""}`}
         />
       )}
       <section

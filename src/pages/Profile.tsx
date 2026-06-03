@@ -43,6 +43,7 @@ const PROFILE_MINISTRY_ORDER = [
   "kids_camp",
   "production",
   "video",
+  "creative",
   "encounter",
   "eon",
   "eon_weekend",
@@ -57,6 +58,10 @@ const PROFILE_MINISTRY_ORDER = [
 const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
 
 function normalizeProfileMinistryType(ministryType: string) {
+  if (ministryType === "photo_team") {
+    return "creative";
+  }
+
   return WEEKEND_MINISTRY_ALIASES.includes(ministryType as typeof WEEKEND_MINISTRY_ALIASES[number])
     ? "weekend_team"
     : ministryType;
@@ -1345,6 +1350,7 @@ export default function Profile() {
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 const showVideoPositions = ministryType === 'video';
+                                const showCreativePositions = ministryType === 'creative';
                                 const showStudentPositions = ministryType === STUDENT_TEAM_BUILDER_MINISTRY_TYPE;
                                 
                                 return (
@@ -1417,6 +1423,16 @@ export default function Profile() {
                                             campus.id,
                                             ministryPositions,
                                             POSITION_CATEGORIES.video,
+                                          )
+                                        )}
+
+                                        {showCreativePositions && (
+                                          renderMinistryPositionGroup(
+                                            "Team:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.creative,
                                           )
                                         )}
 

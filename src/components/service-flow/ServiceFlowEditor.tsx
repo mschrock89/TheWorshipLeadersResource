@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
-import { Plus, Calendar as CalendarIcon, GripVertical } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, GripVertical, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -21,7 +21,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { MINISTRY_TYPES, isKidsCampSetMinistryType } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
@@ -199,6 +199,7 @@ export function ServiceFlowEditor({
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedLiveTemplateSync = useRef(false);
+  const hasAttemptedStaleTemplateSync = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedVocalists = useRef(false);
   const hasInvalidatedOnLive = useRef(false);
@@ -244,7 +245,7 @@ export function ServiceFlowEditor({
   const shouldResolveCustomService =
     !initialCustomServiceId &&
     !!effectiveCampusId &&
-    (ministryType === "kids_camp" || ministryType === "prayer_night");
+    (isKidsCampSetMinistryType(ministryType) || ministryType === "prayer_night");
   const {
     data: customServiceOccurrences = [],
     isLoading: customServiceOccurrencesLoading,
@@ -441,6 +442,7 @@ export function ServiceFlowEditor({
   useEffect(() => {
     hasAttemptedAutoGenerate.current = false;
     hasAttemptedLiveTemplateSync.current = false;
+    hasAttemptedStaleTemplateSync.current = false;
     hasAttemptedEmptyBackfill.current = false;
     hasSyncedVocalists.current = false;
     hasInvalidatedOnLive.current = false;
@@ -607,12 +609,15 @@ export function ServiceFlowEditor({
       if (itemsLoading) return;
 
       const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId;
-      if (!draftSetId) return;
+      // Kids Camp combined flows may have no draft_set_id — they fetch songs from both
+      // sessions internally inside generateServiceFlowFromTemplate.
+      const isKidsCampFlow = isKidsCampSetMinistryType(ministryType) || ministryType === "kids_camp";
+      if (!draftSetId && !isKidsCampFlow) return;
 
       hasAttemptedLiveTemplateSync.current = true;
 
       try {
-        const songs = await loadDraftSongsWithVocalists(draftSetId);
+        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
 
         await generateServiceFlowFromTemplate({
           campusId: effectiveCampusId,
@@ -651,6 +656,90 @@ export function ServiceFlowEditor({
     serviceDateStr,
     queryClient,
     effectiveCustomServiceId,
+    loadDraftSongsWithVocalists,
+  ]);
+
+  // Detect when the service flow template was updated after the flow was last generated
+  // and automatically regenerate. This covers the case where a user edits the template
+  // and then opens the service flow editor without going through Live mode.
+  useEffect(() => {
+    const syncStaleTemplateFlow = async () => {
+      if (!serviceFlow?.id) return;
+      if (!user?.id || !effectiveCampusId) return;
+      if (hasAttemptedLiveTemplateSync.current) return; // Live sync handles this path
+      if (hasAttemptedStaleTemplateSync.current) return;
+      if (itemsLoading) return;
+      if (!serviceFlow.created_from_template_id) return;
+
+      // Find the matching template for the current campus/ministry
+      const relevantMinistry =
+        isKidsCampSetMinistryType(ministryType) ? "kids_camp" : ministryType;
+      const matchingTemplate = (campusTemplates || []).find(
+        (t) => t.ministry_type === relevantMinistry
+      );
+      if (!matchingTemplate) return;
+
+      const templateUpdatedAt = matchingTemplate.updated_at
+        ? new Date(matchingTemplate.updated_at).getTime()
+        : null;
+      const flowUpdatedAt = serviceFlow.updated_at
+        ? new Date(serviceFlow.updated_at).getTime()
+        : null;
+
+      const templateIsNewer =
+        templateUpdatedAt !== null &&
+        flowUpdatedAt !== null &&
+        templateUpdatedAt > flowUpdatedAt;
+      const templateIdMismatch =
+        serviceFlow.created_from_template_id !== matchingTemplate.id;
+
+      if (!templateIsNewer && !templateIdMismatch) return;
+
+      hasAttemptedStaleTemplateSync.current = true;
+
+      try {
+        const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId || null;
+        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
+
+        await generateServiceFlowFromTemplate({
+          campusId: effectiveCampusId,
+          ministryType,
+          serviceDate: serviceDateStr,
+          draftSetId,
+          customServiceId: effectiveCustomServiceId || null,
+          createdBy: user.id,
+          forceTemplateResync: true,
+          songs,
+        });
+
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", serviceFlow.id],
+          }),
+        ]);
+      } catch {
+        // Keep the page usable even if sync fails.
+      }
+    };
+
+    syncStaleTemplateFlow();
+  }, [
+    serviceFlow?.id,
+    serviceFlow?.created_from_template_id,
+    serviceFlow?.updated_at,
+    serviceFlow?.draft_set_id,
+    effectiveCustomServiceId,
+    user?.id,
+    effectiveCampusId,
+    ministryType,
+    serviceDateStr,
+    campusTemplates,
+    itemsLoading,
+    queryClient,
+    resolvedDraftSetId,
     loadDraftSongsWithVocalists,
   ]);
 
@@ -845,6 +934,63 @@ export function ServiceFlowEditor({
   const saveItem = useSaveServiceFlowItem();
   const deleteItem = useDeleteServiceFlowItem();
   const reorderItems = useReorderServiceFlowItems();
+
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Deterministic, user-triggered rebuild of the flow from the current saved template.
+  // The automatic resyncs are guarded (run once per mount, swallow errors), so this gives
+  // a reliable way to pull in template edits made after the flow was generated.
+  const handleRegenerateFromTemplate = useCallback(async () => {
+    if (!user?.id || !effectiveCampusId || !serviceDateStr) return;
+    setIsRegenerating(true);
+    try {
+      const draftSetId = serviceFlow?.draft_set_id || resolvedDraftSetId || null;
+      const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
+
+      await generateServiceFlowFromTemplate({
+        campusId: effectiveCampusId,
+        ministryType,
+        serviceDate: serviceDateStr,
+        draftSetId,
+        customServiceId: effectiveCustomServiceId || null,
+        createdBy: user.id,
+        forceTemplateResync: true,
+        songs,
+      });
+
+      // Let the automatic syncs run again on the refreshed data.
+      hasAttemptedLiveTemplateSync.current = false;
+      hasAttemptedStaleTemplateSync.current = false;
+      hasAttemptedEmptyBackfill.current = false;
+
+      await queryClient.invalidateQueries({ queryKey: ["service-flow"] });
+      await queryClient.invalidateQueries({ queryKey: ["service-flow-items"] });
+
+      toast({
+        title: "Service Flow rebuilt",
+        description: "Regenerated from the current saved template.",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Couldn't rebuild Service Flow",
+        description: e?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [
+    user?.id,
+    effectiveCampusId,
+    serviceDateStr,
+    ministryType,
+    serviceFlow?.draft_set_id,
+    resolvedDraftSetId,
+    effectiveCustomServiceId,
+    loadDraftSongsWithVocalists,
+    queryClient,
+    toast,
+  ]);
 
   const totalDuration = useMemo(() => {
     return localItems.reduce((sum, item) => sum + (item.duration_seconds || 0), 0);
@@ -1353,15 +1499,27 @@ export function ServiceFlowEditor({
 
       {mode === "editor" ? (
         <div className="service-flow-screen-layout service-flow-total-footer flex items-center justify-between pt-4 border-t print:hidden">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsAddDialogOpen(true)}
-            disabled={!effectiveCampusId}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Add Item
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddDialogOpen(true)}
+              disabled={!effectiveCampusId}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Item
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRegenerateFromTemplate}
+              disabled={!effectiveCampusId || isRegenerating}
+              title="Rebuild this service flow from the current saved template"
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-1", isRegenerating && "animate-spin")} />
+              Reset to Template
+            </Button>
+          </div>
           <div className="text-sm font-medium">
             <span className="text-muted-foreground">Total: </span>
             <span>{formatTotalDuration(totalDuration)}</span>

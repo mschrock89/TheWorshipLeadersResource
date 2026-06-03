@@ -231,10 +231,10 @@ serve(async (req) => {
       const lower = serviceTypeName.toLowerCase();
       const isWeekend = campusNameTokens.some(token => token && lower.includes(token));
       const isWorshipNight = lower.includes('worship night') || lower.includes('worship nights');
-      const isEncounter = lower.includes('encounter');
-      const isEon = /\beon\b/.test(lower) || lower.includes('eon ');
+      const isHsWorship = lower.includes('hs worship') || lower.includes('encounter');
+      const isMsWorship = lower.includes('ms worship') || /\beon\b/.test(lower) || lower.includes('eon ');
       const isEvident = /\bevident\b/.test(lower) || /\ber\b/.test(lower);
-      return isWeekend || isWorshipNight || isEncounter || isEon || isEvident;
+      return isWeekend || isWorshipNight || isHsWorship || isMsWorship || isEvident;
     };
 
     // Calculate date range: last N days
