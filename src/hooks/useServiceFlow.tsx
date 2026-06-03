@@ -780,6 +780,7 @@ export async function generateServiceFlowFromTemplate(params: {
       : isKidsCampSetMinistryType(params.ministryType) ? params.ministryType : "kids_camp";
   }
 
+
   // For Kids Camp, combine morning + afternoon session songs into one ordered list.
   // The morning session's songs fill the template's morning-section song placeholders and
   // the afternoon session's songs fill the afternoon-section placeholders (see
