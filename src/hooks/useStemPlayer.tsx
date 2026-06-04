@@ -60,36 +60,79 @@ function effectiveGain(
   return volumes[stemType] ?? 1;
 }
 
-// ─── Engine selection ─────────────────────────────────────────────────────────
+// ─── Device support ───────────────────────────────────────────────────────────
 //
-// Decoding every stem into an in-memory AudioBuffer (raw PCM) is fine on desktop
-// but is a memory bomb on phones — a handful of full-length stems can exceed
-// iOS Safari's per-tab memory limit and crash the page ("A problem repeatedly
-// occurred"). On mobile we therefore fall back to a streaming engine that plays
-// each stem from a lightweight <audio> element instead of holding decoded PCM.
+// Decoding every stem into an in-memory AudioBuffer (raw PCM) is a memory bomb on
+// phones — a handful of full-length stems can exceed mobile Safari's per-tab
+// memory limit and crash the page ("A problem repeatedly occurred"). Multiple
+// independent streaming <audio> elements, the previous fallback, can't stay in
+// sync and skip badly. So the stem player is now disabled on phones entirely.
+//
+// iPads and other tablets keep the player: they have far more headroom, and we
+// additionally down-mix + downsample each stem to mono on decode (see
+// `conditionForMobile` below) so memory stays bounded and playback stays in sync.
 
-function detectStreamingEngine(): boolean {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  const isIOS =
-    /iPad|iPhone|iPod/.test(ua) ||
-    // iPadOS 13+ reports as desktop Safari but has touch points
-    (navigator.platform === "MacIntel" && (navigator.maxTouchPoints ?? 0) > 1);
-  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
-  const smallScreen = window.matchMedia?.("(max-width: 1024px)")?.matches ?? false;
-  return isIOS || (coarsePointer && smallScreen);
+function getUserAgent(): string {
+  return (typeof navigator !== "undefined" && navigator.userAgent) || "";
 }
 
-// ─── Provider (engine selector) ───────────────────────────────────────────────
+function isIPadDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = getUserAgent();
+  if (/iPad/.test(ua)) return true;
+  // iPadOS 13+ masquerades as desktop Safari but exposes touch points.
+  return navigator.platform === "MacIntel" && (navigator.maxTouchPoints ?? 0) > 1;
+}
+
+function isPhoneDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  // An iPad is a tablet, not a phone — keep the player there.
+  if (isIPadDevice()) return false;
+  const ua = getUserAgent();
+  if (/iPhone|iPod/.test(ua)) return true;
+  // Android phones include "Mobile" in the UA; Android tablets do not.
+  if (/Android/.test(ua) && /Mobile/.test(ua)) return true;
+  // Generic fallback: small coarse-pointer screens are phones.
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const smallScreen = window.matchMedia?.("(max-width: 767px)")?.matches ?? false;
+  return coarsePointer && smallScreen;
+}
+
+// Touch tablets (iPad, Android tablets) get memory-conditioned stems on decode.
+function isMemoryConstrainedDevice(): boolean {
+  if (isIPadDevice()) return true;
+  return /Android/.test(getUserAgent());
+}
+
+/**
+ * Whether the stem player can run on this device. Phones are unsupported because
+ * mixing many full stems reliably is not achievable on phone hardware/browsers.
+ */
+export function isStemPlayerSupported(): boolean {
+  return !isPhoneDevice();
+}
+
+// Down-mix to mono + downsample so tablets don't blow the per-tab memory budget.
+const MOBILE_TARGET_SAMPLE_RATE = 22050;
+
+async function conditionBuffer(buffer: AudioBuffer): Promise<AudioBuffer> {
+  if (typeof OfflineAudioContext === "undefined") return buffer;
+  if (buffer.numberOfChannels === 1 && buffer.sampleRate <= MOBILE_TARGET_SAMPLE_RATE) {
+    return buffer;
+  }
+  const frameCount = Math.max(1, Math.ceil(buffer.duration * MOBILE_TARGET_SAMPLE_RATE));
+  const offline = new OfflineAudioContext(1, frameCount, MOBILE_TARGET_SAMPLE_RATE);
+  const source = offline.createBufferSource();
+  source.buffer = buffer;
+  source.connect(offline.destination);
+  source.start();
+  return offline.startRendering();
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function StemPlayerProvider({ children }: { children: React.ReactNode }) {
-  // Resolve once at mount so the chosen engine never swaps underneath the player.
-  const [useStreaming] = useState(detectStreamingEngine);
-  return useStreaming ? (
-    <StreamingStemPlayerProvider>{children}</StreamingStemPlayerProvider>
-  ) : (
-    <WebAudioStemPlayerProvider>{children}</WebAudioStemPlayerProvider>
-  );
+  return <WebAudioStemPlayerProvider>{children}</WebAudioStemPlayerProvider>;
 }
 
 // ─── Web Audio engine (desktop — sample-accurate, decodes full buffers) ───────
@@ -109,6 +152,10 @@ function WebAudioStemPlayerProvider({ children }: { children: React.ReactNode })
   const startContextTime = useRef<number>(0);
   const startOffset = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
+
+  // On memory-constrained tablets, down-mix/downsample stems on decode so we don't
+  // exceed the per-tab memory budget. Resolved once so it never changes mid-session.
+  const [conditionForMobile] = useState(isMemoryConstrainedDevice);
 
   const [state, setState] = useState<StemPlayerState>({
     isPlaying: false,
@@ -202,26 +249,43 @@ function WebAudioStemPlayerProvider({ children }: { children: React.ReactNode })
       gain.gain.value = effectiveGain(track.stemType, null, { [track.stemType]: track.isMuted } as Record<StemType, boolean>, { [track.stemType]: track.volume } as Record<StemType, number>);
     }
 
-    // Fetch + decode in parallel
-    const results = await Promise.allSettled(
-      tracks.map(async (track) => {
-        const res = await fetch(track.audioUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const arrayBuffer = await res.arrayBuffer();
-        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-        audioBuffers.current[track.stemType] = audioBuffer;
-        setState((prev) => ({
-          ...prev,
-          loadStates: { ...prev.loadStates, [track.stemType]: "ready" },
-        }));
-        return { stemType: track.stemType, audioBuffer };
-      })
-    );
+    const decodeTrack = async (track: StemPlayerTrack): Promise<number> => {
+      const res = await fetch(track.audioUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      let audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      // On tablets, collapse to mono + low sample rate to bound memory.
+      if (conditionForMobile) {
+        audioBuffer = await conditionBuffer(audioBuffer);
+      }
+      audioBuffers.current[track.stemType] = audioBuffer;
+      setState((prev) => ({
+        ...prev,
+        loadStates: { ...prev.loadStates, [track.stemType]: "ready" },
+      }));
+      return audioBuffer.duration;
+    };
+
+    let results: PromiseSettledResult<number>[];
+    if (conditionForMobile) {
+      // Decode one at a time so peak memory is a single full-res buffer, not all of them.
+      results = [];
+      for (const track of tracks) {
+        try {
+          results.push({ status: "fulfilled", value: await decodeTrack(track) });
+        } catch (reason) {
+          results.push({ status: "rejected", reason });
+        }
+      }
+    } else {
+      // Desktop has the headroom — decode everything in parallel for speed.
+      results = await Promise.allSettled(tracks.map(decodeTrack));
+    }
 
     // Set duration from the longest buffer
     const durations = results
-      .filter((r): r is PromiseFulfilledResult<{ stemType: StemType; audioBuffer: AudioBuffer }> => r.status === "fulfilled")
-      .map((r) => r.value.audioBuffer.duration);
+      .filter((r): r is PromiseFulfilledResult<number> => r.status === "fulfilled")
+      .map((r) => r.value);
     const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
 
     // Mark failed stems
@@ -236,7 +300,7 @@ function WebAudioStemPlayerProvider({ children }: { children: React.ReactNode })
 
     setState((prev) => ({ ...prev, duration: maxDuration }));
     startOffset.current = 0;
-  }, []);
+  }, [conditionForMobile]);
 
   // ── play ──────────────────────────────────────────────────────────────────
 
@@ -369,285 +433,6 @@ function WebAudioStemPlayerProvider({ children }: { children: React.ReactNode })
       stopAllSources();
       stopRaf();
       audioCtxRef.current?.close();
-    };
-  }, []);
-
-  return (
-    <StemPlayerContext.Provider
-      value={{
-        ...state,
-        loadStems,
-        play,
-        pause,
-        togglePlay,
-        stop,
-        seekTo,
-        setVolume,
-        setMute,
-        toggleSolo,
-        getAnalyserNode,
-        audioBuffers,
-      }}
-    >
-      {children}
-    </StemPlayerContext.Provider>
-  );
-}
-
-// ─── Streaming engine (mobile/iOS — one <audio> element per stem, low memory) ─
-
-function StreamingStemPlayerProvider({ children }: { children: React.ReactNode }) {
-  // One <audio> element per stem. Streamed from network, so memory stays tiny.
-  const audioEls = useRef<Partial<Record<StemType, HTMLAudioElement>>>({});
-  // The longest stem drives the master clock / playhead.
-  const masterStemRef = useRef<StemType | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const lastSyncRef = useRef<number>(0);
-
-  // Kept only to satisfy the shared context shape — streaming holds no PCM, so the
-  // waveform components fall back to a flat seek bar.
-  const audioBuffers = useRef<Partial<Record<StemType, AudioBuffer>>>({});
-
-  const [state, setState] = useState<StemPlayerState>({
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    loadStates: {} as Record<StemType, LoadState>,
-    soloedStem: null,
-    volumes: {} as Record<StemType, number>,
-    mutes: {} as Record<StemType, boolean>,
-  });
-
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  function stopRaf() {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-  }
-
-  function applyEffectiveVolume(
-    stemType: StemType,
-    soloedStem: StemType | null,
-    mutes: Record<StemType, boolean>,
-    volumes: Record<StemType, number>,
-  ) {
-    const el = audioEls.current[stemType];
-    if (!el) return;
-    el.volume = effectiveGain(stemType, soloedStem, mutes, volumes);
-  }
-
-  function getMasterEl(): HTMLAudioElement | null {
-    const master = masterStemRef.current;
-    if (master && audioEls.current[master]) return audioEls.current[master]!;
-    const first = Object.values(audioEls.current).find(Boolean);
-    return first ?? null;
-  }
-
-  const startRaf = useCallback(() => {
-    const tick = () => {
-      const master = getMasterEl();
-      if (!master) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      const current = master.currentTime;
-      setState((prev) => ({ ...prev, currentTime: current }));
-
-      // Gentle drift correction — at most ~once per second so we don't glitch.
-      const now = performance.now();
-      if (stateRef.current.isPlaying && now - lastSyncRef.current > 1000) {
-        lastSyncRef.current = now;
-        for (const el of Object.values(audioEls.current)) {
-          if (!el || el === master || el.ended) continue;
-          if (Math.abs(el.currentTime - current) > 0.18) {
-            try { el.currentTime = current; } catch { /* not seekable yet */ }
-          }
-        }
-      }
-
-      if (master.ended) {
-        setState((prev) => ({ ...prev, isPlaying: false, currentTime: prev.duration }));
-        for (const el of Object.values(audioEls.current)) {
-          try { el?.pause(); } catch { /* noop */ }
-        }
-        stopRaf();
-        return;
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, []);
-
-  function teardownElements() {
-    for (const el of Object.values(audioEls.current)) {
-      if (!el) continue;
-      try {
-        el.pause();
-        el.removeAttribute("src");
-        el.load();
-      } catch { /* noop */ }
-    }
-    audioEls.current = {};
-    masterStemRef.current = null;
-  }
-
-  // ── loadStems ─────────────────────────────────────────────────────────────
-
-  const loadStems = useCallback(async (tracks: StemPlayerTrack[]) => {
-    stopRaf();
-    teardownElements();
-
-    setState((prev) => ({
-      ...prev,
-      isPlaying: false,
-      currentTime: 0,
-      loadStates: Object.fromEntries(tracks.map((t) => [t.stemType, "loading"])) as Record<StemType, LoadState>,
-      volumes: Object.fromEntries(tracks.map((t) => [t.stemType, t.volume])) as Record<StemType, number>,
-      mutes: Object.fromEntries(tracks.map((t) => [t.stemType, t.isMuted])) as Record<StemType, boolean>,
-      soloedStem: null,
-      duration: 0,
-    }));
-
-    const initialVolumes = Object.fromEntries(tracks.map((t) => [t.stemType, t.volume])) as Record<StemType, number>;
-    const initialMutes = Object.fromEntries(tracks.map((t) => [t.stemType, t.isMuted])) as Record<StemType, boolean>;
-
-    const durations: Partial<Record<StemType, number>> = {};
-    const recomputeDuration = () => {
-      const values = Object.values(durations).filter((d): d is number => typeof d === "number" && isFinite(d));
-      const maxDuration = values.length > 0 ? Math.max(...values) : 0;
-      // Track which stem is longest so the playhead reaches the end.
-      let longest: StemType | null = null;
-      let longestVal = -1;
-      for (const [st, d] of Object.entries(durations)) {
-        if (typeof d === "number" && d > longestVal) {
-          longestVal = d;
-          longest = st as StemType;
-        }
-      }
-      masterStemRef.current = longest;
-      setState((prev) => ({ ...prev, duration: maxDuration }));
-    };
-
-    for (const track of tracks) {
-      const el = new Audio();
-      el.preload = "auto";
-      el.crossOrigin = "anonymous";
-      el.playsInline = true;
-      el.setAttribute("playsinline", "true");
-      el.setAttribute("webkit-playsinline", "true");
-      el.volume = effectiveGain(track.stemType, null, initialMutes, initialVolumes);
-
-      el.addEventListener("loadedmetadata", () => {
-        durations[track.stemType] = el.duration;
-        recomputeDuration();
-      });
-      el.addEventListener("canplay", () => {
-        setState((prev) => ({
-          ...prev,
-          loadStates: { ...prev.loadStates, [track.stemType]: "ready" },
-        }));
-      });
-      el.addEventListener("error", () => {
-        setState((prev) => ({
-          ...prev,
-          loadStates: { ...prev.loadStates, [track.stemType]: "error" },
-        }));
-      });
-
-      el.src = track.audioUrl;
-      audioEls.current[track.stemType] = el;
-    }
-  }, []);
-
-  // ── play ──────────────────────────────────────────────────────────────────
-
-  const play = useCallback(() => {
-    const master = getMasterEl();
-    if (!master) return;
-    const target = master.currentTime;
-
-    for (const el of Object.values(audioEls.current)) {
-      if (!el) continue;
-      try {
-        if (Math.abs(el.currentTime - target) > 0.05) el.currentTime = target;
-      } catch { /* not seekable yet */ }
-      void el.play().catch(() => { /* autoplay/gesture failure — ignore */ });
-    }
-
-    lastSyncRef.current = performance.now();
-    setState((prev) => ({ ...prev, isPlaying: true }));
-    startRaf();
-  }, [startRaf]);
-
-  // ── pause ─────────────────────────────────────────────────────────────────
-
-  const pause = useCallback(() => {
-    for (const el of Object.values(audioEls.current)) {
-      try { el?.pause(); } catch { /* noop */ }
-    }
-    stopRaf();
-    setState((prev) => ({ ...prev, isPlaying: false }));
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    if (stateRef.current.isPlaying) pause();
-    else play();
-  }, [play, pause]);
-
-  const stop = useCallback(() => {
-    for (const el of Object.values(audioEls.current)) {
-      if (!el) continue;
-      try { el.pause(); el.currentTime = 0; } catch { /* noop */ }
-    }
-    stopRaf();
-    setState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }));
-  }, []);
-
-  const seekTo = useCallback((seconds: number) => {
-    const clamped = Math.max(0, Math.min(seconds, stateRef.current.duration));
-    for (const el of Object.values(audioEls.current)) {
-      try { if (el) el.currentTime = clamped; } catch { /* noop */ }
-    }
-    setState((prev) => ({ ...prev, currentTime: clamped }));
-  }, []);
-
-  const setVolume = useCallback((stemType: StemType, value: number) => {
-    setState((prev) => {
-      const volumes = { ...prev.volumes, [stemType]: value };
-      applyEffectiveVolume(stemType, prev.soloedStem, prev.mutes, volumes);
-      return { ...prev, volumes };
-    });
-  }, []);
-
-  const setMute = useCallback((stemType: StemType, muted: boolean) => {
-    setState((prev) => {
-      const mutes = { ...prev.mutes, [stemType]: muted };
-      applyEffectiveVolume(stemType, prev.soloedStem, mutes, prev.volumes);
-      return { ...prev, mutes };
-    });
-  }, []);
-
-  const toggleSolo = useCallback((stemType: StemType) => {
-    setState((prev) => {
-      const newSolo = prev.soloedStem === stemType ? null : stemType;
-      for (const st of Object.keys(audioEls.current) as StemType[]) {
-        applyEffectiveVolume(st, newSolo, prev.mutes, prev.volumes);
-      }
-      return { ...prev, soloedStem: newSolo };
-    });
-  }, []);
-
-  const getAnalyserNode = useCallback((): AnalyserNode | null => null, []);
-
-  useEffect(() => {
-    return () => {
-      stopRaf();
-      teardownElements();
     };
   }, []);
 

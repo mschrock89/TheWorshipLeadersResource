@@ -30,7 +30,9 @@ import {
   StemPlayerProvider,
   useStemPlayer,
   StemPlayerTrack,
+  isStemPlayerSupported,
 } from "@/hooks/useStemPlayer";
+import { MonitorSmartphone } from "lucide-react";
 import { StemTrackRow } from "./StemTrackRow";
 import { StemTransport } from "./StemTransport";
 import { StemUploadDialog } from "./StemUploadDialog";
@@ -173,6 +175,24 @@ function StemDAWInner({ session, playlistId, canManage, onUploadClick, setlistSo
   );
 }
 
+// ─── Phone fallback ───────────────────────────────────────────────────────────
+//
+// The multi-track stem mixer is disabled on phones — mixing many full stems
+// reliably isn't achievable on phone browsers (memory limits + audio sync). It
+// stays available on tablets (incl. iPad) and computers.
+
+function StemPlayerUnavailableNotice() {
+  return (
+    <div className="flex flex-col items-center text-center gap-2 py-6 px-4 rounded-lg border border-border/30 bg-black/20">
+      <MonitorSmartphone className="h-8 w-8 text-muted-foreground/50" />
+      <p className="text-sm font-medium text-foreground/80">Stem mixer isn't available on phones</p>
+      <p className="text-xs text-muted-foreground max-w-xs">
+        Open this setlist on an iPad or computer to play and mix the stems.
+      </p>
+    </div>
+  );
+}
+
 // ─── Outer shell (handles data, expand/collapse, upload dialog) ───────────────
 
 interface StemDAWProps {
@@ -193,6 +213,7 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [],
 
   const hasStemSession = !!session;
   const stemCount = session?.stems.length ?? 0;
+  const [playerSupported] = useState(isStemPlayerSupported);
 
   const handleUploadClick = useCallback((stemType?: StemType) => {
     setUploadTargetStem(stemType);
@@ -253,15 +274,19 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [],
                 </AlertDialog>
               </div>
             )}
-            <StemPlayerProvider>
-              <StemDAWInner
-                session={session}
-                playlistId={playlistId}
-                canManage={canManage}
-                onUploadClick={handleUploadClick}
-                setlistSongs={setlistSongs}
-              />
-            </StemPlayerProvider>
+            {playerSupported ? (
+              <StemPlayerProvider>
+                <StemDAWInner
+                  session={session}
+                  playlistId={playlistId}
+                  canManage={canManage}
+                  onUploadClick={handleUploadClick}
+                  setlistSongs={setlistSongs}
+                />
+              </StemPlayerProvider>
+            ) : (
+              <StemPlayerUnavailableNotice />
+            )}
           </div>
         ) : (
           <div className="text-center py-10 text-muted-foreground">
@@ -392,15 +417,19 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [],
 
         {/* DAW */}
         {hasStemSession && isExpanded && (
-          <StemPlayerProvider>
-            <StemDAWInner
-              session={session}
-              playlistId={playlistId}
-              canManage={canManage}
-              onUploadClick={handleUploadClick}
-              setlistSongs={setlistSongs}
-            />
-          </StemPlayerProvider>
+          playerSupported ? (
+            <StemPlayerProvider>
+              <StemDAWInner
+                session={session}
+                playlistId={playlistId}
+                canManage={canManage}
+                onUploadClick={handleUploadClick}
+                setlistSongs={setlistSongs}
+              />
+            </StemPlayerProvider>
+          ) : (
+            <StemPlayerUnavailableNotice />
+          )
         )}
 
         {/* Collapsed pill showing stem types when loaded */}
