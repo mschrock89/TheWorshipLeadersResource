@@ -344,6 +344,21 @@ export const POSITION_SLOTS: {
   { slot: "student_small_group_leader", label: "Small Group Leader", category: "Students", position: "student_small_group_leader" },
 ];
 
+// Video positions (and their slot variants). Video teams differ between Saturday
+// and Sunday, so video swaps/covers must stay date-specific rather than weekend-grouped.
+const VIDEO_POSITION_VALUES = new Set<string>([
+  ...POSITION_CATEGORIES.video.map((position) => position.toLowerCase()),
+  ...POSITION_SLOTS.filter((slot) => slot.category === "Video").flatMap((slot) => [
+    slot.slot.toLowerCase(),
+    slot.position.toLowerCase(),
+  ]),
+]);
+
+export function isVideoPosition(position: string | null | undefined): boolean {
+  if (!position) return false;
+  return VIDEO_POSITION_VALUES.has(position.trim().toLowerCase());
+}
+
 export const MINISTRY_TYPES = [
   { value: "weekend_team", label: "Weekend Worship", shortLabel: "WKDT", color: "bg-blue-600" },
   { value: "weekend", label: "Weekend Worship", shortLabel: "WKD", color: "bg-blue-500", hidden: true },

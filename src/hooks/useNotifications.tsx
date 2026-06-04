@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { formatPositionLabel, parseLocalDate } from "@/lib/utils";
+import { formatPositionLabel, parseLocalDate, isWeekend, getWeekendKey } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
-import { getMinistryLabel } from "@/lib/constants";
+import { getMinistryLabel, isVideoPosition } from "@/lib/constants";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
 
@@ -355,21 +355,59 @@ export function useNotifications() {
         });
       });
 
+      // Group cover requests that belong to the same weekend (Sat + Sun) so a
+      // single weekend surfaces as one notification. Weekend Worship is covered
+      // by the same person across both days, so separate per-day requests for the
+      // same requester/position/team are collapsed together.
+      type SwapRequestRow = (typeof directSwapRequests)[number];
+      const swapRequestGroups = new Map<string, SwapRequestRow[]>();
       directSwapRequests.forEach((swapRequest) => {
+        const isCoverRequest =
+          swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
+        // Video teams differ between Saturday and Sunday, so keep video requests date-specific.
+        const groupKey =
+          isCoverRequest && isWeekend(swapRequest.original_date) && !isVideoPosition(swapRequest.position)
+            ? `weekend|${getWeekendKey(swapRequest.original_date)}|${swapRequest.requester_id}|${swapRequest.position}|${swapRequest.team_id}`
+            : `single|${swapRequest.id}`;
+        const existing = swapRequestGroups.get(groupKey);
+        if (existing) {
+          existing.push(swapRequest);
+        } else {
+          swapRequestGroups.set(groupKey, [swapRequest]);
+        }
+      });
+
+      swapRequestGroups.forEach((group, groupKey) => {
+        // Use the most recently created request as the representative.
+        const sortedByCreated = [...group].sort(
+          (a, b) =>
+            new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+        );
+        const swapRequest = sortedByCreated[0];
+
         const requesterName = requesterNameById.get(swapRequest.requester_id) || "A team member";
         const requesterFirstName = requesterName.split(/\s+/)[0] || "Someone";
         const teamName = teamNameById.get(swapRequest.team_id) || "your team";
         const positionLabel = formatPositionLabel(swapRequest.position);
         const isCoverRequest =
           swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
-        const notifId = `swap-request-${swapRequest.id}`;
+
+        const isWeekendGroup = groupKey.startsWith("weekend|");
+        const datePhrase = isWeekendGroup
+          ? `the weekend of ${parseLocalDate(getWeekendKey(swapRequest.original_date)).toLocaleDateString()}`
+          : parseLocalDate(swapRequest.original_date).toLocaleDateString();
+
+        // Stable id so read state persists across refetches even as the group grows.
+        const notifId = isWeekendGroup
+          ? `swap-request-${groupKey}`
+          : `swap-request-${swapRequest.id}`;
         const message = isAdmin
           ? isCoverRequest
-            ? `${requesterFirstName} is looking for a cover for ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
-            : `${requesterFirstName} is looking for a swap for ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
+            ? `${requesterFirstName} is looking for a cover for ${positionLabel} on ${datePhrase} for ${teamName}`
+            : `${requesterFirstName} is looking for a swap for ${positionLabel} on ${datePhrase} for ${teamName}`
           : isCoverRequest
-            ? `${requesterName} asked you to cover ${positionLabel} on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()} for ${teamName}`
-            : `${requesterName} wants to swap ${positionLabel} with you on ${parseLocalDate(swapRequest.original_date).toLocaleDateString()}`;
+            ? `${requesterName} asked you to cover ${positionLabel} on ${datePhrase} for ${teamName}`
+            : `${requesterName} wants to swap ${positionLabel} with you on ${datePhrase}`;
 
         notifs.push({
           id: notifId,

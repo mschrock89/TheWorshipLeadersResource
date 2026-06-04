@@ -31,14 +31,16 @@ import {
 } from "@/hooks/useSwapRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { parseLocalDate, isWeekend, getWeekendPairDate, formatPositionLabel } from "@/lib/utils";
+import { parseLocalDate, isWeekend, getWeekendPairDate, getWeekendKey, formatPositionLabel } from "@/lib/utils";
+import { isVideoPosition } from "@/lib/constants";
 
-// Format date with weekend grouping
-function formatSwapDate(dateStr: string): string {
+// Format date with weekend grouping. When `dateSpecific` is set (e.g. Video, where
+// Saturday and Sunday are different teams), show the exact date instead of the weekend.
+function formatSwapDate(dateStr: string, dateSpecific = false): string {
   const isWeekendDate = isWeekend(dateStr);
   const date = parseLocalDate(dateStr);
   
-  if (isWeekendDate) {
+  if (isWeekendDate && !dateSpecific) {
     const pairDateStr = getWeekendPairDate(dateStr);
     if (pairDateStr) {
       // Show "Jan 11 wknd" format for weekends
@@ -47,6 +49,39 @@ function formatSwapDate(dateStr: string): string {
     }
   }
   return format(date, "MMM d");
+}
+
+interface SwapRequestGroup {
+  key: string;
+  representative: SwapRequest;
+  requests: SwapRequest[];
+}
+
+// Group weekend cover requests (Sat + Sun) for the same requester/position/team
+// into a single entry. Weekend Worship is covered by the same person across both
+// days, so the days are accepted/declined/cancelled together.
+function groupSwapRequests(requests: SwapRequest[]): SwapRequestGroup[] {
+  const groups = new Map<string, SwapRequestGroup>();
+  const order: string[] = [];
+
+  for (const request of requests) {
+    const isFillIn = request.request_type === "fill_in" || !request.swap_date;
+    // Video teams differ between Saturday and Sunday, so keep video requests date-specific.
+    const key =
+      isFillIn && isWeekend(request.original_date) && !isVideoPosition(request.position)
+        ? `weekend|${getWeekendKey(request.original_date)}|${request.requester_id}|${request.position}|${request.team_id}|${request.target_user_id ?? "open"}|${request.status}`
+        : `single|${request.id}`;
+
+    const existing = groups.get(key);
+    if (existing) {
+      existing.requests.push(request);
+    } else {
+      groups.set(key, { key, representative: request, requests: [request] });
+      order.push(key);
+    }
+  }
+
+  return order.map((k) => groups.get(k)!);
 }
 
 function getInitials(name: string | null | undefined): string {
@@ -60,24 +95,26 @@ function getInitials(name: string | null | undefined): string {
 }
 
 function SwapRequestCard({
-  request,
+  group,
   currentUserId,
   onRespond,
   onDismiss,
   isResponding,
   isDismissing,
 }: {
-  request: SwapRequest;
+  group: SwapRequestGroup;
   currentUserId: string;
-  onRespond: (request: SwapRequest, action: "accept" | "decline" | "cancel") => void;
-  onDismiss: (id: string) => void;
+  onRespond: (group: SwapRequestGroup, action: "accept" | "decline" | "cancel") => void;
+  onDismiss: (group: SwapRequestGroup) => void;
   isResponding: boolean;
   isDismissing: boolean;
 }) {
+  const request = group.representative;
   const isRequester = request.requester_id === currentUserId;
   const isTarget = request.target_user_id === currentUserId;
   const isOpenRequest = !request.target_user_id;
   const isFillIn = request.request_type === "fill_in";
+  const isDateSpecific = isVideoPosition(request.position);
   const canAccept = !isRequester && request.status === "pending";
   const canCancel = isRequester && request.status === "pending";
 
@@ -135,14 +172,14 @@ function SwapRequestCard({
             <p className="text-xs text-muted-foreground mb-1">
               {isFillIn ? "Needs coverage" : "Can't play"}
             </p>
-            <p className="font-medium">{formatSwapDate(request.original_date)}</p>
+            <p className="font-medium">{formatSwapDate(request.original_date, isDateSpecific)}</p>
           </div>
           {request.swap_date && !isFillIn && (
             <>
               <ArrowLeftRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               <div className="flex-1 rounded-lg bg-muted p-2 text-center">
                 <p className="text-xs text-muted-foreground mb-1">Can play</p>
-                <p className="font-medium">{formatSwapDate(request.swap_date)}</p>
+                <p className="font-medium">{formatSwapDate(request.swap_date, isDateSpecific)}</p>
               </div>
             </>
           )}
@@ -164,7 +201,7 @@ function SwapRequestCard({
             <Button
               size="sm"
               className="flex-1"
-              onClick={() => onRespond(request, "accept")}
+              onClick={() => onRespond(group, "accept")}
               disabled={isResponding || isDismissing}
             >
               {isResponding ? (
@@ -181,7 +218,7 @@ function SwapRequestCard({
                 size="sm"
                 variant="outline"
                 className="flex-1"
-                onClick={() => onRespond(request, "decline")}
+                onClick={() => onRespond(group, "decline")}
                 disabled={isResponding || isDismissing}
               >
                 <X className="h-4 w-4 mr-1" />
@@ -192,7 +229,7 @@ function SwapRequestCard({
                 size="sm"
                 variant="outline"
                 className="flex-1 text-muted-foreground"
-                onClick={() => onDismiss(request.id)}
+                onClick={() => onDismiss(group)}
                 disabled={isResponding || isDismissing}
               >
                 {isDismissing ? (
@@ -213,7 +250,7 @@ function SwapRequestCard({
             size="sm"
             variant="ghost"
             className="w-full text-muted-foreground"
-            onClick={() => onRespond(request, "cancel")}
+            onClick={() => onRespond(group, "cancel")}
             disabled={isResponding}
           >
             Cancel Request
@@ -242,7 +279,8 @@ export function SwapRequestsList() {
     .filter((date) => date.schedule_date !== reciprocalSwapRequest?.original_date)
     .filter((date, index, dates) => dates.findIndex((entry) => entry.schedule_date === date.schedule_date) === index);
 
-  const handleRespond = async (request: SwapRequest, action: "accept" | "decline" | "cancel") => {
+  const handleRespond = async (group: SwapRequestGroup, action: "accept" | "decline" | "cancel") => {
+    const request = group.representative;
     if (action === "accept" && request.request_type === "swap" && !request.swap_date) {
       const firstAvailableDate = (scheduledDates || []).find((date) => date.schedule_date !== request.original_date);
       setSelectedSwapDate(firstAvailableDate?.schedule_date || "");
@@ -251,7 +289,10 @@ export function SwapRequestsList() {
     }
 
     try {
-      await respondToRequest.mutateAsync({ requestId: request.id, action });
+      // Weekend cover requests cover both days, so respond to every request in the group.
+      await Promise.all(
+        group.requests.map((r) => respondToRequest.mutateAsync({ requestId: r.id, action })),
+      );
       toast.success(
         action === "accept"
           ? "Swap request accepted!"
@@ -286,9 +327,9 @@ export function SwapRequestsList() {
     }
   };
 
-  const handleDismiss = async (requestId: string) => {
+  const handleDismiss = async (group: SwapRequestGroup) => {
     try {
-      await dismissRequest.mutateAsync(requestId);
+      await Promise.all(group.requests.map((r) => dismissRequest.mutateAsync(r.id)));
     } catch (error) {
       console.error(error);
     }
@@ -317,45 +358,49 @@ export function SwapRequestsList() {
   const pendingOutgoing = outgoingRequests.filter((r) => r.status === "pending");
   const resolvedOutgoing = outgoingRequests.filter((r) => r.status !== "pending");
 
+  const groupedIncoming = groupSwapRequests(incomingRequests);
+  const groupedPendingOutgoing = groupSwapRequests(pendingOutgoing);
+  const groupedResolvedOutgoing = groupSwapRequests(resolvedOutgoing);
+
   return (
     <>
       <Tabs defaultValue="incoming" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="incoming" className="relative">
             Incoming
-            {incomingRequests.length > 0 && (
+            {groupedIncoming.length > 0 && (
               <Badge
                 variant="destructive"
                 className="ml-2 h-5 min-w-5 px-1.5 text-xs"
               >
-                {incomingRequests.length}
+                {groupedIncoming.length}
               </Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="outgoing">
             My Requests
-            {pendingOutgoing.length > 0 && (
+            {groupedPendingOutgoing.length > 0 && (
               <Badge
                 variant="secondary"
                 className="ml-2 h-5 min-w-5 px-1.5 text-xs"
               >
-                {pendingOutgoing.length}
+                {groupedPendingOutgoing.length}
               </Badge>
             )}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="incoming" className="mt-4 space-y-3">
-          {incomingRequests.length === 0 ? (
+          {groupedIncoming.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p>No incoming swap requests</p>
             </div>
           ) : (
-            incomingRequests.map((request) => (
+            groupedIncoming.map((group) => (
               <SwapRequestCard
-                key={request.id}
-                request={request}
+                key={group.key}
+                group={group}
                 currentUserId={user?.id || ""}
                 onRespond={handleRespond}
                 onDismiss={handleDismiss}
@@ -374,13 +419,13 @@ export function SwapRequestsList() {
             </div>
           ) : (
             <>
-              {pendingOutgoing.length > 0 && (
+              {groupedPendingOutgoing.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-muted-foreground">Pending</h3>
-                  {pendingOutgoing.map((request) => (
+                  {groupedPendingOutgoing.map((group) => (
                     <SwapRequestCard
-                      key={request.id}
-                      request={request}
+                      key={group.key}
+                      group={group}
                       currentUserId={user?.id || ""}
                       onRespond={handleRespond}
                       onDismiss={handleDismiss}
@@ -390,13 +435,13 @@ export function SwapRequestsList() {
                   ))}
                 </div>
               )}
-              {resolvedOutgoing.length > 0 && (
+              {groupedResolvedOutgoing.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-muted-foreground">Past Requests</h3>
-                  {resolvedOutgoing.slice(0, 5).map((request) => (
+                  {groupedResolvedOutgoing.slice(0, 5).map((group) => (
                     <SwapRequestCard
-                      key={request.id}
-                      request={request}
+                      key={group.key}
+                      group={group}
                       currentUserId={user?.id || ""}
                       onRespond={handleRespond}
                       onDismiss={handleDismiss}
@@ -439,7 +484,7 @@ export function SwapRequestsList() {
             <SelectContent>
               {reciprocalDateOptions.map((date) => (
                 <SelectItem key={`${date.team_id}-${date.schedule_date}`} value={date.schedule_date}>
-                  {formatSwapDate(date.schedule_date)}
+                  {formatSwapDate(date.schedule_date, isVideoPosition(reciprocalSwapRequest?.position))}
                   {date.worship_teams?.name ? ` - ${date.worship_teams.name}` : ""}
                 </SelectItem>
               ))}
