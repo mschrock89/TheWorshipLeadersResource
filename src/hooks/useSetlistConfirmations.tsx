@@ -540,7 +540,13 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Resolve confirm-button eligibility from a single DB source of truth
       // so only rostered users (including accepted swaps) can confirm.
       const rosterEligibilityBySetId = new Map<string, boolean>();
-      const customServiceSetlists = setlists.filter((s) => !!s.custom_service_id);
+      // Kids Camp sets may carry a custom_service_id for service-flow/date scoping, but their
+      // roster (and therefore confirm eligibility) comes from the Team Builder schedule via
+      // is_user_on_setlist_roster, not custom_service_assignments. Exclude them here so they
+      // fall through to the RPC below.
+      const customServiceSetlists = setlists.filter(
+        (s) => !!s.custom_service_id && !isKidsCampSetMinistryType(s.ministry_type),
+      );
       const customServiceAssignmentKeys = new Set<string>();
 
       if (customServiceSetlists.length > 0) {
@@ -562,7 +568,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       await Promise.all(
         (setlists || []).map(async (setlist) => {
-          if (setlist.custom_service_id) {
+          if (setlist.custom_service_id && !isKidsCampSetMinistryType(setlist.ministry_type)) {
             const isAssigned = customServiceAssignmentKeys.has(
               `${setlist.custom_service_id}|${setlist.plan_date}`
             );
