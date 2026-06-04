@@ -28,7 +28,7 @@ import {
 import { usePublishedSetlists, useConfirmSetlist } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -767,7 +767,14 @@ function SetlistTeamRoster({
   const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
-  const isWeekendSetlist = normalizeWeekendWorshipMinistryType(ministryType) === "weekend";
+  // Kids Camp morning/afternoon sets may be linked to a custom service for service-flow/date
+  // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
+  // Set Builder and is_user_on_setlist_roster). Treat them like a scheduled-team set and
+  // normalize the ministry to `kids_camp` so team_schedule/team_members lookups match.
+  const isKidsCampSet = isKidsCampSetMinistryType(ministryType);
+  const rosterMinistryType = isKidsCampSet ? "kids_camp" : ministryType;
+  const effectiveCustomServiceId = isKidsCampSet ? null : customServiceId;
+  const isWeekendSetlist = normalizeWeekendWorshipMinistryType(rosterMinistryType) === "weekend";
   const weekendPairDate = useMemo(() => {
     if (!isWeekendSetlist) return null;
     const day = date.getDay();
@@ -779,9 +786,9 @@ function SetlistTeamRoster({
   }, [date, isWeekendSetlist]);
 
   const { data: customAssignments = [], isLoading: loadingCustomAssignments } = useQuery({
-    queryKey: ["my-setlists-custom-service-roster", customServiceId, planDate],
+    queryKey: ["my-setlists-custom-service-roster", effectiveCustomServiceId, planDate],
     queryFn: async () => {
-      if (!customServiceId) return [];
+      if (!effectiveCustomServiceId) return [];
       const { data, error } = await supabase
         .from("custom_service_assignments")
         .select(`
@@ -793,13 +800,13 @@ function SetlistTeamRoster({
             avatar_url
           )
         `)
-        .eq("custom_service_id", customServiceId)
+        .eq("custom_service_id", effectiveCustomServiceId)
         .eq("assignment_date", planDate);
 
       if (error) throw error;
       return data || [];
     },
-    enabled: !!customServiceId && !!planDate,
+    enabled: !!effectiveCustomServiceId && !!planDate,
   });
 
   const { data: activeRotationPeriodName } = useQuery({
@@ -816,11 +823,11 @@ function SetlistTeamRoster({
       if (error) throw error;
       return data?.name ?? null;
     },
-    enabled: !!campusId && !customServiceId,
+    enabled: !!campusId && !effectiveCustomServiceId,
   });
 
   const { data: teamEntries = [], isLoading: loadingTeam } = useQuery({
-    queryKey: ["my-setlists-team-entries", planDate, campusId, ministryType, activeRotationPeriodName, resourceAppKey, "v3"],
+    queryKey: ["my-setlists-team-entries", planDate, campusId, rosterMinistryType, activeRotationPeriodName, resourceAppKey, "v3"],
     queryFn: async () => {
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const datesToCheck = [planDate];
@@ -839,10 +846,10 @@ function SetlistTeamRoster({
         .in("schedule_date", datesToCheck)
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
 
-      if (ministryType === "weekend" || ministryType === "weekend_team" || ministryType === "sunday_am") {
+      if (rosterMinistryType === "weekend" || rosterMinistryType === "weekend_team" || rosterMinistryType === "sunday_am") {
         query = query.in("ministry_type", [...weekendAliases, ...WEEKEND_SUPPORT_MINISTRY_TYPES]);
       } else {
-        query = query.eq("ministry_type", ministryType);
+        query = query.eq("ministry_type", rosterMinistryType);
       }
 
       const { data, error } = await query;
@@ -870,7 +877,7 @@ function SetlistTeamRoster({
         return bCreatedAt - aCreatedAt;
       });
     },
-    enabled: !!planDate && !!campusId && !customServiceId && activeRotationPeriodName !== undefined,
+    enabled: !!planDate && !!campusId && !effectiveCustomServiceId && activeRotationPeriodName !== undefined,
   });
 
   const teamEntry = useMemo(() => {
@@ -952,7 +959,7 @@ function SetlistTeamRoster({
       if (error) throw error;
       return data || [];
     },
-    enabled: !!planDate && !!campusId && ministryType === "audition" && !customServiceId,
+    enabled: !!planDate && !!campusId && ministryType === "audition" && !effectiveCustomServiceId,
   });
 
   const { data: safeProfiles = [] } = useQuery({
@@ -973,7 +980,7 @@ function SetlistTeamRoster({
   const { data: roster = [], isLoading: loadingRoster } = useTeamRosterForDate(
     teamRosterDate,
     teamEntry?.team_id,
-    normalizeWeekendWorshipMinistryType(ministryType) === "weekend" ? "weekend_team" : ministryType,
+    normalizeWeekendWorshipMinistryType(rosterMinistryType) === "weekend" ? "weekend_team" : rosterMinistryType,
     campusId,
     teamEntry?.rotation_period || null
   );
@@ -1074,7 +1081,7 @@ function SetlistTeamRoster({
   }, [slotCategoryBySlot]);
 
   const rosterRows = useMemo(() => {
-    if (customServiceId) {
+    if (effectiveCustomServiceId) {
       const byPerson = new Map<
         string,
         {
@@ -1265,7 +1272,7 @@ function SetlistTeamRoster({
         ministryTypes: Array.from(member.ministryTypes),
       };
     });
-  }, [customServiceId, ministryType, customAssignments, auditionCandidates, roster, productionRoster, productionPairRoster, videoRoster, videoPairRoster, slotCategoryBySlot, bandFallbackPositions, speakerPositions, getPositionMinistryTypes, safePhoneMap]);
+  }, [effectiveCustomServiceId, ministryType, customAssignments, auditionCandidates, roster, productionRoster, productionPairRoster, videoRoster, videoPairRoster, slotCategoryBySlot, bandFallbackPositions, speakerPositions, getPositionMinistryTypes, safePhoneMap]);
 
   const vocalistRows = useMemo(
     () => rosterRows.filter((member) => member.hasVocalistRole),
@@ -1369,32 +1376,32 @@ function SetlistTeamRoster({
   }, [isWeekendSetlist, pairVideoRows, planDate, primaryVideoRows, videoPairTeamEntry?.schedule_date, videoRows, videoTeamEntry?.schedule_date]);
 
   const serviceLabel = useMemo(() => {
-    if (customServiceId) return "this custom service";
+    if (effectiveCustomServiceId) return "this custom service";
     if (ministryType === "audition") return "this audition";
     return MINISTRY_TYPES.find((ministry) => ministry.value === ministryType)?.label || ministryType;
-  }, [customServiceId, ministryType]);
+  }, [effectiveCustomServiceId, ministryType]);
 
-  if (customServiceId && loadingCustomAssignments) {
+  if (effectiveCustomServiceId && loadingCustomAssignments) {
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (!customServiceId && ministryType === "audition" && loadingAuditions) {
+  if (!effectiveCustomServiceId && ministryType === "audition" && loadingAuditions) {
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (!customServiceId && ministryType !== "audition" && (loadingTeam || loadingRoster || loadingProductionRoster || loadingProductionPairRoster || loadingVideoRoster || loadingVideoPairRoster)) {
+  if (!effectiveCustomServiceId && ministryType !== "audition" && (loadingTeam || loadingRoster || loadingProductionRoster || loadingProductionPairRoster || loadingVideoRoster || loadingVideoPairRoster)) {
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (customServiceId && !vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length) {
+  if (effectiveCustomServiceId && !vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length) {
     return null;
   }
 
-  if (!customServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length))) {
+  if (!effectiveCustomServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length))) {
     return null;
   }
 
-  if (!customServiceId && ministryType === "audition" && !vocalistRows.length && !bandRows.length && !speakerRows.length) {
+  if (!effectiveCustomServiceId && ministryType === "audition" && !vocalistRows.length && !bandRows.length && !speakerRows.length) {
     return null;
   }
 

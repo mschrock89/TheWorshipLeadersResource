@@ -5,7 +5,7 @@ import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
-import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterStudentWednesdayFlows } from "@/lib/studentFlow";
 
@@ -773,10 +773,19 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
         throw new Error("Draft set not found");
       }
 
-      let effectiveCustomServiceId = draftSet.custom_service_id as string | null;
+      // Kids Camp morning/afternoon sets may be linked to a custom service for service-flow/date
+      // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
+      // Set Builder and is_user_on_setlist_roster). Force the scheduled-team path and normalize
+      // the ministry to `kids_camp` so team_members filtering matches.
+      const isKidsCampSet = isKidsCampSetMinistryType(draftSet.ministry_type);
+      const rosterMinistryType = isKidsCampSet
+        ? "kids_camp"
+        : (normalizeKidsCampSetMinistryType(draftSet.ministry_type) || draftSet.ministry_type);
+
+      let effectiveCustomServiceId = isKidsCampSet ? null : (draftSet.custom_service_id as string | null);
 
       // Backward compatibility for older published rows that missed custom_service_id.
-      if (!effectiveCustomServiceId) {
+      if (!effectiveCustomServiceId && !isKidsCampSet) {
         const { data: matchingCustomServices } = await supabase
           .from("custom_services")
           .select("id")
@@ -922,7 +931,7 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
         scheduledMembers = (members || [])
           .filter(m => {
             if (!m.ministry_types || m.ministry_types.length === 0) return true;
-            return m.ministry_types.includes(draftSet.ministry_type);
+            return m.ministry_types.includes(rosterMinistryType);
           })
           .filter(m => !swappedOutUserIds.has(m.user_id!))
           .filter(m => {

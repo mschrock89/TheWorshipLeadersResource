@@ -11,7 +11,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format } from "date-fns";
 import { Music, ChevronDown, CheckCircle2, Clock, Users, ArrowRightLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MINISTRY_TYPES, POSITION_CATEGORIES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import {
+  MINISTRY_TYPES,
+  POSITION_CATEGORIES,
+  normalizeWeekendWorshipMinistryType,
+  isKidsCampSetMinistryType,
+  normalizeKidsCampSetMinistryType,
+} from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -128,24 +134,30 @@ function SetlistRow({
   onToggle: () => void;
 }) {
   const targetRosterMinistry = getTargetRosterMinistry(ministryFilter, setlist.ministry_type);
+  // Kids Camp morning/afternoon sets may be linked to a custom service for service-flow/date
+  // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
+  // Set Builder and is_user_on_setlist_roster). Normalize the ministry so the team lookup and
+  // member filter match the `kids_camp` rows in team_schedule/team_members.
+  const rosterMinistryScope = normalizeKidsCampSetMinistryType(targetRosterMinistry) || targetRosterMinistry;
   const setDate = useMemo(() => new Date(`${setlist.plan_date}T00:00:00`), [setlist.plan_date]);
   const isAudition = setlist.ministry_type === "audition";
-  const isCustomServiceSet = !!setlist.custom_service_id;
+  const isKidsCampSet = isKidsCampSetMinistryType(setlist.ministry_type);
+  const isCustomServiceSet = !!setlist.custom_service_id && !isKidsCampSet;
   const usesScheduledRoster = !isAudition && !isCustomServiceSet;
 
   const { data: scheduledTeam, isLoading: isScheduledTeamLoading } = useScheduledTeamForDate(
     usesScheduledRoster ? setDate : null,
     usesScheduledRoster ? setlist.campus_id : null,
-    usesScheduledRoster ? targetRosterMinistry : null,
+    usesScheduledRoster ? rosterMinistryScope : null,
   );
 
   const { data: roster = [], isLoading: isRosterLoading } = useTeamRosterForDate(
     usesScheduledRoster ? setDate : null,
     usesScheduledRoster ? scheduledTeam?.teamId : undefined,
     usesScheduledRoster
-      ? normalizeWeekendWorshipMinistryType(targetRosterMinistry) === "weekend"
+      ? normalizeWeekendWorshipMinistryType(rosterMinistryScope) === "weekend"
         ? "weekend_team"
-        : targetRosterMinistry
+        : rosterMinistryScope
       : undefined,
     usesScheduledRoster ? setlist.campus_id : undefined,
   );
