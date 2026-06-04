@@ -95,20 +95,21 @@ export function StemTransport({
 
   return (
     <div className="relative flex flex-col bg-black/30 border-b border-border/30 rounded-t-lg">
-      {/* ── Main controls row ── */}
-      <div className="flex items-center gap-2 px-3 py-1.5 mx-2 mt-2 mb-1 rounded-lg border-2 border-border/70 bg-black/20">
+      {/* ── Main controls block ── */}
+      <div className="flex flex-col gap-2 px-3 py-2 mx-2 mt-2 mb-1 rounded-lg border-2 border-border/70 bg-black/20">
         {/* Title */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <span className="text-xl font-black tracking-widest uppercase bg-gradient-to-r from-primary via-primary/80 to-primary/50 bg-clip-text text-transparent select-none">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xl sm:text-2xl font-black tracking-widest uppercase leading-none whitespace-nowrap bg-gradient-to-r from-primary via-primary/80 to-primary/50 bg-clip-text text-transparent select-none">
             Stem Player
           </span>
+          <span className="flex-1 h-1 rounded-full bg-primary/70" />
         </div>
 
-        {/* Right-side controls cluster */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Controls cluster */}
+        <div className="flex items-center gap-3">
           {/* BPM */}
           {bpm && (
-            <div className="flex items-center gap-1 bg-white/5 rounded px-2 py-1">
+            <div className="hidden sm:flex items-center gap-1 bg-white/5 rounded px-2 py-1">
               <span className="text-[10px] text-muted-foreground font-medium">BPM</span>
               <span className="text-xs font-bold text-foreground">{bpm}</span>
             </div>
@@ -124,48 +125,51 @@ export function StemTransport({
             </div>
           )}
 
-          {/* Stop */}
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!isReady}
-            onClick={stop}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          >
-            <Square className="h-3.5 w-3.5 fill-current" />
-          </Button>
+          {/* Control pod */}
+          <div className="flex items-center gap-1 rounded-full border border-border/50 bg-black/40 p-1 shadow-inner">
+            {/* Stop */}
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!isReady}
+              onClick={stop}
+              className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/5"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+            </Button>
 
-          {/* Return to start */}
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!isReady}
-            onClick={() => seekTo(0)}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          >
-            <SkipBack className="h-3.5 w-3.5 fill-current" />
-          </Button>
+            {/* Return to start */}
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!isReady}
+              onClick={() => seekTo(0)}
+              className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/5"
+            >
+              <SkipBack className="h-3.5 w-3.5 fill-current" />
+            </Button>
 
-          {/* Play / Pause */}
-          <Button
-            size="icon"
-            disabled={!isReady}
-            onClick={togglePlay}
-            className={cn(
-              "h-9 w-9 rounded-full shadow-lg",
-              "bg-primary hover:bg-primary/90 text-primary-foreground",
-              "disabled:opacity-40"
-            )}
-          >
-            {isPlaying ? (
-              <Pause className="h-4 w-4 fill-current" />
-            ) : (
-              <Play className="h-4 w-4 fill-current ml-0.5" />
-            )}
-          </Button>
+            {/* Play / Pause */}
+            <Button
+              size="icon"
+              disabled={!isReady}
+              onClick={togglePlay}
+              className={cn(
+                "h-10 w-10 rounded-full shadow-lg",
+                "bg-primary hover:bg-primary/90 text-primary-foreground",
+                "disabled:opacity-40"
+              )}
+            >
+              {isPlaying ? (
+                <Pause className="h-4 w-4 fill-current" />
+              ) : (
+                <Play className="h-4 w-4 fill-current ml-0.5" />
+              )}
+            </Button>
+          </div>
 
           {/* Time display */}
-          <div className="font-mono text-xs tabular-nums text-foreground/80 min-w-[72px] text-right">
+          <div className="font-mono text-sm tabular-nums text-foreground/80 text-right whitespace-nowrap">
             {formatTime(currentTime)}
             <span className="text-muted-foreground"> / {formatTime(duration)}</span>
           </div>
@@ -174,22 +178,21 @@ export function StemTransport({
 
       {/* ── Song chips row ── */}
       {(hasMarkers || (canManage && setlistSongs.length > 0)) && !isEditing && (
-        <div className="flex items-center gap-1 px-3 pb-1.5 overflow-x-auto scrollbar-none">
+        <div className="flex flex-wrap items-center gap-1 px-3 pb-1.5">
           {sortedMarkers.map((marker, i) => (
             <button
               key={marker.id}
               onClick={() => seekTo(marker.timestampSeconds)}
               className={cn(
-                "flex items-center gap-1 px-2 py-0.5 rounded-md transition-all flex-shrink-0",
+                "flex items-center justify-center px-2 py-0.5 rounded-md transition-all flex-shrink-0",
                 "bg-primary/10 border border-primary/25 text-primary",
                 "hover:bg-primary/20 hover:border-primary/50 hover:shadow-sm",
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
-                "text-[11px] font-medium"
+                "text-[11px] font-medium tabular-nums"
               )}
               title={`Jump to ${marker.songTitle}`}
             >
-              <span className="opacity-50 tabular-nums text-[9px]">{i + 1}</span>
-              <span className="max-w-[96px] truncate">{marker.songTitle}</span>
+              Song {i + 1}
             </button>
           ))}
           {canManage && setlistSongs.length > 0 && (

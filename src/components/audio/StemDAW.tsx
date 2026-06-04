@@ -180,9 +180,11 @@ interface StemDAWProps {
   canManage: boolean;
   serviceDate: string;
   setlistSongs?: SetlistSong[];
+  /** When true, renders without its own section header — for use inside a tab. */
+  embedded?: boolean;
 }
 
-export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [] }: StemDAWProps) {
+export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [], embedded = false }: StemDAWProps) {
   const { data: session, isLoading } = useSetlistStemSession(playlistId);
   const deleteSession = useDeleteStemSession();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -203,6 +205,97 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [] 
   }, []);
 
   if (isLoading) return null;
+
+  // ── Embedded mode: no section header, mixer always shown ──────────────────
+  if (embedded) {
+    return (
+      <>
+        {hasStemSession ? (
+          <div className="space-y-2">
+            {canManage && (
+              <div className="flex items-center justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => handleUploadClick()}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Stems
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Stem Session?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all {stemCount} uploaded stem files for this setlist. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive hover:bg-destructive/90"
+                        onClick={() => deleteSession.mutate({ sessionId: session!.id, playlistId })}
+                      >
+                        Delete All Stems
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            )}
+            <StemPlayerProvider>
+              <StemDAWInner
+                session={session}
+                playlistId={playlistId}
+                canManage={canManage}
+                onUploadClick={handleUploadClick}
+                setlistSongs={setlistSongs}
+              />
+            </StemPlayerProvider>
+          </div>
+        ) : (
+          <div className="text-center py-10 text-muted-foreground">
+            <Layers className="h-9 w-9 mx-auto mb-3 opacity-30" />
+            <p className="text-sm max-w-xs mx-auto">
+              {canManage
+                ? "Upload individual stems to mix during rehearsal — drums, guitars, keys, and more."
+                : "No stems uploaded for this setlist yet."}
+            </p>
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-8 text-xs mt-4"
+                onClick={() => handleUploadClick()}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Stems
+              </Button>
+            )}
+          </div>
+        )}
+
+        <StemUploadDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          playlistId={playlistId}
+          serviceDate={serviceDate}
+          existingSession={session ?? null}
+          onComplete={handleUploadComplete}
+        />
+      </>
+    );
+  }
 
   return (
     <>

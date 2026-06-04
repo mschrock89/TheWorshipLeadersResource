@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles, MoreVertical } from "lucide-react";
+import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles, MoreVertical, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +25,7 @@ import { ReferenceTrackUploadDialog } from "./ReferenceTrackUploadDialog";
 import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDialog";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
 import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
+import { useSetlistStemSession } from "@/hooks/useSetlistStems";
 import { canManageReferenceTracks, isAuditionCandidateRole } from "@/lib/access";
 import { StemDAW } from "./StemDAW";
 import {
@@ -85,6 +87,14 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
       sequenceOrder: dss.sequence_order,
     }));
   const hasAudioTracks = playlist.tracks.length > 0 || referenceTracks.length > 0;
+
+  // Stem session (shared via react-query cache with StemDAW) — used for tab count + default tab
+  const { data: stemSession } = useSetlistStemSession(playlist.id);
+  const stemCount = stemSession?.stems.length ?? 0;
+  const soundcloudCount = playlist.tracks.length;
+  const weekendCount = referenceTracks.length;
+  const defaultTab =
+    soundcloudCount > 0 ? "soundcloud" : weekendCount > 0 ? "weekend" : "stems";
 
   // Combine setlist tracks and weekend tracks for playback
   const allTracks: Track[] = [...playlist.tracks, ...referenceTracks];
@@ -201,49 +211,55 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
         </CardHeader>
 
         <CardContent className="pt-0">
-          {!hasAudioTracks ? (
-            <div className="space-y-3">
-              <div className="text-center py-6 text-muted-foreground">
-                <Music2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No audio files available for this setlist</p>
-              </div>
-
-              {canUploadReferenceTrack && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-2"
-                  onClick={() => setUploadOpen(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Weekend Track
-                </Button>
-              )}
-
-              <StemDAW
-                playlistId={playlist.id}
-                canManage={canManageTracks}
-                serviceDate={formattedDate}
-                setlistSongs={setlistSongs}
-              />
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {/* SoundCloud Versions header */}
-              <div className="pt-4 mt-2 border-t border-border/40">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="flex items-center justify-center h-7 w-7 rounded-full bg-primary/15 flex-shrink-0">
-                    <Music2 className="h-4 w-4 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold text-primary">SoundCloud Versions</p>
-                  <Badge variant="secondary" className="text-[11px] font-semibold px-1.5 py-0 h-5 min-w-5 justify-center bg-primary/15 text-primary border-0">
-                    {playlist.songsWithAudio}
+          <Tabs defaultValue={defaultTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 h-auto gap-1 p-1 bg-muted/40">
+              <TabsTrigger
+                value="soundcloud"
+                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-primary"
+              >
+                <Music2 className="h-4 w-4" />
+                <span className="text-xs font-medium">SoundCloud</span>
+                {soundcloudCount > 0 && (
+                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-primary/15 text-primary border-0">
+                    {soundcloudCount}
                   </Badge>
-                </div>
-              </div>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="weekend"
+                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-amber-400"
+              >
+                <FileAudio className="h-4 w-4" />
+                <span className="text-xs font-medium whitespace-nowrap">Tracks (MP3)</span>
+                {weekendCount > 0 && (
+                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-amber-500/15 text-amber-400 border-0">
+                    {weekendCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="stems"
+                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-violet-400"
+              >
+                <Layers className="h-4 w-4" />
+                <span className="text-xs font-medium">Stems</span>
+                {stemCount > 0 && (
+                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-violet-500/15 text-violet-400 border-0">
+                    {stemCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-              {/* Setlist Songs */}
-              {playlist.tracks.map((track, index) => {
+            {/* ── SoundCloud Versions ── */}
+            <TabsContent value="soundcloud" className="space-y-1 mt-3">
+              {soundcloudCount === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Music2 className="h-9 w-9 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No SoundCloud versions for this setlist yet.</p>
+                </div>
+              ) : (
+                playlist.tracks.map((track, index) => {
                 const isCurrentTrack = currentTrack?.id === track.id;
                 const isTrackPlaying = isCurrentTrack && isPlaying;
 
@@ -289,22 +305,30 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
                   </div>
                 );
-              })}
+                })
+              )}
+            </TabsContent>
 
-              {/* Weekend Tracks Section */}
-              {referenceTracks.length > 0 && (
-                <div className="pt-4 mt-2 border-t border-border/40">
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="flex items-center justify-center h-7 w-7 rounded-full bg-amber-500/15 flex-shrink-0">
-                      <FileAudio className="h-4 w-4 text-amber-400" />
-                    </div>
-                    <p className="text-sm font-semibold text-amber-400">
-                      Weekend Tracks
-                    </p>
-                    <Badge variant="secondary" className="text-[11px] font-semibold px-1.5 py-0 h-5 min-w-5 justify-center bg-amber-500/15 text-amber-400 border-0">
-                      {referenceTracks.length}
-                    </Badge>
-                  </div>
+            {/* ── Weekend Tracks ── */}
+            <TabsContent value="weekend" className="space-y-1 mt-3">
+              {weekendCount === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <FileAudio className="h-9 w-9 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm mb-4">No weekend tracks uploaded yet.</p>
+                  {canUploadReferenceTrack && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setUploadOpen(true)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Weekend Track
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
                   {referenceTracks.map((track, idx) => {
                     const trackIndex = playlist.tracks.length + idx;
                     const isCurrentTrack = currentTrack?.id === track.id;
@@ -495,31 +519,32 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                       </div>
                     );
                   })}
-                </div>
+                  {canUploadReferenceTrack && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 gap-2"
+                      onClick={() => setUploadOpen(true)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Weekend Track
+                    </Button>
+                  )}
+                </>
               )}
+            </TabsContent>
 
-              {/* Reference Track Add Weekend Track Button */}
-              {canUploadReferenceTrack && referenceTracks.length === 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mt-3 gap-2"
-                  onClick={() => setUploadOpen(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Weekend Track
-                </Button>
-              )}
-
-              {/* Stem DAW */}
+            {/* ── Stems ── */}
+            <TabsContent value="stems" className="mt-3">
               <StemDAW
                 playlistId={playlist.id}
                 canManage={canManageTracks}
                 serviceDate={formattedDate}
                 setlistSongs={setlistSongs}
+                embedded
               />
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
