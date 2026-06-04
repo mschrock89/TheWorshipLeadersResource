@@ -106,10 +106,10 @@ export function StemTransport({
         </div>
 
         {/* Controls cluster */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
           {/* BPM */}
           {bpm && (
-            <div className="hidden sm:flex items-center gap-1 bg-white/5 rounded px-2 py-1">
+            <div className="hidden sm:flex items-center gap-1 bg-white/5 rounded px-2 py-1 flex-shrink-0">
               <span className="text-[10px] text-muted-foreground font-medium">BPM</span>
               <span className="text-xs font-bold text-foreground">{bpm}</span>
             </div>
@@ -117,7 +117,7 @@ export function StemTransport({
 
           {/* Loading indicator */}
           {stemCount > 0 && !allLoaded && (
-            <div className="flex items-center gap-1 text-muted-foreground">
+            <div className="flex items-center gap-1 text-muted-foreground flex-shrink-0">
               <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
               <span className="text-[10px]">
                 {loadedCount}/{stemCount}
@@ -126,7 +126,7 @@ export function StemTransport({
           )}
 
           {/* Control pod */}
-          <div className="flex items-center gap-1 rounded-full border border-border/50 bg-black/40 p-1 shadow-inner">
+          <div className="flex items-center gap-1 rounded-full border border-border/50 bg-black/40 p-1 shadow-inner flex-shrink-0">
             {/* Stop */}
             <Button
               variant="ghost"
@@ -169,7 +169,7 @@ export function StemTransport({
           </div>
 
           {/* Time display */}
-          <div className="font-mono text-sm tabular-nums text-foreground/80 text-right whitespace-nowrap">
+          <div className="font-mono text-sm tabular-nums text-foreground/80 text-right whitespace-nowrap ml-auto flex-shrink-0">
             {formatTime(currentTime)}
             <span className="text-muted-foreground"> / {formatTime(duration)}</span>
           </div>
