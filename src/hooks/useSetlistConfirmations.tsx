@@ -5,7 +5,7 @@ import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
-import { normalizeWeekendWorshipMinistryType, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterStudentWednesdayFlows } from "@/lib/studentFlow";
 
@@ -102,9 +102,13 @@ function assignmentMatchesServiceDay(
 function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
   if (!memberMinistry || !setMinistry) return false;
   const normalizedMemberMinistry =
-    normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+    normalizeWeekendWorshipMinistryType(normalizeSessionSetMinistryType(memberMinistry)) ||
+    normalizeSessionSetMinistryType(memberMinistry) ||
+    memberMinistry;
   const normalizedSetMinistry =
-    normalizeWeekendWorshipMinistryType(setMinistry) || setMinistry;
+    normalizeWeekendWorshipMinistryType(normalizeSessionSetMinistryType(setMinistry)) ||
+    normalizeSessionSetMinistryType(setMinistry) ||
+    setMinistry;
 
   if (normalizedMemberMinistry === normalizedSetMinistry) return true;
   if (
@@ -545,7 +549,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // is_user_on_setlist_roster, not custom_service_assignments. Exclude them here so they
       // fall through to the RPC below.
       const customServiceSetlists = setlists.filter(
-        (s) => !!s.custom_service_id && !isKidsCampSetMinistryType(s.ministry_type),
+        (s) => !!s.custom_service_id && !isSessionSetMinistryType(s.ministry_type),
       );
       const customServiceAssignmentKeys = new Set<string>();
 
@@ -568,7 +572,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       await Promise.all(
         (setlists || []).map(async (setlist) => {
-          if (setlist.custom_service_id && !isKidsCampSetMinistryType(setlist.ministry_type)) {
+          if (setlist.custom_service_id && !isSessionSetMinistryType(setlist.ministry_type)) {
             const isAssigned = customServiceAssignmentKeys.has(
               `${setlist.custom_service_id}|${setlist.plan_date}`
             );
@@ -618,6 +622,13 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // This avoids showing the wrong service when multiple services share the same date/campus/ministry.
       if (!isFullAdmin) {
         setlists = setlists.filter((setlist) => {
+          // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) carry a
+          // custom_service_id for service-flow scoping, but they are not a true
+          // custom-service context: their roster comes from the Team Builder schedule and
+          // the sessions are distinguished by ministry_type. Leaders with view-all access
+          // should see them like any normal ministry set rather than being roster-gated out
+          // of the camp they're planning.
+          if (isSessionSetMinistryType(setlist.ministry_type)) return true;
           const key = `${setlist.plan_date}|${setlist.campus_id}|${setlist.ministry_type}`;
           const isCustomContext = Boolean(setlist.custom_service_id) || customServiceContextKeys.has(key);
           if (!isCustomContext) return true;
@@ -779,19 +790,19 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
         throw new Error("Draft set not found");
       }
 
-      // Kids Camp morning/afternoon sets may be linked to a custom service for service-flow/date
-      // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
-      // Set Builder and is_user_on_setlist_roster). Force the scheduled-team path and normalize
-      // the ministry to `kids_camp` so team_members filtering matches.
-      const isKidsCampSet = isKidsCampSetMinistryType(draftSet.ministry_type);
-      const rosterMinistryType = isKidsCampSet
-        ? "kids_camp"
-        : (normalizeKidsCampSetMinistryType(draftSet.ministry_type) || draftSet.ministry_type);
+      // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) may be linked
+      // to a custom service for service-flow/date scoping, but their roster always comes from
+      // the Team Builder schedule (kept aligned with Set Builder and is_user_on_setlist_roster).
+      // Force the scheduled-team path and normalize the ministry to the base so team_members
+      // filtering matches.
+      const isSessionSet = isSessionSetMinistryType(draftSet.ministry_type);
+      const rosterMinistryType =
+        normalizeSessionSetMinistryType(draftSet.ministry_type) || draftSet.ministry_type;
 
-      let effectiveCustomServiceId = isKidsCampSet ? null : (draftSet.custom_service_id as string | null);
+      let effectiveCustomServiceId = isSessionSet ? null : (draftSet.custom_service_id as string | null);
 
       // Backward compatibility for older published rows that missed custom_service_id.
-      if (!effectiveCustomServiceId && !isKidsCampSet) {
+      if (!effectiveCustomServiceId && !isSessionSet) {
         const { data: matchingCustomServices } = await supabase
           .from("custom_services")
           .select("id")
@@ -1056,6 +1067,61 @@ export function useConfirmSetlist() {
       } catch (notifyError) {
         console.error("Failed to send confirmation notification:", notifyError);
         // Don't throw - confirmation was successful even if notification fails
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-confirmation-status"] });
+      toast({
+        title: "Setlist confirmed",
+        description: "You've confirmed that you've reviewed this setlist.",
+      });
+    },
+    onError: (error: Error) => {
+      const message =
+        /policy|row-level security|violates/.test(error.message)
+          ? "You can only confirm setlists you're scheduled for."
+          : error.message;
+      toast({
+        title: "Error confirming setlist",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+// Confirm multiple setlists at once (used for combined multi-session services like
+// Kids Camp / Student Camp Morning/Afternoon/Evening, so a volunteer confirms the
+// whole day in one action).
+export function useConfirmSetlists() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (draftSetIds: string[]) => {
+      if (!user?.id) throw new Error("Not authenticated");
+
+      const ids = [...new Set(draftSetIds)].filter(Boolean);
+      if (ids.length === 0) return;
+
+      const { error } = await supabase
+        .from("setlist_confirmations")
+        .insert(ids.map((draft_set_id) => ({ draft_set_id, user_id: user.id })));
+
+      if (error) throw error;
+
+      // Notify the worship leader for each confirmed session
+      for (const draftSetId of ids) {
+        try {
+          await supabase.functions.invoke("notify-setlist-confirmed", {
+            body: { draftSetId, confirmerId: user.id },
+          });
+        } catch (notifyError) {
+          console.error("Failed to send confirmation notification:", notifyError);
+          // Don't throw - confirmation was successful even if notification fails
+        }
       }
     },
     onSuccess: () => {

@@ -231,11 +231,21 @@ export function useSongsWithStats() {
       const ministryToServiceTypeName = (ministryType: string | null | undefined) => {
         switch (ministryType) {
           case "weekend":
+          case "weekend_team":
+          case "sunday_am":
             return "Weekend Worship";
+          case "worship_night":
+            return "Worship Night";
           case "prayer_night":
             return "Prayer Night";
           case "kids_camp":
+          case "kids_camp_morning":
+          case "kids_camp_afternoon":
             return "Kids Camp";
+          case "student_camp":
+          case "student_camp_morning":
+          case "student_camp_evening":
+            return "Student Camp";
           case "encounter":
             return "HS Worship";
           case "eon":
@@ -325,11 +335,21 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
       const mapMinistryTypeToServiceTypeName = (ministryType: string | null | undefined) => {
         switch (ministryType) {
           case "weekend":
+          case "weekend_team":
+          case "sunday_am":
             return "Weekend Worship";
+          case "worship_night":
+            return "Worship Night";
           case "prayer_night":
             return "Prayer Night";
           case "kids_camp":
+          case "kids_camp_morning":
+          case "kids_camp_afternoon":
             return "Kids Camp";
+          case "student_camp":
+          case "student_camp_morning":
+          case "student_camp_evening":
+            return "Student Camp";
           case "encounter":
             return "HS Worship";
           case "eon":
@@ -1112,6 +1132,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         const ministryLabels: Record<string, string> = {
           weekend: "Weekend Worship",
           kids_camp: "Kids Camp",
+          student_camp: "Student Camp",
           encounter: "HS Worship",
           eon: "MS Worship",
           eon_weekend: "MS Worship Weekend",

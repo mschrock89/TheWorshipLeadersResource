@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { generateServiceFlowFromTemplate } from "./useServiceFlow";
-import { isKidsCampSetMinistryType } from "@/lib/constants";
+import { isSessionSetMinistryType } from "@/lib/constants";
 
 // Kyle Elkins' user ID - the designated approver
 export const APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
@@ -32,7 +32,7 @@ function canPublishSetlistDirectly(
 ) {
   if (!userId) return false;
   if (userId === APPROVER_USER_ID) return true;
-  if (ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isKidsCampSetMinistryType(ministryType))) return true;
+  if (ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isSessionSetMinistryType(ministryType))) return true;
 
   const firstName = getFirstName(profile.full_name);
 
@@ -237,7 +237,7 @@ export function useIsApprover() {
 export function useCanPublishSetlistDirectly(ministryType?: string | null) {
   const { user } = useAuth();
   const canPublishMinistryDirectly =
-    !!ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isKidsCampSetMinistryType(ministryType));
+    !!ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isSessionSetMinistryType(ministryType));
 
   return useQuery({
     queryKey: ["can-publish-setlist-directly", user?.id, ministryType],

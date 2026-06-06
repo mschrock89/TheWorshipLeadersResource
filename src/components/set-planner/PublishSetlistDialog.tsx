@@ -18,7 +18,7 @@ import { SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
-import { isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
+import { isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { format } from "date-fns";
 
 interface PublishSetlistDialogProps {
@@ -47,8 +47,8 @@ export function PublishSetlistDialog({
   const submitForApproval = useSubmitForApproval();
   const withdrawSubmission = useWithdrawSetlistSubmission();
   const { data: canPublishDirectly = false } = useCanPublishSetlistDirectly(ministryType);
-  const rosterMinistryType = normalizeKidsCampSetMinistryType(ministryType) || ministryType;
-  const useScheduledRosterForNotifications = !customServiceId || isKidsCampSetMinistryType(ministryType);
+  const rosterMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
+  const useScheduledRosterForNotifications = !customServiceId || isSessionSetMinistryType(ministryType);
 
   // Get scheduled team for this date (campus-specific)
   const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId, rosterMinistryType);

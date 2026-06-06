@@ -3,7 +3,7 @@ import { addWeeks, format, isAfter, isBefore, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
-import { normalizeKidsCampSetMinistryType } from "@/lib/constants";
+import { normalizeSessionSetMinistryType } from "@/lib/constants";
 
 export interface CustomService {
   id: string;
@@ -139,7 +139,7 @@ export function useCustomServiceOccurrences({
     queryKey: ["custom-service-occurrences", campusId, ministryType, startDate, endDate],
     enabled: !!startDate && !!endDate,
     queryFn: async () => {
-      const normalizedMinistryType = normalizeKidsCampSetMinistryType(ministryType) || ministryType;
+      const normalizedMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
       let query = supabase
         .from("custom_services")
         .select("*")

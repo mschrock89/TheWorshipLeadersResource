@@ -36,23 +36,31 @@ import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, ad
 import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
+import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
 
-const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) =>
-  option.value === "kids_camp"
-    ? [
-        { value: "kids_camp_morning", label: "Kids Camp Morning" },
-        { value: "kids_camp_afternoon", label: "Kids Camp Afternoon" },
-      ]
-    : [option],
-);
+const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) => {
+  if (option.value === "kids_camp") {
+    return [
+      { value: "kids_camp_morning", label: "Kids Camp Morning" },
+      { value: "kids_camp_afternoon", label: "Kids Camp Afternoon" },
+    ];
+  }
+  if (option.value === "student_camp") {
+    return [
+      { value: "student_camp_morning", label: "Student Camp Morning" },
+      { value: "student_camp_evening", label: "Student Camp Evening" },
+    ];
+  }
+  return [option];
+});
 
 function customServiceMatchesSelectedMinistry(serviceMinistryType: string, selectedMinistry: string) {
-  if (isKidsCampSetMinistryType(selectedMinistry)) {
-    return serviceMinistryType === "kids_camp" || serviceMinistryType === selectedMinistry;
+  if (isSessionSetMinistryType(selectedMinistry)) {
+    const baseMinistry = normalizeSessionSetMinistryType(selectedMinistry);
+    return serviceMinistryType === baseMinistry || serviceMinistryType === selectedMinistry;
   }
 
   return serviceMinistryType === selectedMinistry;
@@ -138,7 +146,7 @@ export default function SetPlanner() {
   const [selectedMinistry, setSelectedMinistry] = useState<string>('weekend');
   const [lastSavedSetId, setLastSavedSetId] = useState<string | null>(null);
   const isPrayerNightMinistry = selectedMinistry === "prayer_night";
-  const baseSelectedMinistry = normalizeKidsCampSetMinistryType(selectedMinistry) || selectedMinistry;
+  const baseSelectedMinistry = normalizeSessionSetMinistryType(selectedMinistry) || selectedMinistry;
   const [teachingWeek, setTeachingWeek] = useState<TeachingWeekRow | null>(null);
   const [isTeachingLoading, setIsTeachingLoading] = useState(false);
   const [isSuggestingSongs, setIsSuggestingSongs] = useState(false);
@@ -150,9 +158,9 @@ export default function SetPlanner() {
   // Determine ministry scheduling behavior
   const isMidweekMinistry = selectedMinistry === 'encounter' || selectedMinistry === 'eon';
   const isWeekendStyleMinistry = selectedMinistry === 'weekend' || selectedMinistry === 'eon_weekend';
-  // Kids Camp songs can be repeated as often as needed, so lift the usual
-  // rotation/recency restrictions when scheduling for any Kids Camp set.
-  const isKidsCampMinistry = isKidsCampSetMinistryType(selectedMinistry);
+  // Camp songs (Kids Camp / Student Camp) can be repeated as often as needed, so lift
+  // the usual rotation/recency restrictions when scheduling for any camp session set.
+  const isSessionSetMinistry = isSessionSetMinistryType(selectedMinistry);
   
   // Get appropriate default date based on ministry type
   const defaultDate = useMemo(() => {
@@ -622,7 +630,8 @@ export default function SetPlanner() {
 
     setSelectedCustomServiceKey(serviceKey);
     setSelectedMinistry(
-      service.ministry_type === "kids_camp" && isKidsCampSetMinistryType(selectedMinistry)
+      isSessionSetMinistryType(selectedMinistry) &&
+      service.ministry_type === normalizeSessionSetMinistryType(selectedMinistry)
         ? selectedMinistry
         : service.ministry_type,
     );
@@ -680,7 +689,7 @@ export default function SetPlanner() {
   const effectiveVocalists = useMemo(() => {
     // Kids Camp sets may be linked to a custom service for service-flow/date
     // scoping, but their roster always comes from the Team Builder schedule.
-    if (!selectedCustomService || isKidsCampMinistry) return scheduledVocalists;
+    if (!selectedCustomService || isSessionSetMinistry) return scheduledVocalists;
 
     const byUser = new Map<string, { userId: string; name: string; avatarUrl: string | null; position: string; isSwappedIn?: boolean }>();
     for (const assignment of customServiceAssignments) {
@@ -695,7 +704,7 @@ export default function SetPlanner() {
       });
     }
     return Array.from(byUser.values());
-  }, [selectedCustomService, isKidsCampMinistry, scheduledVocalists, customServiceAssignments]);
+  }, [selectedCustomService, isSessionSetMinistry, scheduledVocalists, customServiceAssignments]);
 
   const canOverrideScheduledSongs = isAdmin && !!selectedCustomService;
   const { data: goodFitHighlights = {} } = useWeekendRundownGoodFitHighlights(
@@ -1194,7 +1203,7 @@ export default function SetPlanner() {
 
         {/* Custom Service Team Assignments */}
         {/* Kids Camp pulls its roster from Team Builder, so no manual assignment here. */}
-        {selectedCustomService && !isPrayerNightMinistry && !isKidsCampMinistry && (
+        {selectedCustomService && !isPrayerNightMinistry && !isSessionSetMinistry && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1527,7 +1536,7 @@ export default function SetPlanner() {
                 publishedSetlistSongIds={publishedSetlistSongIds}
                 isLoading={isLoading}
                 allowSchedulingOverrides={canOverrideScheduledSongs}
-                unrestrictedScheduling={isKidsCampMinistry}
+                unrestrictedScheduling={isSessionSetMinistry}
                 referenceDate={selectedDate}
                 goodFitHighlights={goodFitHighlights}
                 readOnly={existingSet?.status === "published" && !isEditingPublishedSet}

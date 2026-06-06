@@ -15,8 +15,10 @@ import {
   MINISTRY_TYPES,
   POSITION_CATEGORIES,
   normalizeWeekendWorshipMinistryType,
-  isKidsCampSetMinistryType,
-  normalizeKidsCampSetMinistryType,
+  isSessionSetMinistryType,
+  normalizeSessionSetMinistryType,
+  getSessionSetVariants,
+  getMinistrySession,
 } from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
@@ -120,6 +122,321 @@ function buildConfirmationDetails(
   };
 }
 
+function ConfirmationRowView({
+  dateLabel,
+  ministryLabel,
+  showCampus,
+  campusName,
+  extraBadgeLabel,
+  details,
+  isLoading,
+  isExpanded,
+  onToggle,
+}: {
+  dateLabel: string;
+  ministryLabel: string;
+  showCampus: boolean;
+  campusName?: string | null;
+  extraBadgeLabel?: string;
+  details: SetlistDetails | null;
+  isLoading: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  if (!details) {
+    return null;
+  }
+
+  const confirmRate = details.totalScheduled > 0
+    ? Math.round((details.confirmed.length / details.totalScheduled) * 100)
+    : 0;
+  const isFullyConfirmed = details.confirmed.length >= details.totalScheduled && details.totalScheduled > 0;
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <div className="w-full p-4 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-foreground">{dateLabel}</span>
+                <Badge variant="secondary" className="text-xs">
+                  {ministryLabel}
+                </Badge>
+                {showCampus && campusName && (
+                  <Badge variant="outline" className="text-xs">
+                    {campusName}
+                  </Badge>
+                )}
+                {extraBadgeLabel && (
+                  <Badge variant="outline" className="text-xs">
+                    {extraBadgeLabel}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-2 text-sm">
+                <div className="flex items-center gap-1">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">
+                    {isLoading ? "Loading..." : `${details.totalScheduled} scheduled`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {isFullyConfirmed ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Clock className="h-4 w-4 text-yellow-500" />
+                  )}
+                  <span className={isFullyConfirmed ? "text-green-500" : "text-yellow-500"}>
+                    {isLoading ? "Loading confirmations..." : `${details.confirmed.length}/${details.totalScheduled} confirmed (${confirmRate}%)`}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <ChevronDown
+              className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            />
+          </div>
+        </div>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent className="mt-2 rounded-lg border border-border bg-background p-3">
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : (
+          <TooltipProvider>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <h4 className="font-medium text-green-500 flex items-center gap-1.5 mb-2 text-sm">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Confirmed ({details.confirmed.length})
+                </h4>
+                {details.confirmed.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No confirmations yet</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {details.confirmed.map((member) => (
+                      <Tooltip key={member.userId}>
+                        <TooltipTrigger asChild>
+                          <div className="relative">
+                            <Avatar className="h-7 w-7 ring-2 ring-green-500/30 cursor-pointer hover:ring-green-500/60 transition-all">
+                              <AvatarImage src={member.avatarUrl || undefined} />
+                              <AvatarFallback className="text-[10px] bg-green-500/20 text-green-500">
+                                {getInitials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.isSwappedIn && (
+                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          <p className="font-medium">{member.name}</p>
+                          <p className="text-muted-foreground">
+                            {format(new Date(member.confirmedAt), "MMM d, h:mm a")}
+                          </p>
+                          {member.isSwappedIn && (
+                            <p className="text-blue-400 text-[10px]">Swapped in</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1">
+                <h4 className="font-medium text-yellow-500 flex items-center gap-1.5 mb-2 text-sm">
+                  <Clock className="h-3.5 w-3.5" />
+                  Pending ({details.unconfirmed.length})
+                </h4>
+                {details.unconfirmed.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Everyone confirmed!</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {details.unconfirmed.map((member) => (
+                      <Tooltip key={member.userId}>
+                        <TooltipTrigger asChild>
+                          <div className="relative">
+                            <Avatar className="h-7 w-7 ring-2 ring-yellow-500/30 cursor-pointer hover:ring-yellow-500/60 transition-all">
+                              <AvatarImage src={member.avatarUrl || undefined} />
+                              <AvatarFallback className="text-[10px] bg-yellow-500/20 text-yellow-500">
+                                {getInitials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.isSwappedIn && (
+                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          <p className="font-medium">{member.name}</p>
+                          <p className="text-muted-foreground">Not yet confirmed</p>
+                          {member.isSwappedIn && (
+                            <p className="text-blue-400 text-[10px]">Swapped in</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </TooltipProvider>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// Groups same-day setlists that belong to one multi-session service (Kids Camp
+// Morning/Afternoon, Student Camp Morning/Evening) into a single combined card.
+type SetlistRenderUnit =
+  | { kind: "single"; setlist: PublishedSetlist }
+  | { kind: "combined"; key: string; baseMinistryType: string; sessions: PublishedSetlist[] };
+
+function buildSetlistRenderUnits(setlists: PublishedSetlist[]): SetlistRenderUnit[] {
+  const order: string[] = [];
+  const groups = new Map<string, PublishedSetlist[]>();
+
+  for (const setlist of setlists) {
+    const { sessionLabel, baseMinistryType } = getMinistrySession(setlist.ministry_type);
+    const key = sessionLabel
+      ? `combined|${setlist.plan_date}|${setlist.campus_id}|${baseMinistryType}`
+      : `single|${setlist.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(setlist);
+  }
+
+  const units: SetlistRenderUnit[] = [];
+  for (const key of order) {
+    const items = groups.get(key)!;
+    if (!key.startsWith("combined|") || items.length < 2) {
+      for (const setlist of items) units.push({ kind: "single", setlist });
+      continue;
+    }
+    const sessions = [...items].sort(
+      (a, b) =>
+        getMinistrySession(a.ministry_type).sessionOrder -
+        getMinistrySession(b.ministry_type).sessionOrder,
+    );
+    units.push({
+      kind: "combined",
+      key,
+      baseMinistryType: getMinistrySession(sessions[0].ministry_type).baseMinistryType,
+      sessions,
+    });
+  }
+  return units;
+}
+
+function CombinedSessionSetlistRow({
+  sessions,
+  selectedCampusId,
+  ministryFilter,
+  isExpanded,
+  onToggle,
+}: {
+  sessions: PublishedSetlist[];
+  selectedCampusId: string;
+  ministryFilter: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const first = sessions[0];
+  const baseMinistry = normalizeSessionSetMinistryType(first.ministry_type) || first.ministry_type;
+  const setDate = useMemo(() => new Date(`${first.plan_date}T00:00:00`), [first.plan_date]);
+  const targetRosterMinistry = getTargetRosterMinistry(ministryFilter, baseMinistry);
+  const rosterMinistryScope = normalizeSessionSetMinistryType(targetRosterMinistry) || targetRosterMinistry;
+
+  const sessionIds = useMemo(() => sessions.map((session) => session.id).sort(), [sessions]);
+  const sessionIdsKey = sessionIds.join(",");
+
+  const { data: scheduledTeam, isLoading: isScheduledTeamLoading } = useScheduledTeamForDate(
+    setDate,
+    first.campus_id,
+    rosterMinistryScope,
+  );
+
+  const { data: roster = [], isLoading: isRosterLoading } = useTeamRosterForDate(
+    setDate,
+    scheduledTeam?.teamId,
+    normalizeWeekendWorshipMinistryType(rosterMinistryScope) === "weekend"
+      ? "weekend_team"
+      : rosterMinistryScope,
+    first.campus_id,
+  );
+
+  const { data: confirmations = [], isLoading: isConfirmationsLoading } = useQuery({
+    queryKey: ["setlist-confirmations-combined", sessionIdsKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("setlist_confirmations")
+        .select("user_id, confirmed_at, draft_set_id")
+        .in("draft_set_id", sessionIds);
+
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const details = useMemo<SetlistDetails>(() => {
+    const members = buildMembersFromRoster(roster);
+    const confirmedSessionsByUser = new Map<string, Set<string>>();
+    const latestConfirmedAtByUser = new Map<string, string>();
+
+    for (const confirmation of confirmations) {
+      if (!confirmedSessionsByUser.has(confirmation.user_id)) {
+        confirmedSessionsByUser.set(confirmation.user_id, new Set());
+      }
+      confirmedSessionsByUser.get(confirmation.user_id)!.add(confirmation.draft_set_id);
+
+      const previous = latestConfirmedAtByUser.get(confirmation.user_id);
+      if (!previous || new Date(confirmation.confirmed_at) > new Date(previous)) {
+        latestConfirmedAtByUser.set(confirmation.user_id, confirmation.confirmed_at);
+      }
+    }
+
+    const confirmed: ConfirmedSetlistMember[] = [];
+    const unconfirmed: SetlistMember[] = [];
+
+    // A member counts as confirmed only once they've confirmed every session that day.
+    for (const member of members) {
+      const memberSessions = confirmedSessionsByUser.get(member.userId);
+      const hasConfirmedAll = !!memberSessions && sessionIds.every((id) => memberSessions.has(id));
+      if (hasConfirmedAll) {
+        confirmed.push({ ...member, confirmedAt: latestConfirmedAtByUser.get(member.userId)! });
+      } else {
+        unconfirmed.push(member);
+      }
+    }
+
+    return { confirmed, unconfirmed, totalScheduled: members.length };
+  }, [roster, confirmations, sessionIds]);
+
+  const isLoading = isConfirmationsLoading || isScheduledTeamLoading || isRosterLoading;
+
+  return (
+    <ConfirmationRowView
+      dateLabel={format(setDate, "MMM d, yyyy")}
+      ministryLabel={getMinistryLabel(baseMinistry)}
+      showCampus={selectedCampusId === "all"}
+      campusName={first.campuses?.name}
+      extraBadgeLabel={`${sessions.length} sessions`}
+      details={details}
+      isLoading={isLoading}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    />
+  );
+}
+
 function SetlistRow({
   setlist,
   selectedCampusId,
@@ -138,11 +455,11 @@ function SetlistRow({
   // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
   // Set Builder and is_user_on_setlist_roster). Normalize the ministry so the team lookup and
   // member filter match the `kids_camp` rows in team_schedule/team_members.
-  const rosterMinistryScope = normalizeKidsCampSetMinistryType(targetRosterMinistry) || targetRosterMinistry;
+  const rosterMinistryScope = normalizeSessionSetMinistryType(targetRosterMinistry) || targetRosterMinistry;
   const setDate = useMemo(() => new Date(`${setlist.plan_date}T00:00:00`), [setlist.plan_date]);
   const isAudition = setlist.ministry_type === "audition";
-  const isKidsCampSet = isKidsCampSetMinistryType(setlist.ministry_type);
-  const isCustomServiceSet = !!setlist.custom_service_id && !isKidsCampSet;
+  const isSessionSet = isSessionSetMinistryType(setlist.ministry_type);
+  const isCustomServiceSet = !!setlist.custom_service_id && !isSessionSet;
   const usesScheduledRoster = !isAudition && !isCustomServiceSet;
 
   const { data: scheduledTeam, isLoading: isScheduledTeamLoading } = useScheduledTeamForDate(
@@ -283,149 +600,17 @@ function SetlistRow({
 
   const isLoading = isConfirmationsLoading || isSpecialDetailsLoading || (usesScheduledRoster && (isScheduledTeamLoading || isRosterLoading));
 
-  if (!details) {
-    return null;
-  }
-
-  const confirmRate = details.totalScheduled > 0
-    ? Math.round((details.confirmed.length / details.totalScheduled) * 100)
-    : 0;
-  const isFullyConfirmed = details.confirmed.length >= details.totalScheduled && details.totalScheduled > 0;
-
   return (
-    <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <CollapsibleTrigger asChild>
-        <div className="w-full p-4 rounded-lg border border-border bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-foreground">
-                  {format(new Date(`${setlist.plan_date}T00:00:00`), "MMM d, yyyy")}
-                </span>
-                <Badge variant="secondary" className="text-xs">
-                  {getMinistryLabel(setlist.ministry_type)}
-                </Badge>
-                {selectedCampusId === "all" && setlist.campuses && (
-                  <Badge variant="outline" className="text-xs">
-                    {setlist.campuses.name}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-3 mt-2 text-sm">
-                <div className="flex items-center gap-1">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">
-                    {isLoading ? "Loading..." : `${details.totalScheduled} scheduled`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {isFullyConfirmed ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Clock className="h-4 w-4 text-yellow-500" />
-                  )}
-                  <span className={isFullyConfirmed ? "text-green-500" : "text-yellow-500"}>
-                    {isLoading ? "Loading confirmations..." : `${details.confirmed.length}/${details.totalScheduled} confirmed (${confirmRate}%)`}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <ChevronDown
-              className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
-            />
-          </div>
-        </div>
-      </CollapsibleTrigger>
-
-      <CollapsibleContent className="mt-2 rounded-lg border border-border bg-background p-3">
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : (
-          <TooltipProvider>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <h4 className="font-medium text-green-500 flex items-center gap-1.5 mb-2 text-sm">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Confirmed ({details.confirmed.length})
-                </h4>
-                {details.confirmed.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No confirmations yet</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {details.confirmed.map((member) => (
-                      <Tooltip key={member.userId}>
-                        <TooltipTrigger asChild>
-                          <div className="relative">
-                            <Avatar className="h-7 w-7 ring-2 ring-green-500/30 cursor-pointer hover:ring-green-500/60 transition-all">
-                              <AvatarImage src={member.avatarUrl || undefined} />
-                              <AvatarFallback className="text-[10px] bg-green-500/20 text-green-500">
-                                {getInitials(member.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            {member.isSwappedIn && (
-                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
-                            )}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">
-                          <p className="font-medium">{member.name}</p>
-                          <p className="text-muted-foreground">
-                            {format(new Date(member.confirmedAt), "MMM d, h:mm a")}
-                          </p>
-                          {member.isSwappedIn && (
-                            <p className="text-blue-400 text-[10px]">Swapped in</p>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1">
-                <h4 className="font-medium text-yellow-500 flex items-center gap-1.5 mb-2 text-sm">
-                  <Clock className="h-3.5 w-3.5" />
-                  Pending ({details.unconfirmed.length})
-                </h4>
-                {details.unconfirmed.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Everyone confirmed!</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {details.unconfirmed.map((member) => (
-                      <Tooltip key={member.userId}>
-                        <TooltipTrigger asChild>
-                          <div className="relative">
-                            <Avatar className="h-7 w-7 ring-2 ring-yellow-500/30 cursor-pointer hover:ring-yellow-500/60 transition-all">
-                              <AvatarImage src={member.avatarUrl || undefined} />
-                              <AvatarFallback className="text-[10px] bg-yellow-500/20 text-yellow-500">
-                                {getInitials(member.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            {member.isSwappedIn && (
-                              <ArrowRightLeft className="h-2.5 w-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5 bg-background rounded-full" />
-                            )}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs">
-                          <p className="font-medium">{member.name}</p>
-                          <p className="text-muted-foreground">Not yet confirmed</p>
-                          {member.isSwappedIn && (
-                            <p className="text-blue-400 text-[10px]">Swapped in</p>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </TooltipProvider>
-        )}
-      </CollapsibleContent>
-    </Collapsible>
+    <ConfirmationRowView
+      dateLabel={format(new Date(`${setlist.plan_date}T00:00:00`), "MMM d, yyyy")}
+      ministryLabel={getMinistryLabel(setlist.ministry_type)}
+      showCampus={selectedCampusId === "all"}
+      campusName={setlist.campuses?.name}
+      details={details ?? null}
+      isLoading={isLoading}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    />
   );
 }
 
@@ -465,7 +650,12 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
       }
 
       if (ministryFilter !== "all" && ministryFilter !== "production" && ministryFilter !== "video") {
-        query = query.eq("ministry_type", ministryFilter);
+        if (isSessionSetMinistryType(ministryFilter)) {
+          // A session-set base (e.g. "kids_camp") must match all of its session variants.
+          query = query.in("ministry_type", getSessionSetVariants(ministryFilter));
+        } else {
+          query = query.eq("ministry_type", ministryFilter);
+        }
       }
 
       const { data: publishedSets, error } = await query;
@@ -569,9 +759,17 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
 
     return setlists.filter((setlist) => {
       if (setlist.ministry_type === ministryFilter) return true;
+      if (
+        isSessionSetMinistryType(ministryFilter) &&
+        normalizeSessionSetMinistryType(setlist.ministry_type) === ministryFilter
+      ) {
+        return true;
+      }
       return WEEKEND_MINISTRY_ALIASES.has(setlist.ministry_type) && WEEKEND_MINISTRY_ALIASES.has(ministryFilter);
     });
   }, [ministryFilter, setlists]);
+
+  const renderUnits = useMemo(() => buildSetlistRenderUnits(visibleSetlists), [visibleSetlists]);
 
   if (isLoading) {
     return (
@@ -605,7 +803,12 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Ministries</SelectItem>
-              {MINISTRY_TYPES.filter((ministry) => ministry.value !== "weekend_team").map((ministry) => (
+              {MINISTRY_TYPES.filter(
+                (ministry) =>
+                  ministry.value !== "weekend_team" &&
+                  // Hide session variants (e.g. "Kids Camp Morning"); the base option covers them.
+                  !getMinistrySession(ministry.value).sessionLabel,
+              ).map((ministry) => (
                 <SelectItem key={ministry.value} value={ministry.value}>
                   {ministry.label}
                 </SelectItem>
@@ -624,16 +827,27 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         ) : (
           <ScrollArea className="max-h-[500px]">
             <div className="space-y-3">
-              {visibleSetlists.map((setlist) => (
-                <SetlistRow
-                  key={setlist.id}
-                  setlist={setlist}
-                  selectedCampusId={selectedCampusId}
-                  ministryFilter={ministryFilter}
-                  isExpanded={expandedSetlistId === setlist.id}
-                  onToggle={() => setExpandedSetlistId(expandedSetlistId === setlist.id ? null : setlist.id)}
-                />
-              ))}
+              {renderUnits.map((unit) =>
+                unit.kind === "combined" ? (
+                  <CombinedSessionSetlistRow
+                    key={unit.key}
+                    sessions={unit.sessions}
+                    selectedCampusId={selectedCampusId}
+                    ministryFilter={ministryFilter}
+                    isExpanded={expandedSetlistId === unit.key}
+                    onToggle={() => setExpandedSetlistId(expandedSetlistId === unit.key ? null : unit.key)}
+                  />
+                ) : (
+                  <SetlistRow
+                    key={unit.setlist.id}
+                    setlist={unit.setlist}
+                    selectedCampusId={selectedCampusId}
+                    ministryFilter={ministryFilter}
+                    isExpanded={expandedSetlistId === unit.setlist.id}
+                    onToggle={() => setExpandedSetlistId(expandedSetlistId === unit.setlist.id ? null : unit.setlist.id)}
+                  />
+                ),
+              )}
             </div>
           </ScrollArea>
         )}

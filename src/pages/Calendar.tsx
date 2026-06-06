@@ -64,6 +64,7 @@ const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
   "worship_night",
   "kids_camp",
+  "student_camp",
   "production",
   "video",
   "encounter",
@@ -2556,7 +2557,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -2584,6 +2585,10 @@ function BandRoster({
     },
     kids_camp: {
       label: "Kids Camp",
+      order: 2
+    },
+    student_camp: {
+      label: "Student Camp",
       order: 2
     },
     eon_weekend: {

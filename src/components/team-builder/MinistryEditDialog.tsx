@@ -18,6 +18,7 @@ const MINISTRY_EDIT_ORDER = [
   "weekend",
   "worship_night",
   "kids_camp",
+  "student_camp",
   "production",
   "video",
   "encounter",

@@ -366,6 +366,9 @@ export const MINISTRY_TYPES = [
   { value: "kids_camp", label: "Kids Camp", shortLabel: "KC", color: "bg-orange-500" },
   { value: "kids_camp_morning", label: "Kids Camp Morning", shortLabel: "KCM", color: "bg-orange-500", hidden: true },
   { value: "kids_camp_afternoon", label: "Kids Camp Afternoon", shortLabel: "KCA", color: "bg-orange-500", hidden: true },
+  { value: "student_camp", label: "Student Camp", shortLabel: "SC", color: "bg-teal-600" },
+  { value: "student_camp_morning", label: "Student Camp Morning", shortLabel: "SCM", color: "bg-teal-600", hidden: true },
+  { value: "student_camp_evening", label: "Student Camp Evening", shortLabel: "SCE", color: "bg-teal-600", hidden: true },
   { value: "prayer_night", label: "Prayer Night", shortLabel: "PRAY", color: "bg-cyan-600" },
   { value: "encounter", label: "HS Worship", shortLabel: "HS", color: "bg-accent" },
   { value: "eon", label: "MS Worship", shortLabel: "MS", color: "bg-purple-500" },
@@ -384,6 +387,7 @@ export const SET_PLANNER_MINISTRY_OPTIONS = [
   { value: "weekend", label: "Weekend Services" },
   { value: "worship_night", label: "Worship Night" },
   { value: "kids_camp", label: "Kids Camp" },
+  { value: "student_camp", label: "Student Camp" },
   { value: "prayer_night", label: "Prayer Night" },
   { value: "encounter", label: "HS Worship" },
   { value: "eon", label: "MS Worship" },
@@ -406,6 +410,7 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   weekend: ["Vocalists", "Speaker", "Band"],
   worship_night: ["Vocalists", "Band"],
   kids_camp: ["Vocalists", "Band"],
+  student_camp: ["Vocalists", "Band"],
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],
@@ -425,11 +430,10 @@ function normalizeMinistryTypeKey(ministryType: string | null | undefined) {
 }
 
 export function getTeamBuilderSlotCategories(ministryType: string | null | undefined) {
-  const normalizedMinistryType = normalizeMinistryTypeKey(ministryType);
-
-  if (normalizedMinistryType === "kids_camp") {
-    return MINISTRY_SLOT_CATEGORIES.kids_camp;
-  }
+  // Session sets (Kids Camp / Student Camp morning/afternoon/evening) share their base
+  // ministry's slot categories.
+  const baseMinistryType = normalizeSessionSetMinistryType(ministryType) ?? ministryType;
+  const normalizedMinistryType = normalizeMinistryTypeKey(baseMinistryType);
 
   return MINISTRY_SLOT_CATEGORIES[normalizedMinistryType] || MINISTRY_SLOT_CATEGORIES.all;
 }
@@ -441,6 +445,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   weekend: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
   worship_night: ["Team 1", "Team 2", "Team 3", "Team 4"], // Worship Night follows the same 4-team campus rotation
   kids_camp: ["Team 1", "Team 2", "Team 3", "Team 4"], // Kids Camp follows the standard 4-team campus rotation
+  student_camp: ["Team 1", "Team 2", "Team 3", "Team 4"], // Student Camp follows the standard 4-team campus rotation
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Worship
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // MS Worship uses the full 4-team rotation
@@ -495,6 +500,80 @@ export function normalizeKidsCampSetMinistryType(
   ministryType: string | null | undefined,
 ): string | null | undefined {
   return isKidsCampSetMinistryType(ministryType) ? "kids_camp" : ministryType;
+}
+
+// "Session set" services run multiple worship sets on the same day (Kids Camp
+// Morning/Afternoon, Student Camp Morning/Evening, ...). They may be linked to a
+// custom service for date/service-flow scoping, but their roster, publish flow, and
+// confirmations all come from the Team Builder schedule under the BASE ministry type.
+// To add another multi-session service, add its base here and create the matching
+// MINISTRY_TYPES / MINISTRY_SLOT_CATEGORIES / MINISTRY_TEAM_FILTER entries above.
+export const SESSION_SET_BASE_MINISTRY_TYPES = ["kids_camp", "student_camp"] as const;
+const SESSION_SET_SUFFIXES = ["_morning", "_afternoon", "_evening"] as const;
+const SESSION_SET_MINISTRY_TYPE_SET = new Set<string>(
+  SESSION_SET_BASE_MINISTRY_TYPES.flatMap((base) => [
+    base,
+    ...SESSION_SET_SUFFIXES.map((suffix) => `${base}${suffix}`),
+  ]),
+);
+
+export function isSessionSetMinistryType(ministryType: string | null | undefined): boolean {
+  return !!ministryType && SESSION_SET_MINISTRY_TYPE_SET.has(ministryType);
+}
+
+// Collapse a session variant (e.g. "student_camp_evening") to its base
+// ("student_camp"). Non-session ministry types are returned unchanged.
+export function normalizeSessionSetMinistryType(
+  ministryType: string | null | undefined,
+): string | null | undefined {
+  if (!isSessionSetMinistryType(ministryType)) return ministryType;
+  return getMinistrySession(ministryType).baseMinistryType || ministryType;
+}
+
+// All ministry types (base + session variants) that share a base with the given type.
+// Used for queries that must consider every session of one service together.
+export function getSessionSetVariants(ministryType: string | null | undefined): string[] {
+  const base = normalizeSessionSetMinistryType(ministryType);
+  if (!base || !SESSION_SET_BASE_MINISTRY_TYPES.includes(base as (typeof SESSION_SET_BASE_MINISTRY_TYPES)[number])) {
+    return ministryType ? [ministryType] : [];
+  }
+  return [base, ...SESSION_SET_SUFFIXES.map((suffix) => `${base}${suffix}`)];
+}
+
+// Multi-session day services (e.g. Kids Camp Morning/Afternoon, Student Camp
+// Morning/Evening) encode the session as a suffix on the ministry type. Detecting
+// the suffix lets the app combine same-day sessions of one service into a single view.
+export const MINISTRY_SESSION_DEFS = [
+  { suffix: "_morning", label: "Morning", order: 0 },
+  { suffix: "_afternoon", label: "Afternoon", order: 1 },
+  { suffix: "_evening", label: "Evening", order: 2 },
+] as const;
+
+export interface MinistrySessionInfo {
+  baseMinistryType: string;
+  sessionLabel: string | null;
+  sessionOrder: number;
+}
+
+export function getMinistrySession(
+  ministryType: string | null | undefined,
+): MinistrySessionInfo {
+  if (ministryType) {
+    for (const def of MINISTRY_SESSION_DEFS) {
+      if (ministryType.endsWith(def.suffix)) {
+        return {
+          baseMinistryType: ministryType.slice(0, -def.suffix.length),
+          sessionLabel: def.label,
+          sessionOrder: def.order,
+        };
+      }
+    }
+  }
+  return { baseMinistryType: ministryType ?? "", sessionLabel: null, sessionOrder: -1 };
+}
+
+export function isSessionMinistryType(ministryType: string | null | undefined): boolean {
+  return getMinistrySession(ministryType).sessionLabel !== null;
 }
 
 export function normalizeWeekendWorshipMinistryType(

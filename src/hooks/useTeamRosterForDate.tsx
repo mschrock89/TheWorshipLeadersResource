@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
-import { POSITION_SLOTS } from "@/lib/constants";
+import { POSITION_SLOTS, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
@@ -19,6 +19,35 @@ const POSITION_CATEGORY_BY_VALUE = new Map(
     [slot.slot.toLowerCase(), slot.category],
     [slot.position.toLowerCase(), slot.category],
   ]),
+);
+const POSITION_SLOT_COUNT_BY_CATEGORY_POSITION = POSITION_SLOTS.reduce((counts, slot) => {
+  const key = `${slot.category.toLowerCase()}:${slot.position.toLowerCase()}`;
+  counts.set(key, (counts.get(key) || 0) + 1);
+  return counts;
+}, new Map<string, number>());
+const POSITION_CANONICAL_KEY_BY_VALUE = new Map(
+  POSITION_SLOTS.flatMap((slot) => {
+    const category = slot.category.toLowerCase();
+    const position = slot.position.toLowerCase();
+    const positionKey = `${category}:position:${position}`;
+    const slotKey =
+      (POSITION_SLOT_COUNT_BY_CATEGORY_POSITION.get(`${category}:${position}`) || 0) === 1
+        ? positionKey
+        : `${category}:slot:${slot.slot.toLowerCase()}`;
+
+    return [
+      [slot.slot.toLowerCase(), slotKey],
+      [position, positionKey],
+    ];
+  }),
+);
+const SINGLE_SLOT_POSITION_KEYS = new Set(
+  POSITION_SLOTS.flatMap((slot) => {
+    const category = slot.category.toLowerCase();
+    const position = slot.position.toLowerCase();
+    const count = POSITION_SLOT_COUNT_BY_CATEGORY_POSITION.get(`${category}:${position}`) || 0;
+    return count === 1 ? [`${category}:position:${position}`] : [];
+  }),
 );
 
 const getServiceDayForDate = (dateStr: string): "saturday" | "sunday" | null => {
@@ -45,19 +74,22 @@ const assignmentMatchesServiceDay = (
 };
 
 const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefined, ministryType?: string) => {
-  if (!ministryType) return true;
+  const normalizedMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
+  if (!normalizedMinistryType) return true;
   if (!memberMinistries || memberMinistries.length === 0) return true;
 
-  if (ministryType === "weekend_team") {
+  if (normalizedMinistryType === "weekend_team") {
     const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am", "speaker"];
-    return memberMinistries.some((mt) => weekendTeamMinistries.includes(mt));
+    return memberMinistries.some((mt) => weekendTeamMinistries.includes(normalizeSessionSetMinistryType(mt) || mt));
   }
 
-  if (WEEKEND_ROSTER_MINISTRY_ALIASES.includes(ministryType)) {
-    return memberMinistries.some((mt) => WEEKEND_ROSTER_MINISTRY_ALIASES.includes(mt));
+  if (WEEKEND_ROSTER_MINISTRY_ALIASES.includes(normalizedMinistryType)) {
+    return memberMinistries.some((mt) =>
+      WEEKEND_ROSTER_MINISTRY_ALIASES.includes(normalizeSessionSetMinistryType(mt) || mt)
+    );
   }
 
-  return memberMinistries.includes(ministryType);
+  return memberMinistries.some((mt) => (normalizeSessionSetMinistryType(mt) || mt) === normalizedMinistryType);
 };
 
 const getMinistryTypeForPositionCategory = (category: string | undefined) => {
@@ -104,12 +136,49 @@ const assignmentMatchesRosterFilter = (
   return ministryMatchesRosterFilter(assignment.ministry_types, ministryType);
 };
 
+const normalizePositionLookupValue = (position?: string | null) =>
+  (position || "").trim().toLowerCase();
+
+const getCanonicalPositionKey = (position?: string | null) => {
+  const normalizedPosition = normalizePositionLookupValue(position);
+  return POSITION_CANONICAL_KEY_BY_VALUE.get(normalizedPosition) || normalizedPosition;
+};
+
+const getAssignmentPositionKeys = (assignment: {
+  position?: string | null;
+  position_slot?: string | null;
+}) =>
+  Array.from(
+    new Set(
+      [assignment.position_slot, assignment.position]
+        .map((position) => getCanonicalPositionKey(position))
+        .filter(Boolean),
+    ),
+  );
+
+const getAssignmentSlotDedupeKey = (assignment: {
+  position?: string | null;
+  position_slot?: string | null;
+}) => {
+  if (assignment.position_slot) {
+    return getCanonicalPositionKey(assignment.position_slot);
+  }
+
+  const positionKey = getCanonicalPositionKey(assignment.position);
+  return SINGLE_SLOT_POSITION_KEYS.has(positionKey) ? positionKey : null;
+};
+
 const normalizeRosterGroupingMinistry = (ministryType: string | null | undefined) => {
   if (!ministryType) return "unknown";
   if (WEEKEND_ROSTER_MINISTRY_ALIASES.includes(ministryType)) {
     return "weekend_team";
   }
   return ministryType;
+};
+
+const shouldApplyGroupedWeekendOverrides = (ministryType?: string) => {
+  const normalizedMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
+  return normalizedMinistryType !== "video" && normalizedMinistryType !== "eon_weekend";
 };
 
 const normalizeRosterName = (name?: string | null) =>
@@ -233,7 +302,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v12"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v16"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -426,11 +495,18 @@ export function useTeamRosterForDate(
         }
       }
 
+      // Team Builder can show weekend services as one bucket. Pull related
+      // weekend overrides so the live roster matches that grouped view.
+      const datesToCheck = await getRelatedWeekendServiceDates(dateStr, campusId);
+      const overrideDatesToCheck = isWeekend(dateStr) && shouldApplyGroupedWeekendOverrides(ministryType)
+        ? datesToCheck
+        : [dateStr];
+
       let overrideQuery = supabase
         .from("team_member_date_overrides")
         .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, schedule_date")
         .eq("team_id", teamId)
-        .eq("schedule_date", dateStr);
+        .in("schedule_date", overrideDatesToCheck);
 
       if (rotationPeriodIds.length > 0) {
         overrideQuery = overrideQuery.in("rotation_period_id", rotationPeriodIds);
@@ -439,16 +515,29 @@ export function useTeamRosterForDate(
       const { data: dateOverrides, error: dateOverridesError } = await overrideQuery;
       if (dateOverridesError) throw dateOverridesError;
 
-      const visibleDateOverrides = ((dateOverrides || []) as TeamMemberDateOverrideRow[])
-        .filter((override) => !isBlankTeamBuilderAssignment(override))
+      const allDateOverrides = ((dateOverrides || []) as TeamMemberDateOverrideRow[])
+        .sort((a, b) => {
+          if (a.schedule_date === dateStr && b.schedule_date !== dateStr) return 1;
+          if (b.schedule_date === dateStr && a.schedule_date !== dateStr) return -1;
+          return overrideDatesToCheck.indexOf(a.schedule_date) - overrideDatesToCheck.indexOf(b.schedule_date);
+        });
+      const matchingDateOverrides = allDateOverrides
         .filter((override) => assignmentMatchesRosterFilter(override, ministryType));
-      const overrideBySlot = new Map(
-        visibleDateOverrides.map((override) => [override.position_slot, override]),
+      const suppressingDateOverrides = allDateOverrides.filter((override) =>
+        isBlankTeamBuilderAssignment(override) || assignmentMatchesRosterFilter(override, ministryType)
+      );
+      const visibleDateOverrides = matchingDateOverrides.filter(
+        (override) => !isBlankTeamBuilderAssignment(override),
+      );
+      const suppressingOverridePositionKeys = new Set(
+        suppressingDateOverrides.flatMap((override) => getAssignmentPositionKeys(override)),
       );
 
-      const effectiveMembers = filteredMembers
+      const effectiveMembersWithOverrides = filteredMembers
         .filter((member) => !isBlankTeamBuilderAssignment(member))
-        .filter((member) => !member.position_slot || !overrideBySlot.has(member.position_slot))
+        .filter((member) =>
+          !getAssignmentPositionKeys(member).some((positionKey) => suppressingOverridePositionKeys.has(positionKey))
+        )
         .concat(
           visibleDateOverrides.map((override) => ({
             id: override.id,
@@ -461,6 +550,30 @@ export function useTeamRosterForDate(
             service_day: null,
           })),
         );
+      const effectiveMemberBySlot = new Map<string, TeamMemberRow>();
+      const effectiveMembers: TeamMemberRow[] = [];
+
+      for (const member of effectiveMembersWithOverrides) {
+        const slotDedupeKey = getAssignmentSlotDedupeKey(member);
+
+        if (!slotDedupeKey) {
+          effectiveMembers.push(member);
+          continue;
+        }
+
+        const existing = effectiveMemberBySlot.get(slotDedupeKey);
+        if (!existing) {
+          effectiveMemberBySlot.set(slotDedupeKey, member);
+          effectiveMembers.push(member);
+          continue;
+        }
+
+        const existingIndex = effectiveMembers.indexOf(existing);
+        if (existingIndex >= 0) {
+          effectiveMembers[existingIndex] = member;
+        }
+        effectiveMemberBySlot.set(slotDedupeKey, member);
+      }
 
       // Get user IDs to fetch their profiles
       const userIds = effectiveMembers.filter(m => m.user_id).map(m => m.user_id!);
@@ -634,10 +747,6 @@ export function useTeamRosterForDate(
       if (avatarProfilesError) throw avatarProfilesError;
 
       const profileMap = new Map((allAvatarProfiles || []).map(p => [p.id, p.avatar_url]));
-
-      // Build the list of dates to check for swaps. Friday override services should
-      // behave as part of the same weekend cluster as Saturday/Sunday.
-      const datesToCheck = await getRelatedWeekendServiceDates(dateStr, campusId);
 
       // Fetch accepted swaps where someone is covering FOR this date (original_date matches)
       const { data: swapsForDate, error: swapsForDateError } = await supabase

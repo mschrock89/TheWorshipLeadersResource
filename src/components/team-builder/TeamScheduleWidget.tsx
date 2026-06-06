@@ -167,6 +167,11 @@ export function TeamScheduleWidget({
           return isWeekdayDate(date);
         }
 
+        if (ministryType === "student_camp") {
+          // Student camps can span any day of the week (incl. weekends).
+          return true;
+        }
+
         if (isWednesdayWorshipMinistry(ministryType)) {
           return dayOfWeek === 3;
         }
@@ -179,7 +184,7 @@ export function TeamScheduleWidget({
   }, [rotationDates, selectedCampus]);
 
   const preloadableDates = useMemo(() => {
-    if (activeScheduleMinistry === "kids_camp") {
+    if (activeScheduleMinistry === "kids_camp" || activeScheduleMinistry === "student_camp") {
       return [];
     }
 
@@ -391,6 +396,7 @@ export function TeamScheduleWidget({
               <SelectContent>
                 <SelectItem value="weekend">Weekend</SelectItem>
                 <SelectItem value="kids_camp">Kids Camp</SelectItem>
+                <SelectItem value="student_camp">Student Camp</SelectItem>
                 <SelectItem value="production">Production</SelectItem>
                 <SelectItem value="video">Video</SelectItem>
                 <SelectItem value="encounter">HS Worship</SelectItem>
@@ -486,6 +492,7 @@ export function TeamScheduleWidget({
                       <SelectContent>
                         <SelectItem value="weekend">Weekend</SelectItem>
                         <SelectItem value="kids_camp">Kids Camp</SelectItem>
+                        <SelectItem value="student_camp">Student Camp</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
                         <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">HS Worship</SelectItem>

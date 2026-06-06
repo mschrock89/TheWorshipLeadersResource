@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { useToast } from "./use-toast";
 import { format } from "date-fns";
 import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
-import { KIDS_CAMP_SET_MINISTRY_TYPES, isKidsCampSetMinistryType } from "@/lib/constants";
+import { getSessionSetVariants, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -98,7 +98,10 @@ export function useSongAvailability(
            if (ministryType === 'encounter') return serviceName.includes('hs worship') || serviceName.includes('encounter');
            if (ministryType === 'eon') return serviceName.includes('ms worship') || serviceName.includes('eon');
            if (ministryType === 'evident') return serviceName.includes('evident');
-           if (isKidsCampSetMinistryType(ministryType)) return serviceName.includes('kids camp');
+           if (isSessionSetMinistryType(ministryType)) {
+            const baseName = (normalizeSessionSetMinistryType(ministryType) || '').replace(/_/g, ' ');
+            return serviceName.includes(baseName);
+          }
 
            // "Weekend" = main services (exclude specialty service types)
            if (ministryType === 'weekend') {
@@ -116,8 +119,10 @@ export function useSongAvailability(
              );
            }
 
-           // Fallback: substring match
-           return serviceName.includes(ministryType.toLowerCase());
+           // Fallback: substring match. Normalize underscores to spaces so
+           // values like "worship_night"/"prayer_night" match their human-readable
+           // service names ("Worship Night"/"Prayer Night").
+           return serviceName.includes(ministryType.toLowerCase().replace(/_/g, ' '));
          })();
 
          return matchesCampus && matchesMinistry;
@@ -694,8 +699,8 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
 
       if (weekendAliases.includes(ministryType)) {
         setQuery = setQuery.in('ministry_type', weekendAliases);
-      } else if (isKidsCampSetMinistryType(ministryType)) {
-        setQuery = setQuery.in('ministry_type', [...KIDS_CAMP_SET_MINISTRY_TYPES]);
+      } else if (isSessionSetMinistryType(ministryType)) {
+        setQuery = setQuery.in('ministry_type', getSessionSetVariants(ministryType));
       } else {
         setQuery = setQuery.eq('ministry_type', ministryType);
       }

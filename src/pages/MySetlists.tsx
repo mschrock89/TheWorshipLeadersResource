@@ -25,10 +25,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { usePublishedSetlists, useConfirmSetlist } from "@/hooks/useSetlistConfirmations";
+import { usePublishedSetlists, useConfirmSetlist, useConfirmSetlists } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isKidsCampSetMinistryType, normalizeKidsCampSetMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -67,6 +67,54 @@ function getRosterMemberDisplayName(memberName: string | null | undefined) {
   return memberName === TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME
     ? TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME
     : memberName || "Team Member";
+}
+
+// Groups same-day setlists that belong to one multi-session service (Kids Camp
+// Morning/Afternoon, Student Camp Morning/Evening, etc.) into a single combined unit
+// so the My Setlists tab shows one card per service with each session inside it.
+type SessionRenderUnit<T> =
+  | { kind: "single"; setlist: T }
+  | { kind: "combined"; key: string; baseMinistryType: string; sessions: T[] };
+
+function buildSessionRenderUnits<
+  T extends { id: string; plan_date: string; campus_id: string; ministry_type: string },
+>(items: T[]): SessionRenderUnit<T>[] {
+  const groupOrder: string[] = [];
+  const groupMap = new Map<string, T[]>();
+
+  for (const item of items) {
+    const { sessionLabel, baseMinistryType } = getMinistrySession(item.ministry_type);
+    const key = sessionLabel
+      ? `combined|${item.plan_date}|${item.campus_id}|${baseMinistryType}`
+      : `single|${item.id}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+      groupOrder.push(key);
+    }
+    groupMap.get(key)!.push(item);
+  }
+
+  const units: SessionRenderUnit<T>[] = [];
+  for (const key of groupOrder) {
+    const groupItems = groupMap.get(key)!;
+    // Only combine when there are actually multiple sessions for the same service/day.
+    if (!key.startsWith("combined|") || groupItems.length < 2) {
+      for (const setlist of groupItems) units.push({ kind: "single", setlist });
+      continue;
+    }
+    const sessions = [...groupItems].sort(
+      (a, b) =>
+        getMinistrySession(a.ministry_type).sessionOrder -
+        getMinistrySession(b.ministry_type).sessionOrder,
+    );
+    units.push({
+      kind: "combined",
+      key,
+      baseMinistryType: getMinistrySession(sessions[0].ministry_type).baseMinistryType,
+      sessions,
+    });
+  }
+  return units;
 }
 
 function getSetlistDisplayDate(planDate: string, ministryType: string) {
@@ -235,6 +283,7 @@ function StandardMySetlists() {
   );
   const { data: playlists, isLoading: loadingPlaylists } = useMySetlistPlaylists();
   const confirmSetlist = useConfirmSetlist();
+  const confirmSetlists = useConfirmSetlists();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
@@ -321,7 +370,15 @@ function StandardMySetlists() {
   const isPast = currentGroup && currentGroup.sundayDate < today;
 
   const getMinistryLabel = (type: string) => {
-    return MINISTRY_TYPES.find(m => m.value === type)?.label || type;
+    const known = MINISTRY_TYPES.find(m => m.value === type)?.label;
+    if (known) return known;
+    // Prettify unknown/base ministry types (e.g. "student_camp" -> "Student Camp")
+    // so combined session cards have a readable header before a label is configured.
+    return (type || "")
+      .split(/[_\s]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ") || type;
   };
 
   const getInitials = (name: string) => {
@@ -348,6 +405,221 @@ function StandardMySetlists() {
     }
     
     return format(satDate, "EEEE, MMMM d, yyyy");
+  };
+
+  type GroupItem = (typeof allGroupedSetlists)[number]["items"][number];
+
+  const renderStatusBadges = (setlist: GroupItem) => {
+    const isConfirmed = !!setlist.myConfirmation;
+    return (
+      <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+        <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-green-600 px-3 py-1 text-center text-xs text-white">
+          <Check className="h-3 w-3" />
+          Published
+        </Badge>
+        {isConfirmed ? (
+          <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-emerald-700 px-3 py-1 text-center text-xs text-white">
+            <Check className="h-3 w-3" />
+            Reviewed
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
+          >
+            <Clock className="h-3 w-3" />
+            Needs Review
+          </Badge>
+        )}
+      </div>
+    );
+  };
+
+  const renderSessionBody = (
+    setlist: GroupItem,
+    options?: { showRoster?: boolean; showConfirmation?: boolean },
+  ) => {
+    const showRoster = options?.showRoster ?? true;
+    const showConfirmation = options?.showConfirmation ?? true;
+    const isConfirmed = !!setlist.myConfirmation;
+    const setlistPlaylists = playlists?.filter(p => p.draft_set_id === setlist.id) ?? [];
+
+    return (
+      <>
+        <SetlistTeachingSchedule
+          planDate={setlist.plan_date}
+          campusId={setlist.campus_id}
+          ministryType={setlist.ministry_type}
+        />
+
+        {/* Songs list */}
+        <div className="space-y-2">
+          <TooltipProvider>
+            {setlist.songs.map((item, index) => (
+              <div
+                key={item.id}
+                className="flex items-start gap-2 p-2 rounded-lg bg-muted/50 md:items-center md:gap-3"
+              >
+                <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-medium flex items-center justify-center shrink-0">
+                  {index + 1}
+                </span>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
+                        disabled={!item.song_id}
+                        onClick={() => {
+                          if (!item.song_id) return;
+                          setChartSong({
+                            id: item.song_id,
+                            title: item.song?.title || "Unknown Song",
+                            author: item.song?.author || null,
+                            draftSetSongId: item.id,
+                            originalKey: item.song_key || null,
+                          });
+                        }}
+                      >
+                        {item.song?.title || "Unknown Song"}
+                      </button>
+                      {item.isFirstUse && (
+                        <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
+                          NEW
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {item.song?.author && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {item.song.author}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5 self-center md:gap-2">
+                  {item.song_key && (
+                    <Badge variant="outline" className="text-xs font-medium shrink-0">
+                      {item.song_key}
+                    </Badge>
+                  )}
+                  {item.song_id && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={`shrink-0 text-xs ${isMobile ? "h-7 px-2" : "h-7 gap-1 px-2"}`}
+                      onClick={() =>
+                        setChartSong({
+                          id: item.song_id,
+                          title: item.song?.title || "Unknown Song",
+                          author: item.song?.author || null,
+                          draftSetSongId: item.id,
+                          originalKey: item.song_key || null,
+                        })
+                      }
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {!isMobile && "Chart"}
+                    </Button>
+                  )}
+                  {(() => {
+                  const displayVocalists = (item.vocalists && item.vocalists.length > 0)
+                    ? item.vocalists
+                    : (item.vocalist ? [item.vocalist] : []);
+                  if (displayVocalists.length === 0) return null;
+                  const displayNames = displayVocalists
+                    .map((v) => v.full_name)
+                    .filter(Boolean)
+                    .join(", ");
+                  return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex -space-x-2">
+                          {displayVocalists.slice(0, 2).map((vocalist) => (
+                            <Avatar key={vocalist.id} className="h-6 w-6 ring-2 ring-background">
+                              <AvatarImage src={vocalist.avatar_url || undefined} />
+                              <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/30 to-primary/10 text-primary">
+                                {getInitials(vocalist.full_name || "?")}
+                              </AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </div>
+                        {displayVocalists.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground">+{displayVocalists.length - 2}</span>
+                        )}
+                        <Mic2 className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">{displayNames} {displayVocalists.length > 1 ? "are" : "is"} leading</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  );
+                  })()}
+                </div>
+              </div>
+            ))}
+          </TooltipProvider>
+        </div>
+
+        {/* Notes */}
+        {setlist.notes && (
+          <div className="text-sm p-3 rounded-lg bg-muted/50 border">
+            <p className="font-medium text-xs text-muted-foreground mb-1">Notes</p>
+            <p>{setlist.notes}</p>
+          </div>
+        )}
+
+        {showRoster && (
+          <SetlistTeamRoster
+            planDate={setlist.plan_date}
+            campusId={setlist.campus_id}
+            ministryType={setlist.ministry_type}
+            customServiceId={setlist.custom_service_id}
+            getInitials={getInitials}
+          />
+        )}
+
+        {/* Confirm button - only for users on the team roster for this setlist */}
+        {showConfirmation && !isConfirmed && setlist.amIOnRoster && (
+          <Button
+            onClick={() => confirmSetlist.mutate(setlist.id)}
+            disabled={confirmSetlist.isPending}
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Check className="mr-2 h-4 w-4" />
+            Confirm I've Reviewed This Setlist
+          </Button>
+        )}
+
+        {showConfirmation && !isConfirmed && setlist.amIOnRoster === false && (
+          <p className="text-xs text-center text-muted-foreground">
+            You're not on the team roster for this service, so you can't confirm.
+          </p>
+        )}
+
+        {showConfirmation && isConfirmed && setlist.myConfirmation && (
+          <p className="text-xs text-center text-muted-foreground">
+            Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
+          </p>
+        )}
+
+        {/* Audio library playlist(s) attached to this setlist */}
+        {setlistPlaylists.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="flex items-center gap-2">
+              <Headphones className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">References</span>
+            </div>
+            <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
+            {setlistPlaylists.map((playlist) => (
+              <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
+            ))}
+          </div>
+        )}
+      </>
+    );
   };
 
   if (isLoading) {
@@ -469,15 +741,128 @@ function StandardMySetlists() {
             </Button>
           </div>
 
-          {/* Setlists for current date group */}
-          {currentGroup?.items.map(setlist => {
+          {/* Setlists for current date group. Same-day multi-session services
+              (e.g. Kids Camp Morning/Afternoon, Student Camp Morning/Evening)
+              are combined into one card with a section per session. */}
+          {buildSessionRenderUnits(currentGroup?.items ?? []).map((unit) => {
+            if (unit.kind === "combined") {
+              const { sessions, baseMinistryType, key } = unit;
+              const campusName = sessions[0].campuses?.name;
+              const allConfirmed = sessions.every((session) => !!session.myConfirmation);
+              const amIOnRoster = sessions.some((session) => session.amIOnRoster);
+              const amINotOnRoster = sessions.every((session) => session.amIOnRoster === false);
+              const unconfirmedSessionIds = sessions
+                .filter((session) => !session.myConfirmation)
+                .map((session) => session.id);
+              const latestConfirmedAt = sessions
+                .map((session) => session.myConfirmation?.confirmed_at)
+                .filter((value): value is string => !!value)
+                .sort()
+                .pop();
+
+              return (
+                <Card
+                  key={key}
+                  className={`transition-all duration-300 ${allConfirmed ? "border-green-500/30" : ""}`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="secondary" className="text-xs font-medium">
+                          {getMinistryLabel(baseMinistryType)}
+                        </Badge>
+                        {campusName && (
+                          <Badge variant="outline" className="text-xs font-normal">
+                            {campusName}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-xs font-normal">
+                          {sessions.length} sessions
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+                        <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-green-600 px-3 py-1 text-center text-xs text-white">
+                          <Check className="h-3 w-3" />
+                          Published
+                        </Badge>
+                        {allConfirmed ? (
+                          <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-emerald-700 px-3 py-1 text-center text-xs text-white">
+                            <Check className="h-3 w-3" />
+                            Reviewed
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
+                          >
+                            <Clock className="h-3 w-3" />
+                            Needs Review
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {sessions.map((session) => {
+                      const { sessionLabel } = getMinistrySession(session.ministry_type);
+                      return (
+                        <div
+                          key={session.id}
+                          ref={(el) => { cardRefs.current[session.id] = el; }}
+                          className="space-y-4 rounded-lg border border-border/60 p-3 sm:p-4"
+                        >
+                          <Badge className="self-start rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                            {sessionLabel ?? getMinistryLabel(session.ministry_type)}
+                          </Badge>
+                          {renderSessionBody(session, { showRoster: false, showConfirmation: false })}
+                        </div>
+                      );
+                    })}
+
+                    {/* Shared team roster + single confirmation for the whole day */}
+                    <div className="space-y-4 border-t border-border pt-4">
+                      <SetlistTeamRoster
+                        planDate={sessions[0].plan_date}
+                        campusId={sessions[0].campus_id}
+                        ministryType={sessions[0].ministry_type}
+                        customServiceId={sessions[0].custom_service_id}
+                        getInitials={getInitials}
+                      />
+
+                      {!allConfirmed && amIOnRoster && (
+                        <Button
+                          onClick={() => confirmSetlists.mutate(unconfirmedSessionIds)}
+                          disabled={confirmSetlists.isPending}
+                          className="w-full bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <Check className="mr-2 h-4 w-4" />
+                          Confirm I've Reviewed All Sessions
+                        </Button>
+                      )}
+
+                      {!allConfirmed && amINotOnRoster && (
+                        <p className="text-xs text-center text-muted-foreground">
+                          You're not on the team roster for this service, so you can't confirm.
+                        </p>
+                      )}
+
+                      {allConfirmed && latestConfirmedAt && (
+                        <p className="text-xs text-center text-muted-foreground">
+                          Confirmed on {format(parseISO(latestConfirmedAt), "MMM d 'at' h:mm a")}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            const setlist = unit.setlist;
             const isConfirmed = !!setlist.myConfirmation;
-            const planDate = parseLocalDate(setlist.scheduleDate);
-            const setlistPlaylists = playlists?.filter(p => p.draft_set_id === setlist.id) ?? [];
 
             return (
-              <Card 
-                key={setlist.id} 
+              <Card
+                key={setlist.id}
                 ref={(el) => { cardRefs.current[setlist.id] = el; }}
                 className={`transition-all duration-300 ${isConfirmed ? "border-green-500/30" : ""}`}
               >
@@ -495,199 +880,11 @@ function StandardMySetlists() {
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-                      <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-green-600 px-3 py-1 text-center text-xs text-white">
-                        <Check className="h-3 w-3" />
-                        Published
-                      </Badge>
-                      {isConfirmed ? (
-                        <Badge className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full bg-emerald-700 px-3 py-1 text-center text-xs text-white">
-                          <Check className="h-3 w-3" />
-                          Reviewed
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full border-amber-500 px-3 py-1 text-center text-xs font-medium leading-tight text-amber-600"
-                        >
-                          <Clock className="h-3 w-3" />
-                          Needs Review
-                        </Badge>
-                      )}
-                    </div>
+                    {renderStatusBadges(setlist)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <SetlistTeachingSchedule
-                    planDate={setlist.plan_date}
-                    campusId={setlist.campus_id}
-                    ministryType={setlist.ministry_type}
-                  />
-
-                  {/* Songs list */}
-                  <div className="space-y-2">
-                    <TooltipProvider>
-                      {setlist.songs.map((item, index) => (
-                        <div
-                          key={item.id}
-                          className="flex items-start gap-2 p-2 rounded-lg bg-muted/50 md:items-center md:gap-3"
-                        >
-                          <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-medium flex items-center justify-center shrink-0">
-                            {index + 1}
-                          </span>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="min-w-0">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="min-w-0 truncate text-left font-medium text-sm hover:text-primary hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-70"
-                                  disabled={!item.song_id}
-                                  onClick={() => {
-                                    if (!item.song_id) return;
-                                    setChartSong({
-                                      id: item.song_id,
-                                      title: item.song?.title || "Unknown Song",
-                                      author: item.song?.author || null,
-                                      draftSetSongId: item.id,
-                                      originalKey: item.song_key || null,
-                                    });
-                                  }}
-                                >
-                                  {item.song?.title || "Unknown Song"}
-                                </button>
-                                {item.isFirstUse && (
-                                  <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
-                                    NEW
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            {item.song?.author && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {item.song.author}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5 self-center md:gap-2">
-                            {item.song_key && (
-                              <Badge variant="outline" className="text-xs font-medium shrink-0">
-                                {item.song_key}
-                              </Badge>
-                            )}
-                            {item.song_id && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className={`shrink-0 text-xs ${isMobile ? "h-7 px-2" : "h-7 gap-1 px-2"}`}
-                                onClick={() =>
-                                  setChartSong({
-                                    id: item.song_id,
-                                    title: item.song?.title || "Unknown Song",
-                                    author: item.song?.author || null,
-                                    draftSetSongId: item.id,
-                                    originalKey: item.song_key || null,
-                                  })
-                                }
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                                {!isMobile && "Chart"}
-                              </Button>
-                            )}
-                            {(() => {
-                            const displayVocalists = (item.vocalists && item.vocalists.length > 0)
-                              ? item.vocalists
-                              : (item.vocalist ? [item.vocalist] : []);
-                            if (displayVocalists.length === 0) return null;
-                            const displayNames = displayVocalists
-                              .map((v) => v.full_name)
-                              .filter(Boolean)
-                              .join(", ");
-                            return (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <div className="flex -space-x-2">
-                                    {displayVocalists.slice(0, 2).map((vocalist) => (
-                                      <Avatar key={vocalist.id} className="h-6 w-6 ring-2 ring-background">
-                                        <AvatarImage src={vocalist.avatar_url || undefined} />
-                                        <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/30 to-primary/10 text-primary">
-                                          {getInitials(vocalist.full_name || "?")}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                    ))}
-                                  </div>
-                                  {displayVocalists.length > 2 && (
-                                    <span className="text-[10px] text-muted-foreground">+{displayVocalists.length - 2}</span>
-                                  )}
-                                  <Mic2 className="h-3 w-3 text-muted-foreground" />
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p className="text-xs">{displayNames} {displayVocalists.length > 1 ? "are" : "is"} leading</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            );
-                            })()}
-                          </div>
-                        </div>
-                      ))}
-                    </TooltipProvider>
-                  </div>
-
-                  {/* Notes */}
-                  {setlist.notes && (
-                    <div className="text-sm p-3 rounded-lg bg-muted/50 border">
-                      <p className="font-medium text-xs text-muted-foreground mb-1">Notes</p>
-                      <p>{setlist.notes}</p>
-                    </div>
-                  )}
-
-                  <SetlistTeamRoster
-                    planDate={setlist.plan_date}
-                    campusId={setlist.campus_id}
-                    ministryType={setlist.ministry_type}
-                    customServiceId={setlist.custom_service_id}
-                    getInitials={getInitials}
-                  />
-
-                  {/* Confirm button - only for users on the team roster for this setlist */}
-                  {!isConfirmed && setlist.amIOnRoster && (
-                    <Button
-                      onClick={() => confirmSetlist.mutate(setlist.id)}
-                      disabled={confirmSetlist.isPending}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white"
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      Confirm I've Reviewed This Setlist
-                    </Button>
-                  )}
-
-                  {!isConfirmed && setlist.amIOnRoster === false && (
-                    <p className="text-xs text-center text-muted-foreground">
-                      You're not on the team roster for this service, so you can't confirm.
-                    </p>
-                  )}
-
-                  {isConfirmed && setlist.myConfirmation && (
-                    <p className="text-xs text-center text-muted-foreground">
-                      Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
-                    </p>
-                  )}
-
-                  {/* Audio library playlist(s) attached to this setlist */}
-                  {setlistPlaylists.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-border">
-                      <div className="flex items-center gap-2">
-                        <Headphones className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">References</span>
-                      </div>
-                      <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
-                      {setlistPlaylists.map((playlist) => (
-                        <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
-                      ))}
-                    </div>
-                  )}
+                  {renderSessionBody(setlist)}
                 </CardContent>
               </Card>
             );
@@ -767,13 +964,16 @@ function SetlistTeamRoster({
   const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
-  // Kids Camp morning/afternoon sets may be linked to a custom service for service-flow/date
-  // scoping, but their roster always comes from the Team Builder schedule (kept aligned with
-  // Set Builder and is_user_on_setlist_roster). Treat them like a scheduled-team set and
-  // normalize the ministry to `kids_camp` so team_schedule/team_members lookups match.
-  const isKidsCampSet = isKidsCampSetMinistryType(ministryType);
-  const rosterMinistryType = isKidsCampSet ? "kids_camp" : ministryType;
-  const effectiveCustomServiceId = isKidsCampSet ? null : customServiceId;
+  // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) may be linked to a
+  // custom service for service-flow/date scoping, but their roster always comes from the Team
+  // Builder schedule (kept aligned with Set Builder and is_user_on_setlist_roster). Treat them
+  // like a scheduled-team set and normalize the ministry to the base so team_schedule/team_members
+  // lookups match.
+  const isSessionSet = isSessionSetMinistryType(ministryType);
+  const rosterMinistryType = isSessionSet
+    ? (normalizeSessionSetMinistryType(ministryType) || ministryType)
+    : ministryType;
+  const effectiveCustomServiceId = isSessionSet ? null : customServiceId;
   const isWeekendSetlist = normalizeWeekendWorshipMinistryType(rosterMinistryType) === "weekend";
   const weekendPairDate = useMemo(() => {
     if (!isWeekendSetlist) return null;
