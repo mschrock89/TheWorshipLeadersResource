@@ -40,6 +40,7 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
@@ -793,6 +794,27 @@ function StandardCalendar() {
 
   const getBaseScheduleEntriesForDate = useCallback((targetDateStr: string) => {
     let entries = teamSchedule.filter((scheduleEntry) => scheduleEntry.schedule_date === targetDateStr);
+
+    // For weekend days, also pull in entries from the paired day (Sat↔Sun).
+    // A team is often scheduled only for Saturday in team_schedule, so clicking
+    // Sunday in the Calendar would otherwise find nothing (or a wrong team).
+    // This mirrors the same logic in My Setlists which queries both days.
+    // Exact-date entries take priority; paired entries fill in missing ministry types.
+    const targetDate = parseLocalDate(targetDateStr);
+    const dayOfWeek = targetDate.getDay();
+    if (dayOfWeek === 6 || dayOfWeek === 0) {
+      const pairDate = addDays(targetDate, dayOfWeek === 6 ? 1 : -1);
+      const pairDateStr = formatDateForStorage(pairDate);
+      const pairEntries = teamSchedule.filter(
+        (scheduleEntry) => scheduleEntry.schedule_date === pairDateStr,
+      );
+      const coveredMinistries = new Set(entries.map((e) => e.ministry_type ?? "default"));
+      for (const entry of pairEntries) {
+        if (!coveredMinistries.has(entry.ministry_type ?? "default")) {
+          entries = [...entries, entry];
+        }
+      }
+    }
 
     if (activeRotationPeriodName) {
       const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
@@ -2353,6 +2375,108 @@ function BandRoster({
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
+
+  const resourceAppKey = getCurrentResourceAppKey();
+  const dateStr = date
+    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+    : null;
+
+  // Step 1: fetch the active rotation period — identical to My Setlists.
+  const { data: bandRosterActivePeriodName } = useQuery({
+    queryKey: ["band-roster-active-rotation-period", campusId, resourceAppKey],
+    enabled: !!campusId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rotation_periods")
+        .select("name")
+        .eq("campus_id", campusId!)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.name ?? null;
+    },
+  });
+
+  // Step 2: query team_schedule for both weekend dates — exactly as My Setlists does.
+  // Wait until the active period name is resolved (undefined = still loading).
+  const { data: directScheduleEntries = [] } = useQuery({
+    queryKey: ["band-roster-schedule", dateStr, campusId, resourceAppKey, bandRosterActivePeriodName],
+    enabled: !!dateStr && !!campusId && bandRosterActivePeriodName !== undefined,
+    queryFn: async () => {
+      const datesToCheck = [dateStr!];
+      const dayOfWeek = date.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        const pair = new Date(date);
+        pair.setDate(dayOfWeek === 6 ? date.getDate() + 1 : date.getDate() - 1);
+        datesToCheck.push(
+          `${pair.getFullYear()}-${String(pair.getMonth() + 1).padStart(2, "0")}-${String(pair.getDate()).padStart(2, "0")}`,
+        );
+      }
+
+      const { data, error } = await supabase
+        .from("team_schedule")
+        .select("id, team_id, campus_id, ministry_type, schedule_date, rotation_period, created_at")
+        .eq("resource_app_key", resourceAppKey)
+        .in("schedule_date", datesToCheck)
+        .or(`campus_id.eq.${campusId},campus_id.is.null`);
+
+      if (error) throw error;
+      if (!data || data.length === 0) return [];
+
+      // Step 3: drop stale old-rotation entries for any date that already has an
+      // active-rotation entry — same filter My Setlists applies before sorting.
+      const rows = bandRosterActivePeriodName
+        ? data.filter((entry) => {
+            const dateEntries = data.filter((c) => c.schedule_date === entry.schedule_date);
+            const activeEntries = dateEntries.filter(
+              (c) => c.rotation_period === bandRosterActivePeriodName,
+            );
+            return activeEntries.length === 0 || entry.rotation_period === bandRosterActivePeriodName;
+          })
+        : data;
+
+      // Step 4: sort — campus-specific first, exact date first, newer first.
+      return [...rows].sort((a, b) => {
+        const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
+        if (campusPriority !== 0) return campusPriority;
+        if (a.schedule_date === dateStr && b.schedule_date !== dateStr) return -1;
+        if (b.schedule_date === dateStr && a.schedule_date !== dateStr) return 1;
+        return (
+          new Date((b as { created_at?: string }).created_at || 0).getTime() -
+          new Date((a as { created_at?: string }).created_at || 0).getTime()
+        );
+      });
+    },
+  });
+
+  const weekendMinistryAliases = useMemo(() => new Set(["weekend", "sunday_am", "weekend_team"]), []);
+
+  // Pick main team entry the same way My Setlists does: prefer weekend-type ministry.
+  const directTeamEntry = useMemo(
+    () =>
+      directScheduleEntries.find((e) => weekendMinistryAliases.has(e.ministry_type ?? "")) ??
+      directScheduleEntries[0] ??
+      null,
+    [directScheduleEntries, weekendMinistryAliases],
+  );
+
+  // Use the directly-resolved team; fall back to the prop only when campusId is unknown.
+  const effectiveTeamId = directTeamEntry?.team_id ?? teamId;
+  const effectiveRotationPeriodName = directTeamEntry?.rotation_period ?? rotationPeriodName;
+  const effectiveScheduledEntries =
+    directScheduleEntries.length > 0 ? (directScheduleEntries as TeamScheduleEntry[]) : scheduledEntries;
+
+  // The roster must be queried for the team's actual scheduled day, not the clicked day.
+  // A weekend team is usually scheduled on Saturday, so clicking Sunday and querying the
+  // Sunday date would drop every member whose service_day is "saturday" (the cause of the
+  // Calendar roster looking empty). My Setlists keys the roster off the resolved
+  // schedule_date, so we mirror that here for the band, production, and video rosters.
+  const effectiveRosterDate = useMemo(
+    () => (directTeamEntry?.schedule_date ? parseLocalDate(directTeamEntry.schedule_date) : date),
+    [directTeamEntry?.schedule_date, date],
+  );
+
   // Pass ministry filter to hook - 'all' or undefined means fetch all (we'll constrain by scheduledMinistries below)
   // Special handling for "weekend_team" - it's a combined view, so we fetch without ministry filter
   // and filter the results client-side
@@ -2363,10 +2487,17 @@ function BandRoster({
         ? "weekend_team"
         : ministryFilter
       : undefined;
+  // IMPORTANT: a single team (e.g. "Team 1") can hold the weekend band, the worship-night
+  // band and the kids-camp band on the SAME position slots. The roster hook dedupes to one
+  // person per slot, so if we query with no ministry ("undefined") the dedup picks an
+  // arbitrary band (often the wrong one) and the real weekend band disappears. My Setlists
+  // avoids this by passing "weekend_team" so the hook filters to the weekend band BEFORE
+  // deduping. We must do the same — never query the weekend view without a ministry.
+  const rosterHookMinistry = isWeekendTeamFilter ? "weekend_team" : effectiveMinistryFilter;
   const {
     data: rosterRaw = [],
     isLoading
-  } = useTeamRosterForDate(date, teamId, effectiveMinistryFilter, campusId, rotationPeriodName);
+  } = useTeamRosterForDate(effectiveRosterDate, effectiveTeamId, rosterHookMinistry, campusId, effectiveRotationPeriodName);
   const normalizeRosterMembers = useCallback((members: typeof rosterRaw) =>
     members.map((member) => ({
       ...member,
@@ -2380,27 +2511,37 @@ function BandRoster({
     () => normalizeRosterMembers(rosterRaw),
     [normalizeRosterMembers, rosterRaw]
   );
-  const productionTeamId = useMemo(
-    () => scheduledEntries.find((entry) => entry.ministry_type === "production")?.team_id,
-    [scheduledEntries],
+  const productionEntry = useMemo(
+    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ?? null,
+    [effectiveScheduledEntries],
   );
-  const videoTeamId = useMemo(
-    () => scheduledEntries.find((entry) => entry.ministry_type === "video")?.team_id,
-    [scheduledEntries],
+  const videoEntry = useMemo(
+    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "video") ?? null,
+    [effectiveScheduledEntries],
+  );
+  const productionTeamId = productionEntry?.team_id;
+  const videoTeamId = videoEntry?.team_id;
+  const productionRosterDate = useMemo(
+    () => (productionEntry?.schedule_date ? parseLocalDate(productionEntry.schedule_date) : effectiveRosterDate),
+    [productionEntry?.schedule_date, effectiveRosterDate],
+  );
+  const videoRosterDate = useMemo(
+    () => (videoEntry?.schedule_date ? parseLocalDate(videoEntry.schedule_date) : effectiveRosterDate),
+    [videoEntry?.schedule_date, effectiveRosterDate],
   );
   const { data: productionRosterRaw = [] } = useTeamRosterForDate(
-    date,
+    productionRosterDate,
     productionTeamId,
     "production",
     campusId,
-    rotationPeriodName,
+    productionEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
   const { data: videoRosterRaw = [] } = useTeamRosterForDate(
-    date,
+    videoRosterDate,
     videoTeamId,
     "video",
     campusId,
-    rotationPeriodName,
+    videoEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
   const normalizedProductionRoster = useMemo(
     () => normalizeRosterMembers(productionRosterRaw),
@@ -2469,7 +2610,14 @@ function BandRoster({
     // For "weekend_team" filter, include weekend aliases plus the shared speaker roster and production/video.
     if (isWeekendTeamFilter) {
       const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "speaker", "production", "video"]);
-      const filteredRoster = normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)));
+      // Members with no ministry tags are generic team members (typically the weekend
+      // band/vocals) and must be kept — the roster hook and is_user_on_setlist_roster
+      // both treat an empty ministry_types as "matches any ministry". Using .some() alone
+      // would silently drop every untagged band/vocalist, which is why the Calendar roster
+      // looked emptier than My Setlists.
+      const filteredRoster = normalizedRosterRaw.filter(
+        m => m.ministryTypes.length === 0 || m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)),
+      );
       const mergedRoster = new Map<string, typeof filteredRoster[number]>();
 
       for (const member of filteredRoster) {
@@ -2508,7 +2656,9 @@ function BandRoster({
     // Always keep production/video members visible (they serve across ministries)
     const crossMinistry = new Set(["production", "video"]);
     return dedupeMembersForDisplay(
-      normalizedRosterRaw.filter(m => m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)))
+      normalizedRosterRaw.filter(
+        m => m.ministryTypes.length === 0 || m.ministryTypes.some(mt => allowed.has(mt) || crossMinistry.has(mt)),
+      )
     );
   }, [normalizedRosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
   const groupTextMembers = useMemo(
@@ -2542,7 +2692,7 @@ function BandRoster({
       />
     </div>
   );
-  if (!teamId) return null;
+  if (!effectiveTeamId) return null;
   if (isLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">

@@ -144,18 +144,6 @@ const getCanonicalPositionKey = (position?: string | null) => {
   return POSITION_CANONICAL_KEY_BY_VALUE.get(normalizedPosition) || normalizedPosition;
 };
 
-const getAssignmentPositionKeys = (assignment: {
-  position?: string | null;
-  position_slot?: string | null;
-}) =>
-  Array.from(
-    new Set(
-      [assignment.position_slot, assignment.position]
-        .map((position) => getCanonicalPositionKey(position))
-        .filter(Boolean),
-    ),
-  );
-
 const getAssignmentSlotDedupeKey = (assignment: {
   position?: string | null;
   position_slot?: string | null;
@@ -302,7 +290,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v16"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v19"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -373,6 +361,7 @@ export function useTeamRosterForDate(
       }
 
       const rotationPeriodIds = activePeriodIds;
+      const useTeamBuilderWeekendBucket = isWeekend(dateStr) && shouldApplyGroupedWeekendOverrides(ministryType);
       
       // Create a set of valid rotation period IDs for quick lookup
       const validRotationPeriodIdSet = new Set(rotationPeriodIds);
@@ -498,7 +487,7 @@ export function useTeamRosterForDate(
       // Team Builder can show weekend services as one bucket. Pull related
       // weekend overrides so the live roster matches that grouped view.
       const datesToCheck = await getRelatedWeekendServiceDates(dateStr, campusId);
-      const overrideDatesToCheck = isWeekend(dateStr) && shouldApplyGroupedWeekendOverrides(ministryType)
+      const overrideDatesToCheck = useTeamBuilderWeekendBucket
         ? datesToCheck
         : [dateStr];
 
@@ -529,14 +518,16 @@ export function useTeamRosterForDate(
       const visibleDateOverrides = matchingDateOverrides.filter(
         (override) => !isBlankTeamBuilderAssignment(override),
       );
-      const suppressingOverridePositionKeys = new Set(
-        suppressingDateOverrides.flatMap((override) => getAssignmentPositionKeys(override)),
+      const suppressingOverrideSlotKeys = new Set(
+        suppressingDateOverrides
+          .map((override) => getAssignmentSlotDedupeKey(override))
+          .filter((slotKey): slotKey is string => Boolean(slotKey)),
       );
 
       const effectiveMembersWithOverrides = filteredMembers
         .filter((member) => !isBlankTeamBuilderAssignment(member))
         .filter((member) =>
-          !getAssignmentPositionKeys(member).some((positionKey) => suppressingOverridePositionKeys.has(positionKey))
+          !getAssignmentSlotDedupeKey(member) || !suppressingOverrideSlotKeys.has(getAssignmentSlotDedupeKey(member)!)
         )
         .concat(
           visibleDateOverrides.map((override) => ({
