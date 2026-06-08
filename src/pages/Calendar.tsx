@@ -2352,6 +2352,252 @@ function SetlistPushButton({
   );
 }
 
+function TeamSchedulePushButton({
+  scheduleDate,
+  campusId,
+  ministryType,
+  teamId,
+  serviceLabel,
+  className,
+}: {
+  scheduleDate?: string | null;
+  campusId?: string;
+  ministryType: "production" | "video";
+  teamId?: string | null;
+  serviceLabel?: string;
+  className?: string;
+}) {
+  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
+  const [isSending, setIsSending] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewRecipients, setPreviewRecipients] = useState<SetlistPushRecipientPreview[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const canManageMinistry =
+    isAdmin ||
+    (ministryType === "production" && isProductionManager) ||
+    (ministryType === "video" && (isVideoDirector || isProductionManager));
+
+  if (!canManageMinistry) {
+    return null;
+  }
+
+  const ministryLabel = serviceLabel || (ministryType === "production" ? "Production" : "Video");
+  const canSend = Boolean(campusId && scheduleDate && teamId);
+  const disabledTitle = !teamId
+    ? `No ${ministryLabel} team is scheduled for this date.`
+    : !scheduleDate
+      ? "No schedule date is available for this push."
+      : undefined;
+
+  const handleSend = async () => {
+    if (!canSend) {
+      toast.error(disabledTitle || "No scheduled team is available for this date.");
+      return false;
+    }
+
+    setIsSending(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("notify-team-schedule-date", {
+        body: {
+          scheduleDate,
+          campusId,
+          ministryType,
+          teamId,
+        },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const notifiedCount =
+        typeof data?.recipients === "number" ? data.recipients : data?.recipientCount ?? 0;
+      toast.success(
+        notifiedCount > 0
+          ? `${ministryLabel} push sent to ${notifiedCount} team member${notifiedCount === 1 ? "" : "s"}.`
+          : `No ${ministryLabel} team members were eligible to notify.`,
+      );
+      return true;
+    } catch (error) {
+      console.error("Failed to send team schedule push:", error);
+      let message = error instanceof Error ? error.message : "Failed to send the schedule notification.";
+      const response = (error as { context?: Response })?.context;
+      if (response) {
+        try {
+          const details = await response.json();
+          if (typeof details?.error === "string") {
+            message = details.error;
+          }
+        } catch {
+          // Keep the original error message if the edge response body is not JSON.
+        }
+      }
+      toast.error(message);
+      return false;
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const loadPreview = async () => {
+    if (!canSend) {
+      toast.error(disabledTitle || "No scheduled team is available for this date.");
+      return;
+    }
+
+    setIsPreviewOpen(true);
+    setIsLoadingPreview(true);
+    setPreviewError(null);
+    setPreviewRecipients([]);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("notify-team-schedule-date", {
+        body: {
+          scheduleDate,
+          campusId,
+          ministryType,
+          teamId,
+          previewOnly: true,
+        },
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setPreviewRecipients(Array.isArray(data?.recipients) ? data.recipients : []);
+    } catch (error) {
+      console.error("Failed to prepare team schedule push preview:", error);
+      let message = error instanceof Error ? error.message : "Failed to prepare the push preview.";
+      const response = (error as { context?: Response })?.context;
+      if (response) {
+        try {
+          const details = await response.json();
+          if (typeof details?.error === "string") {
+            message = details.error;
+          }
+        } catch {
+          // Keep the original error message if the edge response body is not JSON.
+        }
+      }
+      setPreviewError(message);
+      toast.error(message);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const pushEnabledRecipients = previewRecipients.filter((recipient) => recipient.hasPushSubscription);
+  const pushUnavailableRecipients = previewRecipients.filter((recipient) => !recipient.hasPushSubscription);
+  const recipientCount = pushEnabledRecipients.length;
+
+  return (
+    <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={className || "gap-1.5"}
+        onClick={loadPreview}
+        disabled={isLoadingPreview || isSending || !canSend}
+        title={disabledTitle || `Prepare ${ministryLabel} schedule push to the team`}
+      >
+        {isLoadingPreview || isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+        Push
+      </Button>
+      <DialogContent className="max-h-[85vh] overflow-hidden bg-card sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Confirm {ministryLabel} Push</DialogTitle>
+          <DialogDescription>
+            Review who will receive the {ministryLabel} schedule reminder before sending it.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+          {isLoadingPreview ? (
+            <div className="flex items-center gap-2 rounded-md border border-border p-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing push preview...
+            </div>
+          ) : previewError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {previewError}
+            </div>
+          ) : (
+            <>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-sm font-medium text-foreground">
+                  {recipientCount} recipient{recipientCount === 1 ? "" : "s"} with push enabled
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These team members have an active push subscription and will receive the notification.
+                </p>
+              </div>
+
+              {pushEnabledRecipients.length > 0 ? (
+                <div className="space-y-1.5">
+                  {pushEnabledRecipients.map((recipient) => (
+                    <div key={recipient.userId} className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
+                      <span className="truncate text-foreground">{recipient.name}</span>
+                      <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
+                        Push enabled
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+                  No {ministryLabel} team members with push enabled are available for this date.
+                </p>
+              )}
+
+              {pushUnavailableRecipients.length > 0 && (
+                <div className="space-y-2 rounded-md border border-border/70 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Scheduled without push enabled
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pushUnavailableRecipients.map((recipient) => (
+                      <Badge key={recipient.userId} variant="outline" className="text-xs">
+                        {recipient.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="outline" onClick={() => setIsPreviewOpen(false)} disabled={isSending}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={async () => {
+              const sent = await handleSend();
+              if (sent) {
+                setIsPreviewOpen(false);
+              }
+            }}
+            disabled={isLoadingPreview || isSending || !!previewError || recipientCount === 0}
+          >
+            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
+            Send Push
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Band Roster Component
 function BandRoster({
   date,
@@ -2669,14 +2915,28 @@ function BandRoster({
       }),
     [isAdmin, roleNames, roster],
   );
+  const supportPushMinistry =
+    ministryFilter === "production" ? "production" : ministryFilter === "video" ? "video" : null;
+  const supportPushEntry = supportPushMinistry === "production" ? productionEntry : videoEntry;
+  const supportPushTeamId = supportPushMinistry === "production" ? productionTeamId : videoTeamId;
   const rosterActions = (
     <div className="flex flex-wrap justify-end gap-2">
-      <SetlistPushButton
-        date={date}
-        campusId={campusId}
-        ministryType={ministryFilter}
-        serviceLabel={serviceLabel}
-      />
+      {supportPushMinistry ? (
+        <TeamSchedulePushButton
+          scheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
+          campusId={campusId}
+          ministryType={supportPushMinistry}
+          teamId={supportPushTeamId}
+          serviceLabel={serviceLabel}
+        />
+      ) : (
+        <SetlistPushButton
+          date={date}
+          campusId={campusId}
+          ministryType={ministryFilter}
+          serviceLabel={serviceLabel}
+        />
+      )}
       <GroupTextButton
         phoneNumbers={groupTextMembers.map((member) => member.phone)}
         rosterMembers={groupTextMembers.map((member) => ({

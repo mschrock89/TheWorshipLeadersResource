@@ -40,6 +40,13 @@ interface NotifyScheduleRequest {
   campusId: string;
   ministryType: "production" | "video";
   teamId?: string | null;
+  previewOnly?: boolean;
+}
+
+interface RecipientPreview {
+  userId: string;
+  name: string;
+  hasPushSubscription: boolean;
 }
 
 function formatDateLabel(dateStr: string) {
@@ -48,6 +55,44 @@ function formatDateLabel(dateStr: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+async function buildRecipientPreview(
+  supabase: ReturnType<typeof createClient>,
+  userIds: string[],
+): Promise<RecipientPreview[]> {
+  const dedupedUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  if (dedupedUserIds.length === 0) {
+    return [];
+  }
+
+  const [{ data: profiles, error: profilesError }, { data: subscriptions, error: subscriptionsError }] =
+    await Promise.all([
+      supabase.from("profiles").select("id, full_name").in("id", dedupedUserIds),
+      supabase.from("push_subscriptions").select("user_id").in("user_id", dedupedUserIds),
+    ]);
+
+  if (profilesError) {
+    console.error("Error fetching schedule notification recipient profiles:", profilesError);
+  }
+  if (subscriptionsError) {
+    console.error("Error fetching schedule notification recipient push subscriptions:", subscriptionsError);
+  }
+
+  const profileNameById = new Map(
+    (profiles || []).map((profile) => [profile.id, profile.full_name || "Team Member"]),
+  );
+  const pushEnabledUserIds = new Set(
+    (subscriptions || []).map((subscription) => subscription.user_id).filter(Boolean),
+  );
+
+  return dedupedUserIds
+    .map((userId) => ({
+      userId,
+      name: profileNameById.get(userId) || "Team Member",
+      hasPushSubscription: pushEnabledUserIds.has(userId),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -85,7 +130,8 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const { scheduleDate, campusId, ministryType, teamId }: NotifyScheduleRequest = await req.json();
+    const { scheduleDate, campusId, ministryType, teamId, previewOnly = false }: NotifyScheduleRequest =
+      await req.json();
 
     if (!scheduleDate || !campusId || !ministryType) {
       return new Response(
@@ -252,7 +298,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (potentialUserIds.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, recipients: 0, pushSent: 0 }),
+        JSON.stringify(
+          previewOnly
+            ? { success: true, previewOnly: true, recipients: [] }
+            : { success: true, recipients: 0, pushSent: 0 },
+        ),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -286,7 +336,27 @@ serve(async (req: Request): Promise<Response> => {
 
     if (recipientUserIds.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, recipients: 0, pushSent: 0 }),
+        JSON.stringify(
+          previewOnly
+            ? { success: true, previewOnly: true, recipients: [] }
+            : { success: true, recipients: 0, pushSent: 0 },
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (previewOnly) {
+      const recipients = await buildRecipientPreview(supabase, recipientUserIds);
+      const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          previewOnly: true,
+          recipients,
+          recipientCount: recipients.length,
+          pushRecipientUserCount,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
