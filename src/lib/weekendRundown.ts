@@ -1,4 +1,4 @@
-import { hasOrgAdminPrivilegesForResourceApp } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey, hasOrgAdminPrivilegesForResourceApp } from "@/lib/resourceApp";
 
 export const WEEKEND_RUNDOWN_STATUS_OPTIONS = [
   { value: "no_issues", label: "No Issues" },
@@ -8,6 +8,62 @@ export const WEEKEND_RUNDOWN_STATUS_OPTIONS = [
 ] as const;
 
 export const GOOD_FIT_LABEL = "good_fit";
+
+export type WeekendRundownStatus = (typeof WEEKEND_RUNDOWN_STATUS_OPTIONS)[number]["value"];
+
+export interface WeekendRundownDraft {
+  overallStatus: WeekendRundownStatus;
+  notes: string;
+  songNotes: Record<string, string>;
+  vocalNotes: Record<string, string>;
+  vocalFitLabels: Record<string, string | null>;
+  savedAt: string;
+}
+
+function getWeekendRundownDraftKey(userId: string, campusId: string, weekendDate: string) {
+  return `weekend-rundown-draft:${getCurrentResourceAppKey()}:${userId}:${campusId}:${weekendDate}`;
+}
+
+export function loadWeekendRundownDraft(
+  userId: string | undefined,
+  campusId: string | null | undefined,
+  weekendDate: string,
+): WeekendRundownDraft | null {
+  if (typeof window === "undefined" || !userId || !campusId) return null;
+
+  const raw = window.localStorage.getItem(getWeekendRundownDraftKey(userId, campusId, weekendDate));
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as WeekendRundownDraft;
+  } catch {
+    window.localStorage.removeItem(getWeekendRundownDraftKey(userId, campusId, weekendDate));
+    return null;
+  }
+}
+
+export function saveWeekendRundownDraft(
+  userId: string | undefined,
+  campusId: string | null | undefined,
+  weekendDate: string,
+  draft: Omit<WeekendRundownDraft, "savedAt">,
+) {
+  if (typeof window === "undefined" || !userId || !campusId) return;
+
+  window.localStorage.setItem(
+    getWeekendRundownDraftKey(userId, campusId, weekendDate),
+    JSON.stringify({ ...draft, savedAt: new Date().toISOString() }),
+  );
+}
+
+export function clearWeekendRundownDraft(
+  userId: string | undefined,
+  campusId: string | null | undefined,
+  weekendDate: string,
+) {
+  if (typeof window === "undefined" || !userId || !campusId) return;
+  window.localStorage.removeItem(getWeekendRundownDraftKey(userId, campusId, weekendDate));
+}
 
 const WEEKEND_RUNDOWN_ADMIN_ROLES = new Set([
   "admin",

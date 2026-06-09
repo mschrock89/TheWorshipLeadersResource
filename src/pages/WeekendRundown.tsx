@@ -22,8 +22,11 @@ import {
 import {
   canAccessWeekendRundown,
   canReviewWeekendSongs,
+  clearWeekendRundownDraft,
   getWednesdayRundownTargetDate,
   getWeekendRundownTargetSunday,
+  loadWeekendRundownDraft,
+  saveWeekendRundownDraft,
   WEEKEND_RUNDOWN_STATUS_OPTIONS,
 } from "@/lib/weekendRundown";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
@@ -114,36 +117,66 @@ export default function WeekendRundown() {
   const [songNotes, setSongNotes] = useState<SongNotesState>({});
   const [vocalNotes, setVocalNotes] = useState<VocalNotesState>({});
   const [vocalFitLabels, setVocalFitLabels] = useState<VocalFitState>({});
+  const [formHydrated, setFormHydrated] = useState(false);
 
   useEffect(() => {
-    if (!existingRundown) {
+    setFormHydrated(false);
+  }, [selectedCampusId, weekendDateStr, user?.id]);
+
+  useEffect(() => {
+    if (existingRundown === undefined || formHydrated) return;
+
+    if (existingRundown) {
+      setOverallStatus(existingRundown.rundown.overall_status);
+      setNotes(existingRundown.rundown.notes || "");
+
+      const nextSongNotes: SongNotesState = {};
+      for (const item of existingRundown.songFeedback) {
+        nextSongNotes[item.song_id] = item.notes || "";
+      }
+      setSongNotes(nextSongNotes);
+
+      const nextVocalNotes: VocalNotesState = {};
+      const nextVocalFitLabels: VocalFitState = {};
+      for (const item of existingRundown.vocalFeedback) {
+        const key = `${item.song_id}:${item.vocalist_id}`;
+        nextVocalNotes[key] = item.notes || "";
+        nextVocalFitLabels[key] = item.fit_label;
+      }
+      setVocalNotes(nextVocalNotes);
+      setVocalFitLabels(nextVocalFitLabels);
+      setFormHydrated(true);
+      return;
+    }
+
+    const draft = loadWeekendRundownDraft(user?.id, selectedCampusId, weekendDateStr);
+    if (draft) {
+      setOverallStatus(draft.overallStatus);
+      setNotes(draft.notes);
+      setSongNotes(draft.songNotes);
+      setVocalNotes(draft.vocalNotes);
+      setVocalFitLabels(draft.vocalFitLabels);
+    } else {
       setOverallStatus("no_issues");
       setNotes("");
       setSongNotes({});
       setVocalNotes({});
       setVocalFitLabels({});
-      return;
     }
+    setFormHydrated(true);
+  }, [existingRundown, formHydrated, selectedCampusId, user?.id, weekendDateStr]);
 
-    setOverallStatus(existingRundown.rundown.overall_status);
-    setNotes(existingRundown.rundown.notes || "");
+  useEffect(() => {
+    if (!formHydrated || !user?.id || !selectedCampusId) return;
 
-    const nextSongNotes: SongNotesState = {};
-    for (const item of existingRundown.songFeedback) {
-      nextSongNotes[item.song_id] = item.notes || "";
-    }
-    setSongNotes(nextSongNotes);
-
-    const nextVocalNotes: VocalNotesState = {};
-    const nextVocalFitLabels: VocalFitState = {};
-    for (const item of existingRundown.vocalFeedback) {
-      const key = `${item.song_id}:${item.vocalist_id}`;
-      nextVocalNotes[key] = item.notes || "";
-      nextVocalFitLabels[key] = item.fit_label;
-    }
-    setVocalNotes(nextVocalNotes);
-    setVocalFitLabels(nextVocalFitLabels);
-  }, [existingRundown]);
+    saveWeekendRundownDraft(user.id, selectedCampusId, weekendDateStr, {
+      overallStatus,
+      notes,
+      songNotes,
+      vocalNotes,
+      vocalFitLabels,
+    });
+  }, [formHydrated, notes, overallStatus, selectedCampusId, songNotes, user?.id, vocalFitLabels, vocalNotes, weekendDateStr]);
 
   if (!rolesLoading && !hasAccess) {
     return <Navigate to="/dashboard" replace />;
@@ -177,6 +210,7 @@ export default function WeekendRundown() {
         };
       }),
     });
+    clearWeekendRundownDraft(user?.id, selectedCampus.id, weekendDateStr);
   };
 
   return (
