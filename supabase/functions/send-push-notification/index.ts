@@ -568,11 +568,11 @@ serve(async (req) => {
     const uniqueUserIds = Array.from(new Set(subscriptions.map((subscription) => subscription.user_id).filter(Boolean)));
     let notificationLogId: string | null = null;
 
-    if (
-      !payload.skipLogging &&
-      (payload.contextType === "chat-message" || payload.tag?.startsWith("chat-message-")) &&
-      payload.tag
-    ) {
+    const isChatPush =
+      payload.contextType?.startsWith("chat-") ||
+      payload.tag?.startsWith("chat-");
+
+    if (!payload.skipLogging && isChatPush && payload.tag) {
       const { data: existingLog, error: existingLogError } = await supabase
         .from("push_notification_logs")
         .select("id")
