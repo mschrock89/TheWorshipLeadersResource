@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-resource-app-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface CreateTeamMemberRequest {
@@ -19,6 +20,7 @@ const allowedRequesterRoles = [
   "admin",
   "campus_admin",
   "campus_worship_pastor",
+  "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
   "network_worship_pastor",
@@ -76,19 +78,39 @@ async function findUserByEmail(
       throw new Error(error.message);
     }
 
-    const existingUser = data.users.find((existing) => existing.email?.toLowerCase() === email);
+    const existingUser = data.users.find(
+      (existing) => (existing.email || "").trim().toLowerCase() === email,
+    );
     if (existingUser) {
       return existingUser;
     }
 
     if (data.users.length < perPage) {
-      return null;
+      break;
     }
 
     page += 1;
   }
 
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("id, email")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (profile?.id) {
+    const { data: userById, error: userByIdError } = await adminClient.auth.admin.getUserById(profile.id);
+    if (!userByIdError && userById?.user) {
+      return userById.user;
+    }
+  }
+
   return null;
+}
+
+function isDuplicateEmailError(message: string | undefined) {
+  const normalized = message?.trim().toLowerCase() || "";
+  return normalized.includes("already") || normalized.includes("registered");
 }
 
 serve(async (req) => {
@@ -165,13 +187,55 @@ serve(async (req) => {
       });
     }
 
+    if (campusId) {
+      const { data: campusRow, error: campusLookupError } = await adminClient
+        .from("campuses")
+        .select("id")
+        .eq("id", campusId)
+        .maybeSingle();
+
+      if (campusLookupError) {
+        throw new Error(campusLookupError.message);
+      }
+
+      if (!campusRow) {
+        return new Response(JSON.stringify({ error: "Selected campus is no longer available" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const fullName = `${firstName} ${lastName}`;
     const temporaryPassword = "123456";
-    const existingUser = await findUserByEmail(adminClient, email);
+    let existingUser = await findUserByEmail(adminClient, email);
+    let userId: string | undefined;
+    let recoveredExistingUser = false;
 
-    let userId: string;
+    if (!existingUser) {
+      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+
+      if (createError || !created.user) {
+        if (isDuplicateEmailError(createError?.message)) {
+          existingUser = await findUserByEmail(adminClient, email);
+        }
+
+        if (!existingUser) {
+          throw new Error(createError?.message || "Failed to create user");
+        }
+      } else {
+        userId = created.user.id;
+      }
+    }
 
     if (existingUser) {
+      recoveredExistingUser = true;
+
       const [
         { data: existingProfile },
         { data: existingRoles, error: existingRolesError },
@@ -184,8 +248,7 @@ serve(async (req) => {
         adminClient
           .from("user_roles")
           .select("role")
-          .eq("user_id", existingUser.id)
-          .in("role", replaceableBaseRoles),
+          .eq("user_id", existingUser.id),
       ]);
 
       if (existingRolesError) {
@@ -193,8 +256,13 @@ serve(async (req) => {
       }
 
       const existingRoleValues = (existingRoles || []).map(({ role: existingRole }) => existingRole);
-      const blockingRoles = existingRoleValues.filter((existingRole) => !replaceableBaseRoles.includes(existingRole));
-      const needsRecovery = !existingProfile || existingRoleValues.length === 0;
+      const blockingRoles = existingRoleValues.filter(
+        (existingRole) => !replaceableBaseRoles.includes(existingRole),
+      );
+      const replaceableRoles = existingRoleValues.filter((existingRole) =>
+        replaceableBaseRoles.includes(existingRole)
+      );
+      const needsRecovery = !existingProfile || replaceableRoles.length === 0;
 
       if (blockingRoles.length > 0) {
         const formattedRoles = blockingRoles.join(", ");
@@ -232,19 +300,10 @@ serve(async (req) => {
       }
 
       userId = existingUser.id;
-    } else {
-      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-        email,
-        password: temporaryPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName },
-      });
+    }
 
-      if (createError || !created.user) {
-        throw new Error(createError?.message || "Failed to create user");
-      }
-
-      userId = created.user.id;
+    if (!userId) {
+      throw new Error("Failed to resolve user id");
     }
 
     const { error: profileError } = await adminClient
@@ -298,14 +357,26 @@ serve(async (req) => {
         userId,
         email,
         temporaryPassword,
-        recoveredExistingUser: Boolean(existingUser),
+        recoveredExistingUser,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Internal server error";
+    console.error("create-team-member failed:", error);
+    const rawMessage = error instanceof Error ? error.message : "Internal server error";
+    let message = rawMessage;
+    let status = 500;
+
+    if (rawMessage.includes("profiles_default_campus_id_fkey")) {
+      message = "Selected campus is no longer available";
+      status = 400;
+    } else if (rawMessage.includes("profiles_phone_e164_chk")) {
+      message = "Phone number must be a valid number";
+      status = 400;
+    }
+
     return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

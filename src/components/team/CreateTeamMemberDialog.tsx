@@ -31,12 +31,22 @@ interface CreateTeamMemberDialogProps {
 
 const getFunctionErrorMessage = async (
   error: unknown,
-  response: { error: { message?: string } | null; data?: { error?: string; hint?: string } | null },
+  response: { error: { message?: string; context?: Response } | null; data?: { error?: string; hint?: string } | null },
   fallback: string,
 ) => {
-  if (error instanceof FunctionsHttpError) {
+  const contextResponse =
+    error instanceof FunctionsHttpError
+      ? error.context
+      : typeof error === "object" &&
+          error !== null &&
+          "context" in error &&
+          (error as { context?: Response }).context instanceof Response
+        ? (error as { context: Response }).context
+        : null;
+
+  if (contextResponse) {
     try {
-      const payload = await error.context.json();
+      const payload = await contextResponse.clone().json();
       const errorMessage =
         typeof payload?.error === "string" && payload.error.trim()
           ? payload.error.trim()
