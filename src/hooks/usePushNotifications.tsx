@@ -6,6 +6,8 @@ import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
+let refreshSubscriptionInFlight: Promise<boolean> | null = null;
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -98,6 +100,29 @@ export function usePushNotifications() {
     const p256dh = subscriptionJson.keys?.p256dh || arrayBufferToBase64Url(subscription.getKey("p256dh"));
     const auth = subscriptionJson.keys?.auth || arrayBufferToBase64Url(subscription.getKey("auth"));
 
+    if (!p256dh || !auth) {
+      throw new Error("Push subscription keys are missing");
+    }
+
+    const subscriptionRow = {
+      user_id: user.id,
+      endpoint: subscription.endpoint,
+      p256dh,
+      auth,
+      resource_app_key: resourceAppKey,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: directSaveError } = await supabase
+      .from("push_subscriptions")
+      .upsert(subscriptionRow, { onConflict: "endpoint" });
+
+    if (!directSaveError) {
+      return true;
+    }
+
+    console.warn("Direct push subscription save failed, trying edge function:", directSaveError);
+
     const { data, error } = await supabase.functions.invoke("save-push-subscription", {
       body: {
         endpoint: subscription.endpoint,
@@ -108,7 +133,11 @@ export function usePushNotifications() {
     });
 
     if (error) {
-      throw error;
+      throw new Error(
+        error.message.includes("Edge Function")
+          ? "Could not save push subscription. Check your connection and try again."
+          : error.message,
+      );
     }
 
     if (data && typeof data === "object" && "error" in data && data.error) {
@@ -119,57 +148,66 @@ export function usePushNotifications() {
   }, [user, resourceAppKey]);
 
   const refreshSubscriptionState = useCallback(async () => {
-    if (!isSupported || !user) {
-      setIsSubscribed(false);
-      setIsLoading(false);
-      return false;
+    if (refreshSubscriptionInFlight) {
+      return refreshSubscriptionInFlight;
     }
 
-    try {
-      setPermission(Notification.permission);
-
-      const registration = await ensureRegistration();
-      const subscription = await registration.pushManager.getSubscription();
-
-      if (!subscription) {
+    refreshSubscriptionInFlight = (async () => {
+      if (!isSupported || !user) {
         setIsSubscribed(false);
+        setIsLoading(false);
         return false;
       }
 
-      if (!hasCurrentVapidKey(subscription)) {
-        await subscription.unsubscribe();
-        try {
-          await deleteSubscriptionRecord(subscription.endpoint);
-        } catch (deleteError) {
-          console.warn("Failed to delete stale push subscription record:", deleteError);
+      try {
+        setPermission(Notification.permission);
+
+        const registration = await ensureRegistration();
+        const subscription = await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+          setIsSubscribed(false);
+          return false;
         }
+
+        if (!hasCurrentVapidKey(subscription)) {
+          await subscription.unsubscribe();
+          try {
+            await deleteSubscriptionRecord(subscription.endpoint);
+          } catch (deleteError) {
+            console.warn("Failed to delete stale push subscription record:", deleteError);
+          }
+          setIsSubscribed(false);
+          return false;
+        }
+
+        const { data, error } = await supabase
+          .from("push_subscriptions")
+          .select("id, user_id")
+          .eq("endpoint", subscription.endpoint)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data || data.user_id !== user.id) {
+          await saveSubscription(subscription);
+        }
+
+        setIsSubscribed(true);
+        return true;
+      } catch (error) {
+        console.error("Error checking push subscription:", error);
         setIsSubscribed(false);
         return false;
+      } finally {
+        setIsLoading(false);
+        refreshSubscriptionInFlight = null;
       }
+    })();
 
-      setIsSubscribed(true);
-
-      const { data, error } = await supabase
-        .from("push_subscriptions")
-        .select("id, user_id")
-        .eq("endpoint", subscription.endpoint)
-        .maybeSingle();
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data || data.user_id !== user.id) {
-        await saveSubscription(subscription);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error checking push subscription:", error);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
+    return refreshSubscriptionInFlight;
   }, [deleteSubscriptionRecord, ensureRegistration, hasCurrentVapidKey, isSupported, saveSubscription, user]);
 
   // Check if push notifications are supported
@@ -286,6 +324,18 @@ export function usePushNotifications() {
       return true;
     } catch (error) {
       console.error("Error subscribing to push:", error);
+
+      try {
+        const registration = await ensureRegistration();
+        const orphanedSubscription = await registration.pushManager.getSubscription();
+        if (orphanedSubscription) {
+          await orphanedSubscription.unsubscribe();
+        }
+      } catch (cleanupError) {
+        console.warn("Failed to roll back browser push subscription:", cleanupError);
+      }
+
+      setIsSubscribed(false);
       const message = error instanceof Error ? error.message : "Failed to enable push notifications";
       toast.error(message);
       return false;
@@ -348,6 +398,18 @@ export function usePushNotifications() {
       return true;
     } catch (error) {
       console.error("Error syncing push subscription:", error);
+
+      try {
+        const registration = await ensureRegistration();
+        const orphanedSubscription = await registration.pushManager.getSubscription();
+        if (orphanedSubscription) {
+          await orphanedSubscription.unsubscribe();
+        }
+      } catch (cleanupError) {
+        console.warn("Failed to roll back browser push subscription during resync:", cleanupError);
+      }
+
+      setIsSubscribed(false);
       const message = error instanceof Error ? error.message : "Failed to sync push notifications";
       toast.error(message);
       return false;
