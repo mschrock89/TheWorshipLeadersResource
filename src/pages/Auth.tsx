@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -136,7 +137,7 @@ export default function Auth() {
 
     setIsResetting(true);
     const redirectTo = getAppUrl("/auth");
-    const { error } = await supabase.functions.invoke("send-reset-password-email", {
+    const { data, error } = await supabase.functions.invoke("send-reset-password-email", {
       body: {
         email: emailToUse,
         redirectTo,
@@ -145,9 +146,31 @@ export default function Auth() {
     setIsResetting(false);
 
     if (error) {
+      let description = error.message || "We couldn't send the reset email. Please try again.";
+
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const payload = await error.context.json();
+          if (typeof payload?.error === "string" && payload.error.trim()) {
+            description = payload.error.trim();
+          }
+        } catch {
+          // Keep the generic invoke error message.
+        }
+      }
+
       toast({
         title: "Reset failed",
-        description: error.message || "We couldn't send the reset email. Please try again.",
+        description,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (data?.error) {
+      toast({
+        title: "Reset failed",
+        description: typeof data.error === "string" ? data.error : "We couldn't send the reset email. Please try again.",
         variant: "destructive",
       });
       return;

@@ -5,7 +5,18 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": [
+    "authorization",
+    "x-client-info",
+    "apikey",
+    "content-type",
+    "x-resource-app-key",
+    "x-supabase-client-platform",
+    "x-supabase-client-platform-version",
+    "x-supabase-client-runtime",
+    "x-supabase-client-runtime-version",
+  ].join(", "),
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface SendResetPasswordEmailRequest {
@@ -238,6 +249,21 @@ serve(async (req: Request): Promise<Response> => {
         JSON.stringify({ success: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    const userId = data.user?.id;
+    if (userId) {
+      const { error: updateError } = await adminClient.auth.admin.updateUserById(userId, {
+        password: "123456",
+      });
+
+      if (updateError) {
+        console.error(`Failed to reset password for ${normalizedEmail}:`, updateError);
+        return new Response(
+          JSON.stringify({ error: "Failed to reset password" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const userProfileName =
