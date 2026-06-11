@@ -62,6 +62,7 @@ export function usePushNotifications() {
   const ensureRegistration = useCallback(async () => {
     const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
     await registration.update();
+    await navigator.serviceWorker.ready;
     return registration;
   }, []);
 
@@ -79,8 +80,12 @@ export function usePushNotifications() {
   const hasCurrentVapidKey = useCallback((subscription: PushSubscription) => {
     if (!VAPID_PUBLIC_KEY) return false;
 
-    const currentServerKey = subscription.options.applicationServerKey;
-    if (!currentServerKey) return false;
+    const currentServerKey = subscription.options?.applicationServerKey;
+    // Browsers often omit applicationServerKey when reading an existing subscription.
+    // Only rotate when we can positively confirm the stored key differs from ours.
+    if (!currentServerKey) {
+      return true;
+    }
 
     const expectedServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     return uint8ArraysEqual(new Uint8Array(currentServerKey), expectedServerKey);
@@ -93,7 +98,7 @@ export function usePushNotifications() {
     const p256dh = subscriptionJson.keys?.p256dh || arrayBufferToBase64Url(subscription.getKey("p256dh"));
     const auth = subscriptionJson.keys?.auth || arrayBufferToBase64Url(subscription.getKey("auth"));
 
-    const { error } = await supabase.functions.invoke("save-push-subscription", {
+    const { data, error } = await supabase.functions.invoke("save-push-subscription", {
       body: {
         endpoint: subscription.endpoint,
         p256dh,
@@ -104,6 +109,10 @@ export function usePushNotifications() {
 
     if (error) {
       throw error;
+    }
+
+    if (data && typeof data === "object" && "error" in data && data.error) {
+      throw new Error(String(data.error));
     }
 
     return true;
@@ -129,7 +138,11 @@ export function usePushNotifications() {
 
       if (!hasCurrentVapidKey(subscription)) {
         await subscription.unsubscribe();
-        await deleteSubscriptionRecord(subscription.endpoint);
+        try {
+          await deleteSubscriptionRecord(subscription.endpoint);
+        } catch (deleteError) {
+          console.warn("Failed to delete stale push subscription record:", deleteError);
+        }
         setIsSubscribed(false);
         return false;
       }
@@ -251,7 +264,11 @@ export function usePushNotifications() {
 
       if (subscription && !hasCurrentVapidKey(subscription)) {
         await subscription.unsubscribe();
-        await deleteSubscriptionRecord(subscription.endpoint);
+        try {
+          await deleteSubscriptionRecord(subscription.endpoint);
+        } catch (deleteError) {
+          console.warn("Failed to delete stale push subscription record:", deleteError);
+        }
         subscription = null;
       }
 
@@ -298,30 +315,32 @@ export function usePushNotifications() {
       const registration = await ensureRegistration();
       let subscription = await registration.pushManager.getSubscription();
 
-      if (subscription && !hasCurrentVapidKey(subscription)) {
-        // Rotate subscriptions only when the device is tied to an outdated VAPID key pair.
+      if (subscription) {
+        // Manual resync should always recreate the browser subscription.
         await subscription.unsubscribe();
-        await deleteSubscriptionRecord(subscription.endpoint);
+        try {
+          await deleteSubscriptionRecord(subscription.endpoint);
+        } catch (deleteError) {
+          console.warn("Failed to delete push subscription record during resync:", deleteError);
+        }
         subscription = null;
       }
 
-      if (!subscription) {
-        const permissionResult = Notification.permission === "granted"
-          ? "granted"
-          : await Notification.requestPermission();
-        setPermission(permissionResult);
+      const permissionResult = Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+      setPermission(permissionResult);
 
-        if (permissionResult !== "granted") {
-          toast.error("Notification permission denied");
-          setIsSubscribed(false);
-          return false;
-        }
-
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
+      if (permissionResult !== "granted") {
+        toast.error("Notification permission denied");
+        setIsSubscribed(false);
+        return false;
       }
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
 
       await saveSubscription(subscription);
       setIsSubscribed(true);
@@ -335,7 +354,7 @@ export function usePushNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [deleteSubscriptionRecord, ensureRegistration, hasCurrentVapidKey, isSupported, saveSubscription, supportMessage, user]);
+  }, [deleteSubscriptionRecord, ensureRegistration, isSupported, saveSubscription, supportMessage, user]);
 
   const unsubscribe = useCallback(async () => {
     if (!user) return false;

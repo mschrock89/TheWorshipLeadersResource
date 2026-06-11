@@ -38,11 +38,11 @@ export function PushNotificationToggle() {
     );
   }
 
-  const handleToggle = async () => {
-    if (isSubscribed) {
-      await unsubscribe();
-    } else {
+  const handleToggle = async (checked: boolean) => {
+    if (checked) {
       await subscribe();
+    } else {
+      await unsubscribe();
     }
   };
 
