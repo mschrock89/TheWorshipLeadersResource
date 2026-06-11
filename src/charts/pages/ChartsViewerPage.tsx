@@ -222,7 +222,9 @@ export function ChartsViewerPage() {
   );
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [capo, setCapo] = useState("0");
-  const [fontSize, setFontSize] = useState("comfortable");
+  const [fontSize, setFontSize] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches ? "compact" : "comfortable",
+  );
   const [isImmersive, setIsImmersive] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -285,7 +287,9 @@ export function ChartsViewerPage() {
   );
   const fontConfig = FONT_SIZES.find((entry) => entry.value === fontSize) || FONT_SIZES[1];
   const fontSizeClassName = fontConfig.className;
-  const chartShellClassName = isImmersive ? "rounded-[30px] p-2 shadow-ecc" : "min-h-[62vh] rounded-[28px] p-5 shadow-ecc";
+  const chartShellClassName = isImmersive
+    ? "rounded-[30px] p-2 shadow-ecc"
+    : "min-h-[62vh] rounded-[28px] p-3 shadow-ecc sm:p-5";
   const renderedLines = useMemo(() => renderChordChartText(displayedChartText), [displayedChartText]);
   const renderedBlocks = useMemo(() => buildRenderedBlocks(renderedLines), [renderedLines]);
   const blockLineOffsets = useMemo(() => {
@@ -522,6 +526,7 @@ export function ChartsViewerPage() {
                 className={chartShellClassName}
                 scaleClassName={fontSizeClassName}
                 showHeader={false}
+                fitToWidth
                 containerRef={chartContainerRef}
                 style={isImmersive ? { minHeight: immersiveChartHeight, height: immersiveChartHeight } : undefined}
               />
