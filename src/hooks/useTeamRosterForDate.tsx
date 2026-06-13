@@ -122,10 +122,6 @@ const assignmentMatchesRosterFilter = (
   );
   const inferredMinistryType = getMinistryTypeForPositionCategory(inferredPositionCategory);
 
-  if (inferredMinistryType) {
-    return ministryMatchesRosterFilter([inferredMinistryType], ministryType);
-  }
-
   if (
     (inferredPositionCategory === "Band" || inferredPositionCategory === "Vocalists") &&
     (ministryType === "production" || ministryType === "video")
@@ -133,7 +129,21 @@ const assignmentMatchesRosterFilter = (
     return false;
   }
 
-  return ministryMatchesRosterFilter(assignment.ministry_types, ministryType);
+  const ministryTypes = assignment.ministry_types;
+  const hasMinistryTags = Array.isArray(ministryTypes) && ministryTypes.length > 0;
+
+  // Mirror Team Builder: when ministry tags exist they are authoritative. Inferring
+  // production/video from the FOH slot alone would include stale rows (e.g. a weekend-
+  // tagged duplicate) and show the wrong engineer on the calendar.
+  if (hasMinistryTags) {
+    return ministryMatchesRosterFilter(ministryTypes, ministryType);
+  }
+
+  if (inferredMinistryType) {
+    return ministryMatchesRosterFilter([inferredMinistryType], ministryType);
+  }
+
+  return ministryMatchesRosterFilter(ministryTypes, ministryType);
 };
 
 const normalizePositionLookupValue = (position?: string | null) =>
@@ -290,7 +300,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v19"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v20"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -518,6 +528,7 @@ export function useTeamRosterForDate(
       const visibleDateOverrides = matchingDateOverrides.filter(
         (override) => !isBlankTeamBuilderAssignment(override),
       );
+      const visibleDateOverrideIds = new Set(visibleDateOverrides.map((override) => override.id));
       const suppressingOverrideSlotKeys = new Set(
         suppressingDateOverrides
           .map((override) => getAssignmentSlotDedupeKey(override))
@@ -556,6 +567,12 @@ export function useTeamRosterForDate(
         if (!existing) {
           effectiveMemberBySlot.set(slotDedupeKey, member);
           effectiveMembers.push(member);
+          continue;
+        }
+
+        // Base roster rows are ordered by display_order — keep the first match per slot.
+        // Date overrides are appended later and should still replace the base assignment.
+        if (!visibleDateOverrideIds.has(member.id)) {
           continue;
         }
 

@@ -101,7 +101,11 @@ export function TeamCard({
   );
 
   const getMemberForSlot = (slot: string) => {
-    return filteredMembers.find(m => m.position_slot === slot);
+    const slotMembers = filteredMembers.filter((member) => member.position_slot === slot);
+    if (slotMembers.length === 0) return undefined;
+    if (slotMembers.length === 1) return slotMembers[0];
+
+    return slotMembers.sort((a, b) => a.display_order - b.display_order)[0];
   };
 
   const renderPositionSlot = ({

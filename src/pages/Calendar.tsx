@@ -131,6 +131,18 @@ const scheduleEntryMatchesCalendarFilter = (
     );
   }
 
+  if (ministryFilter === "production") {
+    return (
+      entryMinistryType === "production" ||
+      normalizedEntryMinistry === "weekend" ||
+      entryMinistryType === "sunday_am"
+    );
+  }
+
+  if (ministryFilter === "video") {
+    return entryMinistryType === "video" || normalizedEntryMinistry === "weekend" || entryMinistryType === "sunday_am";
+  }
+
   if (CALENDAR_WEEKEND_MINISTRY_FILTERS.has(ministryFilter)) {
     return normalizedEntryMinistry === "weekend";
   }
@@ -2697,21 +2709,80 @@ function BandRoster({
   });
 
   const weekendMinistryAliases = useMemo(() => new Set(["weekend", "sunday_am", "weekend_team"]), []);
+  const isWeekendTeamFilter = ministryFilter === "weekend_team";
+  const effectiveMinistryFilter =
+    ministryFilter && ministryFilter !== "all" && !isWeekendTeamFilter
+      ? normalizeWeekendWorshipMinistryType(ministryFilter) === "weekend"
+        ? "weekend_team"
+        : ministryFilter
+      : undefined;
+  const isProductionMinistryFilter = effectiveMinistryFilter === "production";
+  const isVideoMinistryFilter = effectiveMinistryFilter === "video";
 
-  // Pick main team entry the same way My Setlists does: prefer weekend-type ministry.
-  const directTeamEntry = useMemo(
-    () =>
-      directScheduleEntries.find((e) => weekendMinistryAliases.has(e.ministry_type ?? "")) ??
-      directScheduleEntries[0] ??
-      null,
-    [directScheduleEntries, weekendMinistryAliases],
-  );
-
-  // Use the directly-resolved team; fall back to the prop only when campusId is unknown.
-  const effectiveTeamId = directTeamEntry?.team_id ?? teamId;
-  const effectiveRotationPeriodName = directTeamEntry?.rotation_period ?? rotationPeriodName;
   const effectiveScheduledEntries =
     directScheduleEntries.length > 0 ? (directScheduleEntries as TeamScheduleEntry[]) : scheduledEntries;
+
+  const productionEntry = useMemo(
+    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ?? null,
+    [effectiveScheduledEntries],
+  );
+  const videoEntry = useMemo(
+    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "video") ?? null,
+    [effectiveScheduledEntries],
+  );
+
+  // Pick the schedule row that matches the active ministry filter. Weekend worship is the
+  // default, but production/video views must key off their own schedule entry — otherwise
+  // the roster pulls from the weekend band team and shows the wrong FOH engineer.
+  const directTeamEntry = useMemo(() => {
+    if (isProductionMinistryFilter) {
+      return (
+        effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ??
+        directScheduleEntries[0] ??
+        null
+      );
+    }
+
+    if (isVideoMinistryFilter) {
+      return (
+        effectiveScheduledEntries.find((entry) => entry.ministry_type === "video") ??
+        directScheduleEntries[0] ??
+        null
+      );
+    }
+
+    if (isWeekendTeamFilter) {
+      return (
+        directScheduleEntries.find((entry) => weekendMinistryAliases.has(entry.ministry_type ?? "")) ??
+        directScheduleEntries[0] ??
+        null
+      );
+    }
+
+    return (
+      directScheduleEntries.find((entry) => weekendMinistryAliases.has(entry.ministry_type ?? "")) ??
+      directScheduleEntries[0] ??
+      null
+    );
+  }, [
+    directScheduleEntries,
+    effectiveScheduledEntries,
+    isProductionMinistryFilter,
+    isVideoMinistryFilter,
+    isWeekendTeamFilter,
+    weekendMinistryAliases,
+  ]);
+
+  const effectiveTeamId =
+    (isProductionMinistryFilter && (productionEntry?.team_id ?? teamId)) ||
+    (isVideoMinistryFilter && (videoEntry?.team_id ?? teamId)) ||
+    directTeamEntry?.team_id ||
+    teamId;
+  const effectiveRotationPeriodName =
+    (isProductionMinistryFilter && (productionEntry?.rotation_period ?? rotationPeriodName)) ||
+    (isVideoMinistryFilter && (videoEntry?.rotation_period ?? rotationPeriodName)) ||
+    directTeamEntry?.rotation_period ||
+    rotationPeriodName;
 
   // The roster must be queried for the team's actual scheduled day, not the clicked day.
   // A weekend team is usually scheduled on Saturday, so clicking Sunday and querying the
@@ -2726,13 +2797,6 @@ function BandRoster({
   // Pass ministry filter to hook - 'all' or undefined means fetch all (we'll constrain by scheduledMinistries below)
   // Special handling for "weekend_team" - it's a combined view, so we fetch without ministry filter
   // and filter the results client-side
-  const isWeekendTeamFilter = ministryFilter === 'weekend_team';
-  const effectiveMinistryFilter =
-    ministryFilter && ministryFilter !== 'all' && !isWeekendTeamFilter
-      ? normalizeWeekendWorshipMinistryType(ministryFilter) === "weekend"
-        ? "weekend_team"
-        : ministryFilter
-      : undefined;
   // IMPORTANT: a single team (e.g. "Team 1") can hold the weekend band, the worship-night
   // band and the kids-camp band on the SAME position slots. The roster hook dedupes to one
   // person per slot, so if we query with no ministry ("undefined") the dedup picks an
@@ -2756,14 +2820,6 @@ function BandRoster({
   const normalizedRosterRaw = useMemo(
     () => normalizeRosterMembers(rosterRaw),
     [normalizeRosterMembers, rosterRaw]
-  );
-  const productionEntry = useMemo(
-    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ?? null,
-    [effectiveScheduledEntries],
-  );
-  const videoEntry = useMemo(
-    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "video") ?? null,
-    [effectiveScheduledEntries],
   );
   const productionTeamId = productionEntry?.team_id;
   const videoTeamId = videoEntry?.team_id;
@@ -2960,7 +3016,9 @@ function BandRoster({
         </div>
       </div>;
   }
-  if (roster.length === 0) return null;
+  if (roster.length === 0 && !(showAudioVideo && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
+    return null;
+  }
 
   // Determine which ministries are represented on this date
   const dayOfWeek = date.getDay();
@@ -3258,10 +3316,18 @@ function BandRoster({
     const directProductionMembers = normalizedProductionRoster.filter(memberHasProductionRole);
     const directVideoMembers = normalizedVideoRoster.filter(memberHasVideoRole);
     const audioMembers = dedupeMembersForDisplay(
-      normalizedProductionRoster.length > 0 ? directProductionMembers : fallbackProductionMembers,
+      isProductionMinistryFilter
+        ? directProductionMembers
+        : normalizedProductionRoster.length > 0
+          ? directProductionMembers
+          : fallbackProductionMembers,
     ).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
     const broadcastMembers = dedupeMembersForDisplay(
-      normalizedVideoRoster.length > 0 ? directVideoMembers : fallbackVideoMembers,
+      isVideoMinistryFilter
+        ? directVideoMembers
+        : normalizedVideoRoster.length > 0
+          ? directVideoMembers
+          : fallbackVideoMembers,
     ).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)

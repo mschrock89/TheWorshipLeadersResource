@@ -52,6 +52,9 @@ interface MyTeamDateOverride {
   ministryTypes: string[];
 }
 
+const WEEKEND_SCHEDULE_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
+const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+
 function assignmentMatchesMinistryTypes(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
@@ -71,6 +74,21 @@ function assignmentMatchesMinistryTypes(
     })
   ) {
     return true;
+  }
+
+  // Production/video volunteers are scheduled against the shared weekend rotation.
+  if (WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(normalizedScheduleMinistry)) {
+    return memberMinistryTypes.some((memberMinistry) =>
+      WEEKEND_SUPPORT_MINISTRY_TYPES.has(memberMinistry),
+    );
+  }
+
+  if (WEEKEND_SUPPORT_MINISTRY_TYPES.has(scheduleMinistryType)) {
+    return memberMinistryTypes.some((memberMinistry) => {
+      const normalizedMemberMinistry =
+        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+      return WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(normalizedMemberMinistry);
+    });
   }
 
   return false;
