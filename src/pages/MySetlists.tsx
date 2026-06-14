@@ -46,6 +46,7 @@ import { buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
@@ -1067,7 +1068,7 @@ function SetlistTeamRoster({
           })
         : data;
 
-      return [...rows].sort((a, b) => {
+      const sortedRows = [...rows].sort((a, b) => {
         const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
         if (campusPriority !== 0) return campusPriority;
         if (a.schedule_date === planDate && b.schedule_date !== planDate) return -1;
@@ -1076,6 +1077,8 @@ function SetlistTeamRoster({
         const bCreatedAt = new Date(b.created_at || 0).getTime();
         return bCreatedAt - aCreatedAt;
       });
+
+      return filterValidSupportTeamScheduleEntries(sortedRows);
     },
     enabled: !!planDate && !!campusId && !effectiveCustomServiceId && activeRotationPeriodName !== undefined,
   });

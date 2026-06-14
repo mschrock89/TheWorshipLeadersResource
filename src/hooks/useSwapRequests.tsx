@@ -5,6 +5,11 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { parseLocalDate, getWeekendPairDate } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import {
+  assignmentMatchesServiceDay,
+  assignmentMatchesSupportScheduleMinistry,
+  shouldSkipMisalignedSupportScheduleEntry,
+} from "@/lib/teamScheduleSupport";
 
 export type SwapRequestType = "swap" | "fill_in";
 
@@ -1258,31 +1263,105 @@ export function useUserScheduledDates(userId: string | undefined, teamId?: strin
 
   return useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["user-scheduled-dates", "local-date-v1", userId, teamId, resourceAppKey],
+    queryKey: ["user-scheduled-dates", "local-date-v2", userId, teamId, resourceAppKey],
     queryFn: async () => {
-      // Get all teams the user is a member of
-      const { data: memberData } = await supabase
+      const today = new Date().toISOString().split("T")[0];
+
+      const { data: memberData, error: memberError } = await supabase
         .from("team_members")
-        .select("team_id")
+        .select(`
+          team_id,
+          service_day,
+          ministry_types,
+          rotation_period_id,
+          rotation_periods (
+            campus_id,
+            start_date,
+            end_date
+          ),
+          worship_teams (
+            id,
+            name
+          )
+        `)
         .eq("user_id", userId!);
 
-      const teamIds = memberData?.map((m) => m.team_id) || [];
+      if (memberError) throw memberError;
 
-      let query = supabase
+      const assignments = (memberData || []).filter((member) => !teamId || member.team_id === teamId);
+      const teamIds = [...new Set(assignments.map((member) => member.team_id))];
+      if (teamIds.length === 0) return [];
+
+      let scheduleQuery = supabase
         .from("team_schedule")
-        .select("schedule_date, team_id, worship_teams(id, name)")
+        .select("schedule_date, team_id, ministry_type, campus_id, rotation_period, worship_teams(id, name)")
         .eq("resource_app_key", resourceAppKey)
         .in("team_id", teamIds)
-        .gte("schedule_date", new Date().toISOString().split("T")[0])
+        .gte("schedule_date", today)
         .order("schedule_date", { ascending: true });
 
       if (teamId) {
-        query = query.eq("team_id", teamId);
+        scheduleQuery = scheduleQuery.eq("team_id", teamId);
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      const { data: scheduleData, error: scheduleError } = await scheduleQuery;
+      if (scheduleError) throw scheduleError;
+
+      const scheduleRows = scheduleData || [];
+      const seenDates = new Set<string>();
+      const results: Array<{
+        schedule_date: string;
+        team_id: string;
+        worship_teams: { id: string; name: string } | null;
+      }> = [];
+
+      for (const entry of scheduleRows) {
+        if (shouldSkipMisalignedSupportScheduleEntry(entry, scheduleRows)) {
+          continue;
+        }
+
+        const scheduleMinistryType = entry.ministry_type || "weekend";
+        const matchingAssignments = assignments.filter((assignment) => {
+          if (assignment.team_id !== entry.team_id) return false;
+          if (!assignmentMatchesServiceDay(assignment.service_day, entry.schedule_date)) return false;
+
+          const rotationPeriod = assignment.rotation_periods as {
+            campus_id?: string | null;
+            start_date?: string | null;
+            end_date?: string | null;
+          } | null;
+
+          if (assignment.rotation_period_id && rotationPeriod) {
+            if (rotationPeriod.start_date && entry.schedule_date < rotationPeriod.start_date) return false;
+            if (rotationPeriod.end_date && entry.schedule_date > rotationPeriod.end_date) return false;
+          }
+
+          const assignmentCampusId = rotationPeriod?.campus_id || null;
+          const scheduleCampusId = entry.campus_id || null;
+          if (scheduleCampusId && assignmentCampusId && assignmentCampusId !== scheduleCampusId) {
+            return false;
+          }
+
+          return assignmentMatchesSupportScheduleMinistry(
+            assignment.ministry_types || [],
+            scheduleMinistryType,
+          );
+        });
+
+        if (matchingAssignments.length === 0) continue;
+
+        const dedupeKey = `${entry.schedule_date}-${entry.team_id}`;
+        if (seenDates.has(dedupeKey)) continue;
+        seenDates.add(dedupeKey);
+
+        results.push({
+          schedule_date: entry.schedule_date,
+          team_id: entry.team_id,
+          worship_teams: entry.worship_teams as { id: string; name: string } | null,
+        });
+      }
+
+      return results;
     },
     enabled: !!userId,
   });

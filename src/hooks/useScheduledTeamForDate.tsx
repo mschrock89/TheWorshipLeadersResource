@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 import { normalizeSessionSetMinistryType } from "@/lib/constants";
 
 interface ScheduledTeamScheduleRow {
@@ -114,7 +115,8 @@ export function useScheduledTeamForDate(
       const { data, error } = await query;
 
       if (error) throw error;
-      const entry = resolveScheduledTeamEntry((data || []) as ScheduledTeamScheduleRow[], campusId, ministryType);
+      const filteredEntries = filterValidSupportTeamScheduleEntries((data || []) as ScheduledTeamScheduleRow[]);
+      const entry = resolveScheduledTeamEntry(filteredEntries, campusId, ministryType);
       if (!entry || !entry.worship_teams) return null;
 
       const team = entry.worship_teams as { id: string; name: string; color: string; icon: string };

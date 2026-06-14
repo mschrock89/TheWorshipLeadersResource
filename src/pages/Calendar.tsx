@@ -25,6 +25,7 @@ import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
 import { normalizeWeekendWorshipMinistryType, POSITION_SLOTS } from "@/lib/constants";
+import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 import {
   useDeleteServiceTimeOverride,
   useServiceTimeOverrides,
@@ -2695,7 +2696,7 @@ function BandRoster({
         : data;
 
       // Step 4: sort — campus-specific first, exact date first, newer first.
-      return [...rows].sort((a, b) => {
+      const sortedRows = [...rows].sort((a, b) => {
         const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
         if (campusPriority !== 0) return campusPriority;
         if (a.schedule_date === dateStr && b.schedule_date !== dateStr) return -1;
@@ -2705,6 +2706,8 @@ function BandRoster({
           new Date((a as { created_at?: string }).created_at || 0).getTime()
         );
       });
+
+      return filterValidSupportTeamScheduleEntries(sortedRows);
     },
   });
 

@@ -5,6 +5,7 @@ import { parseLocalDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { shouldSkipMisalignedSupportScheduleEntry } from "@/lib/teamScheduleSupport";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -467,6 +468,11 @@ export function useMyTeamAssignments() {
         
         // Skip dates user has swapped out
         if (swappedOutDates.has(entry.schedule_date)) continue;
+
+        // Production/video schedule rows must align with that team's weekend worship row.
+        if (shouldSkipMisalignedSupportScheduleEntry(entry as any, (data || []) as any[])) {
+          continue;
+        }
         
         // Find ALL assignments for this team that match the schedule's ministry type
         const teamAssignments = assignments.filter((a) => {
