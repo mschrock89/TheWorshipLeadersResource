@@ -2966,51 +2966,6 @@ function BandRoster({
       )
     );
   }, [normalizedRosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
-  const groupTextMembers = useMemo(
-    () =>
-      filterGroupTextRecipients(roster, {
-        isAdmin,
-        roleNames,
-      }),
-    [isAdmin, roleNames, roster],
-  );
-  const supportPushMinistry =
-    ministryFilter === "production" ? "production" : ministryFilter === "video" ? "video" : null;
-  const supportPushEntry = supportPushMinistry === "production" ? productionEntry : videoEntry;
-  const supportPushTeamId = supportPushMinistry === "production" ? productionTeamId : videoTeamId;
-  const rosterActions = (
-    <div className="flex flex-wrap justify-end gap-2">
-      {supportPushMinistry ? (
-        <TeamSchedulePushButton
-          scheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
-          campusId={campusId}
-          ministryType={supportPushMinistry}
-          teamId={supportPushTeamId}
-          serviceLabel={serviceLabel}
-        />
-      ) : (
-        <SetlistPushButton
-          date={date}
-          campusId={campusId}
-          ministryType={ministryFilter}
-          serviceLabel={serviceLabel}
-        />
-      )}
-      <GroupTextButton
-        phoneNumbers={groupTextMembers.map((member) => member.phone)}
-        rosterMembers={groupTextMembers.map((member) => ({
-          name: member.memberName,
-          phone: member.phone,
-          ministryTypes: member.ministryTypes,
-          positions: member.positions,
-        }))}
-        defaultMessage={buildRosterGroupTextTemplate({
-          date,
-          serviceLabel,
-        })}
-      />
-    </div>
-  );
   if (!effectiveTeamId) return null;
   if (isLoading) {
     return <div className="mb-4">
@@ -3155,6 +3110,102 @@ function BandRoster({
   );
   const fallbackVideoMembers = fallbackProductionVideoMembers.filter((member) =>
     memberHasVideoRole(member),
+  );
+
+  // The Production/Video columns render from their own scheduled rosters (keyed off the
+  // production/video team_schedule rows), not the band-team query. The group text must pull
+  // from the SAME members that are actually displayed, otherwise it texts the stale
+  // band-team-derived video/production list instead of the scheduled crew.
+  const directProductionMembers = normalizedProductionRoster.filter(memberHasProductionRole);
+  const directVideoMembers = normalizedVideoRoster.filter(memberHasVideoRole);
+  const shownProductionMembers = isProductionMinistryFilter
+    ? directProductionMembers
+    : normalizedProductionRoster.length > 0
+      ? directProductionMembers
+      : fallbackProductionMembers;
+  const shownVideoMembers = isVideoMinistryFilter
+    ? directVideoMembers
+    : normalizedVideoRoster.length > 0
+      ? directVideoMembers
+      : fallbackVideoMembers;
+
+  // Band/vocal/speaker members come from the main roster minus any prod/video members that
+  // are surfaced in their own columns. Combine those with the displayed prod/video crew so
+  // the group text recipient list matches exactly what's on screen.
+  const groupTextRoster = (() => {
+    const merged = new Map<string, (typeof roster)[number]>();
+    const add = (member: (typeof roster)[number]) => {
+      const key = `${(member.userId || member.memberName || "").toLowerCase()}__${member.phone || ""}`;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, {
+          ...member,
+          positions: [...member.positions],
+          positionSlots: [...(member.positionSlots || [])],
+          ministryTypes: [...(member.ministryTypes || [])],
+        });
+        return;
+      }
+      existing.positions = Array.from(new Set([...existing.positions, ...member.positions]));
+      existing.positionSlots = Array.from(
+        new Set([...(existing.positionSlots || []), ...(member.positionSlots || [])]),
+      );
+      existing.ministryTypes = Array.from(
+        new Set([...(existing.ministryTypes || []), ...(member.ministryTypes || [])]),
+      );
+      existing.phone = existing.phone || member.phone;
+      existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
+    };
+
+    roster.filter((m) => !fallbackProductionVideoMembers.includes(m)).forEach(add);
+    if (showAudioVideo) {
+      shownProductionMembers.forEach(add);
+      shownVideoMembers.forEach(add);
+    }
+
+    return Array.from(merged.values());
+  })();
+
+  const groupTextMembers = filterGroupTextRecipients(groupTextRoster, {
+    isAdmin,
+    roleNames,
+  });
+  const supportPushMinistry =
+    ministryFilter === "production" ? "production" : ministryFilter === "video" ? "video" : null;
+  const supportPushEntry = supportPushMinistry === "production" ? productionEntry : videoEntry;
+  const supportPushTeamId = supportPushMinistry === "production" ? productionTeamId : videoTeamId;
+  const rosterActions = (
+    <div className="flex flex-wrap justify-end gap-2">
+      {supportPushMinistry ? (
+        <TeamSchedulePushButton
+          scheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
+          campusId={campusId}
+          ministryType={supportPushMinistry}
+          teamId={supportPushTeamId}
+          serviceLabel={serviceLabel}
+        />
+      ) : (
+        <SetlistPushButton
+          date={date}
+          campusId={campusId}
+          ministryType={ministryFilter}
+          serviceLabel={serviceLabel}
+        />
+      )}
+      <GroupTextButton
+        phoneNumbers={groupTextMembers.map((member) => member.phone)}
+        rosterMembers={groupTextMembers.map((member) => ({
+          name: member.memberName,
+          phone: member.phone,
+          ministryTypes: member.ministryTypes,
+          positions: member.positions,
+        }))}
+        defaultMessage={buildRosterGroupTextTemplate({
+          date,
+          serviceLabel,
+        })}
+      />
+    </div>
   );
 
   // Position priority functions
@@ -3316,22 +3367,12 @@ function BandRoster({
   };
   const renderProductionVideoSection = () => {
     if (!showAudioVideo) return null;
-    const directProductionMembers = normalizedProductionRoster.filter(memberHasProductionRole);
-    const directVideoMembers = normalizedVideoRoster.filter(memberHasVideoRole);
-    const audioMembers = dedupeMembersForDisplay(
-      isProductionMinistryFilter
-        ? directProductionMembers
-        : normalizedProductionRoster.length > 0
-          ? directProductionMembers
-          : fallbackProductionMembers,
-    ).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
-    const broadcastMembers = dedupeMembersForDisplay(
-      isVideoMinistryFilter
-        ? directVideoMembers
-        : normalizedVideoRoster.length > 0
-          ? directVideoMembers
-          : fallbackVideoMembers,
-    ).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
+    const audioMembers = dedupeMembersForDisplay(shownProductionMembers).sort(
+      (a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions),
+    );
+    const broadcastMembers = dedupeMembersForDisplay(shownVideoMembers).sort(
+      (a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions),
+    );
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)
     const selectedDayOfWeek = date.getDay();
