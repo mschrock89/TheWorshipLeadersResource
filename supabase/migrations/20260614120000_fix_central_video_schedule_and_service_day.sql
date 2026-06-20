@@ -30,33 +30,12 @@ AS $$
     );
 $$;
 
--- Rebuild every campus-specific video schedule from that campus's weekend worship rows.
-DELETE FROM public.team_schedule
-WHERE campus_id IS NOT NULL
-  AND ministry_type = 'video';
-
-INSERT INTO public.team_schedule (
-  id,
-  team_id,
-  schedule_date,
-  rotation_period,
-  notes,
-  ministry_type,
-  campus_id,
-  resource_app_key
-)
-SELECT
-  gen_random_uuid(),
-  source.team_id,
-  source.schedule_date,
-  source.rotation_period,
-  source.notes,
-  'video'::text,
-  source.campus_id,
-  source.resource_app_key
-FROM public.team_schedule AS source
-WHERE source.campus_id IS NOT NULL
-  AND source.ministry_type IN ('weekend', 'sunday_am');
+-- NOTE: The original version of this (never-applied) migration deleted every
+-- campus-specific video schedule row and rebuilt it from the weekend worship rows,
+-- forcing video to follow the weekend team. Production/video teams actually rotate
+-- on their own Team Builder schedule (e.g. video = Team 1 while weekend = Team 3), so
+-- that destructive rebuild has been removed to preserve the authored video schedule.
+-- The weekend-anchor gate below is also neutralized in 20260620120000.
 
 CREATE OR REPLACE FUNCTION public.is_scheduled_for_service(
   _user_id uuid,

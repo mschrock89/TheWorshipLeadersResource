@@ -14,40 +14,28 @@ export function isSupportTeamScheduleMinistry(ministryType?: string | null): boo
   return ministryType === "production" || ministryType === "video";
 }
 
+// Production/video teams rotate on their own schedule in Team Builder, independent of
+// the weekend worship team for a given date (e.g. video can be Team 1 while weekend
+// worship is Team 3). Always honor the support schedule row as authored, rather than
+// requiring it to share the weekend worship team for that date.
 export function supportScheduleHasWeekendAnchor(
-  entry: TeamScheduleRowLike,
-  allEntries: TeamScheduleRowLike[],
+  _entry: TeamScheduleRowLike,
+  _allEntries: TeamScheduleRowLike[],
 ): boolean {
-  if (!isSupportTeamScheduleMinistry(entry.ministry_type)) {
-    return true;
-  }
-
-  return allEntries.some(
-    (other) =>
-      other.team_id === entry.team_id &&
-      other.schedule_date === entry.schedule_date &&
-      (other.rotation_period || "") === (entry.rotation_period || "") &&
-      WEEKEND_ANCHOR_MINISTRY_TYPES.has(other.ministry_type || "weekend") &&
-      (other.campus_id === entry.campus_id ||
-        other.campus_id == null ||
-        entry.campus_id == null),
-  );
+  return true;
 }
 
 export function filterValidSupportTeamScheduleEntries<T extends TeamScheduleRowLike>(
   entries: T[],
 ): T[] {
-  return entries.filter((entry) => supportScheduleHasWeekendAnchor(entry, entries));
+  return entries;
 }
 
 export function shouldSkipMisalignedSupportScheduleEntry(
-  entry: TeamScheduleRowLike,
-  allEntries: TeamScheduleRowLike[],
+  _entry: TeamScheduleRowLike,
+  _allEntries: TeamScheduleRowLike[],
 ): boolean {
-  return (
-    isSupportTeamScheduleMinistry(entry.ministry_type) &&
-    !supportScheduleHasWeekendAnchor(entry, allEntries)
-  );
+  return false;
 }
 
 function getServiceDayForDate(dateStr: string): "saturday" | "sunday" | null {
