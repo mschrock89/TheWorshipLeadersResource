@@ -53,9 +53,6 @@ interface MyTeamDateOverride {
   ministryTypes: string[];
 }
 
-const WEEKEND_SCHEDULE_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
-const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
-
 function assignmentMatchesMinistryTypes(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
@@ -67,32 +64,15 @@ function assignmentMatchesMinistryTypes(
   const normalizedScheduleMinistry =
     normalizeWeekendWorshipMinistryType(scheduleMinistryType) || scheduleMinistryType;
 
-  if (
-    memberMinistryTypes.some((memberMinistry) => {
-      const normalizedMemberMinistry =
-        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
-      return normalizedMemberMinistry === normalizedScheduleMinistry;
-    })
-  ) {
-    return true;
-  }
-
-  // Production/video volunteers are scheduled against the shared weekend rotation.
-  if (WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(normalizedScheduleMinistry)) {
-    return memberMinistryTypes.some((memberMinistry) =>
-      WEEKEND_SUPPORT_MINISTRY_TYPES.has(memberMinistry),
-    );
-  }
-
-  if (WEEKEND_SUPPORT_MINISTRY_TYPES.has(scheduleMinistryType)) {
-    return memberMinistryTypes.some((memberMinistry) => {
-      const normalizedMemberMinistry =
-        normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
-      return WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(normalizedMemberMinistry);
-    });
-  }
-
-  return false;
+  // Video/production teams rotate on their own Team Builder schedule, independent of the
+  // weekend worship team. A video member must only light up on their team's video rows
+  // (and production on production rows), never on the team's weekend worship dates where
+  // a different team is actually running video.
+  return memberMinistryTypes.some((memberMinistry) => {
+    const normalizedMemberMinistry =
+      normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
+    return normalizedMemberMinistry === normalizedScheduleMinistry;
+  });
 }
 
 

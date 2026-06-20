@@ -65,6 +65,12 @@ export function assignmentMatchesServiceDay(
   return normalizedServiceDay === dateServiceDay;
 }
 
+// Group the interchangeable weekend worship aliases, but keep video/production distinct:
+// support teams rotate on their own schedule, so a video member is only "scheduled" on
+// their team's video rows, never on the team's weekend worship dates.
+const normalizeScheduleMinistryGroup = (ministryType: string) =>
+  WEEKEND_ANCHOR_MINISTRY_TYPES.has(ministryType) ? "weekend" : ministryType;
+
 export function assignmentMatchesSupportScheduleMinistry(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
@@ -73,21 +79,8 @@ export function assignmentMatchesSupportScheduleMinistry(
     return true;
   }
 
-  if (memberMinistryTypes.includes(scheduleMinistryType)) {
-    return true;
-  }
-
-  if (WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(scheduleMinistryType)) {
-    return memberMinistryTypes.some((memberMinistry) =>
-      WEEKEND_SUPPORT_MINISTRY_TYPES.has(memberMinistry),
-    );
-  }
-
-  if (WEEKEND_SUPPORT_MINISTRY_TYPES.has(scheduleMinistryType)) {
-    return memberMinistryTypes.some((memberMinistry) =>
-      WEEKEND_SCHEDULE_MINISTRY_ALIASES.has(memberMinistry),
-    );
-  }
-
-  return false;
+  const normalizedSchedule = normalizeScheduleMinistryGroup(scheduleMinistryType);
+  return memberMinistryTypes.some(
+    (memberMinistry) => normalizeScheduleMinistryGroup(memberMinistry) === normalizedSchedule,
+  );
 }
