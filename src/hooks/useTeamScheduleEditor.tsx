@@ -11,6 +11,7 @@ export interface ScheduleEntry {
   team_color: string;
   team_icon: string;
   ministry_type: string | null;
+  time_of_day: string | null;
   notes: string | null;
   campus_id: string | null;
   rotation_period: string;
@@ -22,6 +23,7 @@ interface TeamScheduleRow {
   schedule_date: string;
   team_id: string;
   ministry_type: string | null;
+  time_of_day: string | null;
   notes: string | null;
   campus_id: string | null;
   rotation_period: string;
@@ -57,7 +59,7 @@ export function usePublishScheduleNetworkWide() {
       for (const ministryType of normalizedMinistryTypes) {
         const { data: campusEntries, error: campusEntriesError } = await supabase
           .from("team_schedule")
-          .select("schedule_date, team_id, ministry_type, notes")
+          .select("schedule_date, team_id, ministry_type, time_of_day, notes")
           .eq("resource_app_key", resourceAppKey)
           .eq("campus_id", campusId)
           .eq("rotation_period", rotationPeriod)
@@ -88,6 +90,7 @@ export function usePublishScheduleNetworkWide() {
           schedule_date: entry.schedule_date,
           team_id: entry.team_id,
           ministry_type: entry.ministry_type,
+          time_of_day: entry.time_of_day,
           rotation_period: rotationPeriod,
           notes: entry.notes,
           resource_app_key: resourceAppKey,
@@ -132,6 +135,7 @@ export function useTeamScheduleForCampus(
           schedule_date,
           team_id,
           ministry_type,
+          time_of_day,
           notes,
           campus_id,
           resource_app_key,
@@ -175,7 +179,7 @@ export function useTeamScheduleForCampus(
       });
 
       for (const entry of sorted) {
-        const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}`;
+        const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}-${entry.time_of_day || 'all'}`;
         const existing = entriesMap.get(key);
 
         // Keep campus-specific entries over shared (null) entries
@@ -201,6 +205,7 @@ export function useTeamScheduleForCampus(
           team_color: entry.worship_teams?.color || "#888",
           team_icon: entry.worship_teams?.icon || "Users",
           ministry_type: entry.ministry_type,
+          time_of_day: entry.time_of_day ?? null,
           notes: entry.notes,
           campus_id: entry.campus_id,
           rotation_period: entry.rotation_period,
@@ -228,7 +233,7 @@ export function useUpdateScheduleTeam() {
       // First check if this is a shared entry (campus_id is null)
       const { data: existing, error: fetchError } = await supabase
         .from("team_schedule")
-        .select("campus_id, schedule_date, ministry_type, rotation_period, notes")
+        .select("campus_id, schedule_date, ministry_type, time_of_day, rotation_period, notes")
         .eq("id", scheduleId)
         .eq("resource_app_key", resourceAppKey)
         .single();
@@ -244,6 +249,7 @@ export function useUpdateScheduleTeam() {
             team_id: teamId,
             campus_id: campusId,
             ministry_type: existing.ministry_type,
+            time_of_day: existing.time_of_day,
             rotation_period: existing.rotation_period,
             notes: existing.notes,
             resource_app_key: resourceAppKey,
@@ -284,6 +290,7 @@ export function useCreateScheduleEntry() {
       date,
       teamId,
       ministryType,
+      timeOfDay = null,
       rotationPeriod,
       suppressToast = false,
     }: {
@@ -291,6 +298,7 @@ export function useCreateScheduleEntry() {
       date: string;
       teamId: string;
       ministryType: string;
+      timeOfDay?: string | null;
       rotationPeriod: string;
       suppressToast?: boolean;
     }) => {
@@ -299,6 +307,7 @@ export function useCreateScheduleEntry() {
         schedule_date: date,
         team_id: teamId,
         ministry_type: ministryType,
+        time_of_day: timeOfDay,
         rotation_period: rotationPeriod,
         resource_app_key: resourceAppKey,
       });

@@ -53,6 +53,7 @@ export interface TeamScheduleEntry {
   schedule_date: string;
   rotation_period: string;
   ministry_type?: string | null;
+  time_of_day?: string | null;
   notes: string | null;
   created_at: string;
   campus_id?: string | null;
@@ -163,7 +164,7 @@ export function useTeamSchedule(rotationPeriod?: string, campusId?: string | nul
         });
 
         for (const entry of sorted) {
-          const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}`;
+          const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}-${(entry as TeamScheduleEntry).time_of_day || 'all'}`;
           const existing = entriesByDate.get(key);
           const entryAny = entry as TeamScheduleEntry & { created_at?: string };
           

@@ -470,6 +470,17 @@ export function getTeamRotationNumber(teamName: string): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+// Built-in teams whose per-ministry visibility is intentionally controlled by
+// MINISTRY_TEAM_FILTER. Any team NOT in this set is treated as a user-created
+// custom team and is shown under every ministry filter (it was never tied to a
+// specific rotation, so hiding it behind a filter would make it "disappear").
+const BUILTIN_TEAM_NAMES = new Set(
+  [
+    ...Object.values(MINISTRY_TEAM_FILTER).flatMap((list) => list ?? []),
+    "Combined",
+  ].map((name) => name.toLowerCase()),
+);
+
 export function isTeamVisibleForMinistry(teamName: string, ministryType: string): boolean {
   const allowedTeams = MINISTRY_TEAM_FILTER[ministryType];
   if (!allowedTeams) return true;
@@ -481,7 +492,9 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
 
   const teamNumber = getTeamRotationNumber(teamName);
   if (teamNumber == null) {
-    return false;
+    // Custom teams (anything that isn't a recognized built-in) stay visible so a
+    // newly created team shows up no matter which ministry filter is active.
+    return !BUILTIN_TEAM_NAMES.has(teamName.toLowerCase());
   }
 
   return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);

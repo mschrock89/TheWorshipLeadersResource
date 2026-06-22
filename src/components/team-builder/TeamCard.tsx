@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Star, Heart, Zap, Diamond, Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette } from "lucide-react";
+import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,13 +12,7 @@ import {
 import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
-
-const TEAM_ICONS: Record<string, React.ReactNode> = {
-  star: <Star className="h-5 w-5" />,
-  heart: <Heart className="h-5 w-5" />,
-  zap: <Zap className="h-5 w-5" />,
-  diamond: <Diamond className="h-5 w-5" />,
-};
+import { getTeamIcon } from "@/lib/teamIcons";
 
 interface TeamCardProps {
   team: {
@@ -42,6 +36,7 @@ interface TeamCardProps {
   ministryFilter?: string;
   campusName?: string | null;
   onEditTemplate?: () => void;
+  onEditTeam?: () => void;
   slotConflictDates?: Record<string, string[]>;
   slotScheduleDates?: string[];
   slotDateOverrides?: Record<string, Record<string, TeamMemberAssignment>>;
@@ -65,6 +60,7 @@ export function TeamCard({
   ministryFilter = "all",
   campusName,
   onEditTemplate,
+  onEditTeam,
   slotConflictDates = {},
   slotScheduleDates = [],
   slotDateOverrides = {},
@@ -224,11 +220,26 @@ export function TeamCard({
       >
         <CardTitle className="flex items-center gap-2 text-lg">
           <span style={{ color: team.color }}>
-            {TEAM_ICONS[team.icon] || <Star className="h-5 w-5" />}
+            {(() => {
+              const Icon = getTeamIcon(team.icon);
+              return <Icon className="h-5 w-5" />;
+            })()}
           </span>
           <span>{titleOverride || team.name}</span>
           
           <div className="ml-auto flex items-center gap-1">
+            {onEditTeam && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onEditTeam}
+                title="Rename team"
+              >
+                <Pencil className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            )}
+
             {onEditTemplate && (
               <Button
                 variant="ghost"

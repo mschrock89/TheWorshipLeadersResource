@@ -689,6 +689,89 @@ export function useWorshipTeams(campusId: string | null, ministryType: string | 
   });
 }
 
+export interface WorshipTeamEditorValue {
+  name: string;
+  color: string;
+  icon: string;
+}
+
+// Create a brand-new custom worship team for the current resource app.
+export function useCreateWorshipTeam() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (value: WorshipTeamEditorValue) => {
+      const { data, error } = await supabase
+        .from("worship_teams")
+        .insert({
+          name: value.name,
+          color: value.color,
+          icon: value.icon,
+          resource_app_key: getCurrentResourceAppKey(),
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+      return data as WorshipTeamRow;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["worship-teams"] });
+      toast({ title: "Team created" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to create team",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+// Rename / restyle an existing team. Uses an upsert so that the built-in default
+// teams (which may not yet have a real database row) are persisted on first edit.
+export function useUpdateWorshipTeam() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      team,
+      value,
+    }: {
+      team: WorshipTeam;
+      value: WorshipTeamEditorValue;
+    }) => {
+      const { error } = await supabase
+        .from("worship_teams")
+        .upsert(
+          {
+            id: team.id,
+            name: value.name,
+            color: value.color,
+            icon: value.icon,
+            resource_app_key: getCurrentResourceAppKey(),
+            template_config: (team.template_config ?? {}) as TeamTemplateConfig,
+          },
+          { onConflict: "id" },
+        );
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["worship-teams"] });
+      toast({ title: "Team updated" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update team",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useCampusWorshipPastors(campusId: string | null) {
   return useQuery({
     queryKey: ["campus-worship-pastors", campusId],

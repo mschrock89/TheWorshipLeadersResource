@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar } from "lucide-react";
+import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ import { MinistryEditDialog } from "@/components/team-builder/MinistryEditDialog
 import { BreakRequestsWidget } from "@/components/team-builder/BreakRequestsWidget";
 import { TeamScheduleWidget } from "@/components/team-builder/TeamScheduleWidget";
 import { TeamTemplateDialog } from "@/components/team-builder/TeamTemplateDialog";
+import { EditTeamDialog, TeamEditorValue } from "@/components/team-builder/EditTeamDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import {
   useRotationPeriodsForCampus,
@@ -53,6 +54,8 @@ import {
   useToggleTeamLock,
   useUpdateMinistryTypes,
   useUpdateTeamTemplate,
+  useCreateWorshipTeam,
+  useUpdateWorshipTeam,
   usePreviousPeriodMembers,
   useTeamMemberDateOverrides,
   getPreviousPeriodId,
@@ -313,6 +316,8 @@ export default function TeamBuilder() {
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
   const [editingTemplateTeam, setEditingTemplateTeam] = useState<WorshipTeam | null>(null);
+  const [teamDialogOpen, setTeamDialogOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<WorshipTeam | null>(null);
   const [crossCheckDialogOpen, setCrossCheckDialogOpen] = useState(false);
   const [crossCheckResults, setCrossCheckResults] = useState<RotationConflict[]>([]);
   const [rotationPushPreviewOpen, setRotationPushPreviewOpen] = useState(false);
@@ -359,6 +364,8 @@ export default function TeamBuilder() {
   const toggleLock = useToggleTeamLock();
   const updateMinistryTypes = useUpdateMinistryTypes();
   const updateTeamTemplate = useUpdateTeamTemplate();
+  const createWorshipTeam = useCreateWorshipTeam();
+  const updateWorshipTeam = useUpdateWorshipTeam();
   const saveRotationDraft = useSaveRotationDraft();
   const publishRotation = usePublishRotation();
   const crossCheckRotationAssignments = useCrossCheckRotationAssignments();
@@ -1502,6 +1509,26 @@ export default function TeamBuilder() {
     setEditingTemplateTeam(null);
   };
 
+  const handleAddTeam = () => {
+    setEditingTeam(null);
+    setTeamDialogOpen(true);
+  };
+
+  const handleEditTeam = (team: WorshipTeam) => {
+    setEditingTeam(team);
+    setTeamDialogOpen(true);
+  };
+
+  const handleSaveTeam = async (value: TeamEditorValue) => {
+    if (editingTeam) {
+      await updateWorshipTeam.mutateAsync({ team: editingTeam, value });
+    } else {
+      await createWorshipTeam.mutateAsync(value);
+    }
+    setTeamDialogOpen(false);
+    setEditingTeam(null);
+  };
+
   const handleSaveDraft = async () => {
     if (!selectedPeriodId || !selectedCampusId) return;
 
@@ -1651,6 +1678,14 @@ export default function TeamBuilder() {
                     </Button>
                     <Button
                       variant="outline"
+                      onClick={handleAddTeam}
+                      className={utilityActionButtonClassName}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Team
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={handleSaveDraft}
                       disabled={!selectedPeriodId || !selectedCampusId || visibleAssignments.length === 0 || saveRotationDraft.isPending}
                       className={utilityActionButtonClassName}
@@ -1771,6 +1806,7 @@ export default function TeamBuilder() {
                       onLeaveBlank={(slot, scheduleDate) => handleLeaveBlank(team.id, slot, scheduleDate)}
                       onEditMinistry={handleEditMinistry}
                       onEditTemplate={canEditCampus ? () => setEditingTemplateTeam(team) : undefined}
+                      onEditTeam={canEditCampus ? () => handleEditTeam(team) : undefined}
                       readOnly={!canEditCampus}
                       isLocked={isTeamLocked(team.id)}
                       onToggleLock={() => handleToggleLock(team.id)}
@@ -1851,6 +1887,23 @@ export default function TeamBuilder() {
           )}
         </>
       )}
+
+      {/* Team create/rename dialog */}
+      <EditTeamDialog
+        open={teamDialogOpen}
+        onOpenChange={(open) => {
+          setTeamDialogOpen(open);
+          if (!open) setEditingTeam(null);
+        }}
+        mode={editingTeam ? "edit" : "create"}
+        initialValue={
+          editingTeam
+            ? { name: editingTeam.name, color: editingTeam.color, icon: editingTeam.icon }
+            : null
+        }
+        onSave={handleSaveTeam}
+        isSaving={createWorshipTeam.isPending || updateWorshipTeam.isPending}
+      />
 
       {/* Ministry edit dialog */}
       {editingMinistry && (

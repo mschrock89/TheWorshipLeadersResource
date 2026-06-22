@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { format, parseISO, getDay, eachDayOfInterval } from "date-fns";
-import { Calendar, Plus, Trash2, Info, Globe2 } from "lucide-react";
+import { Calendar as CalendarIcon, Plus, Trash2, Info, Globe2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Select,
   SelectContent,
@@ -64,12 +65,25 @@ interface DisplayScheduleEntry {
   team_name: string;
   team_color: string;
   ministry_type: string | null;
+  time_of_day: string | null;
   campus_id: string | null;
   isVirtual: boolean;
 }
 
 const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
 const HS_MS_WORSHIP_MINISTRY_TYPES = ["encounter", "eon"] as const;
+
+const TIME_OF_DAY_NONE = "all_day";
+
+const TIME_OF_DAY_LABELS: Record<string, string> = {
+  morning: "Morning",
+  evening: "Evening",
+};
+
+const TIME_OF_DAY_COLORS: Record<string, string> = {
+  morning: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  evening: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
+};
 
 function isWeekdayDate(date: Date) {
   const dayOfWeek = getDay(date);
@@ -112,9 +126,11 @@ export function TeamScheduleWidget({
   const { isAdmin } = useAuth();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<Date | undefined>(undefined);
   const [newDate, setNewDate] = useState("");
   const [newTeamId, setNewTeamId] = useState("");
   const [newMinistryType, setNewMinistryType] = useState("weekend");
+  const [newTimeOfDay, setNewTimeOfDay] = useState(TIME_OF_DAY_NONE);
   const [scheduleMinistryFilter, setScheduleMinistryFilter] = useState(() =>
     normalizeScheduleMinistryFilter(ministryFilter),
   );
@@ -206,6 +222,8 @@ export function TeamScheduleWidget({
     });
   }, [scheduleEntries, campusId, campuses]);
 
+  const selectedTimeKey = newTimeOfDay === TIME_OF_DAY_NONE ? "all" : newTimeOfDay;
+
   const availableDates = useMemo(() => {
     const usedDates = new Set(
       filteredEntries
@@ -218,11 +236,22 @@ export function TeamScheduleWidget({
           }
           return entryMinistryType === newMinistryType;
         })
-        .map((entry) => entry.schedule_date),
+        .map((entry) => `${entry.schedule_date}|${entry.time_of_day || "all"}`),
     );
 
-    return getSelectableDatesForMinistry(newMinistryType).filter((date) => !usedDates.has(date));
-  }, [filteredEntries, getSelectableDatesForMinistry, newMinistryType]);
+    return getSelectableDatesForMinistry(newMinistryType).filter(
+      (date) => !usedDates.has(`${date}|${selectedTimeKey}`),
+    );
+  }, [filteredEntries, getSelectableDatesForMinistry, newMinistryType, selectedTimeKey]);
+
+  const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
+
+  const calendarDefaultMonth = useMemo(() => {
+    if (newDate) return parseISO(newDate);
+    if (availableDates[0]) return parseISO(availableDates[0]);
+    if (rotationPeriodStartDate) return parseISO(rotationPeriodStartDate);
+    return undefined;
+  }, [availableDates, newDate, rotationPeriodStartDate]);
   const displayEntries = useMemo<DisplayScheduleEntry[]>(() => {
     const existingEntriesByDate = new Map(
       filteredEntries.map((entry) => [entry.schedule_date, entry]),
@@ -236,6 +265,7 @@ export function TeamScheduleWidget({
         team_name: entry.team_name,
         team_color: entry.team_color,
         ministry_type: entry.ministry_type,
+        time_of_day: entry.time_of_day,
         campus_id: entry.campus_id,
         isVirtual: false,
       }));
@@ -252,6 +282,7 @@ export function TeamScheduleWidget({
           team_name: existingEntry.team_name,
           team_color: existingEntry.team_color,
           ministry_type: existingEntry.ministry_type,
+          time_of_day: existingEntry.time_of_day,
           campus_id: existingEntry.campus_id,
           isVirtual: false,
         };
@@ -264,6 +295,7 @@ export function TeamScheduleWidget({
         team_name: "Unassigned",
         team_color: "transparent",
         ministry_type: activeScheduleMinistry,
+        time_of_day: null,
         campus_id: campusId,
         isVirtual: true,
       };
@@ -312,6 +344,8 @@ export function TeamScheduleWidget({
         ? [...HS_MS_WORSHIP_MINISTRY_TYPES]
         : [newMinistryType];
 
+    const timeOfDay = newTimeOfDay === TIME_OF_DAY_NONE ? null : newTimeOfDay;
+
     Promise.all(
       ministryTypes.map((ministryType, index) =>
         createEntry.mutateAsync({
@@ -319,6 +353,7 @@ export function TeamScheduleWidget({
           date: newDate,
           teamId: newTeamId,
           ministryType,
+          timeOfDay,
           rotationPeriod: rotationPeriodName,
           suppressToast: index < ministryTypes.length - 1,
         }),
@@ -328,6 +363,7 @@ export function TeamScheduleWidget({
       setNewDate("");
       setNewTeamId("");
       setNewMinistryType("weekend");
+      setNewTimeOfDay(TIME_OF_DAY_NONE);
     });
   };
 
@@ -363,6 +399,12 @@ export function TeamScheduleWidget({
     }
   }, [addDialogOpen, availableDates, newDate]);
 
+  useEffect(() => {
+    if (addDialogOpen) {
+      setCalendarMonth(calendarDefaultMonth);
+    }
+  }, [addDialogOpen, calendarDefaultMonth]);
+
   if (!campusId || !rotationPeriodName) {
     return null;
   }
@@ -372,7 +414,7 @@ export function TeamScheduleWidget({
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <CalendarIcon className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Team Schedule</CardTitle>
             <TooltipProvider>
               <Tooltip>
@@ -440,23 +482,36 @@ export function TeamScheduleWidget({
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="date">Date</Label>
-                    <Select value={newDate} onValueChange={setNewDate}>
-                      <SelectTrigger id="date">
-                        <SelectValue placeholder="Select a trimester date" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableDates.map((date) => (
-                          <SelectItem key={date} value={date}>
-                            {format(parseISO(date), "EEE, MMM d, yyyy")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {availableDates.length === 0 && (
+                    <Label>Date</Label>
+                    {availableDates.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         All scheduled dates for this ministry are already loaded for this trimester.
                       </p>
+                    ) : (
+                      <>
+                        <div className="flex justify-center">
+                          <Calendar
+                            mode="single"
+                            selected={newDate ? parseISO(newDate) : undefined}
+                            month={calendarMonth}
+                            onMonthChange={setCalendarMonth}
+                            disabled={(date) =>
+                              !availableDateSet.has(format(date, "yyyy-MM-dd"))
+                            }
+                            onSelect={(date) => {
+                              if (!date) return;
+                              setNewDate(format(date, "yyyy-MM-dd"));
+                            }}
+                            initialFocus
+                            className="rounded-md border"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {newDate
+                            ? `Selected: ${format(parseISO(newDate), "EEE, MMM d, yyyy")}`
+                            : "Pick an available date from the calendar."}
+                        </p>
+                      </>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -501,6 +556,23 @@ export function TeamScheduleWidget({
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="time-of-day">Time of Day</Label>
+                    <Select value={newTimeOfDay} onValueChange={setNewTimeOfDay}>
+                      <SelectTrigger id="time-of-day">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={TIME_OF_DAY_NONE}>All Day</SelectItem>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="evening">Evening</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Use Morning/Evening for camps that meet more than once a day.
+                      Leave on All Day for a single service.
+                    </p>
                   </div>
                   <Button
                     onClick={handleAddEntry}
@@ -548,7 +620,7 @@ export function TeamScheduleWidget({
           </div>
         ) : displayEntries.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No schedule entries for this period.</p>
             <p className="text-sm">No trimester dates are available for this campus yet.</p>
           </div>
@@ -559,6 +631,7 @@ export function TeamScheduleWidget({
                 const date = parseISO(entry.schedule_date);
                 const isShared = !entry.isVirtual && entry.campus_id === null;
                 const ministryType = entry.ministry_type || "weekend";
+                const timeOfDay = entry.time_of_day;
 
                 return (
                   <div
@@ -618,6 +691,15 @@ export function TeamScheduleWidget({
                         {ministryType.charAt(0).toUpperCase() +
                           ministryType.slice(1)}
                       </Badge>
+
+                      {timeOfDay && (
+                        <Badge
+                          variant="secondary"
+                          className={TIME_OF_DAY_COLORS[timeOfDay] || ""}
+                        >
+                          {TIME_OF_DAY_LABELS[timeOfDay] || timeOfDay}
+                        </Badge>
+                      )}
 
                       {isShared && (
                         <TooltipProvider>

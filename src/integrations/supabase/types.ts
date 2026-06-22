@@ -2722,6 +2722,7 @@ export type Database = {
           rotation_period: string
           schedule_date: string
           team_id: string
+          time_of_day: string | null
         }
         Insert: {
           campus_id?: string | null
@@ -2733,6 +2734,7 @@ export type Database = {
           rotation_period?: string
           schedule_date: string
           team_id: string
+          time_of_day?: string | null
         }
         Update: {
           campus_id?: string | null
@@ -2744,6 +2746,7 @@ export type Database = {
           rotation_period?: string
           schedule_date?: string
           team_id?: string
+          time_of_day?: string | null
         }
         Relationships: [
           {
@@ -3138,6 +3141,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      worship_team_archives: {
+        Row: {
+          archived_at: string
+          archived_by: string | null
+          resource_app_key: string
+          team_id: string
+          team_name: string | null
+        }
+        Insert: {
+          archived_at?: string
+          archived_by?: string | null
+          resource_app_key?: string
+          team_id: string
+          team_name?: string | null
+        }
+        Update: {
+          archived_at?: string
+          archived_by?: string | null
+          resource_app_key?: string
+          team_id?: string
+          team_name?: string | null
+        }
+        Relationships: []
       }
       worship_teams: {
         Row: {
