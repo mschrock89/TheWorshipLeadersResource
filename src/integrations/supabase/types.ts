@@ -2884,18 +2884,21 @@ export type Database = {
           admin_campus_id: string | null
           id: string
           role: Database["public"]["Enums"]["app_role"]
+          sort_order: number
           user_id: string
         }
         Insert: {
           admin_campus_id?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          sort_order?: number
           user_id: string
         }
         Update: {
           admin_campus_id?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          sort_order?: number
           user_id?: string
         }
         Relationships: [

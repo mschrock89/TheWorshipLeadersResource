@@ -96,7 +96,8 @@ export function useUserRoles(userId: string | undefined) {
       const { data, error } = await supabase
         .from("user_roles")
         .select("role, admin_campus_id")
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .order("sort_order", { ascending: true });
       
       if (error) throw error;
       return data?.map(r => ({ role: r.role as AppRole, admin_campus_id: r.admin_campus_id })) || [];
@@ -313,10 +314,11 @@ export function useUpdateBaseRoles() {
       
       if (deleteError) throw deleteError;
       
-      // Insert selected base roles
+      // Insert selected base roles, preserving the order they were chosen in
+      // (primary, 2nd, 3rd) so the positions stick on reload.
       const { error: insertError } = await supabase
         .from("user_roles")
-        .insert(nextRoles.map((role) => ({ user_id: userId, role, admin_campus_id: null })));
+        .insert(nextRoles.map((role, index) => ({ user_id: userId, role, admin_campus_id: null, sort_order: index })));
       
       if (insertError) throw insertError;
     },
