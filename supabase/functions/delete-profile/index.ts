@@ -114,7 +114,9 @@ Deno.serve(async (req) => {
         console.log('Profile deleted (no auth user existed)');
       } else {
         return new Response(
-          JSON.stringify({ error: 'Failed to delete user' }),
+          JSON.stringify({
+            error: `Failed to delete user: ${deleteError.message || 'Unknown error'}`,
+          }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
