@@ -201,6 +201,24 @@ export function ReferenceTrackMarkerInput({
   );
 }
 
+export function introTimestampsToMarkers(
+  timestamps: number[],
+  setlistSongs: SetlistSong[],
+): MarkerInput[] {
+  const sortedSongs = [...setlistSongs].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
+
+  return timestamps.slice(0, sortedSongs.length).map((timestamp, index) => {
+    const song = sortedSongs[index];
+    return {
+      id: crypto.randomUUID(),
+      songId: song.id,
+      title: song.title,
+      minutes: Math.floor(timestamp / 60).toString(),
+      seconds: (timestamp % 60).toString().padStart(2, "0"),
+    };
+  });
+}
+
 // Helper to convert markers to database format
 export function markersToDbFormat(markers: MarkerInput[]) {
   return markers

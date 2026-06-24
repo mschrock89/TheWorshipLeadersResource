@@ -4,6 +4,10 @@ import {
   requireAuthenticatedUser,
   requireStaff,
 } from "../_shared/teaching-utils.ts";
+import {
+  transcribeReferenceTrack,
+  type TranscriptSegment,
+} from "../_shared/reference-track-transcription.ts";
 
 interface AutoReorderRequest {
   reference_track_id: string;
@@ -17,12 +21,6 @@ type SongVersionRow = {
   lyrics: string | null;
   version_name: string;
   is_primary: boolean | null;
-};
-
-type TranscriptSegment = {
-  start: number;
-  end: number;
-  text: string;
 };
 
 type ChartSection = {
@@ -128,63 +126,6 @@ function getTranscriptTextInRange(segments: TranscriptSegment[], start: number, 
     .filter((text): text is string => Boolean(text));
 
   return lines.join(" ").replace(/\s+/g, " ").trim();
-}
-
-async function transcribeReferenceTrack(audioUrl: string): Promise<TranscriptSegment[]> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const MAX_TRANSCRIPTION_BYTES = 26_214_400; // 25 MiB hard limit on OpenAI audio transcription uploads.
-  const SAFE_HEADROOM_BYTES = 16_384;
-
-  const audioResponse = await fetch(audioUrl);
-  if (!audioResponse.ok) {
-    throw new Error(`Unable to fetch reference track audio (${audioResponse.status})`);
-  }
-
-  const contentType = audioResponse.headers.get("content-type") || "audio/mpeg";
-  const audioBlob = await audioResponse.blob();
-  const uploadBlob =
-    audioBlob.size > MAX_TRANSCRIPTION_BYTES
-      ? audioBlob.slice(0, Math.max(1, MAX_TRANSCRIPTION_BYTES - SAFE_HEADROOM_BYTES), contentType)
-      : audioBlob;
-
-  if (audioBlob.size > MAX_TRANSCRIPTION_BYTES * 2) {
-    throw new Error(
-      `reference_track_too_large_for_transcription (${audioBlob.size} bytes). Please upload a smaller/lower-bitrate reference track.`,
-    );
-  }
-
-  const fileName = `reference-track.${contentType.includes("wav") ? "wav" : "mp3"}`;
-
-  const formData = new FormData();
-  formData.append("file", new File([uploadBlob], fileName, { type: contentType }));
-  formData.append("model", "whisper-1");
-  formData.append("response_format", "verbose_json");
-
-  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: formData,
-  });
-
-  const json = await response.json();
-  if (!response.ok) {
-    throw new Error(json?.error?.message || "audio_transcription_failed");
-  }
-
-  const rawSegments = Array.isArray(json?.segments) ? json.segments : [];
-  return rawSegments
-    .map((segment: { start?: number; end?: number; text?: string }) => ({
-      start: Number(segment.start || 0),
-      end: Number(segment.end || 0),
-      text: String(segment.text || ""),
-    }))
-    .filter((segment: TranscriptSegment) => segment.text.length > 0);
 }
 
 async function inferSectionOrderFromTranscript(

@@ -13,7 +13,8 @@ const STAFF_ROLES = [
 export function buildCorsHeaders(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-resource-app-key",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
 }
