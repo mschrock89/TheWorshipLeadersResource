@@ -219,12 +219,14 @@ export function introTimestampsToMarkers(
   });
 }
 
-// Helper to convert markers to database format
+// Helper to convert markers to database format.
+// Keep any marker that has a selected song OR a title so adjusted markers are
+// never silently dropped on save (e.g. when a title didn't match a setlist song).
 export function markersToDbFormat(markers: MarkerInput[]) {
   return markers
-    .filter((m) => m.songId) // Only include markers with selected songs
+    .filter((m) => m.songId || m.title.trim())
     .map((m, index) => ({
-      title: m.title,
+      title: m.title.trim(),
       timestamp_seconds:
         parseInt(m.minutes || "0", 10) * 60 + parseInt(m.seconds || "0", 10),
       sequence_order: index,

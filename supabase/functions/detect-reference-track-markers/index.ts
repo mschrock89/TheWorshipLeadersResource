@@ -6,7 +6,8 @@ import {
 import {
   detectIntroMarkerTimestamps,
   transcribeAudioBlob,
-  transcribeReferenceTrack,
+  transcribeAudioFromUrl,
+  type TranscriptionResult,
 } from "../_shared/reference-track-transcription.ts";
 
 Deno.serve(async (req) => {
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
 
     const contentType = req.headers.get("content-type") || "";
     let songCount: number | undefined;
-    let segments;
+    let transcription: TranscriptionResult;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
       }
 
       songCount = songCountRaw != null ? Number(songCountRaw) : undefined;
-      segments = await transcribeAudioBlob(file, file.type || "audio/mpeg");
+      transcription = await transcribeAudioBlob(file, file.type || "audio/mpeg");
     } else {
       const body = await req.json() as { audio_url?: string; song_count?: number };
       if (!body?.audio_url) {
@@ -56,11 +57,11 @@ Deno.serve(async (req) => {
       }
 
       songCount = body.song_count;
-      segments = await transcribeReferenceTrack(body.audio_url);
+      transcription = await transcribeAudioFromUrl(body.audio_url);
     }
 
     const maxMarkers = Number.isFinite(songCount) && songCount! > 0 ? Math.floor(songCount!) : undefined;
-    const introTimestamps = detectIntroMarkerTimestamps(segments, { maxMarkers });
+    const introTimestamps = detectIntroMarkerTimestamps(transcription, { maxMarkers });
 
     return new Response(
       JSON.stringify({
