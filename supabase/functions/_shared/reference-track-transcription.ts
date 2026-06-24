@@ -4,7 +4,12 @@ export type TranscriptSegment = {
   text: string;
 };
 
-const INTRO_WORD_REGEX = /\bintro\b/i;
+const INTRO_WORD_REGEX = /\bintro(?:duction)?\b/i;
+
+function segmentContainsIntroCue(text: string): boolean {
+  const normalized = text.replace(/[^\w\s'-]/g, " ");
+  return INTRO_WORD_REGEX.test(normalized);
+}
 const MARKER_OFFSET_SECONDS = 1.5;
 const MIN_MARKER_GAP_SECONDS = 3;
 
@@ -37,6 +42,10 @@ export async function transcribeAudioBlob(
   formData.append("file", new File([uploadBlob], fileName, { type: contentType }));
   formData.append("model", "whisper-1");
   formData.append("response_format", "verbose_json");
+  formData.append(
+    "prompt",
+    "Intro, Verse, Chorus, Bridge, Tag, Outro. Spoken guide track cues for worship songs.",
+  );
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -95,7 +104,7 @@ export function detectIntroMarkerTimestamps(
   const maxMarkers = options?.maxMarkers;
 
   const rawTimestamps = segments
-    .filter((segment) => INTRO_WORD_REGEX.test(segment.text))
+    .filter((segment) => segmentContainsIntroCue(segment.text))
     .map((segment) => Math.max(0, Math.round(segment.start - offsetSeconds)));
 
   const deduped = dedupeCloseTimestamps(rawTimestamps, minGapSeconds);

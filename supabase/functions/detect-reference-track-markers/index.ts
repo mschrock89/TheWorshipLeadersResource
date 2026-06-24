@@ -6,6 +6,7 @@ import {
 import {
   detectIntroMarkerTimestamps,
   transcribeAudioBlob,
+  transcribeReferenceTrack,
 } from "../_shared/reference-track-transcription.ts";
 
 Deno.serve(async (req) => {
@@ -28,28 +29,37 @@ Deno.serve(async (req) => {
     await requireAuthenticatedUser(userClient);
 
     const contentType = req.headers.get("content-type") || "";
-    if (!contentType.includes("multipart/form-data")) {
-      return new Response(JSON.stringify({ error: "multipart_form_data_required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let songCount: number | undefined;
+    let segments;
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const file = formData.get("file");
+      const songCountRaw = formData.get("song_count");
+
+      if (!(file instanceof File)) {
+        return new Response(JSON.stringify({ error: "audio_file_required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      songCount = songCountRaw != null ? Number(songCountRaw) : undefined;
+      segments = await transcribeAudioBlob(file, file.type || "audio/mpeg");
+    } else {
+      const body = await req.json() as { audio_url?: string; song_count?: number };
+      if (!body?.audio_url) {
+        return new Response(JSON.stringify({ error: "audio_url_or_file_required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      songCount = body.song_count;
+      segments = await transcribeReferenceTrack(body.audio_url);
     }
 
-    const formData = await req.formData();
-    const file = formData.get("file");
-    const songCountRaw = formData.get("song_count");
-
-    if (!(file instanceof File)) {
-      return new Response(JSON.stringify({ error: "audio_file_required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const songCount = songCountRaw != null ? Number(songCountRaw) : undefined;
     const maxMarkers = Number.isFinite(songCount) && songCount! > 0 ? Math.floor(songCount!) : undefined;
-
-    const segments = await transcribeAudioBlob(file, file.type || "audio/mpeg");
     const introTimestamps = detectIntroMarkerTimestamps(segments, { maxMarkers });
 
     return new Response(

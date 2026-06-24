@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ReferenceTrackMarkerInput, MarkerInput, markersToDbFormat, introTimestampsToMarkers, SetlistSong } from "./ReferenceTrackMarkerInput";
-import { detectReferenceTrackMarkers } from "@/lib/detectReferenceTrackMarkers";
+import { detectReferenceTrackMarkers, detectReferenceTrackMarkersFromUrl, isMp3File } from "@/lib/detectReferenceTrackMarkers";
 
 interface ReferenceTrackUploadDialogProps {
   open: boolean;
@@ -36,6 +36,7 @@ export function ReferenceTrackUploadDialog({
 }: ReferenceTrackUploadDialogProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "uploading" | "detecting" | "complete">("idle");
   const [progress, setProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
@@ -77,11 +78,18 @@ export function ReferenceTrackUploadDialog({
     setMarkers([]);
     setMarkersOpen(false);
     setDetectingMarkers(false);
+    setUploadPhase("idle");
     detectionRequestId.current += 1;
   };
 
   const analyzeMarkersFromAudio = useCallback(async (file: File, requestId: number) => {
-    if (setlistSongs.length === 0) return;
+    if (setlistSongs.length === 0) {
+      toast({
+        title: "No setlist songs",
+        description: "Add songs to the setlist first so auto-detected markers can be mapped.",
+      });
+      return;
+    }
 
     setDetectingMarkers(true);
     try {
@@ -124,7 +132,7 @@ export function ReferenceTrackUploadDialog({
     const requestId = ++detectionRequestId.current;
     setSelectedFile(file);
     setMarkers([]);
-    setMarkersOpen(false);
+    setMarkersOpen(true);
 
     try {
       const duration = await extractAudioDuration(file);
@@ -160,7 +168,7 @@ export function ReferenceTrackUploadDialog({
     setIsDragging(false);
 
     const file = e.dataTransfer.files[0];
-    if (file && file.type === "audio/mpeg") {
+    if (file && isMp3File(file)) {
       void processSelectedFile(file);
     } else {
       toast({
@@ -173,7 +181,7 @@ export function ReferenceTrackUploadDialog({
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type === "audio/mpeg") {
+    if (file && isMp3File(file)) {
       void processSelectedFile(file);
     } else if (file) {
       toast({
@@ -188,6 +196,7 @@ export function ReferenceTrackUploadDialog({
     if (!selectedFile || !title.trim() || !user) return;
 
     setUploading(true);
+    setUploadPhase("uploading");
     setProgress(0);
 
     try {
@@ -244,8 +253,22 @@ export function ReferenceTrackUploadDialog({
 
       if (insertError) throw insertError;
 
-      // Save markers if any
-      const dbMarkers = markersToDbFormat(markers);
+      // Save markers — use pre-detected markers, or auto-detect from uploaded audio
+      let dbMarkers = markersToDbFormat(markers);
+
+      if (dbMarkers.length === 0 && setlistSongs.length > 0) {
+        setUploadPhase("detecting");
+        setProgress(92);
+        try {
+          const result = await detectReferenceTrackMarkersFromUrl(urlData.publicUrl, setlistSongs.length);
+          dbMarkers = markersToDbFormat(
+            introTimestampsToMarkers(result.intro_timestamps, setlistSongs),
+          );
+        } catch (detectError) {
+          console.warn("Post-upload marker detection failed:", detectError);
+        }
+      }
+
       if (dbMarkers.length > 0 && insertedTrack) {
         const { error: markersError } = await supabase
           .from("reference_track_markers")
@@ -260,6 +283,11 @@ export function ReferenceTrackUploadDialog({
 
         if (markersError) {
           console.warn("Failed to save markers:", markersError);
+          toast({
+            title: "Markers not saved",
+            description: markersError.message || "The track uploaded, but song markers could not be saved.",
+            variant: "destructive",
+          });
         }
       }
 
@@ -280,10 +308,13 @@ export function ReferenceTrackUploadDialog({
       }
 
       setProgress(100);
+      setUploadPhase("complete");
 
       toast({
         title: "Weekend track uploaded",
-        description: `"${title.trim()}" added with ${dbMarkers.length} marker${dbMarkers.length !== 1 ? 's' : ''}`,
+        description: dbMarkers.length > 0
+          ? `"${title.trim()}" added with ${dbMarkers.length} auto-detected marker${dbMarkers.length !== 1 ? "s" : ""}`
+          : `"${title.trim()}" uploaded, but no "Intro" cues were detected. You can add markers manually.`,
       });
 
       // Invalidate queries to refresh data
@@ -302,6 +333,7 @@ export function ReferenceTrackUploadDialog({
       });
     } finally {
       setUploading(false);
+      setUploadPhase("idle");
     }
   };
 
@@ -349,7 +381,7 @@ export function ReferenceTrackUploadDialog({
             <input
               id="reference-audio-input"
               type="file"
-              accept="audio/mpeg"
+              accept="audio/mpeg,audio/mp3,.mp3"
               className="hidden"
               onChange={handleFileSelect}
               disabled={uploading}
@@ -426,7 +458,11 @@ export function ReferenceTrackUploadDialog({
             <div className="space-y-2">
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-muted-foreground text-center">
-                {progress < 100 ? "Uploading..." : "Complete!"}
+                {uploadPhase === "detecting"
+                  ? "Analyzing audio for Intro cues..."
+                  : progress < 100
+                    ? "Uploading..."
+                    : "Complete!"}
               </p>
             </div>
           )}

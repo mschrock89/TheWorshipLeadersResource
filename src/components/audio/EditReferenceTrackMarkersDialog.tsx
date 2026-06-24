@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, Clock, Save } from "lucide-react";
+import { Loader2, Clock, Save, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,10 @@ import {
   MarkerInput,
   markersToDbFormat,
   dbToMarkerFormat,
+  introTimestampsToMarkers,
   SetlistSong,
 } from "./ReferenceTrackMarkerInput";
+import { detectReferenceTrackMarkersFromUrl } from "@/lib/detectReferenceTrackMarkers";
 
 interface ReferenceTrackMarker {
   id: string;
@@ -31,6 +33,7 @@ interface EditReferenceTrackMarkersDialogProps {
   onOpenChange: (open: boolean) => void;
   referenceTrackId: string;
   referenceTrackTitle: string;
+  audioUrl: string;
   existingMarkers: ReferenceTrackMarker[];
   setlistSongs: SetlistSong[];
 }
@@ -40,11 +43,13 @@ export function EditReferenceTrackMarkersDialog({
   onOpenChange,
   referenceTrackId,
   referenceTrackTitle,
+  audioUrl,
   existingMarkers,
   setlistSongs,
 }: EditReferenceTrackMarkersDialogProps) {
   const [markers, setMarkers] = useState<MarkerInput[]>([]);
   const [saving, setSaving] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -63,6 +68,40 @@ export function EditReferenceTrackMarkersDialog({
       setMarkers(converted);
     }
   }, [open, existingMarkers, setlistSongs]);
+
+  const handleAutoDetect = async () => {
+    if (setlistSongs.length === 0) {
+      toast({
+        title: "No setlist songs",
+        description: "Add songs to the setlist first so auto-detected markers can be mapped.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDetecting(true);
+    try {
+      const result = await detectReferenceTrackMarkersFromUrl(audioUrl, setlistSongs.length);
+      const detectedMarkers = introTimestampsToMarkers(result.intro_timestamps, setlistSongs);
+      setMarkers(detectedMarkers);
+
+      toast({
+        title: detectedMarkers.length > 0 ? "Song markers detected" : "No intro cues found",
+        description: detectedMarkers.length > 0
+          ? `Found ${detectedMarkers.length} "Intro" cue${detectedMarkers.length !== 1 ? "s" : ""}. Save to apply them.`
+          : 'Could not hear the word "Intro" in this track.',
+        variant: detectedMarkers.length > 0 ? "default" : "destructive",
+      });
+    } catch (error) {
+      toast({
+        title: "Auto-detection failed",
+        description: error instanceof Error ? error.message : "Could not analyze the audio.",
+        variant: "destructive",
+      });
+    } finally {
+      setDetecting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -126,25 +165,46 @@ export function EditReferenceTrackMarkersDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Auto-detect markers from spoken "Intro" cues, then review and save.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={handleAutoDetect}
+              disabled={saving || detecting}
+            >
+              {detecting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              Auto-detect
+            </Button>
+          </div>
+
           <ReferenceTrackMarkerInput
             markers={markers}
             onChange={setMarkers}
             setlistSongs={setlistSongs}
-            disabled={saving}
+            disabled={saving || detecting}
           />
 
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={saving}
+              disabled={saving || detecting}
               className="flex-1"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || detecting}
               className="flex-1"
             >
               {saving ? (

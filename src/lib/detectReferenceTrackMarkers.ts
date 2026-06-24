@@ -12,6 +12,43 @@ export interface DetectedIntroMarkersResult {
   intros_found: number;
 }
 
+async function parseFunctionError(error: unknown, fallback: string): Promise<string> {
+  let message = fallback;
+  const errWithContext = error as { message?: string; context?: Response };
+  if (errWithContext.message) {
+    message = errWithContext.message;
+  }
+  if (errWithContext.context) {
+    try {
+      const payload = await errWithContext.context.json();
+      if (payload?.error && typeof payload.error === "string") {
+        message = payload.error;
+      }
+    } catch {
+      // Keep the original message.
+    }
+  }
+  return message;
+}
+
+export async function detectReferenceTrackMarkersFromUrl(
+  audioUrl: string,
+  songCount: number,
+): Promise<DetectedIntroMarkersResult> {
+  const { data, error } = await supabase.functions.invoke("detect-reference-track-markers", {
+    body: {
+      audio_url: audioUrl,
+      song_count: songCount,
+    },
+  });
+
+  if (error) {
+    throw new Error(await parseFunctionError(error, "Could not detect song markers from the audio."));
+  }
+
+  return data as DetectedIntroMarkersResult;
+}
+
 export async function detectReferenceTrackMarkers(
   file: File,
   songCount: number,
@@ -46,4 +83,12 @@ export async function detectReferenceTrackMarkers(
   }
 
   return payload;
+}
+
+export function isMp3File(file: File): boolean {
+  return (
+    file.type === "audio/mpeg" ||
+    file.type === "audio/mp3" ||
+    /\.mp3$/i.test(file.name)
+  );
 }
