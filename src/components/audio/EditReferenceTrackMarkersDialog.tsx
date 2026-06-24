@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, Clock, Save, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -53,21 +53,30 @@ export function EditReferenceTrackMarkersDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Initialize markers when dialog opens
+  // Initialize markers only when the dialog opens or the selected track changes.
+  // We intentionally avoid depending on existingMarkers/setlistSongs because the
+  // parent rebuilds those arrays on every render, which would otherwise wipe out
+  // freshly auto-detected or edited markers on the next re-render.
+  const initializedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (open) {
-      const converted = dbToMarkerFormat(
-        existingMarkers.map((m) => ({
-          id: m.id,
-          title: m.title,
-          timestamp_seconds: m.timestampSeconds,
-          sequence_order: m.sequenceOrder,
-        })),
-        setlistSongs
-      );
-      setMarkers(converted);
+    if (!open) {
+      initializedKeyRef.current = null;
+      return;
     }
-  }, [open, existingMarkers, setlistSongs]);
+    if (initializedKeyRef.current === referenceTrackId) return;
+    initializedKeyRef.current = referenceTrackId;
+
+    const converted = dbToMarkerFormat(
+      existingMarkers.map((m) => ({
+        id: m.id,
+        title: m.title,
+        timestamp_seconds: m.timestampSeconds,
+        sequence_order: m.sequenceOrder,
+      })),
+      setlistSongs
+    );
+    setMarkers(converted);
+  }, [open, referenceTrackId, existingMarkers, setlistSongs]);
 
   const handleAutoDetect = async () => {
     if (setlistSongs.length === 0) {
