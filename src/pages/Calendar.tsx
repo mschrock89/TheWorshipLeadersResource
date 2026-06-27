@@ -24,7 +24,12 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
-import { normalizeWeekendWorshipMinistryType, POSITION_SLOTS } from "@/lib/constants";
+import {
+  normalizeWeekendWorshipMinistryType,
+  POSITION_SLOTS,
+  isSessionSetMinistryType,
+  normalizeSessionSetMinistryType,
+} from "@/lib/constants";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 import {
   useDeleteServiceTimeOverride,
@@ -746,12 +751,9 @@ function StandardCalendar() {
       );
 
       if (ministryFilter && ministryFilter !== "all") {
-        const ministryMatches = matches.filter((entry) =>
+        matches = matches.filter((entry) =>
           scheduleEntryMatchesCalendarFilter(entry.ministryType, ministryFilter),
         );
-        if (ministryMatches.length > 0) {
-          matches = ministryMatches;
-        }
       }
 
       return matches[0] || null;
@@ -764,12 +766,9 @@ function StandardCalendar() {
     let matches = scheduledDates.filter((s) => s.scheduleDate === dateStr);
 
     if (ministryFilter && ministryFilter !== "all") {
-      const ministryMatches = matches.filter((entry) =>
+      matches = matches.filter((entry) =>
         scheduleEntryMatchesCalendarFilter(entry.ministryType, ministryFilter),
       );
-      if (ministryMatches.length > 0) {
-        matches = ministryMatches;
-      }
     }
 
     return matches[0] || null;
@@ -1640,11 +1639,93 @@ function StandardCalendar() {
                     })}
                   </div>
                 ) : (() => {
+                  const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : undefined;
+
+                  // Multi-session services (e.g. Student Camp Morning/Evening) run more than
+                  // one worship set + roster on the same day. When such a ministry is the
+                  // active filter, render every session so the user can view both the Morning
+                  // and Evening set and roster from a single calendar click.
+                  const sessionBase =
+                    ministryFilter && isSessionSetMinistryType(ministryFilter)
+                      ? normalizeSessionSetMinistryType(ministryFilter)
+                      : null;
+
+                  if (sessionBase) {
+                    // Only split into Morning/Evening sessions that are ACTUALLY scheduled in
+                    // Team Builder for this date (rows with an explicit time_of_day). Driving the
+                    // sessions off real schedule rows prevents fabricating an empty/duplicate
+                    // session card (e.g. an "Afternoon" roster that just mirrored the base team).
+                    const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
+                    const seenSessionTimes = new Set<string>();
+                    const sessionEntries = selectedDayScheduleEntries
+                      .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
+                      .filter((entry) => {
+                        const tod = entry.time_of_day;
+                        if (!tod || seenSessionTimes.has(tod)) return false;
+                        seenSessionTimes.add(tod);
+                        return true;
+                      })
+                      .sort(
+                        (a, b) =>
+                          (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
+                          (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
+                      );
+
+                    if (sessionEntries.length > 0) {
+                      return (
+                        <div className="space-y-5 mb-4">
+                          {sessionEntries.map((entry) => {
+                            const timeOfDay = entry.time_of_day as string;
+                            const variant = `${sessionBase}_${timeOfDay}`;
+                            const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+
+                            return (
+                              <div key={entry.id} className="rounded-md border border-border/70 p-3 sm:p-4">
+                                <div className="mb-2 flex items-center gap-2">
+                                  <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
+                                    {sessionLabel}
+                                  </Badge>
+                                  {entry.worship_teams?.name && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {entry.worship_teams.name}
+                                    </span>
+                                  )}
+                                </div>
+                                <SongsPreview
+                                  date={selectedDate}
+                                  campusId={sessionCampusId}
+                                  ministryFilter={variant}
+                                  readOnly={isCrossCampusReadOnly}
+                                />
+                                <div className="flex items-center justify-between mb-2 gap-2">
+                                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
+                                </div>
+                                <BandRoster
+                                  date={selectedDate}
+                                  teamId={entry.team_id}
+                                  showAudioVideo
+                                  ministryFilter={sessionBase}
+                                  timeOfDay={timeOfDay}
+                                  scheduledEntries={[entry]}
+                                  rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
+                                  scheduledMinistries={[sessionBase]}
+                                  campusId={sessionCampusId}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                    // No explicit Morning/Evening rows scheduled — fall through to the standard
+                    // single roster view below.
+                  }
+
                   return (
                     <>
                       <SongsPreview
                         date={selectedDate}
-                        campusId={campusFilter !== "network-wide" ? campusFilter : undefined}
+                        campusId={sessionCampusId}
                         ministryFilter={ministryFilter}
                         readOnly={isCrossCampusReadOnly}
                       />
@@ -1665,7 +1746,7 @@ function StandardCalendar() {
                           }
                           return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
                         })()}
-                        campusId={campusFilter !== "network-wide" ? campusFilter : undefined}
+                        campusId={sessionCampusId}
                       />
                     </>
                   );
@@ -2621,6 +2702,7 @@ function BandRoster({
   scheduledEntries = [],
   scheduledMinistries = [],
   rotationPeriodName,
+  timeOfDay,
 }: {
   date: Date;
   teamId?: string;
@@ -2630,6 +2712,9 @@ function BandRoster({
   scheduledEntries?: TeamScheduleEntry[];
   scheduledMinistries?: string[];
   rotationPeriodName?: string | null;
+  // For multi-session services (e.g. Student Camp Morning/Evening) this selects the
+  // matching team_schedule row by its time_of_day so each session shows its own team.
+  timeOfDay?: string | null;
 }) {
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -2675,7 +2760,7 @@ function BandRoster({
 
       const { data, error } = await supabase
         .from("team_schedule")
-        .select("id, team_id, campus_id, ministry_type, schedule_date, rotation_period, created_at")
+        .select("id, team_id, campus_id, ministry_type, schedule_date, rotation_period, time_of_day, created_at")
         .eq("resource_app_key", resourceAppKey)
         .in("schedule_date", datesToCheck)
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
@@ -2721,23 +2806,61 @@ function BandRoster({
       : undefined;
   const isProductionMinistryFilter = effectiveMinistryFilter === "production";
   const isVideoMinistryFilter = effectiveMinistryFilter === "video";
+  // Student Camp carries its production crew (FOH/MON/Lyrics) on the camp team itself rather
+  // than a separately scheduled Production team, so those members live in the main roster.
+  const isStudentCampRosterFilter =
+    normalizeSessionSetMinistryType(effectiveMinistryFilter) === "student_camp";
 
   const effectiveScheduledEntries =
     directScheduleEntries.length > 0 ? (directScheduleEntries as TeamScheduleEntry[]) : scheduledEntries;
 
-  const productionEntry = useMemo(
-    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ?? null,
-    [effectiveScheduledEntries],
+  // For multi-session services (Student Camp Morning/Evening) prefer the support row that
+  // matches this session's time_of_day so each session shows its own production/video crew.
+  const pickSupportEntry = useCallback(
+    (ministry: string) => {
+      const matches = effectiveScheduledEntries.filter((entry) => entry.ministry_type === ministry);
+      if (matches.length === 0) return null;
+      if (timeOfDay) {
+        return (
+          matches.find((entry) => entry.time_of_day === timeOfDay) ??
+          matches.find((entry) => !entry.time_of_day) ??
+          matches[0]
+        );
+      }
+      // Weekend/standard view: ignore support rows tied to a specific camp session.
+      // Camp Morning/Evening (e.g. Student Camp) production/video rows carry a
+      // time_of_day and belong to that session, not the weekend worship roster.
+      return matches.find((entry) => !entry.time_of_day) ?? null;
+    },
+    [effectiveScheduledEntries, timeOfDay],
   );
-  const videoEntry = useMemo(
-    () => effectiveScheduledEntries.find((entry) => entry.ministry_type === "video") ?? null,
-    [effectiveScheduledEntries],
-  );
+  const productionEntry = useMemo(() => pickSupportEntry("production"), [pickSupportEntry]);
+  const videoEntry = useMemo(() => pickSupportEntry("video"), [pickSupportEntry]);
 
   // Pick the schedule row that matches the active ministry filter. Weekend worship is the
   // default, but production/video views must key off their own schedule entry — otherwise
   // the roster pulls from the weekend band team and shows the wrong FOH engineer.
   const directTeamEntry = useMemo(() => {
+    // Multi-session services (Student Camp Morning/Evening) schedule a separate team per
+    // session via team_schedule.time_of_day. Pick the row matching this session so each
+    // session renders its own roster instead of an arbitrary first row.
+    if (timeOfDay) {
+      const baseMinistry =
+        normalizeSessionSetMinistryType(ministryFilter) || ministryFilter;
+      const sessionEntries = effectiveScheduledEntries.filter(
+        (entry) =>
+          (normalizeSessionSetMinistryType(entry.ministry_type) || entry.ministry_type) ===
+          baseMinistry,
+      );
+      return (
+        sessionEntries.find((entry) => entry.time_of_day === timeOfDay) ??
+        sessionEntries.find((entry) => !entry.time_of_day) ??
+        sessionEntries[0] ??
+        effectiveScheduledEntries[0] ??
+        null
+      );
+    }
+
     if (isProductionMinistryFilter) {
       return (
         effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ??
@@ -2774,6 +2897,8 @@ function BandRoster({
     isVideoMinistryFilter,
     isWeekendTeamFilter,
     weekendMinistryAliases,
+    timeOfDay,
+    ministryFilter,
   ]);
 
   const effectiveTeamId =
@@ -3103,7 +3228,14 @@ function BandRoster({
     const hasProdOrVideoMinistry = m.ministryTypes.some((mt) => productionMinistryTypes.includes(mt));
     const hasProdOrVideoRole = memberHasProductionRole(m) || memberHasVideoRole(m);
     const hasNoMinistryTags = !m.ministryTypes || m.ministryTypes.length === 0;
-    return (hasProdOrVideoMinistry && hasProdOrVideoRole) || (hasNoMinistryTags && hasProdOrVideoRole);
+    // Student Camp tags its production crew with the camp ministry (not production/video),
+    // so surface any camp member with a production/video role in the support columns.
+    const isSelfContainedSupport = isStudentCampRosterFilter && hasProdOrVideoRole;
+    return (
+      (hasProdOrVideoMinistry && hasProdOrVideoRole) ||
+      (hasNoMinistryTags && hasProdOrVideoRole) ||
+      isSelfContainedSupport
+    );
   });
   const fallbackProductionMembers = fallbackProductionVideoMembers.filter((member) =>
     memberHasProductionRole(member),

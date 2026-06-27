@@ -113,6 +113,19 @@ const MINISTRY_COLORS: Record<string, string> = {
   encounter: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   eon: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   student: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  student_camp: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
+  kids_camp: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
+};
+
+const MINISTRY_LABELS: Record<string, string> = {
+  weekend: "Weekend",
+  kids_camp: "Kids Camp",
+  student_camp: "Student Camp",
+  production: "Production",
+  video: "Video",
+  encounter: "HS Worship",
+  eon: "MS Worship",
+  student: "Student",
 };
 
 export function TeamScheduleWidget({
@@ -688,8 +701,8 @@ export function TeamScheduleWidget({
                         variant="secondary"
                         className={MINISTRY_COLORS[ministryType] || ""}
                       >
-                        {ministryType.charAt(0).toUpperCase() +
-                          ministryType.slice(1)}
+                        {MINISTRY_LABELS[ministryType] ||
+                          ministryType.charAt(0).toUpperCase() + ministryType.slice(1)}
                       </Badge>
 
                       {timeOfDay && (

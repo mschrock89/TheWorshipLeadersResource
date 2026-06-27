@@ -1350,6 +1350,9 @@ export default function Profile() {
                                 const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
+                                // Student Camp teams carry their own production crew (FOH, MON, Lyrics)
+                                // rather than a separately scheduled Production ministry.
+                                const showStudentCampProduction = ministryType === 'student_camp';
                                 const showVideoPositions = ministryType === 'video';
                                 const showCreativePositions = ministryType === 'creative';
                                 const showStudentPositions = ministryType === STUDENT_TEAM_BUILDER_MINISTRY_TYPE;
@@ -1413,6 +1416,17 @@ export default function Profile() {
                                             campus.id,
                                             ministryPositions,
                                             POSITION_CATEGORIES.audio,
+                                          )
+                                        )}
+
+                                        {/* Student Camp production crew (FOH, MON, Lyrics) */}
+                                        {showStudentCampProduction && (
+                                          renderMinistryPositionGroup(
+                                            "Production:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            ["sound_tech", "mon", "media"],
                                           )
                                         )}
                                         

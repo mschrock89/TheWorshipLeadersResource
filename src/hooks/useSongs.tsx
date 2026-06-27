@@ -1132,7 +1132,11 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         const ministryLabels: Record<string, string> = {
           weekend: "Weekend Worship",
           kids_camp: "Kids Camp",
+          kids_camp_morning: "Kids Camp Morning",
+          kids_camp_afternoon: "Kids Camp Afternoon",
           student_camp: "Student Camp",
+          student_camp_morning: "Student Camp Morning",
+          student_camp_evening: "Student Camp Evening",
           encounter: "HS Worship",
           eon: "MS Worship",
           eon_weekend: "MS Worship Weekend",

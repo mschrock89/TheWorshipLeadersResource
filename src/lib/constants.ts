@@ -410,7 +410,10 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   weekend: ["Vocalists", "Speaker", "Band"],
   worship_night: ["Vocalists", "Band"],
   kids_camp: ["Vocalists", "Band"],
-  student_camp: ["Vocalists", "Band"],
+  // Student Camp teams carry their own production crew (FOH, MON, Lyrics) instead of a
+  // separately scheduled Production team. getTeamTemplateSlotConfigs limits the visible
+  // production slots for this ministry to those three.
+  student_camp: ["Vocalists", "Band", "Production"],
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],

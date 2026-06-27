@@ -1,4 +1,14 @@
-import { POSITION_SLOTS } from "@/lib/constants";
+import { POSITION_SLOTS, normalizeSessionSetMinistryType } from "@/lib/constants";
+
+// Student Camp teams expose only these production positions (FOH, MON, Lyrics) so the
+// camp's production crew can be assigned on the team itself rather than a separate
+// Production team. "propresenter" is the Lyrics slot.
+const STUDENT_CAMP_PRODUCTION_SLOT_IDS = ["foh", "mon", "propresenter"];
+
+function isStudentCampTemplateContext(context?: TeamTemplateContext | null) {
+  const base = normalizeSessionSetMinistryType(context?.ministryType) ?? context?.ministryType;
+  return base === "student_camp";
+}
 
 export type VocalSlotGender = "male" | "female";
 export interface TeamTemplateContext {
@@ -213,7 +223,13 @@ export function getTeamTemplateSlotConfigs(
   const bandSlots = template.bandSlots
     .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
     .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
-  const productionSlots = template.productionSlots
+  // Student Camp surfaces a fixed set of production slots (FOH, MON, Lyrics) regardless of
+  // the team's stored template, since the same team is shared across ministries and we do
+  // not want to mutate its weekend production config.
+  const productionSlotIds = isStudentCampTemplateContext(context)
+    ? STUDENT_CAMP_PRODUCTION_SLOT_IDS
+    : template.productionSlots;
+  const productionSlots = productionSlotIds
     .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
     .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));
   const videoSlots = template.videoSlots

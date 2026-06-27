@@ -1489,39 +1489,41 @@ export default function SetPlanner() {
         />
 
         {/* Main content: two panels */}
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4">
-          {/* Left: Building set */}
-          <BuildingSet
-            songs={buildingSongs}
-            onRemoveSong={handleRemoveSong}
-            onReorderSongs={handleReorderSongs}
-            onKeyChange={handleKeyChange}
-            onVocalistChange={handleVocalistChange}
-            onYoutubeLinkChange={handleYoutubeLinkChange}
-            onEditingChange={setIsEditingPublishedSet}
-            onSave={handleSave}
-            isSaving={saveDraftSet.isPending}
-            notes={notes}
-            onNotesChange={setNotes}
-            hasConflicts={hasConflicts}
-            vocalists={effectiveVocalists}
-            isPublished={existingSet?.status === 'published'}
-            approvalStatus={approvalStatus}
-            rejectionNotes={rejectionNotes}
-            publishButton={
-              approvalStatus !== "pending_approval" ? (
-                <PublishSetlistDialog
-                  draftSetId={lastSavedSetId || undefined}
-                  songs={buildingSongs}
-                  targetDate={selectedDate}
-                  ministryType={selectedMinistry}
-                  campusId={effectiveCampusId}
-                  customServiceId={selectedCustomService?.id || undefined}
-                  onPublished={handlePublished}
-                />
-              ) : null
-            }
-          />
+        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:items-start">
+          {/* Left: Building set - sticks in view while scrolling the song list */}
+          <div className="lg:sticky lg:top-4 lg:self-start lg:h-[calc(100vh-2rem)]">
+            <BuildingSet
+              songs={buildingSongs}
+              onRemoveSong={handleRemoveSong}
+              onReorderSongs={handleReorderSongs}
+              onKeyChange={handleKeyChange}
+              onVocalistChange={handleVocalistChange}
+              onYoutubeLinkChange={handleYoutubeLinkChange}
+              onEditingChange={setIsEditingPublishedSet}
+              onSave={handleSave}
+              isSaving={saveDraftSet.isPending}
+              notes={notes}
+              onNotesChange={setNotes}
+              hasConflicts={hasConflicts}
+              vocalists={effectiveVocalists}
+              isPublished={existingSet?.status === 'published'}
+              approvalStatus={approvalStatus}
+              rejectionNotes={rejectionNotes}
+              publishButton={
+                approvalStatus !== "pending_approval" ? (
+                  <PublishSetlistDialog
+                    draftSetId={lastSavedSetId || undefined}
+                    songs={buildingSongs}
+                    targetDate={selectedDate}
+                    ministryType={selectedMinistry}
+                    campusId={effectiveCampusId}
+                    customServiceId={selectedCustomService?.id || undefined}
+                    onPublished={handlePublished}
+                  />
+                ) : null
+              }
+            />
+          </div>
 
           {/* Right: Song browser */}
           <Card className="flex flex-col min-w-0 min-h-[400px] lg:min-h-[500px]">

@@ -976,6 +976,12 @@ function SetlistTeamRoster({
     : ministryType;
   const effectiveCustomServiceId = isSessionSet ? null : customServiceId;
   const isWeekendSetlist = normalizeWeekendWorshipMinistryType(rosterMinistryType) === "weekend";
+  // For camp sessions (Student Camp Morning/Evening, Kids Camp Morning/Afternoon) the
+  // session's time_of_day selects which scheduled worship + Production/Video rows belong
+  // to this set, so each session shows its own crew under the camp (not Weekend Worship).
+  const sessionTimeOfDay = isSessionSet
+    ? (getMinistrySession(ministryType).sessionLabel?.toLowerCase() ?? null)
+    : null;
   const weekendPairDate = useMemo(() => {
     if (!isWeekendSetlist) return null;
     const day = date.getDay();
@@ -1033,8 +1039,10 @@ function SetlistTeamRoster({
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const datesToCheck = [planDate];
 
+      // Only weekend worship sets span a Sat/Sun pair. A camp session that happens to
+      // land on a weekend must NOT pull in the weekend service's roster from the paired day.
       const isWeekendDate = date.getDay() === 0 || date.getDay() === 6;
-      if (isWeekendDate) {
+      if (isWeekendDate && isWeekendSetlist) {
         const pair = new Date(date);
         pair.setDate(date.getDay() === 6 ? date.getDate() + 1 : date.getDate() - 1);
         datesToCheck.push(format(pair, "yyyy-MM-dd"));
@@ -1042,13 +1050,17 @@ function SetlistTeamRoster({
 
       let query = supabase
         .from("team_schedule")
-        .select("team_id, campus_id, ministry_type, schedule_date, rotation_period, created_at")
+        .select("team_id, campus_id, ministry_type, schedule_date, rotation_period, time_of_day, created_at")
         .eq("resource_app_key", resourceAppKey)
         .in("schedule_date", datesToCheck)
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
 
       if (rosterMinistryType === "weekend" || rosterMinistryType === "weekend_team" || rosterMinistryType === "sunday_am") {
         query = query.in("ministry_type", [...weekendAliases, ...WEEKEND_SUPPORT_MINISTRY_TYPES]);
+      } else if (isSessionSet) {
+        // Camp sessions (Student Camp / Kids Camp) can have their own Production/Video crew
+        // scheduled alongside the worship team, keyed off the session's time_of_day.
+        query = query.in("ministry_type", [rosterMinistryType, ...WEEKEND_SUPPORT_MINISTRY_TYPES]);
       } else {
         query = query.eq("ministry_type", rosterMinistryType);
       }
@@ -1085,26 +1097,68 @@ function SetlistTeamRoster({
 
   const teamEntry = useMemo(() => {
     if (!teamEntries || teamEntries.length === 0) return null;
-    if (!isWeekendSetlist) return teamEntries[0];
+    if (!isWeekendSetlist) {
+      if (isSessionSet) {
+        // teamEntries now also holds Production/Video rows, so pick the worship row that
+        // matches this session's time_of_day rather than an arbitrary first entry.
+        const worshipRows = teamEntries.filter((entry) => entry.ministry_type === rosterMinistryType);
+        return (
+          worshipRows.find((entry) => entry.time_of_day === sessionTimeOfDay) ??
+          worshipRows.find((entry) => !entry.time_of_day) ??
+          worshipRows[0] ??
+          null
+        );
+      }
+      return teamEntries[0];
+    }
 
     const weekendAliases = new Set(["weekend", "sunday_am", "weekend_team"]);
     return teamEntries.find((entry) => weekendAliases.has(entry.ministry_type || "")) || teamEntries[0];
-  }, [isWeekendSetlist, teamEntries]);
+  }, [isWeekendSetlist, isSessionSet, rosterMinistryType, sessionTimeOfDay, teamEntries]);
+
+  // Pick the support (Production/Video) schedule row that belongs to this set.
+  // - Weekend worship: only all-day rows (camp session rows carry a time_of_day and
+  //   belong to that session, NOT the weekend roster).
+  // - Camp session (Student Camp Morning/Evening, Kids Camp ...): the row matching this
+  //   session's time_of_day, so the crew shows under the camp, not Weekend Worship.
+  const pickSupportTeamEntry = useCallback(
+    (ministry: string) => {
+      const matches = teamEntries.filter((entry) => entry.ministry_type === ministry);
+      if (matches.length === 0) return null;
+      if (isWeekendSetlist) {
+        return matches.find((entry) => !entry.time_of_day) ?? null;
+      }
+      if (isSessionSet) {
+        return (
+          matches.find((entry) => entry.time_of_day === sessionTimeOfDay) ??
+          matches.find((entry) => !entry.time_of_day) ??
+          matches[0]
+        );
+      }
+      return null;
+    },
+    [isWeekendSetlist, isSessionSet, sessionTimeOfDay, teamEntries]
+  );
 
   const productionTeamEntry = useMemo(
-    () => (isWeekendSetlist ? teamEntries.find((entry) => entry.ministry_type === "production") : null),
-    [isWeekendSetlist, teamEntries]
+    () => pickSupportTeamEntry("production"),
+    [pickSupportTeamEntry]
   );
 
   const videoTeamEntry = useMemo(
-    () => (isWeekendSetlist ? teamEntries.find((entry) => entry.ministry_type === "video") : null),
-    [isWeekendSetlist, teamEntries]
+    () => pickSupportTeamEntry("video"),
+    [pickSupportTeamEntry]
   );
 
   const productionPairTeamEntry = useMemo(
     () =>
       isWeekendSetlist && weekendPairDate
-        ? teamEntries.find((entry) => entry.ministry_type === "production" && entry.schedule_date === weekendPairDate)
+        ? teamEntries.find(
+            (entry) =>
+              entry.ministry_type === "production" &&
+              !entry.time_of_day &&
+              entry.schedule_date === weekendPairDate
+          )
         : null,
     [isWeekendSetlist, teamEntries, weekendPairDate]
   );
@@ -1112,7 +1166,12 @@ function SetlistTeamRoster({
   const videoPairTeamEntry = useMemo(
     () =>
       isWeekendSetlist && weekendPairDate
-        ? teamEntries.find((entry) => entry.ministry_type === "video" && entry.schedule_date === weekendPairDate)
+        ? teamEntries.find(
+            (entry) =>
+              entry.ministry_type === "video" &&
+              !entry.time_of_day &&
+              entry.schedule_date === weekendPairDate
+          )
         : null,
     [isWeekendSetlist, teamEntries, weekendPairDate]
   );

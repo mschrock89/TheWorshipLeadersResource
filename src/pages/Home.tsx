@@ -67,7 +67,7 @@ type HomePageConfig = {
 const homePageConfigs: Record<"worship" | "students", HomePageConfig> = {
   worship: {
     eyebrow: "Experience Music",
-    titleLines: ["Worship Leader's", "Resource"],
+    titleLines: ["Church Resource"],
     description: "Your central hub for team schedules, resources, and collaboration.",
     titleClassName: "text-4xl sm:text-5xl lg:text-6xl",
     titleAccentClassName: "text-gradient-blue",
@@ -372,8 +372,12 @@ export default function Home() {
           )}
           <h1 className={`font-display font-bold tracking-tight ${homeConfig.titleClassName}`}>
             <span className={homeConfig.titleAccentClassName}>{homeConfig.titleLines[0]}</span>
-            <br />
-            <span className="text-foreground">{homeConfig.titleLines[1]}</span>
+            {homeConfig.titleLines[1] && (
+              <>
+                <br />
+                <span className="text-foreground">{homeConfig.titleLines[1]}</span>
+              </>
+            )}
           </h1>
           <p className={`mx-auto mt-6 max-w-2xl text-muted-foreground ${homeConfig.descriptionClassName}`}>
             {homeConfig.description}
