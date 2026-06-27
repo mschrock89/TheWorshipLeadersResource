@@ -60,6 +60,18 @@ verify_jwt = false
 [functions.notify-team-schedule-date]
 verify_jwt = false
 
+[functions.notify-schedule-reminder]
+verify_jwt = false
+
+[functions.notify-weekend-track-uploaded]
+verify_jwt = false
+
+[functions.notify-feed-post]
+verify_jwt = false
+
+[functions.notify-video-schedule-reminder]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = false
 

@@ -1045,16 +1045,25 @@ function StandardCalendar() {
         throw error;
       }
 
-      const recipientCount =
-        data && typeof data === "object" && "recipients" in data && typeof data.recipients === "number"
-          ? data.recipients
+      const readNumber = (key: string) =>
+        data && typeof data === "object" && key in data && typeof (data as Record<string, unknown>)[key] === "number"
+          ? ((data as Record<string, number>)[key])
           : 0;
 
-      toast.success(
-        recipientCount > 0
-          ? `${recipientCount} ${target.teamName} member${recipientCount === 1 ? "" : "s"} notified.`
-          : `No ${target.teamName} team members were eligible to notify.`,
-      );
+      const recipientCount = readNumber("recipients");
+      const pushSent = readNumber("pushSent");
+
+      if (recipientCount === 0) {
+        toast.success(`No ${target.teamName} team members were eligible to notify.`);
+      } else if (pushSent === 0) {
+        toast.warning(
+          `${recipientCount} ${target.teamName} member${recipientCount === 1 ? "" : "s"} flagged, but no push was delivered (no enabled devices or push isn't configured).`,
+        );
+      } else {
+        toast.success(
+          `Push delivered to ${pushSent} device${pushSent === 1 ? "" : "s"} for ${target.teamName}.`,
+        );
+      }
     } catch (error) {
       console.error("Failed to send team schedule notification:", error);
       toast.error("Failed to send the schedule notification.");
@@ -2510,11 +2519,19 @@ function TeamSchedulePushButton({
 
       const notifiedCount =
         typeof data?.recipients === "number" ? data.recipients : data?.recipientCount ?? 0;
-      toast.success(
-        notifiedCount > 0
-          ? `${ministryLabel} push sent to ${notifiedCount} team member${notifiedCount === 1 ? "" : "s"}.`
-          : `No ${ministryLabel} team members were eligible to notify.`,
-      );
+      const pushSent = typeof data?.pushSent === "number" ? data.pushSent : 0;
+
+      if (notifiedCount === 0) {
+        toast.success(`No ${ministryLabel} team members were eligible to notify.`);
+      } else if (pushSent === 0) {
+        toast.warning(
+          `${notifiedCount} ${ministryLabel} member${notifiedCount === 1 ? "" : "s"} flagged, but no push was delivered (no enabled devices or push isn't configured).`,
+        );
+      } else {
+        toast.success(
+          `${ministryLabel} push delivered to ${pushSent} device${pushSent === 1 ? "" : "s"}.`,
+        );
+      }
       return true;
     } catch (error) {
       console.error("Failed to send team schedule push:", error);

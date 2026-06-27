@@ -199,6 +199,23 @@ export function useCreateFeedPost() {
         .single();
 
       if (error) throw error;
+
+      if (data?.id) {
+        try {
+          // Invoke the feed notifier immediately from the author's client.
+          // The server-side trigger remains as a fallback if this call fails;
+          // send-push-notification dedupes by the feed-post-<id> tag.
+          await supabase.functions.invoke("notify-feed-post", {
+            body: {
+              postId: data.id,
+              resourceAppKey,
+            },
+          });
+        } catch (notificationError) {
+          console.error("Failed to send feed notification:", notificationError);
+        }
+      }
+
       return data;
     },
     onSuccess: () => {

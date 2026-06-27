@@ -6,8 +6,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// This function is called by a cron job at 8am local time
-// It sends reminders to team members who are scheduled to serve today
+// Invoked daily by the pg_cron wrapper run_schedule_reminder() (see migration
+// 20260627123000). It notifies everyone on the effective roster for *today*,
+// across every campus and ministry, using the authoritative
+// get_roster_notifiable_user_ids RPC (which applies rotation periods, service-day
+// matching, date overrides and accepted swaps).
+
+const TIME_ZONE = "America/Chicago";
+
+function localDateString(date: Date): string {
+  // en-CA formats as YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -19,60 +34,25 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log("Running schedule reminder check...");
-
-    // Get today's date in YYYY-MM-DD format
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-
-    // Determine service day string
-    let serviceDay: string | null = null;
-    if (dayOfWeek === 0) {
-      serviceDay = "sunday";
-    } else if (dayOfWeek === 6) {
-      serviceDay = "saturday";
+    // Allow an explicit override date for testing, otherwise "today" in church-local time.
+    let todayStr = localDateString(new Date());
+    try {
+      if (req.method === "POST") {
+        const body = await req.json().catch(() => ({}));
+        if (body && typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+          todayStr = body.date;
+        }
+      }
+    } catch (_) {
+      // ignore body parse errors
     }
 
-    if (!serviceDay) {
-      console.log(`Today is ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dayOfWeek]}, not a service day`);
-      return new Response(
-        JSON.stringify({ success: true, message: "Not a service day", notified: 0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    console.log(`Running schedule reminder for ${todayStr} (${TIME_ZONE})`);
 
-    console.log(`Today is ${serviceDay}, checking schedules for ${todayStr}`);
-
-    // Get the current rotation period
-    const { data: currentPeriod, error: periodError } = await supabase
-      .from("rotation_periods")
-      .select("id, name")
-      .eq("is_active", true)
-      .lte("start_date", todayStr)
-      .gte("end_date", todayStr)
-      .single();
-
-    if (periodError || !currentPeriod) {
-      console.log("No active rotation period found for today");
-      return new Response(
-        JSON.stringify({ success: true, message: "No active rotation period", notified: 0 }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`Current rotation period: ${currentPeriod.name}`);
-
-    // Get all team schedules for today
+    // Which teams are scheduled today (for the message detail + early-exit).
     const { data: schedules, error: scheduleError } = await supabase
       .from("team_schedule")
-      .select(`
-        id,
-        schedule_date,
-        team_id,
-        ministry_type,
-        worship_teams!inner(name)
-      `)
+      .select(`team_id, ministry_type, campus_id, worship_teams!inner(name)`)
       .eq("schedule_date", todayStr);
 
     if (scheduleError) {
@@ -83,50 +63,38 @@ serve(async (req: Request): Promise<Response> => {
     if (!schedules || schedules.length === 0) {
       console.log("No schedules for today");
       return new Response(
-        JSON.stringify({ success: true, message: "No schedules today", notified: 0 }),
+        JSON.stringify({ success: true, message: "No schedules today", pushSent: 0 }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Found ${schedules.length} scheduled teams for today`);
+    // Authoritative recipient set (all campuses, all ministries) for today.
+    const { data: rosterRows, error: rosterError } = await supabase.rpc(
+      "get_roster_notifiable_user_ids",
+      { p_schedule_date: todayStr, p_campus_id: null, p_ministry_type: null },
+    );
 
-    // Get all team members for today's scheduled teams in the current rotation period
-    const teamIds = schedules.map(s => s.team_id);
-    
-    const { data: teamMembers, error: membersError } = await supabase
-      .from("team_members")
-      .select(`
-        id,
-        user_id,
-        member_name,
-        position,
-        team_id,
-        service_day
-      `)
-      .in("team_id", teamIds)
-      .eq("rotation_period_id", currentPeriod.id)
-      .eq("service_day", serviceDay)
-      .not("user_id", "is", null);
-
-    if (membersError) {
-      console.error("Error fetching team members:", membersError);
-      throw new Error("Failed to fetch team members");
+    if (rosterError) {
+      console.error("Error resolving roster recipients:", rosterError);
+      throw new Error("Failed to resolve roster recipients");
     }
 
-    if (!teamMembers || teamMembers.length === 0) {
-      console.log("No team members scheduled for today");
+    const recipientUserIds = Array.from(
+      new Set((rosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
+    );
+
+    if (recipientUserIds.length === 0) {
+      console.log("No roster members to notify today");
       return new Response(
-        JSON.stringify({ success: true, message: "No members scheduled", notified: 0 }),
+        JSON.stringify({ success: true, message: "No members scheduled", pushSent: 0 }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Get unique user IDs
-    const userIds = [...new Set(teamMembers.map(m => m.user_id!).filter(Boolean))];
+    console.log(`Found ${recipientUserIds.length} roster members to notify`);
 
-    console.log(`Found ${userIds.length} unique members to notify`);
-
-    // Create a map of team names for the notification
+    // Build best-effort position/team detail for the personalised message.
+    const teamIds = Array.from(new Set(schedules.map((s) => s.team_id).filter(Boolean)));
     const teamNamesMap: Record<string, string> = {};
     for (const schedule of schedules) {
       // deno-lint-ignore no-explicit-any
@@ -134,26 +102,45 @@ serve(async (req: Request): Promise<Response> => {
       teamNamesMap[schedule.team_id] = teamData?.name || "Team";
     }
 
-    // Group members by user to create personalized messages
+    const dow = new Date(`${todayStr}T12:00:00Z`).getUTCDay();
+    const serviceDay = dow === 6 ? "saturday" : dow === 0 ? "sunday" : null;
+
     const userNotifications: Record<string, { positions: string[]; teams: string[] }> = {};
-    for (const member of teamMembers) {
-      if (!member.user_id) continue;
-      if (!userNotifications[member.user_id]) {
-        userNotifications[member.user_id] = { positions: [], teams: [] };
-      }
-      userNotifications[member.user_id].positions.push(member.position);
-      const teamName = teamNamesMap[member.team_id];
-      if (teamName && !userNotifications[member.user_id].teams.includes(teamName)) {
-        userNotifications[member.user_id].teams.push(teamName);
+    if (teamIds.length > 0) {
+      const { data: teamMembers } = await supabase
+        .from("team_members")
+        .select(`user_id, position, team_id, service_day`)
+        .in("team_id", teamIds)
+        .in("user_id", recipientUserIds)
+        .not("user_id", "is", null);
+
+      for (const member of teamMembers || []) {
+        if (!member.user_id) continue;
+        // Only attribute a slot to the message if the service_day matches (or is unset).
+        if (member.service_day && serviceDay && member.service_day !== serviceDay) continue;
+        if (!userNotifications[member.user_id]) {
+          userNotifications[member.user_id] = { positions: [], teams: [] };
+        }
+        if (member.position && !userNotifications[member.user_id].positions.includes(member.position)) {
+          userNotifications[member.user_id].positions.push(member.position);
+        }
+        const teamName = teamNamesMap[member.team_id];
+        if (teamName && !userNotifications[member.user_id].teams.includes(teamName)) {
+          userNotifications[member.user_id].teams.push(teamName);
+        }
       }
     }
 
-    // Send personalized push notifications
     let totalSent = 0;
-    for (const [userId, data] of Object.entries(userNotifications)) {
-      const positionsStr = data.positions.join(", ");
-      const teamsStr = data.teams.join(" & ");
-      
+    let totalFailed = 0;
+    for (const userId of recipientUserIds) {
+      const detail = userNotifications[userId];
+      const positionsStr = detail?.positions.join(", ") || "";
+      const teamsStr = detail?.teams.join(" & ") || "";
+      const message = positionsStr && teamsStr
+        ? `You're on ${positionsStr} for ${teamsStr} today. See you at church!`
+        : "You're scheduled to serve today. See you at church!";
+
       try {
         const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
           method: "POST",
@@ -163,30 +150,39 @@ serve(async (req: Request): Promise<Response> => {
           },
           body: JSON.stringify({
             title: "🎵 You're Serving Today!",
-            message: `You're on ${positionsStr} for ${teamsStr} today. See you at church!`,
+            message,
             url: "/calendar",
             tag: "schedule-reminder",
             userIds: [userId],
+            contextType: "schedule-reminder",
           }),
         });
 
-        if (pushResponse.ok) {
-          const result = await pushResponse.json();
-          totalSent += result.sent || 0;
+        if (!pushResponse.ok) {
+          totalFailed++;
+          const text = await pushResponse.text();
+          console.error(`Push failed for ${userId}: ${pushResponse.status} ${text}`);
+          continue;
         }
+
+        const result = await pushResponse.json();
+        totalSent += result.sent || 0;
+        totalFailed += result.failed || 0;
       } catch (err) {
+        totalFailed++;
         console.error(`Failed to send push to ${userId}:`, err);
       }
     }
 
-    console.log(`Schedule reminder complete: ${totalSent} notifications sent`);
+    console.log(`Schedule reminder complete: ${totalSent} sent, ${totalFailed} failed`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        scheduledTeams: schedules.length,
-        membersNotified: userIds.length,
+        scheduledTeams: teamIds.length,
+        recipients: recipientUserIds.length,
         pushSent: totalSent,
+        pushFailed: totalFailed,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

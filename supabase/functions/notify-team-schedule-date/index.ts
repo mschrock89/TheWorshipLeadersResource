@@ -371,6 +371,7 @@ serve(async (req: Request): Promise<Response> => {
 
     let pushSent = 0;
     let pushFailed = 0;
+    let pushError: string | null = null;
     try {
       const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
         method: "POST",
@@ -384,13 +385,21 @@ serve(async (req: Request): Promise<Response> => {
           url: link,
           tag: `schedule-date-${ministryType}-${campusId}-${scheduleDate}`,
           userIds: recipientUserIds,
+          contextType: "team-schedule-date",
         }),
       });
 
-      const pushResult = await pushResponse.json();
-      pushSent = pushResult.sent || 0;
-      pushFailed = pushResult.failed || 0;
+      if (!pushResponse.ok) {
+        pushError = `send-push-notification returned ${pushResponse.status}`;
+        const text = await pushResponse.text();
+        console.error(`Schedule push failed: ${pushResponse.status} ${text}`);
+      } else {
+        const pushResult = await pushResponse.json();
+        pushSent = pushResult.sent || 0;
+        pushFailed = pushResult.failed || 0;
+      }
     } catch (error) {
+      pushError = error instanceof Error ? error.message : "Unknown error";
       console.error("Failed to send schedule push notification:", error);
     }
 
@@ -424,6 +433,7 @@ serve(async (req: Request): Promise<Response> => {
         recipients: recipientUserIds.length,
         pushSent,
         pushFailed,
+        pushError,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

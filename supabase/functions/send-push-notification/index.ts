@@ -568,11 +568,15 @@ serve(async (req) => {
     const uniqueUserIds = Array.from(new Set(subscriptions.map((subscription) => subscription.user_id).filter(Boolean)));
     let notificationLogId: string | null = null;
 
-    const isChatPush =
+    // Pushes that can be dispatched from two paths (a Postgres trigger AND a
+    // client/edge invoke) are deduped by tag so recipients don't get doubles.
+    const isDedupablePush =
       payload.contextType?.startsWith("chat-") ||
-      payload.tag?.startsWith("chat-");
+      payload.tag?.startsWith("chat-") ||
+      payload.contextType === "feed-post" ||
+      payload.tag?.startsWith("feed-post-");
 
-    if (!payload.skipLogging && isChatPush && payload.tag) {
+    if (!payload.skipLogging && isDedupablePush && payload.tag) {
       const { data: existingLog, error: existingLogError } = await supabase
         .from("push_notification_logs")
         .select("id")
@@ -583,9 +587,9 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingLogError) {
-        console.error("Failed to check for duplicate chat push log:", existingLogError);
+        console.error("Failed to check for duplicate push log:", existingLogError);
       } else if (existingLog?.id) {
-        console.log(`Skipping duplicate chat push for tag ${payload.tag}`);
+        console.log(`Skipping duplicate push for tag ${payload.tag}`);
         return new Response(
           JSON.stringify({
             success: true,
