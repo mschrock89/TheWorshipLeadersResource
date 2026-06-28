@@ -921,7 +921,16 @@ export function useTeamRosterForDate(
         const memberPositionKey = member.user_id ? `${member.user_id}|${member.position}` : null;
         const swap = memberPositionKey ? swapMap.get(memberPositionKey) : null;
         const reverseSwap = memberPositionKey ? reverseSwapMap.get(memberPositionKey) : null;
-        
+
+        // A member placed into this slot by an explicit Team Builder date override (a
+        // "split") is an authoritative assignment for this specific date. The swap-based
+        // "skip" branches below assume a member only appears in their own base slot, but a
+        // split can legitimately put the swap accepter into the slot they are covering.
+        // Without this guard, a person who is both split in AND happens to be the accepter
+        // of a swap for that position would be dropped entirely (their base anchor row was
+        // already suppressed by the override), so the slot would render empty.
+        const isDateOverrideEntry = visibleDateOverrideIds.has(member.id);
+
         // Check if this member is completely covered (fill_in request covers ALL their positions)
         const isCoveredUser = member.user_id && coveredUserIds.has(member.user_id);
         const coverInfo = member.user_id ? coverMap.get(member.user_id) : null;
@@ -1016,16 +1025,16 @@ export function useTeamRosterForDate(
             });
             addedViaSwap.add(swapKey);
           }
-        } else if (memberPositionKey && acceptersPositionSet.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberPositionKey && acceptersPositionSet.has(memberPositionKey)) {
           // This member accepted a swap for this position - skip their own slot (they're covering someone else)
           continue;
-        } else if (memberPositionKey && requestersCoveringPositionSet.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberPositionKey && requestersCoveringPositionSet.has(memberPositionKey)) {
           // This member is covering someone else on swap_date for this position - skip their slot
           continue;
-        } else if (memberPositionKey && swappedOutPositions.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberPositionKey && swappedOutPositions.has(memberPositionKey)) {
           // This member+position was swapped out - skip this slot
           continue;
-        } else if (memberPositionKey && coveredByRequesterPositions.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberPositionKey && coveredByRequesterPositions.has(memberPositionKey)) {
           // This member+position is being covered by requester - already handled above
           continue;
         } else {
