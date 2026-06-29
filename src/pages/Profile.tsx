@@ -209,6 +209,7 @@ export default function Profile() {
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [birthday, setBirthday] = useState("");
   const [anniversary, setAnniversary] = useState("");
   const [positions, setPositions] = useState<TeamPosition[]>([]);
@@ -251,6 +252,7 @@ export default function Profile() {
     if (profile) {
       setFullName(profile.full_name || "");
       setPhone(profile.phone || "");
+      setAddress(profile.address || "");
       setBirthday(profile.birthday || "");
       setAnniversary(profile.anniversary || "");
       setPositions(profile.positions || []);
@@ -309,6 +311,7 @@ export default function Profile() {
       id: profileId,
       full_name: fullName || null,
       phone: phone || null,
+      address: address || null,
       birthday: birthday || null,
       anniversary: anniversary || null,
       positions,
@@ -944,6 +947,16 @@ export default function Profile() {
                     placeholder="(555) 123-4567"
                   />
                 </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="address">Home Address</Label>
+                  <Input
+                    id="address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    disabled={!canEdit}
+                    placeholder="123 Main St, City, ST 12345"
+                  />
+                </div>
               </div>
 
               {/* Audition Candidate Setup */}
@@ -1366,6 +1379,17 @@ export default function Profile() {
                                     
                                     {canManageAssignments ? (
                                       <div className="space-y-2">
+                                        {/* Student Camp pastors (M/C, Prayer, Speaker) */}
+                                        {showStudentCampProduction && (
+                                          renderMinistryPositionGroup(
+                                            "Pastors:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            POSITION_CATEGORIES.pastors,
+                                          )
+                                        )}
+
                                         {showDrumTechSupport && (
                                           renderMinistryPositionGroup(
                                             "Support:",

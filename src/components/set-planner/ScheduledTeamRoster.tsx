@@ -8,7 +8,7 @@ import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
-import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen } from "lucide-react";
+import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen, Church } from "lucide-react";
 import { normalizeSessionSetMinistryType, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 import { filterGroupTextRecipients } from "@/lib/access";
@@ -55,6 +55,8 @@ const isSpeakerPosition = (pos: string) => {
   const lower = pos.toLowerCase();
   return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer" || lower === "closer";
 };
+
+const isPastorPosition = (pos: string) => pos.toLowerCase().startsWith("pastor_");
 
 interface RosterMember {
   id: string;
@@ -267,6 +269,16 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     positions: member.positions.filter(pos => isSpeakerPosition(pos))
   }));
 
+  const pastorMembers = rosterForDisplay.filter(member =>
+    getRosterRoleValues(member).some(pos => isPastorPosition(pos))
+  ).map(member => ({
+    ...member,
+    positions: Array.from(new Set([
+      ...member.positions.filter(pos => isPastorPosition(pos)),
+      ...(member.positionSlots || []).filter(pos => isPastorPosition(pos)),
+    ]))
+  }));
+
   const groupTextMembers = useMemo(
     () =>
       filterGroupTextRecipients(rosterForDisplay, {
@@ -331,7 +343,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             className="text-xs"
             style={{ borderColor: scheduledTeam.teamColor, color: scheduledTeam.teamColor }}
           >
-            {(vocalists.length + bandMembers.length + speakerMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
+            {(vocalists.length + bandMembers.length + speakerMembers.length + pastorMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
           </Badge>
           <GroupTextButton
             phoneNumbers={groupTextMembers.map((member) => member.phone)}
@@ -350,6 +362,14 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {pastorMembers.length > 0 && (
+            <MemberSection
+              icon={Church}
+              title="Pastors"
+              members={pastorMembers}
+              teamColor={scheduledTeam.teamColor}
+            />
+          )}
           <MemberSection 
             icon={Mic} 
             title="Vocalists" 

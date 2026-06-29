@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<string, string> = {
   audition_candidate: "Audition Candidate",
   student: "Student",
   ms_leader: "MS Leader",
+  ms_leader_weekend: "MS Leader Weekend",
   hs_leader: "HS Leader",
   volunteer: "Volunteer",
 };
@@ -135,7 +136,7 @@ export function getAppUrl(path: string) {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'hs_leader', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'ms_leader_weekend', 'hs_leader', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -196,6 +197,9 @@ export const POSITION_LABELS: Record<string, string> = {
   student_prayer: "Prayer",
   student_hospitality: "Hospitality",
   student_small_group_leader: "Small Group Leader",
+  pastor_mc: "M/C",
+  pastor_prayer: "Prayer",
+  pastor_speaker: "Speaker",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -260,6 +264,9 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   student_prayer: "Prayer",
   student_hospitality: "Hospitality",
   student_small_group_leader: "Small Group",
+  pastor_mc: "M/C",
+  pastor_prayer: "Prayer",
+  pastor_speaker: "Speaker",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -274,6 +281,7 @@ export const POSITION_CATEGORIES = {
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
   creative: ["photo_team", "art_team"],
   students: [...STUDENT_POSITION_VALUES],
+  pastors: ["pastor_mc", "pastor_prayer", "pastor_speaker"],
 };
 
 // Team Builder position slots - these map to position_slot column in team_members table
@@ -342,6 +350,10 @@ export const POSITION_SLOTS: {
   { slot: "student_prayer", label: "Prayer", category: "Students", position: "student_prayer" },
   { slot: "student_hospitality", label: "Hospitality", category: "Students", position: "student_hospitality" },
   { slot: "student_small_group_leader", label: "Small Group Leader", category: "Students", position: "student_small_group_leader" },
+  // Pastors slots (Student Camp leadership: M/C, Prayer, Speaker)
+  { slot: "pastor_mc", label: "M/C", category: "Pastors", position: "pastor_mc" },
+  { slot: "pastor_prayer", label: "Prayer", category: "Pastors", position: "pastor_prayer" },
+  { slot: "pastor_speaker", label: "Speaker", category: "Pastors", position: "pastor_speaker" },
 ];
 
 // Video positions (and their slot variants). Video teams differ between Saturday
@@ -413,7 +425,7 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   // Student Camp teams carry their own production crew (FOH, MON, Lyrics) instead of a
   // separately scheduled Production team. getTeamTemplateSlotConfigs limits the visible
   // production slots for this ministry to those three.
-  student_camp: ["Vocalists", "Band", "Production"],
+  student_camp: ["Pastors", "Vocalists", "Band", "Production"],
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],
@@ -425,7 +437,7 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   video: ["Video"],
   creative: ["Creative"],
   students: ["Students"],
-  all: ["Vocalists", "Speaker", "Band", "Production", "Video", "Creative", "Students"],
+  all: ["Vocalists", "Speaker", "Pastors", "Band", "Production", "Video", "Creative", "Students"],
 };
 
 function normalizeMinistryTypeKey(ministryType: string | null | undefined) {

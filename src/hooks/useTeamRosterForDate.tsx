@@ -149,6 +149,33 @@ const assignmentMatchesRosterFilter = (
 const normalizePositionLookupValue = (position?: string | null) =>
   (position || "").trim().toLowerCase();
 
+// Mirror the server-side public.normalize_position_token: lowercase, collapse any
+// run of non-alphanumeric characters to "_", and trim leading/trailing "_". This
+// lets swap matching tolerate the different shapes the same role is stored in
+// across teams (e.g. "Hand-Held Camera" vs "hand_held_camera").
+const normalizeSwapPositionToken = (position?: string | null) =>
+  (position || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+// A swap stores a single position string, but the matching team_members row may
+// label that role on either `position` or `position_slot`. Generate a candidate
+// swap key for each so a swap matches regardless of which field carries the slug.
+const getMemberSwapKeys = (member: {
+  user_id: string | null;
+  position: string;
+  position_slot?: string | null;
+}): string[] => {
+  if (!member.user_id) return [];
+  const tokens = new Set<string>();
+  const positionToken = normalizeSwapPositionToken(member.position);
+  if (positionToken) tokens.add(positionToken);
+  const slotToken = normalizeSwapPositionToken(member.position_slot);
+  if (slotToken) tokens.add(slotToken);
+  return Array.from(tokens, (token) => `${member.user_id}|${token}`);
+};
+
 const getCanonicalPositionKey = (position?: string | null) => {
   const normalizedPosition = normalizePositionLookupValue(position);
   return POSITION_CANONICAL_KEY_BY_VALUE.get(normalizedPosition) || normalizedPosition;
@@ -842,18 +869,20 @@ export function useTeamRosterForDate(
           const isDirectSwap = Boolean(swap.swap_date) || swapWithType.request_type === "swap";
           const isCover = !isDirectSwap;
 
-          if (isCover) {
-            // Cover request: requester is OUT for ALL their positions, accepter takes over ALL
-            coveredUserIds.add(swap.requester_id);
-            coverMap.set(swap.requester_id, {
-              acceptedById: swap.accepted_by_id,
-              acceptedByName: swap.accepted_by?.full_name || "Unknown",
-              acceptedByAvatar: swap.accepted_by?.avatar_url || null,
-            });
-          }
+          // A direct swap is a COMPLETE swap, just like a fill-in cover: on the
+          // original_date the requester is OUT for ALL of their positions and the
+          // accepter takes over ALL of them (not only the position named on the
+          // request). Both request types therefore fully release the requester here.
+          coveredUserIds.add(swap.requester_id);
+          coverMap.set(swap.requester_id, {
+            acceptedById: swap.accepted_by_id,
+            acceptedByName: swap.accepted_by?.full_name || "Unknown",
+            acceptedByAvatar: swap.accepted_by?.avatar_url || null,
+          });
           
           // Still add to swapMap for position-specific tracking
-          const key = `${swap.requester_id}|${swap.position}`;
+          const positionToken = normalizeSwapPositionToken(swap.position);
+          const key = `${swap.requester_id}|${positionToken}`;
           swapMap.set(key, {
             acceptedById: swap.accepted_by_id,
             acceptedByName: swap.accepted_by?.full_name || "Unknown",
@@ -861,7 +890,7 @@ export function useTeamRosterForDate(
             position: swap.position,
             isCover,
           });
-          acceptersPositionSet.add(`${swap.accepted_by_id}|${swap.position}`);
+          acceptersPositionSet.add(`${swap.accepted_by_id}|${positionToken}`);
         }
       }
 
@@ -869,17 +898,29 @@ export function useTeamRosterForDate(
       // Key by "accepter_id|position" - accepter is OUT on swap_date, requester covers their position
       const reverseSwapMap = new Map<string, { requesterId: string; requesterName: string; requesterAvatar: string | null; position: string }>();
       const requestersCoveringPositionSet = new Set<string>(); // "userId|position"
+      // Direct swaps are COMPLETE swaps: on the swap_date the accepter is OUT for ALL of
+      // their positions and the requester takes over ALL of them (mirror of coverMap on
+      // the original_date side).
+      const reverseCoveredUserIds = new Set<string>();
+      const reverseCoverMap = new Map<string, { requesterId: string; requesterName: string; requesterAvatar: string | null }>();
       
       for (const swap of directSwapsOnThisDate) {
         if (swap.requester_id && swap.accepted_by_id) {
-          const key = `${swap.accepted_by_id}|${swap.position}`;
+          const positionToken = normalizeSwapPositionToken(swap.position);
+          const key = `${swap.accepted_by_id}|${positionToken}`;
           reverseSwapMap.set(key, {
             requesterId: swap.requester_id,
             requesterName: swap.requester?.full_name || "Unknown",
             requesterAvatar: swap.requester?.avatar_url || null,
             position: swap.position,
           });
-          requestersCoveringPositionSet.add(`${swap.requester_id}|${swap.position}`);
+          requestersCoveringPositionSet.add(`${swap.requester_id}|${positionToken}`);
+          reverseCoveredUserIds.add(swap.accepted_by_id);
+          reverseCoverMap.set(swap.accepted_by_id, {
+            requesterId: swap.requester_id,
+            requesterName: swap.requester?.full_name || "Unknown",
+            requesterAvatar: swap.requester?.avatar_url || null,
+          });
         }
       }
 
@@ -905,7 +946,7 @@ export function useTeamRosterForDate(
       const coveredPositionMinistries = new Map<string, Set<string>>(); // "userId|position" -> Set of ministry types
       if (!ministryType) {
         for (const member of filteredMembers) {
-          if (member.user_id && coveredUserIds.has(member.user_id)) {
+          if (member.user_id && (coveredUserIds.has(member.user_id) || reverseCoveredUserIds.has(member.user_id))) {
             const posKey = `${member.user_id}|${member.position}`;
             if (!coveredPositionMinistries.has(posKey)) {
               coveredPositionMinistries.set(posKey, new Set());
@@ -918,9 +959,9 @@ export function useTeamRosterForDate(
       }
 
       for (const member of effectiveMembers) {
-        const memberPositionKey = member.user_id ? `${member.user_id}|${member.position}` : null;
-        const swap = memberPositionKey ? swapMap.get(memberPositionKey) : null;
-        const reverseSwap = memberPositionKey ? reverseSwapMap.get(memberPositionKey) : null;
+        const memberSwapKeys = getMemberSwapKeys(member);
+        const swap = memberSwapKeys.map((key) => swapMap.get(key)).find(Boolean) || null;
+        const reverseSwap = memberSwapKeys.map((key) => reverseSwapMap.get(key)).find(Boolean) || null;
 
         // A member placed into this slot by an explicit Team Builder date override (a
         // "split") is an authoritative assignment for this specific date. The swap-based
@@ -934,6 +975,10 @@ export function useTeamRosterForDate(
         // Check if this member is completely covered (fill_in request covers ALL their positions)
         const isCoveredUser = member.user_id && coveredUserIds.has(member.user_id);
         const coverInfo = member.user_id ? coverMap.get(member.user_id) : null;
+        // On the swap_date side of a direct swap, the accepter is completely covered by
+        // the requester for ALL of their positions.
+        const isReverseCoveredUser = member.user_id && reverseCoveredUserIds.has(member.user_id);
+        const reverseCoverInfo = member.user_id ? reverseCoverMap.get(member.user_id) : null;
         
         if (isCoveredUser && coverInfo) {
           // This member is covered by a fill_in request - show the accepter for ALL their positions
@@ -985,6 +1030,53 @@ export function useTeamRosterForDate(
               }
             }
           }
+        } else if (isReverseCoveredUser && reverseCoverInfo) {
+          // Direct swap, swap_date side: this member (the accepter) is fully out and the
+          // requester takes over ALL of their positions.
+          const posKey = `${member.user_id}|${member.position}`;
+
+          if (ministryType) {
+            const swapKey = `${reverseCoverInfo.requesterId}|${member.position}|${ministryType}`;
+            if (!addedViaSwap.has(swapKey)) {
+              intermediateRoster.push({
+                id: member.id,
+                memberName: reverseCoverInfo.requesterName,
+                position: member.position,
+                positionSlot: member.position_slot || null,
+                userId: reverseCoverInfo.requesterId,
+                avatarUrl: reverseCoverInfo.requesterAvatar,
+                phone: resolveRosterPhone(reverseCoverInfo.requesterId, reverseCoverInfo.requesterName),
+                isSwapped: true,
+                hasPendingSwap: false,
+                originalMemberName: member.member_name,
+                ministryTypes: [ministryType],
+                serviceDay: member.service_day || null,
+              });
+              addedViaSwap.add(swapKey);
+            }
+          } else {
+            const allMinistries = coveredPositionMinistries.get(posKey) || new Set(member.ministry_types || []);
+            for (const mt of allMinistries) {
+              const swapKey = `${reverseCoverInfo.requesterId}|${member.position}|${mt}`;
+              if (!addedViaSwap.has(swapKey)) {
+                intermediateRoster.push({
+                  id: member.id,
+                  memberName: reverseCoverInfo.requesterName,
+                  position: member.position,
+                  positionSlot: member.position_slot || null,
+                  userId: reverseCoverInfo.requesterId,
+                  avatarUrl: reverseCoverInfo.requesterAvatar,
+                  phone: resolveRosterPhone(reverseCoverInfo.requesterId, reverseCoverInfo.requesterName),
+                  isSwapped: true,
+                  hasPendingSwap: false,
+                  originalMemberName: member.member_name,
+                  ministryTypes: [mt],
+                  serviceDay: member.service_day || null,
+                });
+                addedViaSwap.add(swapKey);
+              }
+            }
+          }
         } else if (swap && !swap.isCover) {
           // This member is swapped out via position-specific swap (not cover) - show the accepter instead
           const swapKey = `${swap.acceptedById}|${member.position}`;
@@ -1025,16 +1117,16 @@ export function useTeamRosterForDate(
             });
             addedViaSwap.add(swapKey);
           }
-        } else if (!isDateOverrideEntry && memberPositionKey && acceptersPositionSet.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberSwapKeys.some((key) => acceptersPositionSet.has(key))) {
           // This member accepted a swap for this position - skip their own slot (they're covering someone else)
           continue;
-        } else if (!isDateOverrideEntry && memberPositionKey && requestersCoveringPositionSet.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberSwapKeys.some((key) => requestersCoveringPositionSet.has(key))) {
           // This member is covering someone else on swap_date for this position - skip their slot
           continue;
-        } else if (!isDateOverrideEntry && memberPositionKey && swappedOutPositions.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberSwapKeys.some((key) => swappedOutPositions.has(key))) {
           // This member+position was swapped out - skip this slot
           continue;
-        } else if (!isDateOverrideEntry && memberPositionKey && coveredByRequesterPositions.has(memberPositionKey)) {
+        } else if (!isDateOverrideEntry && memberSwapKeys.some((key) => coveredByRequesterPositions.has(key))) {
           // This member+position is being covered by requester - already handled above
           continue;
         } else {

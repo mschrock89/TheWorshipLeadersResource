@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen, Youtube, Video } from "lucide-react";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen, Youtube, Video, Church } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -218,7 +218,7 @@ function SetlistYoutubeLinks({
 function StandardMySetlists() {
   const { isAdmin, canManageTeam, user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
-  const setlistsPageLabel = isStudentApp ? "Wednesday Flow" : "My Setlists";
+  const setlistsPageLabel = "My Setlists";
   const [searchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
   const { data: campuses } = useCampuses();
@@ -662,9 +662,7 @@ function StandardMySetlists() {
             {setlistsPageLabel}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isStudentApp
-              ? "Review the Wednesday flow for your upcoming dates"
-              : "Review published setlists for your upcoming dates"}
+            Review published setlists for your upcoming dates
           </p>
         </div>
         
@@ -1358,6 +1356,7 @@ function SetlistTeamRoster({
           hasVocalistRole: boolean;
           hasBandRole: boolean;
           hasSpeakerRole: boolean;
+          hasPastorRole: boolean;
           hasProductionRole: boolean;
           hasVideoRole: boolean;
         }
@@ -1372,6 +1371,7 @@ function SetlistTeamRoster({
         const hasVocalistRole = roleCategory === "Vocalists" || role === "vocalist";
         const hasBandRole = roleCategory === "Band" || bandFallbackPositions.has(role);
         const hasSpeakerRole = roleCategory === "Speaker" || speakerPositions.has(role);
+        const hasPastorRole = roleCategory === "Pastors" || role.startsWith("pastor_");
         const hasProductionRole = roleCategory === "Production";
         const hasVideoRole = roleCategory === "Video";
         const ministryTypes = getPositionMinistryTypes([role], [role]);
@@ -1389,6 +1389,7 @@ function SetlistTeamRoster({
             hasVocalistRole,
             hasBandRole,
             hasSpeakerRole,
+            hasPastorRole,
             hasProductionRole,
             hasVideoRole,
           });
@@ -1399,6 +1400,7 @@ function SetlistTeamRoster({
           existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
           existing.hasBandRole = existing.hasBandRole || hasBandRole;
           existing.hasSpeakerRole = existing.hasSpeakerRole || hasSpeakerRole;
+          existing.hasPastorRole = existing.hasPastorRole || hasPastorRole;
           existing.hasProductionRole = existing.hasProductionRole || hasProductionRole;
           existing.hasVideoRole = existing.hasVideoRole || hasVideoRole;
         }
@@ -1441,6 +1443,7 @@ function SetlistTeamRoster({
             hasVocalistRole,
             hasBandRole,
             hasSpeakerRole: false,
+            hasPastorRole: false,
             hasProductionRole: false,
             hasVideoRole: false,
             roleLabels: [stageLabel, trackLabel],
@@ -1463,6 +1466,7 @@ function SetlistTeamRoster({
         hasVocalistRole: boolean;
         hasBandRole: boolean;
         hasSpeakerRole: boolean;
+        hasPastorRole: boolean;
         hasProductionRole: boolean;
         hasVideoRole: boolean;
       }
@@ -1488,6 +1492,7 @@ function SetlistTeamRoster({
       const hasVocalistRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Vocalists") || member.positions.includes("vocalist");
       const hasBandRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Band") || member.positions.some((position) => bandFallbackPositions.has(position));
       const hasSpeakerRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Speaker") || member.positions.some((position) => speakerPositions.has(position));
+      const hasPastorRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Pastors") || member.positions.some((position) => position.startsWith("pastor_"));
       const hasProductionRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Production") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Production" && (slot.position === position || slot.slot === position)));
       const hasVideoRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Video") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Video" && (slot.position === position || slot.slot === position)));
       const inferredMinistryTypes = getPositionMinistryTypes(member.positions, member.positionSlots);
@@ -1506,6 +1511,7 @@ function SetlistTeamRoster({
           hasVocalistRole,
           hasBandRole,
           hasSpeakerRole,
+          hasPastorRole,
           hasProductionRole,
           hasVideoRole,
         });
@@ -1518,6 +1524,7 @@ function SetlistTeamRoster({
         existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
         existing.hasBandRole = existing.hasBandRole || hasBandRole;
         existing.hasSpeakerRole = existing.hasSpeakerRole || hasSpeakerRole;
+        existing.hasPastorRole = existing.hasPastorRole || hasPastorRole;
         existing.hasProductionRole = existing.hasProductionRole || hasProductionRole;
         existing.hasVideoRole = existing.hasVideoRole || hasVideoRole;
       }
@@ -1548,6 +1555,11 @@ function SetlistTeamRoster({
 
   const speakerRows = useMemo(
     () => rosterRows.filter((member) => member.hasSpeakerRole && !member.hasVocalistRole && !member.hasBandRole),
+    [rosterRows]
+  );
+
+  const pastorRows = useMemo(
+    () => rosterRows.filter((member) => member.hasPastorRole),
     [rosterRows]
   );
 
@@ -1655,11 +1667,11 @@ function SetlistTeamRoster({
     return <Skeleton className="h-20 w-full" />;
   }
 
-  if (effectiveCustomServiceId && !vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length) {
+  if (effectiveCustomServiceId && !vocalistRows.length && !bandRows.length && !speakerRows.length && !pastorRows.length && !productionRows.length && !videoRows.length) {
     return null;
   }
 
-  if (!effectiveCustomServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length && !speakerRows.length && !productionRows.length && !videoRows.length))) {
+  if (!effectiveCustomServiceId && ministryType !== "audition" && (!teamEntry || (!vocalistRows.length && !bandRows.length && !speakerRows.length && !pastorRows.length && !productionRows.length && !videoRows.length))) {
     return null;
   }
 
@@ -1686,6 +1698,39 @@ function SetlistTeamRoster({
           className="ml-auto"
         />
       </div>
+
+      {pastorRows.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-primary">
+            <Church className="h-4 w-4" />
+            <p className="text-sm font-medium">Pastors</p>
+          </div>
+          <div className="space-y-1">
+            {pastorRows.map((member) => (
+              <div
+                key={`pastor-${member.id}-${member.memberName}`}
+                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
+                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.avatarUrl || undefined} />
+                    <AvatarFallback className="text-[11px]">
+                      {getInitials(getRosterMemberDisplayName(member.memberName))}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm">{getRosterMemberDisplayName(member.memberName)}</span>
+                  {member.isSwapped && <ArrowLeftRight className="h-3.5 w-3.5 text-green-400" />}
+                </div>
+                <span className="text-xs text-muted-foreground text-right">
+                  {member.roleLabels.join(", ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {vocalistRows.length > 0 && (
         <div className="space-y-2">

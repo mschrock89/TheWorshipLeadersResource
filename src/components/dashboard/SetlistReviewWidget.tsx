@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useApproveSetlist, usePendingApprovals, useRejectSetlist } from "@/hooks/useSetlistApprovals";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
-import { isWednesdayFlowDate } from "@/lib/studentFlow";
+import { isStudentFlowExemptMinistryType, isWednesdayFlowDate } from "@/lib/studentFlow";
 
 interface SetlistReviewWidgetProps {
   selectedCampusId: string;
@@ -82,10 +82,10 @@ function getMinistryLabel(type: string) {
 
 export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetProps) {
   const isStudentApp = isCurrentStudentResourceApp();
-  const reviewLabel = isStudentApp ? "Wednesday Flow Review" : "Setlist Review";
-  const publishedLabel = isStudentApp ? "Upcoming Published Wednesday Flows" : "Upcoming Published Setlists";
+  const reviewLabel = isStudentApp ? "My Setlists Review" : "Setlist Review";
+  const publishedLabel = isStudentApp ? "Upcoming Published Setlists" : "Upcoming Published Setlists";
   const emptyPublishedLabel = isStudentApp
-    ? "No upcoming published Wednesday flows for this campus filter."
+    ? "No upcoming published setlists for this campus filter."
     : "No upcoming published setlists for this campus filter.";
   const today = new Date().toISOString().split("T")[0];
   const approveSetlist = useApproveSetlist();
@@ -162,7 +162,12 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
     return pendingApprovals.filter((approval) => {
       if (!approval.draft_set?.plan_date || approval.draft_set.plan_date < today) return false;
       if (selectedCampusId !== "all" && approval.draft_set.campus_id !== selectedCampusId) return false;
-      if (isStudentApp && !isWednesdayFlowDate(approval.draft_set.plan_date)) return false;
+      if (
+        isStudentApp &&
+        !isStudentFlowExemptMinistryType(approval.draft_set.ministry_type) &&
+        !isWednesdayFlowDate(approval.draft_set.plan_date)
+      )
+        return false;
       return true;
     });
   }, [isStudentApp, pendingApprovals, selectedCampusId, today]);
@@ -170,7 +175,11 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
   const visibleApprovedSetlists = useMemo(
     () =>
       isStudentApp
-        ? approvedSetlists.filter((setlist) => isWednesdayFlowDate(setlist.plan_date))
+        ? approvedSetlists.filter(
+            (setlist) =>
+              isStudentFlowExemptMinistryType(setlist.ministry_type) ||
+              isWednesdayFlowDate(setlist.plan_date),
+          )
         : approvedSetlists,
     [approvedSetlists, isStudentApp],
   );
@@ -192,7 +201,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
           <h2 className="font-display text-xl font-semibold text-foreground">{reviewLabel}</h2>
           <p className="mt-1 text-muted-foreground">
             {isStudentApp
-              ? "Review incoming drafts and keep an eye on published Wednesday flows from the dashboard."
+              ? "Review incoming drafts and keep an eye on published setlists from the dashboard."
               : "Review incoming drafts and keep an eye on published sets from the dashboard."}
           </p>
         </div>
@@ -209,7 +218,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
       ) : hasError ? (
         <Card>
           <CardContent className="py-6 text-sm text-destructive">
-            Unable to load {isStudentApp ? "Wednesday flow" : "setlist"} review data. Please refresh and try again.
+            Unable to load {isStudentApp ? "setlist" : "setlist"} review data. Please refresh and try again.
           </CardContent>
         </Card>
       ) : (
@@ -318,7 +327,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
                         disabled={approveSetlist.isPending}
                         onClick={() => approveSetlist.mutate({ approvalId: approval.id, draftSetId: approval.draft_set_id })}
                       >
-                        {isStudentApp ? "Approve Wednesday Flow" : "Approve Setlist"}
+                        {isStudentApp ? "Approve Setlist" : "Approve Setlist"}
                       </Button>
                       <Button
                         variant="outline"

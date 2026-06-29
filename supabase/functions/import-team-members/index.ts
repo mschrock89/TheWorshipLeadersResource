@@ -11,6 +11,7 @@ interface TeamMember {
   lastName: string;
   email: string;
   phone?: string;
+  address?: string;
   positions?: string[];
   birthday?: string;
   anniversary?: string;
@@ -23,8 +24,74 @@ interface ImportResult {
   error?: string;
 }
 
+// Base roles that can be assigned to a fresh bulk-imported user. The default
+// `volunteer` role created by the handle_new_user trigger is replaced with the
+// role selected for the upload group.
+const allowedBaseRoles = [
+  'network_worship_pastor',
+  'campus_worship_pastor',
+  'student_pastor',
+  'student_worship_pastor',
+  'childrens_pastor',
+  'speaker',
+  'video_director',
+  'production_manager',
+  'creative_team_lead',
+  'student',
+  'ms_leader',
+  'ms_leader_weekend',
+  'hs_leader',
+  'volunteer',
+];
+
+// Roles safe to clear before assigning the selected base role. Leadership/admin
+// roles are intentionally excluded so we never strip elevated access.
+const replaceableBaseRoles = [
+  'leader',
+  'member',
+  'network_worship_pastor',
+  'campus_worship_pastor',
+  'student_pastor',
+  'student_worship_pastor',
+  'childrens_pastor',
+  'speaker',
+  'video_director',
+  'production_manager',
+  'creative_team_lead',
+  'audition_candidate',
+  'student',
+  'ms_leader',
+  'ms_leader_weekend',
+  'hs_leader',
+  'volunteer',
+];
+
 function normalizeEmail(email: string | null | undefined): string {
   return (email || '').trim().toLowerCase();
+}
+
+// Coerce a free-form phone string into E.164 (+15551234567) so it satisfies the
+// profiles_phone_e164_chk constraint. Returns null when it can't be normalized,
+// in which case the phone is simply skipped rather than failing the whole row.
+function normalizePhoneE164(phone: string | null | undefined): string | null {
+  const trimmed = (phone || '').trim();
+  if (!trimmed) return null;
+
+  const hasPlus = trimmed.startsWith('+');
+  let digits = trimmed.replace(/\D/g, '');
+  if (!digits) return null;
+
+  if (!hasPlus) {
+    // Assume North American numbers when no country code is provided.
+    if (digits.length === 10) {
+      digits = `1${digits}`;
+    } else if (digits.length === 11 && digits.startsWith('1')) {
+      // already includes US country code
+    }
+  }
+
+  const candidate = `+${digits}`;
+  return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
 }
 
 function normalizeName(name: string | null | undefined): string {
@@ -154,7 +221,10 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { members } = await req.json() as { members: TeamMember[] };
+    const { members, role: requestedRole } = await req.json() as {
+      members: TeamMember[];
+      role?: string;
+    };
     
     if (!members || !Array.isArray(members) || members.length === 0) {
       return new Response(
@@ -163,7 +233,17 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Importing ${members.length} team members`);
+    // The base role applied to every user in this upload group. Falls back to
+    // `volunteer` (matching the handle_new_user default) when none is provided.
+    const baseRole = (requestedRole || 'volunteer').trim();
+    if (!allowedBaseRoles.includes(baseRole)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid base role' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Importing ${members.length} team members with base role "${baseRole}"`);
 
     // Create admin client for user creation
     const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
@@ -241,8 +321,13 @@ serve(async (req) => {
         if (newUser.user) {
           const profileUpdate: Record<string, unknown> = {};
           
-          if (member.phone) {
-            profileUpdate.phone = member.phone.trim();
+          const normalizedPhone = normalizePhoneE164(member.phone);
+          if (normalizedPhone) {
+            profileUpdate.phone = normalizedPhone;
+          }
+
+          if (member.address && member.address.trim()) {
+            profileUpdate.address = member.address.trim();
           }
           
           if (member.positions && member.positions.length > 0) {
@@ -257,15 +342,38 @@ serve(async (req) => {
             profileUpdate.anniversary = member.anniversary;
           }
           
-          const { error: profileError } = await adminClient
-            .from('profiles')
-            .update(profileUpdate)
-            .eq('id', newUser.user.id);
+          if (Object.keys(profileUpdate).length > 0) {
+            const { error: profileError } = await adminClient
+              .from('profiles')
+              .update(profileUpdate)
+              .eq('id', newUser.user.id);
 
-          if (profileError) {
-            console.warn(`Failed to update profile for ${email}:`, profileError);
-          } else {
-            console.log(`Updated profile for ${email} with:`, Object.keys(profileUpdate).join(', '));
+            if (profileError) {
+              console.warn(`Failed to update profile for ${email}:`, profileError);
+            } else {
+              console.log(`Updated profile for ${email} with:`, Object.keys(profileUpdate).join(', '));
+            }
+          }
+
+          // Replace the trigger's default role with the selected base role.
+          if (baseRole !== 'volunteer') {
+            const { error: deleteRolesError } = await adminClient
+              .from('user_roles')
+              .delete()
+              .eq('user_id', newUser.user.id)
+              .in('role', replaceableBaseRoles);
+
+            if (deleteRolesError) {
+              console.warn(`Failed to clear default role for ${email}:`, deleteRolesError);
+            }
+
+            const { error: roleError } = await adminClient
+              .from('user_roles')
+              .insert({ user_id: newUser.user.id, role: baseRole });
+
+            if (roleError) {
+              console.warn(`Failed to assign role "${baseRole}" for ${email}:`, roleError);
+            }
           }
         }
 

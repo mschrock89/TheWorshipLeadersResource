@@ -55,7 +55,7 @@ export function BottomNav() {
           {
             to: "/my-setlists",
             icon: ListMusic,
-            label: isStudentApp ? "Wednesday Flow" : "Setlists",
+            label: isStudentApp ? "My Setlists" : "Setlists",
             tourId: "nav-setlists",
           },
         ]
@@ -67,7 +67,7 @@ export function BottomNav() {
         {
           to: "/my-setlists",
           icon: ListMusic,
-          label: isStudentApp ? "Wednesday Flow" : "Setlists",
+          label: isStudentApp ? "My Setlists" : "Setlists",
           badge: isApprover ? pendingApprovalCount : undefined,
           tourId: "nav-setlists",
         },

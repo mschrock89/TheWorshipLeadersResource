@@ -42,12 +42,17 @@ export interface CustomServiceAssignment {
 
 const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
 const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
+const STUDENT_CAMP_PATTERN = /\bstudent\s*camp\b/i;
 
 function normalizeCustomServiceMinistry(service: Pick<CustomService, "ministry_type" | "service_name">): string {
   if (service.ministry_type === "prayer_night") return "prayer_night";
   if (PRAYER_NIGHT_PATTERN.test(service.service_name || "")) return "prayer_night";
-  if (service.ministry_type === "kids_camp") return "kids_camp";
+  const sessionBaseMinistry = normalizeSessionSetMinistryType(service.ministry_type);
+  if (sessionBaseMinistry === "kids_camp" || sessionBaseMinistry === "student_camp") {
+    return service.ministry_type;
+  }
   if (KIDS_CAMP_PATTERN.test(service.service_name || "")) return "kids_camp";
+  if (STUDENT_CAMP_PATTERN.test(service.service_name || "")) return "student_camp";
   return service.ministry_type;
 }
 
@@ -140,6 +145,8 @@ export function useCustomServiceOccurrences({
     enabled: !!startDate && !!endDate,
     queryFn: async () => {
       const normalizedMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
+      const isSpecificSessionVariant =
+        !!ministryType && !!normalizedMinistryType && ministryType !== normalizedMinistryType;
       let query = supabase
         .from("custom_services")
         .select("*")
@@ -150,9 +157,14 @@ export function useCustomServiceOccurrences({
       if (campusId) {
         query = query.eq("campus_id", campusId);
       }
-      // Prayer Night supports legacy custom services that may still be stored as weekend
-      // but named "Prayer Night". Filter after normalization for that case.
-      if (normalizedMinistryType && normalizedMinistryType !== "prayer_night" && normalizedMinistryType !== "kids_camp") {
+      // Some specialty services have legacy rows stored under weekend and detected by name.
+      // Filter after normalization so base camp filters can include session variants too.
+      if (
+        normalizedMinistryType &&
+        normalizedMinistryType !== "prayer_night" &&
+        normalizedMinistryType !== "kids_camp" &&
+        normalizedMinistryType !== "student_camp"
+      ) {
         query = query.eq("ministry_type", normalizedMinistryType);
       }
 
@@ -161,7 +173,13 @@ export function useCustomServiceOccurrences({
 
       const expanded = expandServiceOccurrences((data || []) as CustomService[], startDate, endDate);
       if (!normalizedMinistryType) return expanded;
-      return expanded.filter((service) => service.ministry_type === normalizedMinistryType);
+      return expanded.filter((service) => {
+        if (isSpecificSessionVariant) {
+          return service.ministry_type === normalizedMinistryType || service.ministry_type === ministryType;
+        }
+        const normalizedServiceMinistry = normalizeSessionSetMinistryType(service.ministry_type) || service.ministry_type;
+        return normalizedServiceMinistry === normalizedMinistryType;
+      });
     },
   });
 }

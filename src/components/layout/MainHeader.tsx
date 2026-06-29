@@ -212,7 +212,7 @@ export function MainHeader({
                 <DropdownMenuItem asChild>
                   <Link to="/my-setlists" className="flex items-center gap-2">
                     <ListMusic className="h-4 w-4" />
-                    {isStudentApp ? "Wednesday Flow" : "Setlists"}
+                    {isStudentApp ? "My Setlists" : "Setlists"}
                   </Link>
                 </DropdownMenuItem>
               )}

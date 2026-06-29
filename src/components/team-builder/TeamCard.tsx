@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil } from "lucide-react";
+import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil, Church } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +72,7 @@ export function TeamCard({
   
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
+  const showPastors = allowedCategories.includes("Pastors");
   const showBand = allowedCategories.includes("Band");
   // Only show Production/Video when they are in the allowed categories for the selected ministry filter
   const showProduction = allowedCategories.includes("Production");
@@ -85,6 +86,7 @@ export function TeamCard({
   });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
+  const pastorSlots = POSITION_SLOTS.filter(s => s.category === "Pastors");
   const bandSlots = useMemo(() => templateSlots.bandSlots, [templateSlots.bandSlots]);
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
@@ -189,6 +191,7 @@ export function TeamCard({
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
     ...(showSpeaker ? speakerSlots : []),
+    ...(showPastors ? pastorSlots : []),
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
@@ -297,6 +300,17 @@ export function TeamCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 space-y-4">
+        {/* Pastors Section */}
+        {showPastors && (
+          renderSlotGroup({
+            title: "Pastors",
+            icon: <Church className="h-4 w-4 text-muted-foreground" />,
+            slots: pastorSlots,
+            slotReadOnly: effectiveReadOnly,
+            allowMinistryEdit: true,
+          })
+        )}
+
         {/* Vocalists Section */}
         {showVocalists && (
           renderSlotGroup({

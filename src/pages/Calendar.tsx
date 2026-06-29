@@ -46,7 +46,8 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
+import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
@@ -124,8 +125,12 @@ const scheduleEntryMatchesCalendarFilter = (
   entryMinistryType: string | null | undefined,
   ministryFilter: string,
 ) => {
+  const sessionNormalizedEntryMinistry =
+    normalizeSessionSetMinistryType(entryMinistryType) || entryMinistryType || "weekend";
   const normalizedEntryMinistry =
-    normalizeWeekendWorshipMinistryType(entryMinistryType) || entryMinistryType || "weekend";
+    normalizeWeekendWorshipMinistryType(sessionNormalizedEntryMinistry) || sessionNormalizedEntryMinistry;
+  const normalizedFilterMinistry =
+    normalizeSessionSetMinistryType(ministryFilter) || ministryFilter;
 
   if (ministryFilter === "all") return true;
 
@@ -153,14 +158,17 @@ const scheduleEntryMatchesCalendarFilter = (
     return normalizedEntryMinistry === "weekend";
   }
 
-  return entryMinistryType === ministryFilter;
+  return entryMinistryType === ministryFilter || sessionNormalizedEntryMinistry === normalizedFilterMinistry;
 };
 
 const serviceOverrideMatchesMinistryFilter = (
   overrideMinistryType: string | null | undefined,
   ministryFilter: string,
 ) => {
-  const normalizedMinistryType = overrideMinistryType || "weekend";
+  const normalizedMinistryType =
+    normalizeSessionSetMinistryType(overrideMinistryType) || overrideMinistryType || "weekend";
+  const normalizedFilterMinistry =
+    normalizeSessionSetMinistryType(ministryFilter) || ministryFilter;
 
   if (ministryFilter === "all") return true;
   if (ministryFilter === "weekend_team") {
@@ -169,7 +177,7 @@ const serviceOverrideMatchesMinistryFilter = (
   if (ministryFilter === "weekend" || ministryFilter === "sunday_am") {
     return normalizedMinistryType === "weekend" || normalizedMinistryType === "sunday_am";
   }
-  return normalizedMinistryType === ministryFilter;
+  return normalizedMinistryType === normalizedFilterMinistry;
 };
 
 const formatDateForStorage = (date: Date) =>
@@ -203,8 +211,12 @@ const resolveSetlistPushMinistryType = (ministryType?: string) => {
 const getEffectiveCustomServiceMinistryType = (ministryType: string, serviceName: string) => {
   if (ministryType === "prayer_night") return "prayer_night";
   if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
-  if (ministryType === "kids_camp") return "kids_camp";
+  const sessionBaseMinistry = normalizeSessionSetMinistryType(ministryType);
+  if (sessionBaseMinistry === "kids_camp" || sessionBaseMinistry === "student_camp") {
+    return ministryType;
+  }
   if (/\bkids\s*camp\b/i.test(serviceName || "")) return "kids_camp";
+  if (/\bstudent\s*camp\b/i.test(serviceName || "")) return "student_camp";
   return ministryType;
 };
 
@@ -249,6 +261,15 @@ const defaultNewEventState = {
   campus_ids: [] as string[],
   repeats_weekly: false,
 };
+
+// In ministry-scoped apps (HS/MS) the default "weekend" ministry isn't selectable,
+// so seed new events with the app's own ministry instead.
+const buildDefaultNewEventState = (appMinistryTypes: readonly string[] | null) => {
+  if (!appMinistryTypes || appMinistryTypes.length === 0) return defaultNewEventState;
+  const ministry = appMinistryTypes[0];
+  return { ...defaultNewEventState, ministry_type: ministry, ministry_types: [ministry] };
+};
+
 function StandardCalendar() {
   const {
     isAdmin,
@@ -266,8 +287,19 @@ function StandardCalendar() {
   const [localCampusFilter, setLocalCampusFilter] = useState<string>("");
   const campusFilter = campusContext?.selectedCampusId || localCampusFilter;
   const setCampusFilter = campusContext?.setSelectedCampusId || setLocalCampusFilter;
-  const [ministryFilter, setMinistryFilter] = useState<string>("weekend_team");
-  const [newEvent, setNewEvent] = useState(defaultNewEventState);
+  const resourceAppKey = getCurrentResourceAppKey();
+  // HS/MS student apps show their own worship ministries plus shared Student Camp;
+  // null means show every ministry.
+  const appMinistryTypes = useMemo(
+    () => getResourceAppMinistryTypes(resourceAppKey),
+    [resourceAppKey],
+  );
+  const [ministryFilter, setMinistryFilter] = useState<string>(
+    () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
+  );
+  const [newEvent, setNewEvent] = useState(() =>
+    buildDefaultNewEventState(getResourceAppMinistryTypes(getCurrentResourceAppKey())),
+  );
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [isServiceOverrideOpen, setIsServiceOverrideOpen] = useState(false);
   const [serviceOverrideForm, setServiceOverrideForm] = useState({
@@ -396,7 +428,14 @@ function StandardCalendar() {
   });
   const {
     data: teamSchedule = []
-  } = useTeamSchedule(undefined, effectiveCampusId);
+  } = useTeamSchedule(
+    undefined,
+    effectiveCampusId,
+    isStudentResourceAppKey(resourceAppKey) &&
+    normalizeSessionSetMinistryType(ministryFilter) === "student_camp"
+      ? ["students_hs", "students_ms", "worship"]
+      : undefined,
+  );
   const {
     scheduledDates,
     uniqueTeams
@@ -736,14 +775,16 @@ function StandardCalendar() {
     const dayOfWeek = dateForDay.getDay();
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
+    const isStudentCampFilter =
+      normalizeSessionSetMinistryType(ministryFilter) === "student_camp";
 
     // When a specific campus is selected, don't show schedule for days that campus doesn't have service
     // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
     if (campusFilter && campusFilter !== "network-wide") {
       const selectedCampus = campuses.find(c => c.id === campusFilter);
       if (selectedCampus) {
-        if (isSaturday && !selectedCampus.has_saturday_service) return null;
-        if (isSunday && !selectedCampus.has_sunday_service) return null;
+        if (!isStudentCampFilter && isSaturday && !selectedCampus.has_saturday_service) return null;
+        if (!isStudentCampFilter && isSunday && !selectedCampus.has_sunday_service) return null;
       }
       // Filter by selected campus - only show schedule at this campus
       let matches = scheduledDates.filter(
@@ -829,9 +870,20 @@ function StandardCalendar() {
     }
 
     if (activeRotationPeriodName) {
-      const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
-      if (activeEntries.length > 0) {
-        entries = activeEntries;
+      const getRotationPreferenceKey = (entry: TeamScheduleEntry) =>
+        `${entry.ministry_type ?? "default"}:${entry.time_of_day ?? "all"}`;
+      const activeEntryKeys = new Set(
+        entries
+          .filter((entry) => entry.rotation_period === activeRotationPeriodName)
+          .map(getRotationPreferenceKey),
+      );
+
+      if (activeEntryKeys.size > 0) {
+        entries = entries.filter(
+          (entry) =>
+            entry.rotation_period === activeRotationPeriodName ||
+            !activeEntryKeys.has(getRotationPreferenceKey(entry)),
+        );
       }
     }
 
@@ -856,13 +908,18 @@ function StandardCalendar() {
           : [];
       if (ministryTypes.length === 0) return true;
       const weekendAliases = new Set(["weekend", "weekend_team", "sunday_am"]);
+      const normalizedScopedMinistry =
+        normalizeSessionSetMinistryType(scopedMinistry) || scopedMinistry;
       if (scopedMinistry === "weekend_team") {
         return ministryTypes.some(type => weekendAliases.has(type));
       }
       if (weekendAliases.has(scopedMinistry)) {
         return ministryTypes.some(type => weekendAliases.has(type));
       }
-      return ministryTypes.includes(scopedMinistry);
+      return ministryTypes.some((type) => {
+        const normalizedType = normalizeSessionSetMinistryType(type) || type;
+        return type === scopedMinistry || normalizedType === normalizedScopedMinistry;
+      });
     };
 
     // Apply campus filter for campus admins
@@ -905,6 +962,8 @@ function StandardCalendar() {
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
     const isMidweek = dayOfWeek === 3; // Wednesday
+    const isStudentCampFilter =
+      normalizeSessionSetMinistryType(ministryFilter) === "student_camp";
     const hasServiceOverride = serviceTimeOverrideDateSet.has(dateStr);
 
     // Check if selected campus has service on this day
@@ -912,9 +971,9 @@ function StandardCalendar() {
       const selectedCampus = campuses.find(c => c.id === campusFilter);
       if (selectedCampus) {
         // Skip if Saturday and campus doesn't have Saturday service
-        if (isSaturday && !selectedCampus.has_saturday_service) return null;
+        if (!isStudentCampFilter && isSaturday && !selectedCampus.has_saturday_service) return null;
         // Skip if Sunday and campus doesn't have Sunday service
-        if (isSunday && !selectedCampus.has_sunday_service) return null;
+        if (!isStudentCampFilter && isSunday && !selectedCampus.has_sunday_service) return null;
       }
     }
 
@@ -959,10 +1018,11 @@ function StandardCalendar() {
     }
 
     // If a specific campus is selected, only show team if user is scheduled at that campus
-    // OR if it's a weekend rotation OR a midweek scheduled ministry (HS/MS Worship/etc.)
+    // OR if it's a weekend rotation OR a midweek scheduled ministry (HS/MS Worship/etc.).
+    // Student Camp can span any day of the week, including non-Wednesday weekdays.
     const userScheduleForDay = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
     const isWeekend = isSaturday || isSunday;
-    if (userScheduleForDay || isWeekend || isMidweek || hasServiceOverride) {
+    if (userScheduleForDay || isWeekend || isMidweek || isStudentCampFilter || hasServiceOverride) {
       return teamEntry;
     }
     return null;
@@ -1125,7 +1185,7 @@ function StandardCalendar() {
           },
         });
 
-        setNewEvent(defaultNewEventState);
+        setNewEvent(buildDefaultNewEventState(appMinistryTypes));
         setEditingEventId(null);
         setIsAddOpen(false);
         return;
@@ -1145,7 +1205,7 @@ function StandardCalendar() {
       });
 
     }
-    setNewEvent(defaultNewEventState);
+    setNewEvent(buildDefaultNewEventState(appMinistryTypes));
     setEditingEventId(null);
     setIsAddOpen(false);
   };
@@ -1176,7 +1236,7 @@ function StandardCalendar() {
     setIsAddOpen(true);
   };
   const resetEventComposer = () => {
-    setNewEvent(defaultNewEventState);
+    setNewEvent(buildDefaultNewEventState(appMinistryTypes));
     setEditingEventId(null);
     setIsAddOpen(false);
   };
@@ -1235,7 +1295,9 @@ function StandardCalendar() {
                   <SelectValue placeholder="Ministry" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CALENDAR_MINISTRY_FILTER_ORDER.map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
+                  {CALENDAR_MINISTRY_FILTER_ORDER
+                    .filter((value) => !appMinistryTypes || appMinistryTypes.includes(value))
+                    .map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
                     .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry) && !('hidden' in ministry && ministry.hidden))
                     .map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
                       {ministry.label}
@@ -1453,7 +1515,9 @@ function StandardCalendar() {
                                     <SelectValue placeholder="Choose a ministry" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {SERVICE_OVERRIDE_MINISTRY_OPTIONS.map((ministry) => <SelectItem key={ministry.value} value={ministry.value}>
+                                    {SERVICE_OVERRIDE_MINISTRY_OPTIONS
+                                      .filter((ministry) => !appMinistryTypes || appMinistryTypes.includes(ministry.value))
+                                      .map((ministry) => <SelectItem key={ministry.value} value={ministry.value}>
                                         {ministry.label}
                                       </SelectItem>)}
                                   </SelectContent>
@@ -1773,7 +1837,7 @@ function StandardCalendar() {
                     setIsAddOpen(open);
                     if (!open) {
                       setEditingEventId(null);
-                      setNewEvent(defaultNewEventState);
+                      setNewEvent(buildDefaultNewEventState(appMinistryTypes));
                     }
                   }}>
                         <DialogTrigger asChild>
@@ -1836,7 +1900,7 @@ function StandardCalendar() {
                                 <div className="space-y-3">
                                   <Label>Ministries</Label>
                                   <div className="grid gap-2 rounded-md border border-border p-3">
-                                    {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition").map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
+                                    {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition" && (!appMinistryTypes || appMinistryTypes.includes(m.value))).map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
                                         <Checkbox checked={newEvent.ministry_types.includes(option.value)} onCheckedChange={checked => {
                                   setNewEvent(current => {
                                     const nextMinistryTypes = checked ? Array.from(new Set([...current.ministry_types, option.value])) : current.ministry_types.filter(value => value !== option.value);
@@ -1898,7 +1962,9 @@ function StandardCalendar() {
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {SET_PLANNER_MINISTRY_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>
+                                      {SET_PLANNER_MINISTRY_OPTIONS
+                                        .filter(option => !appMinistryTypes || appMinistryTypes.includes(option.value))
+                                        .map(option => <SelectItem key={option.value} value={option.value}>
                                           {option.label}
                                         </SelectItem>)}
                                     </SelectContent>

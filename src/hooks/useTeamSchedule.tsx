@@ -128,16 +128,22 @@ export function useTeamMembers(teamId?: string) {
   });
 }
 
-export function useTeamSchedule(rotationPeriod?: string, campusId?: string | null) {
+export function useTeamSchedule(
+  rotationPeriod?: string,
+  campusId?: string | null,
+  resourceAppKeys?: readonly string[],
+) {
   const resourceAppKey = getCurrentResourceAppKey();
+  const scopedResourceAppKeys =
+    resourceAppKeys && resourceAppKeys.length > 0 ? Array.from(new Set(resourceAppKeys)) : [resourceAppKey];
 
   return useQuery({
-    queryKey: ["team-schedule", rotationPeriod, campusId, resourceAppKey],
+    queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(",")],
     queryFn: async () => {
       let query = supabase
         .from("team_schedule")
         .select("*, worship_teams(*), campus_id")
-        .eq("resource_app_key", resourceAppKey)
+        .in("resource_app_key", scopedResourceAppKeys)
         .order("schedule_date");
       
       if (rotationPeriod) {

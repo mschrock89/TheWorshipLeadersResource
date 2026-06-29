@@ -371,7 +371,7 @@ export default function Auditions() {
                           </Button>
                           <Button size="sm" asChild>
                             <Link to={`/set-planner/audition/${candidate.id}`}>
-                              {isStudentApp ? "Wednesday Flow" : "Setlist"}
+                              {isStudentApp ? "My Setlists" : "Setlist"}
                             </Link>
                           </Button>
                           <Button size="sm" variant="ghost" asChild>

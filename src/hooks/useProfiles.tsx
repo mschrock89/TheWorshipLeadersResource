@@ -24,6 +24,7 @@ export interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   phone: string | null;
+  address: string | null;
   birthday: string | null;
   anniversary: string | null;
   positions: TeamPosition[];

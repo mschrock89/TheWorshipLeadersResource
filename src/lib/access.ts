@@ -3,6 +3,7 @@ export const STUDENT_BASE_ROLE = "student";
 export const STUDENT_BASE_ROLES = new Set([
   STUDENT_BASE_ROLE,
   "ms_leader",
+  "ms_leader_weekend",
   "hs_leader",
 ]);
 const WEEKEND_GROUP_TEXT_MINISTRY_ALIASES = new Set([

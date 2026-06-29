@@ -55,7 +55,7 @@ interface ResolvedDraft {
 
 const ACCEPTED_FILE_TYPES = ".csv,.tsv,.txt,.pdf,.xlsx";
 const NO_ROLE_ASSIGNMENT = "none";
-const LIFE_GROUP_BASE_ROLE_OPTIONS = ["student", "ms_leader", "hs_leader"] as const;
+const LIFE_GROUP_BASE_ROLE_OPTIONS = ["student", "ms_leader", "ms_leader_weekend", "hs_leader"] as const;
 
 type LifeGroupImportBaseRole = Extract<AppRole, (typeof LIFE_GROUP_BASE_ROLE_OPTIONS)[number]>;
 type LifeGroupImportRoleValue = LifeGroupImportBaseRole | typeof NO_ROLE_ASSIGNMENT;

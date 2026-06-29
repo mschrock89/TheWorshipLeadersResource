@@ -5,10 +5,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, FileText, X, Loader2, Check, AlertCircle } from "lucide-react";
 import Papa from "papaparse";
+import { BASE_ROLES, ROLE_LABELS } from "@/lib/constants";
 import type { Database } from "@/integrations/supabase/types";
 
 type TeamPosition = Database["public"]["Enums"]["team_position"];
@@ -18,6 +26,7 @@ interface TeamMember {
   lastName: string;
   email: string;
   phone: string;
+  address: string;
   positions: string[];
   birthday: string;
   anniversary: string;
@@ -191,6 +200,7 @@ export function TeamImportDialog({
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [skippedMembers, setSkippedMembers] = useState<SkippedMember[]>([]);
   const [results, setResults] = useState<ImportResult[] | null>(null);
+  const [baseRole, setBaseRole] = useState<string>("volunteer");
 
   const resetState = useCallback(() => {
     setFile(null);
@@ -199,6 +209,7 @@ export function TeamImportDialog({
     setResults(null);
     setParsing(false);
     setImporting(false);
+    setBaseRole("volunteer");
   }, []);
 
   const handleClose = useCallback(() => {
@@ -233,6 +244,13 @@ export function TeamImportDialog({
           const positionKey = findColumnKey(keys, ['position', 'positions']);
           const birthdateKey = findColumnKey(keys, ['birthdate', 'birthday']);
           const anniversaryKey = findColumnKey(keys, ['anniversary']);
+
+          // Address can arrive as a single column or split across street/city/state/zip.
+          const addressKey = findColumnKey(keys, ['address', 'home address', 'street address', 'mailing address', 'street', 'address line 1', 'address 1']);
+          const address2Key = findColumnKey(keys, ['address line 2', 'address 2', 'apt', 'unit']);
+          const cityKey = findColumnKey(keys, ['city']);
+          const stateKey = findColumnKey(keys, ['state', 'province', 'region']);
+          const zipKey = findColumnKey(keys, ['zip', 'zip code', 'postal code', 'postcode']);
           
           for (const row of data) {
             const email = emailKey ? row[emailKey]?.trim() : '';
@@ -259,12 +277,27 @@ export function TeamImportDialog({
             // Parse dates
             const birthday = birthdateKey ? formatDate(row[birthdateKey]?.trim() || '') : '';
             const anniversary = anniversaryKey ? formatDate(row[anniversaryKey]?.trim() || '') : '';
+
+            // Assemble address from whichever columns are present.
+            const street = [
+              addressKey ? row[addressKey]?.trim() || '' : '',
+              address2Key ? row[address2Key]?.trim() || '' : '',
+            ].filter(Boolean).join(' ');
+            const cityStateZip = [
+              cityKey ? row[cityKey]?.trim() || '' : '',
+              [
+                stateKey ? row[stateKey]?.trim() || '' : '',
+                zipKey ? row[zipKey]?.trim() || '' : '',
+              ].filter(Boolean).join(' '),
+            ].filter(Boolean).join(', ');
+            const address = [street, cityStateZip].filter(Boolean).join(', ');
             
             members.push({
               firstName,
               lastName,
               email: email.toLowerCase(),
               phone,
+              address,
               positions,
               birthday,
               anniversary
@@ -322,7 +355,7 @@ export function TeamImportDialog({
     if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
       toast({
         title: "Unsupported file type",
-        description: "Please upload a CSV file from Planning Center.",
+        description: "Please upload a .csv file.",
         variant: "destructive"
       });
       return;
@@ -413,7 +446,7 @@ export function TeamImportDialog({
       }));
       
       const { data, error } = await supabase.functions.invoke('import-team-members', {
-        body: { members: membersWithMappedPositions }
+        body: { members: membersWithMappedPositions, role: baseRole }
       });
       
       if (error) throw error;
@@ -444,11 +477,34 @@ export function TeamImportDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import Team Members</DialogTitle>
+          <DialogTitle>Bulk Import Members</DialogTitle>
           <DialogDescription>
-            Upload a CSV export from Planning Center
+            Upload a CSV with names, phone numbers, emails, and addresses. A profile
+            is created for each row and assigned the base role you select below.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Base role for the whole upload group */}
+        {!results && (
+          <div className="space-y-2">
+            <Label htmlFor="import-base-role">Base role for this upload group</Label>
+            <Select value={baseRole} onValueChange={setBaseRole}>
+              <SelectTrigger id="import-base-role">
+                <SelectValue placeholder="Select a base role" />
+              </SelectTrigger>
+              <SelectContent>
+                {BASE_ROLES.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {ROLE_LABELS[role] || role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Every member in this CSV will be created with this role.
+            </p>
+          </div>
+        )}
 
         {/* File Upload Area */}
         {!file && !parsing && (
@@ -462,7 +518,8 @@ export function TeamImportDialog({
               Drag and drop your CSV file here
             </p>
             <p className="text-sm text-muted-foreground mb-4">
-              Export from Planning Center Services → People
+              Include columns for name, email, phone, and address (Planning Center
+              exports work too)
             </p>
             <Label htmlFor="file-upload">
               <Button variant="outline" asChild>
@@ -556,6 +613,7 @@ export function TeamImportDialog({
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Address</TableHead>
                     <TableHead>Position(s)</TableHead>
                     <TableHead>Birthday</TableHead>
                     <TableHead>Anniversary</TableHead>
@@ -573,6 +631,9 @@ export function TeamImportDialog({
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {member.phone || '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                        {member.address || '—'}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">

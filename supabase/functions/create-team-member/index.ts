@@ -42,6 +42,7 @@ const allowedBaseRoles = [
   "creative_team_lead",
   "student",
   "ms_leader",
+  "ms_leader_weekend",
   "hs_leader",
   "volunteer",
 ];
@@ -61,6 +62,7 @@ const replaceableBaseRoles = [
   "audition_candidate",
   "student",
   "ms_leader",
+  "ms_leader_weekend",
   "hs_leader",
   "volunteer",
 ];

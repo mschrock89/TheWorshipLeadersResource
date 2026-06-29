@@ -1522,6 +1522,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address: string | null
           anniversary: string | null
           avatar_url: string | null
           birthday: string | null
@@ -1542,6 +1543,7 @@ export type Database = {
           welcome_email_sent_at: string | null
         }
         Insert: {
+          address?: string | null
           anniversary?: string | null
           avatar_url?: string | null
           birthday?: string | null
@@ -1562,6 +1564,7 @@ export type Database = {
           welcome_email_sent_at?: string | null
         }
         Update: {
+          address?: string | null
           anniversary?: string | null
           avatar_url?: string | null
           birthday?: string | null
@@ -3247,6 +3250,7 @@ export type Database = {
       get_profile_safe: {
         Args: { profile_id: string }
         Returns: {
+          address: string
           anniversary: string
           avatar_url: string
           birthday: string
@@ -3384,6 +3388,7 @@ export type Database = {
         | "audition_candidate"
         | "student"
         | "ms_leader"
+        | "ms_leader_weekend"
         | "hs_leader"
       swap_request_status: "pending" | "accepted" | "declined" | "cancelled"
       team_position:
@@ -3435,6 +3440,9 @@ export type Database = {
         | "student_small_group_leader"
         | "photo_team"
         | "art_team"
+        | "pastor_mc"
+        | "pastor_prayer"
+        | "pastor_speaker"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3582,6 +3590,7 @@ export const Constants = {
         "audition_candidate",
         "student",
         "ms_leader",
+        "ms_leader_weekend",
         "hs_leader",
       ],
       swap_request_status: ["pending", "accepted", "declined", "cancelled"],
@@ -3634,6 +3643,9 @@ export const Constants = {
         "student_small_group_leader",
         "photo_team",
         "art_team",
+        "pastor_mc",
+        "pastor_prayer",
+        "pastor_speaker",
       ],
     },
   },

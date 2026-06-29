@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen, Palette } from "lucide-react";
+import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen, Palette, Church } from "lucide-react";
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
 import { cn } from "@/lib/utils";
 import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
@@ -64,6 +64,7 @@ function CondensedTeamCard({
 
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
+  const showPastors = allowedCategories.includes("Pastors");
   const showBand = allowedCategories.includes("Band");
   // Only show Production when explicitly in the allowed categories
   const showProduction = allowedCategories.includes("Production");
@@ -81,6 +82,7 @@ function CondensedTeamCard({
   });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
+  const pastorSlots = POSITION_SLOTS.filter(s => s.category === "Pastors");
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
@@ -89,6 +91,7 @@ function CondensedTeamCard({
   const visibleSlots = [
     ...(showVocalists ? vocalSlots : []),
     ...(showSpeaker ? speakerSlots : []),
+    ...(showPastors ? pastorSlots : []),
     ...(showBand ? bandSlots : []),
     ...(showProduction ? productionSlots : []),
     ...(showVideo ? videoSlots : []),
@@ -156,6 +159,7 @@ function CondensedTeamCard({
       </CardHeader>
 
       <CardContent className="p-3 space-y-2">
+        {showPastors && renderSection("Pastors", Church, pastorSlots)}
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
@@ -195,6 +199,7 @@ function FullTeamCard({
 
   const showVocalists = allowedCategories.includes("Vocalists");
   const showSpeaker = allowedCategories.includes("Speaker");
+  const showPastors = allowedCategories.includes("Pastors");
   const showBand = allowedCategories.includes("Band");
   // Only show Production when explicitly in the allowed categories
   const showProduction = allowedCategories.includes("Production");
@@ -212,6 +217,7 @@ function FullTeamCard({
   });
   const vocalSlots = templateSlots.vocalSlots;
   const speakerSlots = POSITION_SLOTS.filter(s => s.category === "Speaker");
+  const pastorSlots = POSITION_SLOTS.filter(s => s.category === "Pastors");
   const bandSlots = templateSlots.bandSlots;
   const productionSlots = templateSlots.productionSlots;
   const videoSlots = templateSlots.videoSlots;
@@ -291,6 +297,7 @@ function FullTeamCard({
       </CardHeader>
 
       <CardContent className="p-4 space-y-4">
+        {showPastors && renderSection("Pastors", Church, pastorSlots)}
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
         {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}

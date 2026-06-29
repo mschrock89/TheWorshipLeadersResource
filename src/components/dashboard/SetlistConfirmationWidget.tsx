@@ -22,7 +22,12 @@ import {
 } from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
-import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import {
+  filterByResourceAppMinistry,
+  filterStudentWednesdayFlows,
+  getResourceAppMinistryTypes,
+} from "@/lib/studentFlow";
 
 interface SetlistMember {
   userId: string;
@@ -58,11 +63,6 @@ interface SetlistConfirmationWidgetProps {
 }
 
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
-
-function isWednesdayPlanDate(planDate: string) {
-  const date = new Date(`${planDate}T00:00:00`);
-  return !Number.isNaN(date.getTime()) && date.getDay() === 3;
-}
 
 function getTargetRosterMinistry(ministryFilter: string, setlistMinistry: string) {
   return ministryFilter === "all" ? setlistMinistry : ministryFilter;
@@ -618,15 +618,36 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
   const [ministryFilter, setMinistryFilter] = useState<string>("all");
   const [expandedSetlistId, setExpandedSetlistId] = useState<string | null>(null);
   const isStudentApp = isCurrentStudentResourceApp();
+  const resourceAppKey = getCurrentResourceAppKey();
+  // HS/MS apps are scoped to their own worship ministries plus shared Student Camp.
+  const appMinistryTypes = getResourceAppMinistryTypes(resourceAppKey);
+  const appMinistryQueryTypes = useMemo(
+    () =>
+      appMinistryTypes
+        ? Array.from(new Set(appMinistryTypes.flatMap((type) => getSessionSetVariants(type))))
+        : null,
+    [appMinistryTypes],
+  );
+  const ministryOptions = useMemo(
+    () =>
+      MINISTRY_TYPES.filter(
+        (ministry) =>
+          ministry.value !== "weekend_team" &&
+          // Hide session variants (e.g. "Kids Camp Morning"); the base option covers them.
+          !getMinistrySession(ministry.value).sessionLabel &&
+          (!appMinistryTypes || appMinistryTypes.includes(ministry.value)),
+      ),
+    [appMinistryTypes],
+  );
   const widgetTitle = isStudentApp ? "Services" : "Setlist Confirmation Status";
-  const emptyTitle = isStudentApp ? "No published Wednesday flows found" : "No published setlists found";
+  const emptyTitle = isStudentApp ? "No published setlists found" : "No published setlists found";
   const emptyDescription = isStudentApp
-    ? "Publish a Wednesday flow to track confirmations"
+    ? "Publish a setlist to track confirmations"
     : "Publish a setlist from Set Builder to track confirmations";
   const today = format(new Date(), "yyyy-MM-dd");
 
   const { data: setlists = [], isLoading } = useQuery({
-    queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter, isStudentApp, today],
+    queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter, isStudentApp, resourceAppKey, today],
     queryFn: async (): Promise<PublishedSetlist[]> => {
       let query = supabase
         .from("draft_sets")
@@ -656,6 +677,8 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         } else {
           query = query.eq("ministry_type", ministryFilter);
         }
+      } else if (appMinistryQueryTypes) {
+        query = query.in("ministry_type", appMinistryQueryTypes);
       }
 
       const { data: publishedSets, error } = await query;
@@ -745,9 +768,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           null,
       }));
 
+      const appScopedSets = filterByResourceAppMinistry(resolvedSets, resourceAppKey);
+
       return (isStudentApp
-        ? resolvedSets.filter((set) => isWednesdayPlanDate(set.plan_date))
-        : resolvedSets
+        ? filterStudentWednesdayFlows(appScopedSets, resourceAppKey)
+        : appScopedSets
       ).slice(0, 10);
     },
   });
@@ -803,12 +828,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Ministries</SelectItem>
-              {MINISTRY_TYPES.filter(
-                (ministry) =>
-                  ministry.value !== "weekend_team" &&
-                  // Hide session variants (e.g. "Kids Camp Morning"); the base option covers them.
-                  !getMinistrySession(ministry.value).sessionLabel,
-              ).map((ministry) => (
+              {ministryOptions.map((ministry) => (
                 <SelectItem key={ministry.value} value={ministry.value}>
                   {ministry.label}
                 </SelectItem>

@@ -20,6 +20,7 @@ const SENDER_ROLES = new Set([
 const LEADER_RECIPIENT_ROLES = new Set([
   "leader",
   "ms_leader",
+  "ms_leader_weekend",
   "hs_leader",
   "student_pastor",
   "student_worship_pastor",
@@ -240,7 +241,8 @@ serve(async (req: Request): Promise<Response> => {
         row.role === "leader" ||
         row.role === "student_pastor" ||
         row.role === "student_worship_pastor" ||
-        (resourceAppKey === "students_ms" && row.role === "ms_leader") ||
+        (resourceAppKey === "students_ms" &&
+          (row.role === "ms_leader" || row.role === "ms_leader_weekend")) ||
         (resourceAppKey === "students_hs" && row.role === "hs_leader")
       ) {
         appUserIds.add(row.user_id);

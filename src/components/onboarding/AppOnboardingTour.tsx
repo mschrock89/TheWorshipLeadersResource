@@ -97,10 +97,10 @@ export function AppOnboardingTour() {
         id: "setlists-nav",
         route: "/",
         target: '[data-tour="nav-setlists"]',
-        title: isStudentApp ? "Wednesday Flow lives here" : "Setlists live here",
+        title: isStudentApp ? "My Setlists lives here" : "Setlists live here",
         description:
           isStudentApp
-            ? "Wednesday Flow is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to."
+            ? "My Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to."
             : "Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to.",
       });
     }
