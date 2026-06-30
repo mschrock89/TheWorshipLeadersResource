@@ -195,7 +195,7 @@ export default function Dashboard() {
     return canManageTeam;
   });
 
-  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"], ["active-covenant", user?.id]]}>
+  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"], ["active-covenant"]]}>
       {/* Push Notification Banner */}
       <PushNotificationBanner />
 

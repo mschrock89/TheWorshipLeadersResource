@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { getCovenantTerminology, getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export interface CovenantDocument {
   id: string;
@@ -11,6 +12,7 @@ export interface CovenantDocument {
   storage_path: string;
   version_label: string;
   is_active: boolean;
+  resource_app_key: string;
   created_at: string;
   updated_at: string;
   created_by: string | null;
@@ -35,9 +37,10 @@ export interface ActiveCovenantPayload {
 
 export function useActiveCovenant(userId?: string) {
   const { user, isLoading } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["active-covenant", userId],
+    queryKey: ["active-covenant", resourceAppKey, userId],
     enabled: !!user && !isLoading,
     queryFn: async () => {
       const db = supabase as any;
@@ -45,6 +48,7 @@ export function useActiveCovenant(userId?: string) {
         .from("covenant_documents")
         .select("*")
         .eq("is_active", true)
+        .eq("resource_app_key", resourceAppKey)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -133,16 +137,18 @@ export function useSignCovenant() {
       return data as CovenantSignature;
     },
     onSuccess: (signature) => {
-      queryClient.invalidateQueries({ queryKey: ["active-covenant", signature.user_id] });
+      const { noun } = getCovenantTerminology();
+      queryClient.invalidateQueries({ queryKey: ["active-covenant"] });
       queryClient.invalidateQueries({ queryKey: ["covenant-signature-count", signature.document_id] });
       toast({
-        title: "Covenant signed",
-        description: "Your Covenant acknowledgment has been saved.",
+        title: `${noun} signed`,
+        description: `Your ${noun} acknowledgment has been saved.`,
       });
     },
     onError: (error) => {
+      const { noun } = getCovenantTerminology();
       toast({
-        title: "Unable to sign Covenant",
+        title: `Unable to sign ${noun}`,
         description: error.message,
         variant: "destructive",
       });
@@ -168,8 +174,9 @@ export function useUploadCovenantDocument() {
       versionLabel: string;
       userId: string;
     }) => {
+      const resourceAppKey = getCurrentResourceAppKey();
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${userId}/${Date.now()}-${safeName}`;
+      const path = `${resourceAppKey}/${userId}/${Date.now()}-${safeName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("covenant_documents")
@@ -185,7 +192,8 @@ export function useUploadCovenantDocument() {
       const { error: clearError } = await db
         .from("covenant_documents")
         .update({ is_active: false })
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .eq("resource_app_key", resourceAppKey);
 
       if (clearError) throw clearError;
 
@@ -198,6 +206,7 @@ export function useUploadCovenantDocument() {
           storage_path: path,
           version_label: versionLabel.trim(),
           is_active: true,
+          resource_app_key: resourceAppKey,
           created_by: userId,
         })
         .select("*")
@@ -207,16 +216,18 @@ export function useUploadCovenantDocument() {
       return data as CovenantDocument;
     },
     onSuccess: () => {
+      const { noun } = getCovenantTerminology();
       queryClient.invalidateQueries({ queryKey: ["active-covenant"] });
       queryClient.invalidateQueries({ queryKey: ["covenant-signature-count"] });
       toast({
-        title: "Covenant published",
-        description: "The new Covenant PDF is now live on every dashboard.",
+        title: `${noun} published`,
+        description: `The new ${noun} PDF is now live on this app's dashboards.`,
       });
     },
     onError: (error) => {
+      const { noun } = getCovenantTerminology();
       toast({
-        title: "Unable to publish Covenant",
+        title: `Unable to publish ${noun}`,
         description: error.message,
         variant: "destructive",
       });

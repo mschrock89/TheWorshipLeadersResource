@@ -31,6 +31,22 @@ const LEADER_RECIPIENT_ROLES = new Set([
 
 const STUDENT_APP_KEYS = new Set(["students_hs", "students_ms"]);
 
+// Path prefix each resource app is mounted under. Push notifications must open a
+// URL inside the target app's PWA scope, otherwise tapping the notification
+// lands on the default (worship) app served at the root path.
+const RESOURCE_APP_PATH_PREFIXES: Record<string, string> = {
+  worship: "",
+  students_hs: "/hs",
+  students_ms: "/ms",
+  my_church_resource: "/admin",
+};
+
+function buildAppUrl(resourceAppKey: string, path: string) {
+  const prefix = RESOURCE_APP_PATH_PREFIXES[resourceAppKey] ?? "";
+  const normalizedPath = path === "/" ? "" : path.startsWith("/") ? path : `/${path}`;
+  return `${prefix}${normalizedPath}` || "/";
+}
+
 interface AdminPingRequest {
   title?: string;
   message?: string;
@@ -448,31 +464,40 @@ serve(async (req: Request): Promise<Response> => {
 
     let pushSent = 0;
     let pushFailed = 0;
-    try {
-      const senderName = senderProfileResult.data?.full_name?.trim() || "A leader";
-      const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({
-          title,
-          message: `${senderName}: ${message}`,
-          url: campInstanceId ? "/camp" : "/",
-          tag: `admin-ping-${ping.id}`,
-          userIds: recipientUserIds,
-          contextType: "admin-ping",
-          contextId: ping.id,
-          createdBy: user.id,
-          metadata: { resourceAppKey, campInstanceId, filters },
-        }),
-      });
-      const pushResult = await pushResponse.json();
-      pushSent = pushResult.sent || 0;
-      pushFailed = pushResult.failed || 0;
-    } catch (error) {
-      console.error("Failed to send admin ping push:", error);
+    const senderName = senderProfileResult.data?.full_name?.trim() || "A leader";
+    const pingPath = campInstanceId ? "/camp" : "/";
+
+    // Send one push per target app so each app's subscribers open the
+    // notification inside their own PWA scope (e.g. /hs or /ms) instead of the
+    // default worship app at the root path. send-push-notification filters
+    // subscriptions by metadata.resourceAppKey, so a user only receives the push
+    // for apps they actually have a subscription in.
+    for (const targetAppKey of targetResourceAppKeys) {
+      try {
+        const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            title,
+            message: `${senderName}: ${message}`,
+            url: buildAppUrl(targetAppKey, pingPath),
+            tag: `admin-ping-${ping.id}-${targetAppKey}`,
+            userIds: recipientUserIds,
+            contextType: "admin-ping",
+            contextId: ping.id,
+            createdBy: user.id,
+            metadata: { resourceAppKey: targetAppKey, campInstanceId, filters },
+          }),
+        });
+        const pushResult = await pushResponse.json();
+        pushSent += pushResult.sent || 0;
+        pushFailed += pushResult.failed || 0;
+      } catch (error) {
+        console.error(`Failed to send admin ping push for ${targetAppKey}:`, error);
+      }
     }
 
     await supabase

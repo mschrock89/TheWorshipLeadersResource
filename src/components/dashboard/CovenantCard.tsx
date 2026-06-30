@@ -17,12 +17,14 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveCovenant, useSignCovenant } from "@/hooks/useCovenant";
 import { useAuth } from "@/hooks/useAuth";
+import { getCovenantTerminology } from "@/lib/resourceApp";
 import { ExternalLink, FileSignature, Loader2, ShieldCheck } from "lucide-react";
 
 export function CovenantCard() {
   const { user, isAdmin } = useAuth();
   const { data, isLoading } = useActiveCovenant(user?.id);
   const signCovenant = useSignCovenant();
+  const terminology = getCovenantTerminology();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [typedName, setTypedName] = useState("");
@@ -88,14 +90,14 @@ export function CovenantCard() {
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-xl">Team Covenant</CardTitle>
+              <CardTitle className="text-xl">{terminology.title}</CardTitle>
               <CardDescription>Shared standards and expectations for every team member.</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            No Covenant has been published yet.
+            No {terminology.noun} has been published yet.
             {isAdmin ? " Upload one in Admin Tools and it will appear here for everyone." : ""}
           </p>
         </CardContent>
@@ -122,7 +124,7 @@ export function CovenantCard() {
                 <Badge variant="outline">{data.document.version_label}</Badge>
               </div>
               <CardDescription>
-                {data.document.description || "Review the Covenant and add your signature for the current version."}
+                {data.document.description || `Review the ${terminology.noun} and add your signature for the current version.`}
               </CardDescription>
             </div>
           </div>
@@ -141,7 +143,7 @@ export function CovenantCard() {
           <p className="text-sm text-muted-foreground">
             {data.signature
               ? `Recorded on ${signedAt}`
-              : "Open the Covenant, confirm your agreement, and submit your name to sign."}
+              : `Open the ${terminology.noun}, confirm your agreement, and submit your name to sign.`}
           </p>
         </div>
 
@@ -149,7 +151,7 @@ export function CovenantCard() {
           <DialogTrigger asChild>
             <Button className="gap-2">
               <FileSignature className="h-4 w-4" />
-              {data.signature ? "Review Covenant" : "Review and Sign"}
+              {data.signature ? `Review ${terminology.noun}` : "Review and Sign"}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
@@ -179,7 +181,7 @@ export function CovenantCard() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Digital Signature</p>
                   <p className="text-xs text-muted-foreground">
-                    Typing your name records your acknowledgment of this Covenant version.
+                    Typing your name records your acknowledgment of this {terminology.noun} version.
                   </p>
                 </div>
 
@@ -202,7 +204,7 @@ export function CovenantCard() {
                     disabled={!!data.signature}
                   />
                   <Label htmlFor="covenant-agreement" className="text-sm font-normal leading-6">
-                    I have read this Covenant and agree to uphold these standards as part of the team.
+                    I have read this {terminology.noun} and agree to uphold these standards as part of the team.
                   </Label>
                 </div>
               </div>
@@ -219,7 +221,7 @@ export function CovenantCard() {
                   className="gap-2"
                 >
                   {signCovenant.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
-                  Sign Covenant
+                  Sign {terminology.noun}
                 </Button>
               ) : null}
             </DialogFooter>

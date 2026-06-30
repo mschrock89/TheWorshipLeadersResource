@@ -27,6 +27,7 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
 import { useActiveCovenant, useCovenantSignatureCount, useUploadCovenantDocument } from "@/hooks/useCovenant";
+import { getCovenantTerminology } from "@/lib/resourceApp";
 
 function getInitials(name: string | null): string {
   if (!name) return "?";
@@ -529,8 +530,9 @@ export default function AdminTools() {
   const [customServiceStartTime, setCustomServiceStartTime] = useState("");
   const [customServiceEndTime, setCustomServiceEndTime] = useState("");
   const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
-  const [covenantTitle, setCovenantTitle] = useState("Team Covenant");
-  const [covenantDescription, setCovenantDescription] = useState("Standards and expectations for every worship team member.");
+  const covenantTerminology = getCovenantTerminology();
+  const [covenantTitle, setCovenantTitle] = useState(covenantTerminology.title);
+  const [covenantDescription, setCovenantDescription] = useState("Standards and expectations for every team member.");
   const [covenantVersionLabel, setCovenantVersionLabel] = useState(() => new Date().toISOString().split("T")[0]);
   const [covenantFile, setCovenantFile] = useState<File | null>(null);
   const [isOpeningCovenantPdf, setIsOpeningCovenantPdf] = useState(false);
@@ -1265,7 +1267,7 @@ export default function AdminTools() {
   const handlePublishCovenant = async () => {
     if (!user?.id) return;
     if (!covenantFile) {
-      toast.error("Choose a Covenant PDF first.");
+      toast.error(`Choose a ${covenantTerminology.noun} PDF first.`);
       return;
     }
     if (covenantFile.type !== "application/pdf") {
@@ -1481,10 +1483,10 @@ export default function AdminTools() {
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            Covenant Manager
+            {covenantTerminology.managerTitle}
           </CardTitle>
           <CardDescription>
-            Publish the current team Covenant PDF and require signatures from every user on their dashboard.
+            Publish the current {covenantTerminology.noun} PDF and require signatures from every user on their dashboard.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -1495,7 +1497,7 @@ export default function AdminTools() {
                 id="covenant-title"
                 value={covenantTitle}
                 onChange={(event) => setCovenantTitle(event.target.value)}
-                placeholder="Team Covenant"
+                placeholder={covenantTerminology.title}
               />
             </div>
             <div className="space-y-2">
@@ -1523,7 +1525,7 @@ export default function AdminTools() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Upload PDF</p>
               <p className="text-xs text-muted-foreground">
-                Publishing a new Covenant makes it the active version shown on every user dashboard.
+                Publishing a new {covenantTerminology.noun} makes it the active version shown on this app's dashboards.
               </p>
             </div>
             <input
@@ -1553,7 +1555,7 @@ export default function AdminTools() {
                 ) : (
                   <>
                     <Upload className="h-4 w-4" />
-                    Publish Covenant
+                    Publish {covenantTerminology.noun}
                   </>
                 )}
               </Button>
@@ -1582,12 +1584,12 @@ export default function AdminTools() {
                   Published {new Date(activeCovenant.document.created_at).toLocaleString()}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {activeCovenant.document.description || "This is the currently active Covenant shown to the team."}
+                  {activeCovenant.document.description || `This is the currently active ${covenantTerminology.noun} shown to the team.`}
                 </p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No active Covenant has been published yet.
+                No active {covenantTerminology.noun} has been published yet.
               </p>
             )}
           </div>

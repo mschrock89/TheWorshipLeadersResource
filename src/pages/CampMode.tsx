@@ -1,21 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { format } from "date-fns";
-import { CalendarDays, ExternalLink, Loader2, MapPinned, MessageCircle, Tent, Users } from "lucide-react";
+import { CalendarDays, ExternalLink, Loader2, MapPinned, Tent, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageBubble } from "@/components/chat/MessageBubble";
-import { MessageInput } from "@/components/chat/MessageInput";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useActiveCampMode, useCampContentSections } from "@/hooks/useCampMode";
-import { useChatMessages } from "@/hooks/useChatMessages";
 import { useEvents } from "@/hooks/useEvents";
 import { useTeamSchedule } from "@/hooks/useTeamSchedule";
-import { useLastReadAt, useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { normalizeSessionSetMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 import Feed from "@/pages/Feed";
@@ -36,7 +32,7 @@ function timeLabel(startTime?: string | null, endTime?: string | null) {
 
 export default function CampMode() {
   const resourceAppKey = getCurrentResourceAppKey();
-  const { user, isLeader } = useAuth();
+  const { user } = useAuth();
   const { data: activeCamp, isLoading: campLoading } = useActiveCampMode();
   const { data: sections = [], isLoading: sectionsLoading } = useCampContentSections(activeCamp?.id);
   const { data: allCampuses = [] } = useCampuses();
@@ -68,25 +64,6 @@ export default function CampMode() {
     selectedCampusId,
     activeCamp ? ["students_hs", "students_ms", "worship"] : undefined,
   );
-  const { markAsRead, setViewingChat } = useUnreadMessages(activeCamp?.id);
-  const { lastReadAt } = useLastReadAt(selectedCampusId, "student_camp", activeCamp?.id);
-  const {
-    messages,
-    isLoading: chatLoading,
-    sendMessage,
-    editMessage,
-    deleteMessage,
-    toggleReaction,
-    currentUserId,
-  } = useChatMessages(selectedCampusId, "student_camp", activeCamp?.id);
-
-  useEffect(() => {
-    if (!activeCamp?.id || !selectedCampusId) return;
-    setViewingChat(selectedCampusId, "student_camp");
-    markAsRead(selectedCampusId, "student_camp");
-    return () => setViewingChat(null, null);
-  }, [activeCamp?.id, markAsRead, selectedCampusId, setViewingChat]);
-
   const campEvents = useMemo(
     () =>
       events
@@ -179,7 +156,6 @@ export default function CampMode() {
           <TabsTrigger value="info">Info</TabsTrigger>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="feed">Feed</TabsTrigger>
-          <TabsTrigger value="chat">Chat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="space-y-4">
@@ -315,76 +291,6 @@ export default function CampMode() {
             emptyAdminMessage="Publish the first Camp Feed post."
             emptyReaderMessage="Camp Feed posts from leaders will appear here."
           />
-        </TabsContent>
-
-        <TabsContent value="chat" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageCircle className="h-5 w-5 text-primary" />
-                    Camp Chat
-                  </CardTitle>
-                  <CardDescription>Shared chat for this camp across MS and HS.</CardDescription>
-                </div>
-                {availableCampuses.length > 1 ? (
-                  <Select value={selectedCampusId || ""} onValueChange={setSelectedCampusId}>
-                    <SelectTrigger className="sm:w-[240px]">
-                      <SelectValue placeholder="Choose campus" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCampuses.map((campus) => (
-                        <SelectItem key={campus.id} value={campus.id}>{campus.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="min-h-[360px] space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
-                {chatLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading camp chat...
-                  </div>
-                ) : messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No camp chat messages yet.</p>
-                ) : (
-                  messages.map((message, index) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      isOwnMessage={message.user_id === currentUserId}
-                      currentUserId={currentUserId}
-                      showHeader={index === 0 || messages[index - 1]?.user_id !== message.user_id}
-                      onToggleReaction={toggleReaction}
-                      onEditMessage={editMessage}
-                      onDeleteMessage={deleteMessage}
-                    />
-                  ))
-                )}
-                {lastReadAt ? (
-                  <p className="pt-2 text-center text-xs text-muted-foreground">
-                    Last read {format(new Date(lastReadAt), "MMM d, h:mm a")}
-                  </p>
-                ) : null}
-              </div>
-
-              <MessageInput
-                onSendMessage={sendMessage}
-                campusName={selectedCampus?.name || "Camp Chat"}
-                campusId={selectedCampusId}
-                ministryType="student_camp"
-              />
-              {!isLeader ? (
-                <p className="text-xs text-muted-foreground">
-                  Leaders may use this for shared camp coordination and announcements.
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

@@ -25,3 +25,30 @@ export function hasOrgAdminPrivilegesForResourceApp(
 ) {
   return roleNames.includes("admin") || hasStudentAppAdminRole(roleNames, resourceAppKey);
 }
+
+export interface CovenantTerminology {
+  /** Document/card title, e.g. "Team Covenant" or "Leader Expectations". */
+  title: string;
+  /** Mid-sentence noun, e.g. "Covenant" or "Leader Expectations". */
+  noun: string;
+  /** Admin section title, e.g. "Covenant Manager" or "Leader Expectations Manager". */
+  managerTitle: string;
+}
+
+export function getCovenantTerminology(
+  resourceAppKey: ResourceAppKey | string = getCurrentResourceAppKey(),
+): CovenantTerminology {
+  if (isStudentResourceAppKey(resourceAppKey)) {
+    return {
+      title: "Leader Expectations",
+      noun: "Leader Expectations",
+      managerTitle: "Leader Expectations Manager",
+    };
+  }
+
+  return {
+    title: "Team Covenant",
+    noun: "Covenant",
+    managerTitle: "Covenant Manager",
+  };
+}
