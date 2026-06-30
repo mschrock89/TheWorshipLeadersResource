@@ -94,7 +94,7 @@ export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isLeader, isAdmin, canManageTeam } = useAuth();
+  const { user, isLeader, canManageTeam } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -1201,8 +1201,8 @@ export default function Profile() {
                 </div>
               )}
 
-              {/* Default Campus - visible to admins for any profile, or team managers on their own profile */}
-              {(isAdmin || (isOwnProfile && canManageTeam)) && (
+              {/* Default Campus - visible to anyone who can manage Team Directory profiles */}
+              {canManageTeam && (
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <Home className="h-4 w-4" />

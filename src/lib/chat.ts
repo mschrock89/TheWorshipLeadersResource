@@ -12,6 +12,7 @@ export const WORSHIP_CHAT_MINISTRY_TYPES = [
 ] as const;
 
 export const STUDENT_CHAT_MINISTRY_TYPES = [
+  { value: "student_camp", label: "Camp Chat" },
   { value: "leader_chat", label: "Leader Chat" },
   { value: "student_leader_chat", label: "Student Leader Chat" },
   { value: "small_group_1", label: "Small Group 1" },

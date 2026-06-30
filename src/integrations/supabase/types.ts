@@ -95,6 +95,75 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_ping_recipients: {
+        Row: {
+          created_at: string
+          id: string
+          ping_id: string
+          read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ping_id: string
+          read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ping_id?: string
+          read_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      admin_pings: {
+        Row: {
+          camp_instance_id: string | null
+          campus_id: string | null
+          created_at: string
+          filters: Json
+          id: string
+          message: string
+          push_failed_count: number
+          push_sent_count: number
+          recipient_count: number
+          resource_app_key: string
+          sent_by_user_id: string
+          title: string
+        }
+        Insert: {
+          camp_instance_id?: string | null
+          campus_id?: string | null
+          created_at?: string
+          filters?: Json
+          id?: string
+          message: string
+          push_failed_count?: number
+          push_sent_count?: number
+          recipient_count?: number
+          resource_app_key: string
+          sent_by_user_id: string
+          title: string
+        }
+        Update: {
+          camp_instance_id?: string | null
+          campus_id?: string | null
+          created_at?: string
+          filters?: Json
+          id?: string
+          message?: string
+          push_failed_count?: number
+          push_sent_count?: number
+          recipient_count?: number
+          resource_app_key?: string
+          sent_by_user_id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       auditions: {
         Row: {
           audition_date: string
@@ -472,9 +541,97 @@ export type Database = {
           },
         ]
       }
+      camp_content_sections: {
+        Row: {
+          audience: string
+          body: string | null
+          camp_instance_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_published: boolean
+          link_url: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string
+          body?: string | null
+          camp_instance_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_published?: boolean
+          link_url?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          body?: string | null
+          camp_instance_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_published?: boolean
+          link_url?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      camp_instances: {
+        Row: {
+          base_ministry_type: string
+          campus_ids: string[] | null
+          created_at: string
+          created_by: string | null
+          end_date: string
+          id: string
+          name: string
+          resource_app_keys: string[]
+          slug: string
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          base_ministry_type?: string
+          campus_ids?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          end_date: string
+          id?: string
+          name: string
+          resource_app_keys?: string[]
+          slug: string
+          start_date: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          base_ministry_type?: string
+          campus_ids?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          end_date?: string
+          id?: string
+          name?: string
+          resource_app_keys?: string[]
+          slug?: string
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           attachments: string[] | null
+          camp_instance_id: string | null
           campus_id: string | null
           content: string
           created_at: string
@@ -485,6 +642,7 @@ export type Database = {
         }
         Insert: {
           attachments?: string[] | null
+          camp_instance_id?: string | null
           campus_id?: string | null
           content: string
           created_at?: string
@@ -495,6 +653,7 @@ export type Database = {
         }
         Update: {
           attachments?: string[] | null
+          camp_instance_id?: string | null
           campus_id?: string | null
           content?: string
           created_at?: string
@@ -887,6 +1046,7 @@ export type Database = {
       events: {
         Row: {
           audience_type: string | null
+          camp_instance_id: string | null
           campus_id: string | null
           campus_ids: string[] | null
           created_at: string | null
@@ -904,6 +1064,7 @@ export type Database = {
         }
         Insert: {
           audience_type?: string | null
+          camp_instance_id?: string | null
           campus_id?: string | null
           campus_ids?: string[] | null
           created_at?: string | null
@@ -921,6 +1082,7 @@ export type Database = {
         }
         Update: {
           audience_type?: string | null
+          camp_instance_id?: string | null
           campus_id?: string | null
           campus_ids?: string[] | null
           created_at?: string | null
@@ -1202,6 +1364,7 @@ export type Database = {
       feed_posts: {
         Row: {
           body: string | null
+          camp_instance_id: string | null
           category: string
           created_at: string
           created_by: string
@@ -1216,6 +1379,7 @@ export type Database = {
         }
         Insert: {
           body?: string | null
+          camp_instance_id?: string | null
           category: string
           created_at?: string
           created_by: string
@@ -1230,6 +1394,7 @@ export type Database = {
         }
         Update: {
           body?: string | null
+          camp_instance_id?: string | null
           category?: string
           created_at?: string
           created_by?: string
@@ -1300,6 +1465,7 @@ export type Database = {
       }
       message_read_status: {
         Row: {
+          camp_instance_id: string | null
           campus_id: string
           created_at: string | null
           id: string
@@ -1309,6 +1475,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          camp_instance_id?: string | null
           campus_id: string
           created_at?: string | null
           id?: string
@@ -1318,6 +1485,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          camp_instance_id?: string | null
           campus_id?: string
           created_at?: string | null
           id?: string
@@ -3204,6 +3372,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      user_can_access_camp_instance: {
+        Args: { _user_id: string; _camp_instance_id: string }
+        Returns: boolean
+      }
       can_manage_drum_kits: {
         Args: { _campus_id: string }
         Returns: boolean

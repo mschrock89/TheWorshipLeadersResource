@@ -17,7 +17,7 @@ interface LastReadStatus {
   lastReadAt: string | null;
 }
 
-export function useUnreadMessages() {
+export function useUnreadMessages(campInstanceId?: string | null) {
   const [unreadCounts, setUnreadCounts] = useState<UnreadCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
@@ -38,12 +38,18 @@ export function useUnreadMessages() {
     const campusIds = userCampuses.map((uc) => uc.campus_id);
     
     // Get read status for all user's campuses and ministries
-    const { data: readStatuses } = await supabase
+    let readStatusQuery = supabase
       .from("message_read_status")
       .select("campus_id, ministry_type, last_read_at")
       .eq("user_id", user.id)
       .eq("resource_app_key", resourceAppKey)
       .in("campus_id", campusIds);
+
+    readStatusQuery = campInstanceId
+      ? readStatusQuery.eq("camp_instance_id", campInstanceId)
+      : readStatusQuery.is("camp_instance_id", null);
+
+    const { data: readStatuses } = await readStatusQuery;
 
     // Build a map of campus_id:ministry_type -> last_read_at
     const readStatusMap: Record<string, string> = {};
@@ -66,8 +72,11 @@ export function useUnreadMessages() {
             .select("id", { count: "exact", head: true })
             .eq("campus_id", campusId)
             .eq("ministry_type", ministryType)
-            .eq("resource_app_key", resourceAppKey)
             .neq("user_id", user.id);
+
+          query = campInstanceId
+            ? query.eq("camp_instance_id", campInstanceId)
+            : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
           
           if (lastReadAt) {
             query = query.gt("created_at", lastReadAt);
@@ -84,7 +93,7 @@ export function useUnreadMessages() {
     
     setUnreadCounts(counts);
     setIsLoading(false);
-  }, [user, userCampuses, resourceAppKey, chatMinistryTypes]);
+  }, [campInstanceId, user, userCampuses, resourceAppKey, chatMinistryTypes]);
 
   const markAsRead = useCallback(async (campusId: string, ministryType: string = "weekend") => {
     if (!user) return;
@@ -99,10 +108,11 @@ export function useUnreadMessages() {
           campus_id: campusId,
           ministry_type: normalizedMinistryType,
           resource_app_key: resourceAppKey,
+          camp_instance_id: campInstanceId || null,
           last_read_at: new Date().toISOString(),
         },
         {
-          onConflict: "user_id,campus_id,ministry_type,resource_app_key",
+          onConflict: "user_id,campus_id,ministry_type,resource_app_key,camp_instance_id",
         }
       );
 
@@ -115,7 +125,7 @@ export function useUnreadMessages() {
     setUnreadCounts((prev) => 
       prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
     );
-  }, [user, resourceAppKey]);
+  }, [campInstanceId, user, resourceAppKey]);
 
   // Set which campus+ministry is currently being viewed
   const setViewingChat = useCallback((campusId: string | null, ministryType: string | null) => {
@@ -160,6 +170,7 @@ export function useUnreadMessages() {
             campus_id: string; 
             ministry_type: string; 
             resource_app_key: string;
+            camp_instance_id?: string | null;
             user_id: string;
           };
           
@@ -169,7 +180,9 @@ export function useUnreadMessages() {
           // AND they're not currently viewing that campus+ministry
           if (
             campusIds.includes(newMessage.campus_id) &&
-            newMessage.resource_app_key === resourceAppKey &&
+            (campInstanceId
+              ? newMessage.camp_instance_id === campInstanceId
+              : newMessage.resource_app_key === resourceAppKey && !newMessage.camp_instance_id) &&
             newMessage.user_id !== user.id &&
             !(viewingChatRef.current?.campusId === newMessage.campus_id && 
               viewingChatRef.current?.ministryType === msgMinistry)
@@ -195,7 +208,7 @@ export function useUnreadMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, userCampuses, resourceAppKey]);
+  }, [campInstanceId, user, userCampuses, resourceAppKey]);
 
   // Get total unread count
   const totalUnread = unreadCounts.reduce((sum, uc) => sum + uc.count, 0);
@@ -229,7 +242,11 @@ export function useUnreadMessages() {
 }
 
 // Hook to get the last read timestamp for a specific campus+ministry
-export function useLastReadAt(campusId: string | null, ministryType: string | null = 'weekend') {
+export function useLastReadAt(
+  campusId: string | null,
+  ministryType: string | null = 'weekend',
+  campInstanceId?: string | null,
+) {
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
@@ -244,14 +261,19 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
 
     const fetchLastRead = async () => {
       const normalizedMinistryType = normalizeChatMinistryType(ministryType);
-      const { data, error } = await supabase
+      let query = supabase
         .from("message_read_status")
         .select("last_read_at")
         .eq("user_id", user.id)
         .eq("campus_id", campusId)
         .eq("ministry_type", normalizedMinistryType)
-        .eq("resource_app_key", resourceAppKey)
-        .maybeSingle();
+        .eq("resource_app_key", resourceAppKey);
+
+      query = campInstanceId
+        ? query.eq("camp_instance_id", campInstanceId)
+        : query.is("camp_instance_id", null);
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         console.error("Error fetching last read status:", error);
@@ -263,7 +285,7 @@ export function useLastReadAt(campusId: string | null, ministryType: string | nu
     };
 
     fetchLastRead();
-  }, [user, campusId, ministryType, resourceAppKey]);
+  }, [campInstanceId, user, campusId, ministryType, resourceAppKey]);
 
   return { lastReadAt, isLoading };
 }

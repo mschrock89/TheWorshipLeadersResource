@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Megaphone, Search, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useProfiles } from "@/hooks/useProfiles";
+import { useUserRoles } from "@/hooks/useUserRoles";
+import { useActiveCampMode } from "@/hooks/useCampMode";
 import { supabase } from "@/integrations/supabase/client";
 import { SET_PLANNER_MINISTRY_OPTIONS, STUDENT_RESOURCE_APP_KEYS, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -34,6 +37,16 @@ const GENDER_OPTIONS = [
   { value: "female", label: "Female" },
 ];
 
+const GLOBAL_PING_SENDER_ROLES = new Set([
+  "admin",
+  "network_worship_pastor",
+  "network_worship_leader",
+  "campus_worship_pastor",
+  "student_pastor",
+  "student_worship_pastor",
+  "childrens_pastor",
+]);
+
 function toggleValue(values: string[], value: string, checked: boolean) {
   return checked ? Array.from(new Set([...values, value])) : values.filter((entry) => entry !== value);
 }
@@ -42,12 +55,40 @@ function toggleNumber(values: number[], value: number, checked: boolean) {
   return checked ? Array.from(new Set([...values, value])).sort((a, b) => a - b) : values.filter((entry) => entry !== value);
 }
 
+async function getFunctionErrorMessage(error: unknown, fallback: string) {
+  const context = typeof error === "object" && error !== null && "context" in error
+    ? (error as { context?: unknown }).context
+    : null;
+
+  if (context instanceof Response) {
+    const response = context.clone();
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.error === "string") return payload.error;
+      if (payload && typeof payload.message === "string") return payload.message;
+    } catch {
+      try {
+        const text = await context.clone().text();
+        if (text.trim()) return text.trim();
+      } catch {
+        // Fall through to the generic function error message.
+      }
+    }
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function AdminPingCard() {
+  const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const isStudentApp = STUDENT_RESOURCE_APP_KEYS.includes(resourceAppKey);
   const { data: campuses = [] } = useCampuses();
   const { data: profiles = [] } = useProfiles();
+  const { data: userRoles = [] } = useUserRoles(user?.id);
+  const { data: activeCamp } = useActiveCampMode();
   const [campusId, setCampusId] = useState<string>("all");
+  const [useCampAudience, setUseCampAudience] = useState(false);
   const [selectedMinistries, setSelectedMinistries] = useState<string[]>([]);
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
   const [selectedGrades, setSelectedGrades] = useState<number[]>([]);
@@ -57,6 +98,7 @@ export function AdminPingCard() {
   const [message, setMessage] = useState("");
   const [previewRecipients, setPreviewRecipients] = useState<RecipientPreview[]>([]);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewPushEligibleCount, setPreviewPushEligibleCount] = useState<number | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
@@ -94,15 +136,34 @@ export function AdminPingCard() {
   }, [isStudentApp, teamsQuery.data]);
 
   const gradeOptions = isStudentApp
-    ? resourceAppKey === "students_ms"
-      ? [8]
-      : [9, 10, 11, 12]
+    ? useCampAudience && activeCamp
+      ? [8, 9, 10, 11, 12]
+      : resourceAppKey === "students_ms"
+        ? [8]
+        : [9, 10, 11, 12]
     : [];
 
   const selectedProfiles = useMemo(
     () => profiles.filter((profile) => selectedUserIds.includes(profile.id)),
     [profiles, selectedUserIds],
   );
+
+  const adminCampusIds = useMemo(
+    () => userRoles
+      .filter((role) => role.role === "campus_admin" && role.admin_campus_id)
+      .map((role) => role.admin_campus_id as string),
+    [userRoles],
+  );
+
+  const isCampusScopedSender = useMemo(() => {
+    if (!userRoles.some((role) => role.role === "campus_admin")) return false;
+    return !userRoles.some((role) => GLOBAL_PING_SENDER_ROLES.has(role.role));
+  }, [userRoles]);
+
+  useEffect(() => {
+    if (campusId !== "all" || !isCampusScopedSender || adminCampusIds.length === 0) return;
+    setCampusId(adminCampusIds[0]);
+  }, [adminCampusIds, campusId, isCampusScopedSender]);
 
   const filteredProfiles = useMemo(() => {
     const query = nameSearch.trim().toLowerCase();
@@ -115,6 +176,7 @@ export function AdminPingCard() {
 
   const payload = {
     resourceAppKey,
+    campInstanceId: useCampAudience ? activeCamp?.id || null : null,
     campusId: campusId === "all" ? null : campusId,
     ministryKeys: selectedMinistries,
     genders: selectedGenders,
@@ -132,9 +194,10 @@ export function AdminPingCard() {
       });
       if (error) throw error;
       setPreviewCount(data?.recipients ?? 0);
+      setPreviewPushEligibleCount(data?.pushEligibleRecipients ?? null);
       setPreviewRecipients(data?.recipientPreviews || []);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unable to preview recipients";
+      const errorMessage = await getFunctionErrorMessage(error, "Unable to preview recipients");
       toast.error(errorMessage);
     } finally {
       setIsPreviewing(false);
@@ -158,9 +221,10 @@ export function AdminPingCard() {
       });
       setMessage("");
       setPreviewCount(null);
+      setPreviewPushEligibleCount(null);
       setPreviewRecipients([]);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unable to send ping";
+      const errorMessage = await getFunctionErrorMessage(error, "Unable to send ping");
       toast.error(errorMessage);
     } finally {
       setIsSending(false);
@@ -202,6 +266,21 @@ export function AdminPingCard() {
           </div>
         </div>
 
+        {isStudentApp && activeCamp ? (
+          <label className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+            <Checkbox
+              checked={useCampAudience}
+              onCheckedChange={(checked) => setUseCampAudience(checked === true)}
+            />
+            <span>
+              <span className="block font-medium text-foreground">Send to Camp Mode audience</span>
+              <span className="text-muted-foreground">
+                Target leaders across the MS and HS apps participating in {activeCamp.name}.
+              </span>
+            </span>
+          </label>
+        ) : null}
+
         <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
           <div className="space-y-3">
             <Label>Ministry</Label>
@@ -225,6 +304,9 @@ export function AdminPingCard() {
 
           <div className="space-y-3">
             <Label>People</Label>
+            <p className="text-xs text-muted-foreground">
+              Selecting people sends only to those selected leaders.
+            </p>
             <div className="rounded-md border border-border">
               <div className="flex items-center gap-2 border-b border-border px-3">
                 <Search className="h-4 w-4 text-muted-foreground" />
@@ -328,6 +410,11 @@ export function AdminPingCard() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {previewRecipients.map((recipient) => recipient.full_name || "Unnamed").join(", ")}
                 {previewCount > previewRecipients.length ? `, and ${previewCount - previewRecipients.length} more` : ""}
+              </p>
+            )}
+            {previewPushEligibleCount !== null && previewPushEligibleCount < previewCount && (
+              <p className="mt-2 text-sm text-amber-700">
+                {previewPushEligibleCount} of {previewCount} matched leader{previewCount === 1 ? "" : "s"} have push enabled for this app.
               </p>
             )}
           </div>

@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-resource-app-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const SENDER_ROLES = new Set([
@@ -35,6 +36,7 @@ interface AdminPingRequest {
   message?: string;
   campusId?: string | null;
   resourceAppKey?: string;
+  campInstanceId?: string | null;
   ministryKeys?: string[];
   genders?: string[];
   grades?: number[];
@@ -129,6 +131,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const body = (await req.json()) as AdminPingRequest;
     const resourceAppKey = body.resourceAppKey || "worship";
+    const campInstanceId = body.campInstanceId || null;
     const campusId = body.campusId || null;
     const title = (body.title || "Leader Ping").trim();
     const message = (body.message || "").trim();
@@ -168,6 +171,26 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    let campResourceAppKeys: string[] = [];
+    if (campInstanceId) {
+      const { data: camp, error: campError } = await supabase
+        .from("camp_instances")
+        .select("resource_app_keys")
+        .eq("id", campInstanceId)
+        .maybeSingle();
+
+      if (campError || !camp) {
+        return new Response(
+          JSON.stringify({ error: "Camp Mode audience was not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      campResourceAppKeys = Array.isArray(camp.resource_app_keys) ? camp.resource_app_keys : [];
+    }
+
+    const targetResourceAppKeys = campResourceAppKeys.length > 0 ? campResourceAppKeys : [resourceAppKey];
+
     const [
       profileResult,
       recipientRoleResult,
@@ -192,7 +215,9 @@ serve(async (req: Request): Promise<Response> => {
       supabase
         .from("life_group_leaders")
         .select("user_id, life_groups!inner(id, campus_id, resource_app_key, grade_level, gender)"),
-      supabase.from("push_subscriptions").select("user_id").eq("resource_app_key", resourceAppKey),
+      campResourceAppKeys.length > 0
+        ? supabase.from("push_subscriptions").select("user_id").in("resource_app_key", campResourceAppKeys)
+        : supabase.from("push_subscriptions").select("user_id").eq("resource_app_key", resourceAppKey),
     ]);
 
     const loadError =
@@ -217,7 +242,8 @@ serve(async (req: Request): Promise<Response> => {
       (profileResult.data || []).map((profile) => [profile.id, profile]),
     );
     const leaderIds = new Set<string>();
-    const appUserIds = new Set<string>((pushUserResult.data || []).map((row) => row.user_id).filter(Boolean));
+    const pushSubscribedUserIds = new Set<string>((pushUserResult.data || []).map((row) => row.user_id).filter(Boolean));
+    const appUserIds = new Set<string>(pushSubscribedUserIds);
     const campusUserIds = new Set<string>((campusResult.data || []).map((row) => row.user_id).filter(Boolean));
     const ministryTokensByUser = new Map<string, Set<string>>();
     const campusTokensByUser = new Map<string, Set<string>>();
@@ -241,9 +267,9 @@ serve(async (req: Request): Promise<Response> => {
         row.role === "leader" ||
         row.role === "student_pastor" ||
         row.role === "student_worship_pastor" ||
-        (resourceAppKey === "students_ms" &&
+        (targetResourceAppKeys.includes("students_ms") &&
           (row.role === "ms_leader" || row.role === "ms_leader_weekend")) ||
-        (resourceAppKey === "students_hs" && row.role === "hs_leader")
+        (targetResourceAppKeys.includes("students_hs") && row.role === "hs_leader")
       ) {
         appUserIds.add(row.user_id);
       }
@@ -265,7 +291,7 @@ serve(async (req: Request): Promise<Response> => {
 
     for (const row of teamMemberResult.data || []) {
       const team = Array.isArray(row.worship_teams) ? row.worship_teams[0] : row.worship_teams;
-      if (team?.resource_app_key !== resourceAppKey) continue;
+      if (!targetResourceAppKeys.includes(team?.resource_app_key)) continue;
 
       addToken(ministryTokensByUser, row.user_id, `team:${row.team_id}`);
       addToken(ministryTokensByUser, row.user_id, team?.name);
@@ -277,7 +303,7 @@ serve(async (req: Request): Promise<Response> => {
 
     for (const row of lifeGroupLeaderResult.data || []) {
       const group = Array.isArray(row.life_groups) ? row.life_groups[0] : row.life_groups;
-      if (group?.resource_app_key !== resourceAppKey) continue;
+      if (!targetResourceAppKeys.includes(group?.resource_app_key)) continue;
       if (campusId && group.campus_id && group.campus_id !== campusId) continue;
 
       leaderIds.add(row.user_id);
@@ -329,7 +355,25 @@ serve(async (req: Request): Promise<Response> => {
       return matchesAnyFilter(ministryTokens, ministryFilters);
     });
 
-    const recipientUserIds = Array.from(new Set([...filteredRecipientIds, ...allowedExplicitIds])).filter((id) => id !== user.id);
+    let recipientUserIds = (explicitUserIds.length > 0 ? allowedExplicitIds : filteredRecipientIds)
+      .filter((id) => id !== user.id);
+
+    if (campInstanceId) {
+      const accessResults = await Promise.all(
+        recipientUserIds.map(async (recipientUserId) => {
+          const { data, error } = await supabase.rpc("user_can_access_camp_instance", {
+            _user_id: recipientUserId,
+            _camp_instance_id: campInstanceId,
+          });
+          if (error) {
+            console.error("Failed to check camp ping access:", error);
+            return null;
+          }
+          return data ? recipientUserId : null;
+        }),
+      );
+      recipientUserIds = accessResults.filter((recipientUserId): recipientUserId is string => Boolean(recipientUserId));
+    }
     const recipientPreviews = recipientUserIds
       .map((id) => profilesById.get(id))
       .filter((profile): profile is RecipientPreview => Boolean(profile))
@@ -340,6 +384,7 @@ serve(async (req: Request): Promise<Response> => {
         JSON.stringify({
           success: true,
           recipients: recipientPreviews.length,
+          pushEligibleRecipients: recipientUserIds.filter((recipientUserId) => pushSubscribedUserIds.has(recipientUserId)).length,
           recipientPreviews: recipientPreviews.slice(0, 30),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -360,12 +405,14 @@ serve(async (req: Request): Promise<Response> => {
       grades: gradeFilters,
       userIds: explicitUserIds,
       resourceAppKey,
+      campInstanceId,
     };
 
     const { data: ping, error: pingError } = await supabase
       .from("admin_pings")
       .insert({
         resource_app_key: resourceAppKey,
+        camp_instance_id: campInstanceId,
         campus_id: campusId,
         sent_by_user_id: user.id,
         title,
@@ -412,13 +459,13 @@ serve(async (req: Request): Promise<Response> => {
         body: JSON.stringify({
           title,
           message: `${senderName}: ${message}`,
-          url: "/",
+          url: campInstanceId ? "/camp" : "/",
           tag: `admin-ping-${ping.id}`,
           userIds: recipientUserIds,
           contextType: "admin-ping",
           contextId: ping.id,
           createdBy: user.id,
-          metadata: { resourceAppKey, filters },
+          metadata: { resourceAppKey, campInstanceId, filters },
         }),
       });
       const pushResult = await pushResponse.json();

@@ -43,6 +43,7 @@ import ServiceFlow from "./pages/ServiceFlow";
 import DrumTech from "./pages/DrumTech";
 import Bible from "./pages/Bible";
 import Feed from "./pages/Feed";
+import CampMode from "./pages/CampMode";
 import Attendance from "./pages/Attendance";
 import Snake from "./pages/Snake";
 import Pong from "./pages/Pong";
@@ -167,6 +168,7 @@ const publicRoutes: RouteDefinition[] = [
 const protectedRoutes: RouteDefinition[] = [
   { path: "/chat", component: Chat, hideForStudentBaseRole: true },
   { path: "/calendar", component: Calendar },
+  { path: "/camp", component: CampMode, studentAppOnly: true },
   { path: "/schedule", component: Schedule },
   { path: "/dashboard", component: Dashboard, hideForStudentBaseRole: true },
   { path: "/team", component: Team, hideForStudentBaseRole: true },

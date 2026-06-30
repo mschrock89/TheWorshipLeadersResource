@@ -54,6 +54,14 @@ type ComposerState = {
   youtubeLink: string;
 };
 
+type FeedProps = {
+  campInstanceId?: string | null;
+  heading?: string;
+  composerDescription?: string;
+  emptyAdminMessage?: string;
+  emptyReaderMessage?: string;
+};
+
 const emptyComposerState: ComposerState = {
   title: "",
   body: "",
@@ -364,15 +372,21 @@ function PostCard({
   );
 }
 
-export default function Feed() {
+export default function Feed({
+  campInstanceId = null,
+  heading = "THE FEED",
+  composerDescription = "Share a thought, scripture, or YouTube link with the whole app.",
+  emptyAdminMessage = "Publish the first post to get The Feed started.",
+  emptyReaderMessage = "The Feed is ready. Once an admin publishes a post, it will show up here for everyone.",
+}: FeedProps = {}) {
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, user } = useAuth();
   const { toast } = useToast();
-  const { data: posts = [], isLoading } = useFeedPosts();
-  const createPost = useCreateFeedPost();
-  const updatePost = useUpdateFeedPost();
-  const deletePost = useDeleteFeedPost();
+  const { data: posts = [], isLoading } = useFeedPosts(campInstanceId);
+  const createPost = useCreateFeedPost(campInstanceId);
+  const updatePost = useUpdateFeedPost(campInstanceId);
+  const deletePost = useDeleteFeedPost(campInstanceId);
   const toggleLike = useToggleFeedLike();
   const createComment = useCreateFeedComment();
   const [activeTab, setActiveTab] = useState<FeedTab>("all");
@@ -384,7 +398,7 @@ export default function Feed() {
     const sharedReference = searchParams.get("reference");
     const sharedBody = searchParams.get("body");
 
-    if (composeType !== "scripture") return;
+    if (campInstanceId || composeType !== "scripture") return;
 
     if (!isAdmin) {
       toast({
@@ -413,7 +427,7 @@ export default function Feed() {
     nextParams.delete("reference");
     nextParams.delete("body");
     setSearchParams(nextParams, { replace: true });
-  }, [isAdmin, searchParams, setSearchParams, toast]);
+  }, [campInstanceId, isAdmin, searchParams, setSearchParams, toast]);
 
   const visiblePosts = useMemo(() => {
     if (activeTab === "all") return posts;
@@ -494,7 +508,7 @@ export default function Feed() {
           <div>
             <div className="space-y-3">
               <h1 className="mx-auto max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text text-center font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
-                THE FEED
+                {heading}
               </h1>
             </div>
           </div>
@@ -545,7 +559,7 @@ export default function Feed() {
                       {editingPostId ? "Edit post" : "Start a post"}
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Share a thought, scripture, or YouTube link with the whole app.
+                      {composerDescription}
                     </p>
                   </div>
                   <Badge
@@ -648,8 +662,8 @@ export default function Feed() {
                   <p className="text-lg font-semibold text-foreground">No posts yet</p>
                   <p className="text-sm text-muted-foreground">
                     {isAdmin
-                      ? "Publish the first post to get The Feed started."
-                      : "The Feed is ready. Once an admin publishes a post, it will show up here for everyone."}
+                      ? emptyAdminMessage
+                      : emptyReaderMessage}
                   </p>
                 </CardContent>
               </Card>

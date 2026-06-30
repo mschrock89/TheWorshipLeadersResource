@@ -38,6 +38,7 @@ export const AUDITION_ALLOWED_PATHS = new Set([
 export const STUDENT_ALLOWED_PATHS = new Set([
   "/bible",
   "/calendar",
+  "/camp",
   "/feed",
   "/attendance",
   "/my-setlists",

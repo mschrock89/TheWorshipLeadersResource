@@ -84,63 +84,28 @@ serve(async (req) => {
       );
     }
 
-    const allowedRoles = [
-      'admin',
-      'campus_admin',
-      'campus_worship_pastor',
-      'student_worship_pastor',
-      'childrens_pastor',
-      'video_director',
-      'production_manager',
-      'network_worship_pastor',
-      'network_worship_leader',
-      'leader',
-    ];
+    const { data: canManageEmail, error: canManageEmailError } = await userClient.rpc(
+      'can_manage_team_directory_profile',
+      {
+        _manager_id: user.id,
+        _profile_id: userId,
+      },
+    );
 
-    let hasAllowedRole = false;
-    let hasAdminRole = false;
-    for (const role of allowedRoles) {
-      const { data } = await userClient.rpc('has_role', {
-        _user_id: user.id,
-        _role: role,
-      });
-
-      if (data) {
-        hasAllowedRole = true;
-        if (role === 'admin') {
-          hasAdminRole = true;
-        }
-      }
-    }
-
-    if (!hasAllowedRole) {
-      console.log(`User ${user.email} is not allowed to update emails`);
+    if (canManageEmailError) {
+      console.log('Failed to verify Team Directory email permissions:', canManageEmailError);
       return new Response(
-        JSON.stringify({ error: 'Only team managers can update email addresses' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Failed to verify email update permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!hasAdminRole && userId !== user.id) {
-      const { data: sharesCampus, error: sharesCampusError } = await userClient.rpc('shares_campus_with', {
-        _viewer_id: user.id,
-        _profile_id: userId,
-      });
-
-      if (sharesCampusError) {
-        console.log('Failed to validate campus access:', sharesCampusError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to verify campus access' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (!sharesCampus) {
-        return new Response(
-          JSON.stringify({ error: 'You can only update emails for people in your campus' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (!canManageEmail) {
+      console.log(`User ${user.email} is not allowed to update email for ${userId}`);
+      return new Response(
+        JSON.stringify({ error: 'Only Team Directory managers can update email addresses for this user' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Create admin client

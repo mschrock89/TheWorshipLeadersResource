@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { formatPositionLabel, parseLocalDate, isWeekend, getWeekendKey } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getMinistryLabel, isVideoPosition } from "@/lib/constants";
+import { useActiveCampMode } from "@/hooks/useCampMode";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
 
@@ -51,9 +52,26 @@ export interface Notification {
   };
 }
 
+type AdminPingForNotification = {
+  id: string;
+  title: string | null;
+  message: string | null;
+  created_at: string | null;
+  resource_app_key: string | null;
+  campus_id: string | null;
+  camp_instance_id: string | null;
+};
+
+type AdminPingRecipientForNotification = {
+  id: string;
+  created_at: string | null;
+  admin_pings: AdminPingForNotification | AdminPingForNotification[] | null;
+};
+
 export function useNotifications() {
   const { user, isAdmin } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
+  const { data: activeCamp } = useActiveCampMode();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -139,9 +157,9 @@ export function useNotifications() {
           .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .order("created_at", { ascending: false })
           .limit(20),
-        (supabase as any)
+        supabase
           .from("admin_ping_recipients")
-          .select("id, created_at, admin_pings(id, title, message, created_at, resource_app_key, campus_id)")
+          .select("id, created_at, admin_pings(id, title, message, created_at, resource_app_key, campus_id, camp_instance_id)")
           .eq("user_id", user.id)
           .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .order("created_at", { ascending: false })
@@ -337,11 +355,14 @@ export function useNotifications() {
         });
       });
 
-      adminPings.forEach((recipientRow: any) => {
+      (adminPings as AdminPingRecipientForNotification[]).forEach((recipientRow) => {
         const ping = Array.isArray(recipientRow.admin_pings)
           ? recipientRow.admin_pings[0]
           : recipientRow.admin_pings;
-        if (!ping || ping.resource_app_key !== resourceAppKey) return;
+        if (
+          !ping ||
+          (ping.resource_app_key !== resourceAppKey && ping.camp_instance_id !== activeCamp?.id)
+        ) return;
 
         const notifId = `admin-ping-recipient-${recipientRow.id}`;
         notifs.push({
@@ -351,7 +372,7 @@ export function useNotifications() {
           message: ping.message || "",
           timestamp: ping.created_at || recipientRow.created_at || new Date().toISOString(),
           read: currentReadIds.has(notifId),
-          link: "/",
+          link: ping.camp_instance_id ? "/camp" : "/",
         });
       });
 
@@ -428,7 +449,7 @@ export function useNotifications() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isAdmin, resourceAppKey]);
+  }, [activeCamp?.id, user, isAdmin, resourceAppKey]);
 
   // Only fetch notifications AFTER read IDs have been loaded
   useEffect(() => {

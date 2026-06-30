@@ -19,6 +19,7 @@ export interface FeedPostRecord {
   created_at: string;
   updated_at: string;
   resource_app_key: string;
+  camp_instance_id: string | null;
   author_name: string | null;
   like_count: number;
   liked_by_me: boolean;
@@ -48,6 +49,7 @@ interface FeedPostRow {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  camp_instance_id: string | null;
   author: { full_name: string | null } | null;
 }
 
@@ -76,10 +78,10 @@ export interface FeedPostInput {
   youtube_video_id?: string | null;
 }
 
-async function fetchFeedPosts(userId: string | undefined) {
+async function fetchFeedPosts(userId: string | undefined, campInstanceId?: string | null) {
   const resourceAppKey = getCurrentResourceAppKey();
 
-  const { data: postRows, error: postError } = await supabase
+  let postQuery = supabase
     .from("feed_posts")
     .select(`
       id,
@@ -94,12 +96,18 @@ async function fetchFeedPosts(userId: string | undefined) {
       created_at,
       updated_at,
       resource_app_key,
+      camp_instance_id,
       author:profiles!feed_posts_created_by_fkey (
         full_name
       )
     `)
-    .eq("resource_app_key", resourceAppKey)
     .order("created_at", { ascending: false });
+
+  postQuery = campInstanceId
+    ? postQuery.eq("camp_instance_id", campInstanceId)
+    : postQuery.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
+
+  const { data: postRows, error: postError } = await postQuery;
 
   if (postError) throw postError;
 
@@ -161,18 +169,18 @@ async function fetchFeedPosts(userId: string | undefined) {
   })) as FeedPostRecord[];
 }
 
-export function useFeedPosts() {
+export function useFeedPosts(campInstanceId?: string | null) {
   const { user, isLoading } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["feed-posts", user?.id, resourceAppKey],
-    queryFn: () => fetchFeedPosts(user?.id),
+    queryKey: ["feed-posts", user?.id, resourceAppKey, campInstanceId ?? "app"],
+    queryFn: () => fetchFeedPosts(user?.id, campInstanceId),
     enabled: !!user && !isLoading,
   });
 }
 
-export function useCreateFeedPost() {
+export function useCreateFeedPost(campInstanceId?: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -194,6 +202,7 @@ export function useCreateFeedPost() {
           created_by: user.id,
           updated_by: user.id,
           resource_app_key: resourceAppKey,
+          camp_instance_id: campInstanceId || null,
         })
         .select("id")
         .single();
@@ -209,6 +218,7 @@ export function useCreateFeedPost() {
             body: {
               postId: data.id,
               resourceAppKey,
+              campInstanceId: campInstanceId || null,
             },
           });
         } catch (notificationError) {
@@ -232,7 +242,7 @@ export function useCreateFeedPost() {
   });
 }
 
-export function useUpdateFeedPost() {
+export function useUpdateFeedPost(campInstanceId?: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -242,7 +252,7 @@ export function useUpdateFeedPost() {
     mutationFn: async ({ id, ...input }: FeedPostInput & { id: string }) => {
       if (!user?.id) throw new Error("You must be signed in to update a post.");
 
-      const { error } = await supabase
+      let query = supabase
         .from("feed_posts")
         .update({
           category: input.category,
@@ -253,8 +263,13 @@ export function useUpdateFeedPost() {
           youtube_video_id: input.youtube_video_id || null,
           updated_by: user.id,
         })
-        .eq("id", id)
-        .eq("resource_app_key", resourceAppKey);
+        .eq("id", id);
+
+      query = campInstanceId
+        ? query.eq("camp_instance_id", campInstanceId)
+        : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
+
+      const { error } = await query;
 
       if (error) throw error;
     },
@@ -272,18 +287,23 @@ export function useUpdateFeedPost() {
   });
 }
 
-export function useDeleteFeedPost() {
+export function useDeleteFeedPost(campInstanceId?: string | null) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const resourceAppKey = getCurrentResourceAppKey();
 
   return useMutation({
     mutationFn: async (postId: string) => {
-      const { error } = await supabase
+      let query = supabase
         .from("feed_posts")
         .delete()
-        .eq("id", postId)
-        .eq("resource_app_key", resourceAppKey);
+        .eq("id", postId);
+
+      query = campInstanceId
+        ? query.eq("camp_instance_id", campInstanceId)
+        : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
+
+      const { error } = await query;
 
       if (error) throw error;
     },

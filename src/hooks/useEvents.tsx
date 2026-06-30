@@ -16,6 +16,7 @@ export interface Event {
   ministry_types?: string[] | null;
   audience_type: string | null;
   teaching_week_id?: string | null;
+  camp_instance_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -118,7 +119,7 @@ export function useCreateEvent() {
 
       let teachingWeekId = event.teaching_week_id || null;
       if (!teachingWeekId && event.campus_id && event.ministry_type) {
-        const { data: weekMatch } = await (supabase as any)
+        const { data: weekMatch } = await supabase
           .from("teaching_weeks")
           .select("id")
           .eq("campus_id", event.campus_id)

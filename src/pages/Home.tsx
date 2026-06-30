@@ -102,7 +102,7 @@ function getHomePageVariant(resourceAppKey: ResourceAppKey) {
 
 const studentsHomeBackgroundStyle = {
   background:
-    "radial-gradient(circle at 72% 10%, #ffbd2f 0%, #f97931 42%, #f91c2d 100%)",
+    "radial-gradient(ellipse at 74% 2%, rgba(255, 190, 45, 0.98) 0%, rgba(255, 154, 35, 0.74) 36%, transparent 62%), linear-gradient(115deg, #ff2532 0%, #fa4b2d 28%, #f97931 56%, #ffac28 100%)",
 };
 
 export default function Home() {
@@ -148,7 +148,7 @@ export default function Home() {
         <img
           src={homeConfig.heroImage}
           alt={homeConfig.heroAlt}
-          className={`absolute left-1/2 top-0 z-0 h-full w-full max-w-none -translate-x-1/2 object-cover sm:w-auto sm:object-contain lg:[-webkit-mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] lg:[mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] ${homeConfig.mobileObjectPosition ?? ""}`}
+          className={`absolute left-1/2 top-0 z-0 h-full w-full max-w-none -translate-x-1/2 object-cover sm:w-auto sm:object-contain sm:[-webkit-mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] sm:[mask-image:linear-gradient(to_right,transparent,black_18%,black_82%,transparent)] ${homeConfig.mobileObjectPosition ?? ""}`}
         />
       )}
       <section

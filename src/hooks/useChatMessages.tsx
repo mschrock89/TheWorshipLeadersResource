@@ -32,6 +32,7 @@ interface MessageRow {
   campus_id: string | null;
   ministry_type: string | null;
   resource_app_key: string | null;
+  camp_instance_id: string | null;
   attachments: string[] | null;
   message_reactions: MessageReactionRow[] | null;
 }
@@ -44,12 +45,17 @@ export interface ChatMessage {
   campus_id: string | null;
   ministry_type: string | null;
   resource_app_key: string | null;
+  camp_instance_id: string | null;
   attachments: string[] | null;
   profiles: Profile;
   message_reactions: Reaction[];
 }
 
-export function useChatMessages(campusId: string | null, ministryType: string | null = 'weekend') {
+export function useChatMessages(
+  campusId: string | null,
+  ministryType: string | null = 'weekend',
+  campInstanceId?: string | null,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
@@ -64,7 +70,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
     }
 
     // Fetch messages without profile join (profiles may be blocked by RLS for volunteers)
-    const query = supabase
+    let query = supabase
       .from("chat_messages")
       .select(`
         *,
@@ -76,8 +82,11 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       `)
       .eq("campus_id", campusId)
       .eq("ministry_type", ministryType)
-      .eq("resource_app_key", resourceAppKey)
       .order("created_at", { ascending: true });
+
+    query = campInstanceId
+      ? query.eq("camp_instance_id", campInstanceId)
+      : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
 
     const { data, error } = await query;
 
@@ -112,7 +121,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     setMessages(normalized as unknown as ChatMessage[]);
     setIsLoading(false);
-  }, [campusId, ministryType, resourceAppKey, toast]);
+  }, [campInstanceId, campusId, ministryType, resourceAppKey, toast]);
 
   const sendMessage = async (content: string, attachments?: string[]) => {
     if (!user || !campusId || !ministryType) return;
@@ -128,6 +137,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         campus_id: campusId,
         ministry_type: ministryType,
         resource_app_key: resourceAppKey,
+        camp_instance_id: campInstanceId || null,
         attachments: attachments && attachments.length > 0 ? attachments : null,
       })
       .select("id")
@@ -151,6 +161,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
           body: {
             messageId: insertedMessage.id,
             resourceAppKey,
+            campInstanceId: campInstanceId || null,
           },
         });
       } catch (notificationError) {
@@ -162,12 +173,17 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
   const editMessage = async (messageId: string, newContent: string) => {
     if (!user || !newContent.trim()) return false;
 
-    const { error } = await supabase
+    let query = supabase
       .from("chat_messages")
       .update({ content: newContent.trim() })
       .eq("id", messageId)
-      .eq("resource_app_key", resourceAppKey)
       .eq("user_id", user.id);
+
+    query = campInstanceId
+      ? query.eq("camp_instance_id", campInstanceId)
+      : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
+
+    const { error } = await query;
 
     if (error) {
       console.error("Error editing message:", error);
@@ -189,12 +205,17 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
       currentMessages.filter((message) => message.id !== messageId)
     );
 
-    const { error } = await supabase
+    let query = supabase
       .from("chat_messages")
       .delete()
       .eq("id", messageId)
-      .eq("resource_app_key", resourceAppKey)
       .eq("user_id", user.id);
+
+    query = campInstanceId
+      ? query.eq("camp_instance_id", campInstanceId)
+      : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
+
+    const { error } = await query;
 
     if (error) {
       setMessages(previousMessages);
@@ -255,7 +276,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
 
     // Subscribe to new messages and reactions for this campus+ministry
     const messagesChannel = supabase
-      .channel(`chat-messages-${resourceAppKey}-${campusId}-${ministryType}`)
+      .channel(`chat-messages-${campInstanceId || resourceAppKey}-${campusId}-${ministryType}`)
       .on(
         "postgres_changes",
         { 
@@ -266,8 +287,18 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         },
         (payload) => {
           // Only process messages for our ministry type
-          const newMsg = payload.new as { ministry_type?: string; resource_app_key?: string; user_id?: string };
-          if (newMsg.ministry_type !== ministryType || newMsg.resource_app_key !== resourceAppKey) return;
+          const newMsg = payload.new as {
+            ministry_type?: string;
+            resource_app_key?: string;
+            camp_instance_id?: string | null;
+            user_id?: string;
+          };
+          if (newMsg.ministry_type !== ministryType) return;
+          if (campInstanceId) {
+            if (newMsg.camp_instance_id !== campInstanceId) return;
+          } else if (newMsg.resource_app_key !== resourceAppKey || newMsg.camp_instance_id) {
+            return;
+          }
           
           if (newMsg.user_id !== user?.id) {
             haptic("light");
@@ -285,8 +316,17 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
         },
         (payload) => {
           // Only process updates for our ministry type
-          const updatedMsg = payload.new as { ministry_type?: string; resource_app_key?: string };
-          if (updatedMsg.ministry_type !== ministryType || updatedMsg.resource_app_key !== resourceAppKey) return;
+          const updatedMsg = payload.new as {
+            ministry_type?: string;
+            resource_app_key?: string;
+            camp_instance_id?: string | null;
+          };
+          if (updatedMsg.ministry_type !== ministryType) return;
+          if (campInstanceId) {
+            if (updatedMsg.camp_instance_id !== campInstanceId) return;
+          } else if (updatedMsg.resource_app_key !== resourceAppKey || updatedMsg.camp_instance_id) {
+            return;
+          }
           fetchMessages();
         }
       )
@@ -314,7 +354,7 @@ export function useChatMessages(campusId: string | null, ministryType: string | 
     return () => {
       supabase.removeChannel(messagesChannel);
     };
-  }, [campusId, fetchMessages, ministryType, resourceAppKey, user?.id]);
+  }, [campInstanceId, campusId, fetchMessages, ministryType, resourceAppKey, user?.id]);
 
   return {
     messages,

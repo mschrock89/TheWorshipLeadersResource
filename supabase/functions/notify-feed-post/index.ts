@@ -14,6 +14,7 @@ const corsHeaders = {
 interface FeedPostNotifyRequest {
   postId?: string;
   resourceAppKey?: string;
+  campInstanceId?: string | null;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -61,7 +62,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: post, error: postError } = await supabase
       .from("feed_posts")
-      .select("id, title, category, created_by, resource_app_key")
+      .select("id, title, category, created_by, resource_app_key, camp_instance_id")
       .eq("id", body.postId)
       .maybeSingle();
 
@@ -72,7 +73,23 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
+    const campInstanceId = post.camp_instance_id || body.campInstanceId || null;
     const resourceAppKey = post.resource_app_key || body.resourceAppKey || null;
+    let campResourceAppKeys: string[] = [];
+
+    if (campInstanceId) {
+      const { data: camp, error: campError } = await supabase
+        .from("camp_instances")
+        .select("resource_app_keys")
+        .eq("id", campInstanceId)
+        .maybeSingle();
+
+      if (campError) {
+        console.error("Error loading camp instance for feed push:", campError);
+      }
+
+      campResourceAppKeys = Array.isArray(camp?.resource_app_keys) ? camp.resource_app_keys : [];
+    }
 
     // Recipients: everyone with a subscription in this app except the author.
     let subQuery = supabase
@@ -81,7 +98,9 @@ serve(async (req: Request): Promise<Response> => {
       .not("user_id", "is", null)
       .neq("user_id", post.created_by);
 
-    if (resourceAppKey) {
+    if (campResourceAppKeys.length > 0) {
+      subQuery = subQuery.in("resource_app_key", campResourceAppKeys);
+    } else if (resourceAppKey) {
       subQuery = subQuery.eq("resource_app_key", resourceAppKey);
     }
 
@@ -124,9 +143,9 @@ serve(async (req: Request): Promise<Response> => {
           "Authorization": `Bearer ${supabaseServiceKey}`,
         },
         body: JSON.stringify({
-          title: "New Post in The Feed",
+          title: campInstanceId ? "New Camp Feed Post" : "New Post in The Feed",
           message: `${authorName} shared: ${titlePreview}`,
-          url: "/feed",
+          url: campInstanceId ? "/camp" : "/feed",
           tag: `feed-post-${post.id}`,
           userIds: recipientUserIds,
           contextType: "feed-post",
@@ -136,6 +155,7 @@ serve(async (req: Request): Promise<Response> => {
             postId: post.id,
             category: post.category,
             resourceAppKey,
+            campInstanceId,
           },
         }),
       });

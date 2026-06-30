@@ -22,6 +22,7 @@ const MINISTRY_LABELS: Record<string, string> = {
   small_group_6: "Small Group 6",
   small_group_7: "Small Group 7",
   small_group_8: "Small Group 8",
+  student_camp: "Camp Chat",
   encounter: "HS Worship",
   evident: "Evident",
   eon: "MS Worship",
@@ -32,6 +33,7 @@ const MINISTRY_LABELS: Record<string, string> = {
 interface NotifyChatMessageRequest {
   messageId: string;
   resourceAppKey?: string;
+  campInstanceId?: string | null;
 }
 
 interface ChatMessageRecord {
@@ -41,6 +43,7 @@ interface ChatMessageRecord {
   campus_id: string;
   ministry_type: string;
   resource_app_key: string;
+  camp_instance_id: string | null;
   attachments: string[] | null;
   created_at: string;
   profiles: {
@@ -84,7 +87,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { messageId, resourceAppKey }: NotifyChatMessageRequest = await req.json();
+    const { messageId, resourceAppKey, campInstanceId: requestedCampInstanceId }: NotifyChatMessageRequest = await req.json();
 
     if (!messageId) {
       return new Response(
@@ -106,6 +109,7 @@ serve(async (req: Request): Promise<Response> => {
         campus_id,
         ministry_type,
         resource_app_key,
+        camp_instance_id,
         attachments,
         created_at,
         profiles(full_name),
@@ -122,28 +126,94 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error("Chat message does not belong to the requested app");
     }
 
+    const campInstanceId = message.camp_instance_id || requestedCampInstanceId || null;
+    if (requestedCampInstanceId && message.camp_instance_id !== requestedCampInstanceId) {
+      throw new Error("Chat message does not belong to the requested camp");
+    }
+
     const senderName = message.profiles?.full_name?.trim() || "Someone";
     const campusName = message.campuses?.name?.trim() || "your campus";
     const ministryLabel = MINISTRY_LABELS[message.ministry_type] || message.ministry_type;
-    const chatLabel = `${campusName} ${ministryLabel}`.trim();
-    const chatKey = `${message.resource_app_key}:${message.campus_id}:${message.ministry_type}`;
+    const chatLabel = campInstanceId ? ministryLabel : `${campusName} ${ministryLabel}`.trim();
+    const chatKey = campInstanceId
+      ? `camp:${campInstanceId}:${message.campus_id}:${message.ministry_type}`
+      : `${message.resource_app_key}:${message.campus_id}:${message.ministry_type}`;
 
-    const { data: chatProfiles, error: chatProfilesError } = await supabase.rpc(
-      "get_profiles_for_chat_mention",
-      { _campus_id: message.campus_id, _ministry_type: message.ministry_type },
-    );
+    let chatProfiles: Array<{ id: string; full_name: string | null }> = [];
+    let recipientUserIds: string[] = [];
 
-    if (chatProfilesError) {
-      throw new Error(`Failed to resolve chat members: ${chatProfilesError.message}`);
+    if (campInstanceId) {
+      const { data: camp, error: campError } = await supabase
+        .from("camp_instances")
+        .select("resource_app_keys")
+        .eq("id", campInstanceId)
+        .maybeSingle();
+
+      if (campError || !camp) {
+        throw new Error(`Failed to load camp instance: ${campError?.message || "Not found"}`);
+      }
+
+      const resourceAppKeys = Array.isArray(camp.resource_app_keys) ? camp.resource_app_keys : [];
+      const { data: subscriptions, error: subscriptionsError } = await supabase
+        .from("push_subscriptions")
+        .select("user_id")
+        .in("resource_app_key", resourceAppKeys)
+        .neq("user_id", message.user_id);
+
+      if (subscriptionsError) {
+        throw new Error(`Failed to resolve camp chat subscriptions: ${subscriptionsError.message}`);
+      }
+
+      const candidateUserIds = Array.from(
+        new Set((subscriptions || []).map((row) => row.user_id).filter((userId): userId is string => Boolean(userId))),
+      );
+
+      const accessResults = await Promise.all(
+        candidateUserIds.map(async (userId) => {
+          const { data, error } = await supabase.rpc("user_can_access_camp_instance", {
+            _user_id: userId,
+            _camp_instance_id: campInstanceId,
+          });
+          if (error) {
+            console.error("Failed to check camp chat access:", error);
+            return null;
+          }
+          return data ? userId : null;
+        }),
+      );
+
+      recipientUserIds = accessResults.filter((userId): userId is string => Boolean(userId));
+
+      if (recipientUserIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", recipientUserIds);
+
+        if (profilesError) {
+          throw new Error(`Failed to load camp chat profiles: ${profilesError.message}`);
+        }
+        chatProfiles = profiles || [];
+      }
+    } else {
+      const { data: rosterProfiles, error: chatProfilesError } = await supabase.rpc(
+        "get_profiles_for_chat_mention",
+        { _campus_id: message.campus_id, _ministry_type: message.ministry_type },
+      );
+
+      if (chatProfilesError) {
+        throw new Error(`Failed to resolve chat members: ${chatProfilesError.message}`);
+      }
+
+      chatProfiles = rosterProfiles || [];
+      recipientUserIds = Array.from(
+        new Set(
+          chatProfiles
+            .map((profile) => profile.id)
+            .filter((userId): userId is string => Boolean(userId) && userId !== message.user_id),
+        ),
+      );
     }
-
-    const recipientUserIds = Array.from(
-      new Set(
-        (chatProfiles || [])
-          .map((profile) => profile.id)
-          .filter((userId): userId is string => Boolean(userId) && userId !== message.user_id),
-      ),
-    );
 
     if (recipientUserIds.length === 0) {
       return new Response(
@@ -181,7 +251,7 @@ serve(async (req: Request): Promise<Response> => {
         body: JSON.stringify({
           title: `${senderName} mentioned you`,
           message: messagePreview,
-          url: "/chat",
+          url: campInstanceId ? "/camp" : "/chat",
           tag: `chat-mention-${message.id}`,
           userIds: mentionUserIds,
           contextType: "chat-mention",
@@ -192,6 +262,7 @@ serve(async (req: Request): Promise<Response> => {
             ministryType: message.ministry_type,
             messageId: message.id,
             resourceAppKey: message.resource_app_key,
+            campInstanceId,
           },
         }),
       });
@@ -205,13 +276,18 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const windowStartIso = new Date(new Date(message.created_at).getTime() - BUSY_CHAT_WINDOW_MS).toISOString();
-    const { count: recentMessageCount, error: recentMessageError } = await supabase
+    let recentMessageQuery = supabase
       .from("chat_messages")
       .select("id", { count: "exact", head: true })
       .eq("campus_id", message.campus_id)
       .eq("ministry_type", message.ministry_type)
-      .eq("resource_app_key", message.resource_app_key)
       .gte("created_at", windowStartIso);
+
+    recentMessageQuery = campInstanceId
+      ? recentMessageQuery.eq("camp_instance_id", campInstanceId)
+      : recentMessageQuery.eq("resource_app_key", message.resource_app_key).is("camp_instance_id", null);
+
+    const { count: recentMessageCount, error: recentMessageError } = await recentMessageQuery;
 
     if (recentMessageError) {
       throw new Error(`Failed to count recent chat activity: ${recentMessageError.message}`);
@@ -247,7 +323,7 @@ serve(async (req: Request): Promise<Response> => {
           body: JSON.stringify({
             title: `${chatLabel} is busy`,
             message: "A lot is happening in chat right now. Join the conversation.",
-            url: "/chat",
+            url: campInstanceId ? "/camp" : "/chat",
             tag: `chat-busy-${chatKey}`,
             userIds: generalRecipientUserIds,
             contextType: "chat-busy",
@@ -258,6 +334,7 @@ serve(async (req: Request): Promise<Response> => {
               ministryType: message.ministry_type,
               messageId: message.id,
               resourceAppKey: message.resource_app_key,
+              campInstanceId,
               recentMessageCount: recentMessageCount || 0,
             },
           }),
@@ -283,7 +360,7 @@ serve(async (req: Request): Promise<Response> => {
         body: JSON.stringify({
           title: `${senderName} in ${chatLabel}`,
           message: messagePreview,
-          url: "/chat",
+          url: campInstanceId ? "/camp" : "/chat",
           tag: `chat-message-${message.id}`,
           userIds: generalRecipientUserIds,
           contextType: "chat-message",
@@ -294,6 +371,7 @@ serve(async (req: Request): Promise<Response> => {
             ministryType: message.ministry_type,
             messageId: message.id,
             resourceAppKey: message.resource_app_key,
+            campInstanceId,
           },
         }),
       });

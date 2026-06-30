@@ -332,6 +332,11 @@ export default function TeamBuilder() {
   const { data: teams = [], isLoading: teamsLoading } = useWorshipTeams(selectedCampusId, selectedMinistryType);
   const { data: members = [], isLoading: membersLoading } = useTeamMembersForPeriod(selectedPeriodId);
   const { data: dateOverrides = [] } = useTeamMemberDateOverrides(selectedPeriodId);
+  const supportsDateSpecificAssignments = !isStudentTeamBuilder;
+  const activeDateOverrides = useMemo(
+    () => (supportsDateSpecificAssignments ? dateOverrides : []),
+    [dateOverrides, supportsDateSpecificAssignments],
+  );
   const { data: availableMembers = [] } = useAvailableMembers(
     selectedCampusId,
     selectedMinistryType,
@@ -626,7 +631,7 @@ export default function TeamBuilder() {
       return acc;
     }, new Map());
 
-    const overriddenScheduleDatesByTeamSlot = dateOverrides.reduce<Map<string, Set<string>>>((acc, override) => {
+    const overriddenScheduleDatesByTeamSlot = activeDateOverrides.reduce<Map<string, Set<string>>>((acc, override) => {
       const key = `${override.team_id}:${override.position_slot}`;
       if (!acc.has(key)) {
         acc.set(key, new Set());
@@ -664,7 +669,7 @@ export default function TeamBuilder() {
       acc[member.team_id][member.position_slot] = conflictDates;
       return acc;
     }, {});
-  }, [visibleAssignments, blackoutDatesByUser, scheduleEntries, dateOverrides]);
+  }, [visibleAssignments, blackoutDatesByUser, scheduleEntries, activeDateOverrides]);
 
   const teamScheduleBuckets = useMemo(() => {
     return scheduleEntries.reduce<Record<string, Array<{ key: string; dates: string[] }>>>((acc, entry) => {
@@ -697,8 +702,8 @@ export default function TeamBuilder() {
 
   const dateOverridesByTeamSlot = useMemo(() => {
     const visibleDateOverrides = selectedMinistryType === "all"
-      ? dateOverrides
-      : dateOverrides.filter((override) =>
+      ? activeDateOverrides
+      : activeDateOverrides.filter((override) =>
           memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
         );
 
@@ -733,12 +738,12 @@ export default function TeamBuilder() {
 
       return acc;
     }, {});
-  }, [dateOverrides, selectedMinistryType]);
+  }, [activeDateOverrides, selectedMinistryType]);
 
   const blackoutConflictDatesByTeamSlotDateOverride = useMemo(() => {
     const visibleDateOverrides = selectedMinistryType === "all"
-      ? dateOverrides
-      : dateOverrides.filter((override) =>
+      ? activeDateOverrides
+      : activeDateOverrides.filter((override) =>
           memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
         );
 
@@ -769,7 +774,7 @@ export default function TeamBuilder() {
       acc[override.team_id][override.position_slot][scheduleBucketKey] = Array.from(existing).sort();
       return acc;
     }, {});
-  }, [dateOverrides, blackoutDatesByUser, selectedMinistryType]);
+  }, [activeDateOverrides, blackoutDatesByUser, selectedMinistryType]);
 
   const combinedConflictDatesByTeamSlot = useMemo(() => {
     const combined: Record<string, Record<string, string[]>> = {};
@@ -889,7 +894,7 @@ export default function TeamBuilder() {
       recipientMap.set(assignment.user_id, recipient);
     });
 
-    dateOverrides.forEach((override) => {
+    activeDateOverrides.forEach((override) => {
       if (!override.user_id) return;
 
       const team = teamById[override.team_id];
@@ -973,7 +978,7 @@ export default function TeamBuilder() {
       .filter((recipient) => recipient.teams.length > 0)
       .sort((a, b) => a.memberName.localeCompare(b.memberName));
   }, [
-    dateOverrides,
+    activeDateOverrides,
     dateOverridesByTeamSlot,
     effectiveTeamSnapshotByBucket,
     scheduleDatesByTeam,
@@ -1164,7 +1169,7 @@ export default function TeamBuilder() {
       assignmentsByUser.set(member.user_id, existingAssignments);
     });
 
-    dateOverrides.forEach((override) => {
+    activeDateOverrides.forEach((override) => {
       if (!override.user_id || allowedCurrentUserIds.has(override.user_id)) return;
 
       const existingAssignments = assignmentsByUser.get(override.user_id) || [];
@@ -1229,7 +1234,7 @@ export default function TeamBuilder() {
     assigningSlot,
     availableMembers,
     multiTeamAssignableMembers,
-    dateOverrides,
+    activeDateOverrides,
     dateOverridesByTeamSlot,
     members,
     assigningMinistryType,
@@ -1653,7 +1658,7 @@ export default function TeamBuilder() {
 
               <TabsContent value="all-teams" className="space-y-6">
                 {/* Team Schedule Widget */}
-                {canEditCampus && (
+                {canEditCampus && supportsDateSpecificAssignments && (
                   <TeamScheduleWidget
                     campusId={selectedCampusId}
                     rotationPeriodName={selectedPeriod?.name || null}
@@ -1816,9 +1821,17 @@ export default function TeamBuilder() {
                       ministryFilter={selectedMinistryType}
                       campusName={selectedCampus?.name}
                       slotConflictDates={combinedConflictDatesByTeamSlot[team.id] || {}}
-                      slotScheduleDates={serviceDay ? [] : scheduleDatesByTeam[team.id] || []}
-                      slotDateOverrides={serviceDay ? {} : dateOverridesByTeamSlot[team.id] || {}}
-                      slotDateOverrideConflictDates={serviceDay ? {} : blackoutConflictDatesByTeamSlotDateOverride[team.id] || {}}
+                      slotScheduleDates={
+                        serviceDay || !supportsDateSpecificAssignments ? [] : scheduleDatesByTeam[team.id] || []
+                      }
+                      slotDateOverrides={
+                        serviceDay || !supportsDateSpecificAssignments ? {} : dateOverridesByTeamSlot[team.id] || {}
+                      }
+                      slotDateOverrideConflictDates={
+                        serviceDay || !supportsDateSpecificAssignments
+                          ? {}
+                          : blackoutConflictDatesByTeamSlotDateOverride[team.id] || {}
+                      }
                       titleOverride={title}
                     />
                   ))}
