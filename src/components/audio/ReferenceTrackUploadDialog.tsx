@@ -82,7 +82,11 @@ export function ReferenceTrackUploadDialog({
     detectionRequestId.current += 1;
   };
 
-  const analyzeMarkersFromAudio = useCallback(async (file: File, requestId: number) => {
+  const analyzeMarkersFromAudio = useCallback(async (
+    file: File,
+    requestId: number,
+    durationSeconds?: number | null,
+  ) => {
     if (setlistSongs.length === 0) {
       toast({
         title: "No setlist songs",
@@ -93,7 +97,7 @@ export function ReferenceTrackUploadDialog({
 
     setDetectingMarkers(true);
     try {
-      const result = await detectReferenceTrackMarkers(file, setlistSongs.length);
+      const result = await detectReferenceTrackMarkers(file, setlistSongs.length, durationSeconds);
       if (requestId !== detectionRequestId.current) return;
 
       const detectedMarkers = introTimestampsToMarkers(result.intro_timestamps, setlistSongs);
@@ -133,11 +137,13 @@ export function ReferenceTrackUploadDialog({
     setSelectedFile(file);
     setMarkers([]);
     setMarkersOpen(true);
+    let durationSeconds: number | null = null;
 
     try {
       const duration = await extractAudioDuration(file);
       if (requestId !== detectionRequestId.current) return;
       setAudioDuration(duration);
+      durationSeconds = duration;
     } catch (err) {
       console.warn("Could not extract audio duration:", err);
       if (requestId === detectionRequestId.current) {
@@ -150,7 +156,7 @@ export function ReferenceTrackUploadDialog({
       setTitle(nameWithoutExt);
     }
 
-    void analyzeMarkersFromAudio(file, requestId);
+    void analyzeMarkersFromAudio(file, requestId, durationSeconds);
   }, [analyzeMarkersFromAudio, extractAudioDuration, title]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -260,7 +266,11 @@ export function ReferenceTrackUploadDialog({
         setUploadPhase("detecting");
         setProgress(92);
         try {
-          const result = await detectReferenceTrackMarkersFromUrl(urlData.publicUrl, setlistSongs.length);
+          const result = await detectReferenceTrackMarkersFromUrl(
+            urlData.publicUrl,
+            setlistSongs.length,
+            audioDuration,
+          );
           dbMarkers = markersToDbFormat(
             introTimestampsToMarkers(result.intro_timestamps, setlistSongs),
           );

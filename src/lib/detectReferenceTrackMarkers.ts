@@ -34,11 +34,13 @@ async function parseFunctionError(error: unknown, fallback: string): Promise<str
 export async function detectReferenceTrackMarkersFromUrl(
   audioUrl: string,
   songCount: number,
+  durationSeconds?: number | null,
 ): Promise<DetectedIntroMarkersResult> {
   const { data, error } = await supabase.functions.invoke("detect-reference-track-markers", {
     body: {
       audio_url: audioUrl,
       song_count: songCount,
+      duration_seconds: durationSeconds,
     },
   });
 
@@ -52,6 +54,7 @@ export async function detectReferenceTrackMarkersFromUrl(
 export async function detectReferenceTrackMarkers(
   file: File,
   songCount: number,
+  durationSeconds?: number | null,
 ): Promise<DetectedIntroMarkersResult> {
   const {
     data: { session },
@@ -65,6 +68,9 @@ export async function detectReferenceTrackMarkers(
   formData.append("file", file);
   if (songCount > 0) {
     formData.append("song_count", String(songCount));
+  }
+  if (durationSeconds && Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    formData.append("duration_seconds", String(durationSeconds));
   }
 
   const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/detect-reference-track-markers`, {

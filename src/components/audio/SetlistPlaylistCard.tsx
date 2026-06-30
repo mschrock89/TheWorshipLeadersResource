@@ -563,6 +563,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
           referenceTrackId={selectedRefTrack.referenceTrackId}
           referenceTrackTitle={selectedRefTrack.title}
           audioUrl={selectedRefTrack.audioUrl}
+          durationSeconds={selectedRefTrack.durationSeconds}
           existingMarkers={selectedRefTrack.markers || []}
           setlistSongs={setlistSongs}
         />

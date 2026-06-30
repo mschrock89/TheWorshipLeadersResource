@@ -30,6 +30,7 @@ interface ReferenceTrackRow {
   sequence_order: number;
   created_at: string;
   created_by: string | null;
+  duration_seconds: number | null;
 }
 
 interface ReferenceTrackMarkerRow {
@@ -84,6 +85,7 @@ export interface ReferenceTrackMarker {
 export interface ReferenceTrack extends Track {
   isReferenceTrack: true;
   referenceTrackId: string;
+  durationSeconds: number | null;
   markers: ReferenceTrackMarker[];
 }
 
@@ -267,6 +269,7 @@ export function useMySetlistPlaylists() {
             artist: "Reference Track",
             audioUrl: rt.audio_url,
             isReferenceTrack: true as const,
+            durationSeconds: rt.duration_seconds,
             markers: rtMarkers.map((m) => ({
               id: m.id,
               title: m.title,

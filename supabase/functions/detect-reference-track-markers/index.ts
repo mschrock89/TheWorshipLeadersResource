@@ -31,12 +31,14 @@ Deno.serve(async (req) => {
 
     const contentType = req.headers.get("content-type") || "";
     let songCount: number | undefined;
+    let durationSeconds: number | undefined;
     let transcription: TranscriptionResult;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file");
       const songCountRaw = formData.get("song_count");
+      const durationSecondsRaw = formData.get("duration_seconds");
 
       if (!(file instanceof File)) {
         return new Response(JSON.stringify({ error: "audio_file_required" }), {
@@ -46,9 +48,10 @@ Deno.serve(async (req) => {
       }
 
       songCount = songCountRaw != null ? Number(songCountRaw) : undefined;
-      transcription = await transcribeAudioBlob(file, file.type || "audio/mpeg");
+      durationSeconds = parsePositiveNumber(durationSecondsRaw);
+      transcription = await transcribeAudioBlob(file, file.type || "audio/mpeg", { durationSeconds });
     } else {
-      const body = await req.json() as { audio_url?: string; song_count?: number };
+      const body = await req.json() as { audio_url?: string; song_count?: number; duration_seconds?: number };
       if (!body?.audio_url) {
         return new Response(JSON.stringify({ error: "audio_url_or_file_required" }), {
           status: 400,
@@ -57,7 +60,8 @@ Deno.serve(async (req) => {
       }
 
       songCount = body.song_count;
-      transcription = await transcribeAudioFromUrl(body.audio_url);
+      durationSeconds = parsePositiveNumber(body.duration_seconds);
+      transcription = await transcribeAudioFromUrl(body.audio_url, { durationSeconds });
     }
 
     const maxMarkers = Number.isFinite(songCount) && songCount! > 0 ? Math.floor(songCount!) : undefined;
@@ -83,3 +87,12 @@ Deno.serve(async (req) => {
     });
   }
 });
+
+function parsePositiveNumber(value: unknown): number | undefined {
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+
+  return undefined;
+}

@@ -34,6 +34,7 @@ interface EditReferenceTrackMarkersDialogProps {
   referenceTrackId: string;
   referenceTrackTitle: string;
   audioUrl: string;
+  durationSeconds?: number | null;
   existingMarkers: ReferenceTrackMarker[];
   setlistSongs: SetlistSong[];
 }
@@ -44,6 +45,7 @@ export function EditReferenceTrackMarkersDialog({
   referenceTrackId,
   referenceTrackTitle,
   audioUrl,
+  durationSeconds,
   existingMarkers,
   setlistSongs,
 }: EditReferenceTrackMarkersDialogProps) {
@@ -90,7 +92,7 @@ export function EditReferenceTrackMarkersDialog({
 
     setDetecting(true);
     try {
-      const result = await detectReferenceTrackMarkersFromUrl(audioUrl, setlistSongs.length);
+      const result = await detectReferenceTrackMarkersFromUrl(audioUrl, setlistSongs.length, durationSeconds);
       const detectedMarkers = introTimestampsToMarkers(result.intro_timestamps, setlistSongs);
       setMarkers(detectedMarkers);
 

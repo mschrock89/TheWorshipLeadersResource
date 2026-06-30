@@ -423,7 +423,10 @@ Deno.serve(async (req) => {
       versionsBySongId.set(version.song_id, existing);
     }
 
-    const transcriptSegments = await transcribeReferenceTrack(refTrack.audio_url);
+    const durationSeconds = Number(refTrack.duration_seconds);
+    const transcriptSegments = await transcribeReferenceTrack(refTrack.audio_url, {
+      durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : undefined,
+    });
 
     const markerSongPairs = markers
       .map((marker, index) => ({
