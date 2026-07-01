@@ -380,7 +380,7 @@ export type Database = {
       }
       service_time_overrides: {
         Row: {
-          campus_id: string
+          campus_id: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -390,7 +390,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          campus_id: string
+          campus_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -400,7 +400,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          campus_id?: string
+          campus_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -428,7 +428,7 @@ export type Database = {
       }
       custom_services: {
         Row: {
-          campus_id: string
+          campus_id: string | null
           created_at: string
           created_by: string | null
           end_time: string | null
@@ -443,7 +443,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          campus_id: string
+          campus_id?: string | null
           created_at?: string
           created_by?: string | null
           end_time?: string | null
@@ -458,7 +458,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          campus_id?: string
+          campus_id?: string | null
           created_at?: string
           created_by?: string | null
           end_time?: string | null
@@ -577,6 +577,54 @@ export type Database = {
           id?: string
           is_published?: boolean
           link_url?: string | null
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      camp_attachments: {
+        Row: {
+          audience: string
+          camp_instance_id: string
+          created_at: string
+          created_by: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          is_published: boolean
+          mime_type: string | null
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string
+          camp_instance_id: string
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          is_published?: boolean
+          mime_type?: string | null
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          camp_instance_id?: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          is_published?: boolean
+          mime_type?: string | null
           sort_order?: number
           title?: string
           updated_at?: string
@@ -829,7 +877,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
-          campus_id: string
+          campus_id: string | null
           created_at: string
           created_by: string
           custom_service_id: string | null
@@ -845,7 +893,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
-          campus_id: string
+          campus_id?: string | null
           created_at?: string
           created_by: string
           custom_service_id?: string | null
@@ -861,7 +909,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
-          campus_id?: string
+          campus_id?: string | null
           created_at?: string
           created_by?: string
           custom_service_id?: string | null
@@ -2415,7 +2463,7 @@ export type Database = {
       }
       setlist_playlists: {
         Row: {
-          campus_id: string
+          campus_id: string | null
           created_at: string
           draft_set_id: string
           id: string
@@ -2423,7 +2471,7 @@ export type Database = {
           service_date: string
         }
         Insert: {
-          campus_id: string
+          campus_id?: string | null
           created_at?: string
           draft_set_id: string
           id?: string
@@ -2431,7 +2479,7 @@ export type Database = {
           service_date: string
         }
         Update: {
-          campus_id?: string
+          campus_id?: string | null
           created_at?: string
           draft_set_id?: string
           id?: string
@@ -3554,6 +3602,7 @@ export type Database = {
         | "campus_admin"
         | "network_worship_leader"
         | "network_worship_pastor"
+        | "network_student_pastor"
         | "video_director"
         | "production_manager"
         | "creative_team_lead"
@@ -3756,6 +3805,7 @@ export const Constants = {
         "campus_admin",
         "network_worship_leader",
         "network_worship_pastor",
+        "network_student_pastor",
         "video_director",
         "production_manager",
         "creative_team_lead",

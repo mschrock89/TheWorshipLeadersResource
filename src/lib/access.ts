@@ -15,12 +15,14 @@ const WORSHIP_PASTOR_GROUP_TEXT_ROLES = new Set([
   "campus_worship_pastor",
   "childrens_pastor",
   "network_worship_pastor",
+  "network_student_pastor",
   "student_pastor",
 ]);
 const PRODUCTION_MANAGER_GROUP_TEXT_ROLES = new Set(["production_manager"]);
 const VIDEO_DIRECTOR_GROUP_TEXT_ROLES = new Set(["video_director"]);
 export const REFERENCE_TRACK_MANAGER_ROLES = new Set([
   "network_worship_pastor",
+  "network_student_pastor",
   "campus_pastor",
   "campus_worship_pastor",
   "childrens_pastor",
@@ -154,7 +156,11 @@ export function canManageReferenceTracks(params: {
 }) {
   const { isAdmin, roleNames, playlistCampusId, userCampusIds = [] } = params;
 
-  if (isAdmin || roleNames.includes("network_worship_pastor")) {
+  if (
+    isAdmin ||
+    roleNames.includes("network_worship_pastor") ||
+    roleNames.includes("network_student_pastor")
+  ) {
     return true;
   }
 

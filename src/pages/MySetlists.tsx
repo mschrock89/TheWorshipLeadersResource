@@ -56,6 +56,7 @@ const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
   "admin",
   "campus_admin",
   "campus_worship_pastor",
+  "network_student_pastor",
   "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",

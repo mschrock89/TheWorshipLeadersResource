@@ -21,7 +21,7 @@ interface RecipientPreview {
 
 const LEADERSHIP_ROLES = [
   "admin", "campus_admin", "campus_worship_pastor", "student_worship_pastor", "childrens_pastor",
-  "network_worship_pastor", "network_worship_leader", "leader",
+  "network_worship_pastor", "network_worship_leader", "network_student_pastor", "leader",
   "video_director", "production_manager", "campus_pastor",
 ];
 const MANUAL_NOTIFY_ROLES = new Set(LEADERSHIP_ROLES);
@@ -29,6 +29,7 @@ const NETWORK_ADMIN_ROLES = new Set([
   "admin",
   "network_worship_pastor",
   "network_worship_leader",
+  "network_student_pastor",
 ]);
 const CAMPUS_ADMIN_LIKE_ROLES = new Set([
   "admin",

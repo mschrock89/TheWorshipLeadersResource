@@ -69,6 +69,7 @@ serve(async (req) => {
       'production_manager',
       'network_worship_pastor',
       'network_worship_leader',
+      'network_student_pastor',
       'leader',
     ];
 

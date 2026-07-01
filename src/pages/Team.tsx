@@ -43,7 +43,7 @@ import {
 import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { MINISTRY_TYPES, POSITION_LABELS, ROLE_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 
 const normalizePositionFilterValue = (value: string) =>
   value
@@ -72,6 +72,20 @@ const matchesPositionFilter = (positions: TeamPosition[] | undefined, positionFi
 
   return positions.some((position) => allowedValues.has(normalizePositionFilterValue(position)));
 };
+
+const POSITION_FILTER_OPTION_VALUES = [
+  ...POSITION_CATEGORIES.vocals,
+  ...POSITION_CATEGORIES.speaker,
+  ...POSITION_CATEGORIES.instruments,
+  ...POSITION_CATEGORIES.audio,
+  ...POSITION_CATEGORIES.video,
+  ...POSITION_CATEGORIES.creative,
+];
+
+// Student ministry leader roles (HS + MS). Used by the "Other Ministries" role
+// filter, which surfaces everyone NOT assigned to one of these.
+const STUDENT_LEADER_ROLES = new Set(["ms_leader", "ms_leader_weekend", "hs_leader"]);
+const OTHER_MINISTRIES_ROLE_FILTER = "other_ministries";
 
 const DIRECTORY_WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
@@ -116,6 +130,7 @@ export default function Team() {
   const positionFilter = searchParams.get("position") ?? "all";
   const campusFilter = searchParams.get("campus") ?? "all";
   const genderFilter = searchParams.get("gender") ?? "all";
+  const roleFilter = searchParams.get("role") ?? "all";
   const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
 
   const updateDirectoryParam = (key: string, value: string, fallback = "all") => {
@@ -242,6 +257,7 @@ export default function Team() {
     const selectedMinistrySort = sortBy.startsWith("ministry:") ? sortBy.replace("ministry:", "") : null;
 
     const baseRoleLabelsByUser = new Map<string, string[]>();
+    const baseRolesByUser = new Map<string, Set<string>>();
     directoryBaseRoles.forEach(({ user_id, role }) => {
       const existingLabels = baseRoleLabelsByUser.get(user_id) || [];
       const roleLabel = ROLE_LABELS[role] || role;
@@ -252,6 +268,10 @@ export default function Team() {
           [...existingLabels, roleLabel].sort((a, b) => a.localeCompare(b)),
         );
       }
+
+      const existingRoles = baseRolesByUser.get(user_id) || new Set<string>();
+      existingRoles.add(role);
+      baseRolesByUser.set(user_id, existingRoles);
     });
 
     const getBaseRoleSortValue = (profile: Profile) =>
@@ -292,7 +312,16 @@ export default function Team() {
           (genderFilter === "not_set" && !profile.gender) ||
           profile.gender === genderFilter;
 
-        return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender;
+        // Base role filter
+        const profileRoles = baseRolesByUser.get(profile.id);
+        const matchesRole =
+          roleFilter === "all"
+            ? true
+            : roleFilter === OTHER_MINISTRIES_ROLE_FILTER
+              ? !profileRoles || ![...STUDENT_LEADER_ROLES].some((role) => profileRoles.has(role))
+              : profileRoles?.has(roleFilter) ?? false;
+
+        return matchesSearch && matchesPosition && matchesCampus && matchesSelectedMinistry && matchesGender && matchesRole;
       })
       .map((profile) => ({
         ...profile,
@@ -334,7 +363,65 @@ export default function Team() {
 
         return nameA.localeCompare(nameB);
       });
-  }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, userCampusMap, campusMinistryPositions, directoryBaseRoles]);
+  }, [profiles, search, sortBy, positionFilter, campusFilter, genderFilter, roleFilter, userCampusMap, campusMinistryPositions, directoryBaseRoles]);
+
+  // When a base-role filter is active, limit the Position dropdown to positions
+  // actually held by members in that role. `null` means "show all positions".
+  const availablePositionValues = useMemo(() => {
+    if (roleFilter === "all") return null;
+
+    let roleUserIds: Set<string>;
+    if (roleFilter === OTHER_MINISTRIES_ROLE_FILTER) {
+      const studentLeaderUserIds = new Set(
+        directoryBaseRoles
+          .filter(({ role }) => STUDENT_LEADER_ROLES.has(role))
+          .map(({ user_id }) => user_id),
+      );
+      roleUserIds = new Set(
+        profiles.map((profile) => profile.id).filter((id) => !studentLeaderUserIds.has(id)),
+      );
+    } else {
+      roleUserIds = new Set(
+        directoryBaseRoles.filter(({ role }) => role === roleFilter).map(({ user_id }) => user_id),
+      );
+    }
+
+    const campusScopedPositionMap = new Map<string, TeamPosition[]>();
+    if (campusFilter !== "all") {
+      campusMinistryPositions.forEach(({ user_id, campus_id, position }) => {
+        if (campus_id !== campusFilter) return;
+        const existing = campusScopedPositionMap.get(user_id) || [];
+        if (!existing.includes(position as TeamPosition)) {
+          campusScopedPositionMap.set(user_id, [...existing, position as TeamPosition]);
+        }
+      });
+    }
+
+    const rolePositions: TeamPosition[] = [];
+    profiles.forEach((profile) => {
+      if (!roleUserIds.has(profile.id)) return;
+      const positions =
+        campusFilter === "all"
+          ? profile.positions || []
+          : campusScopedPositionMap.get(profile.id) || [];
+      rolePositions.push(...positions);
+    });
+
+    return new Set(
+      POSITION_FILTER_OPTION_VALUES.filter((option) => matchesPositionFilter(rolePositions, option)),
+    );
+  }, [roleFilter, campusFilter, profiles, campusMinistryPositions, directoryBaseRoles]);
+
+  // If the active position is no longer offered for the selected role, reset it.
+  useEffect(() => {
+    if (
+      availablePositionValues &&
+      positionFilter !== "all" &&
+      !availablePositionValues.has(positionFilter)
+    ) {
+      updateDirectoryParam("position", "all");
+    }
+  }, [availablePositionValues, positionFilter]);
 
   const ministryPositionGroupsByUser = useMemo(() => {
     const campusNameById = new Map(campuses.map((campus) => [campus.id, campus.name]));
@@ -630,11 +717,15 @@ export default function Team() {
           onSortByChange={(value) => updateDirectoryParam("sort", value, "name")}
           positionFilter={positionFilter}
           onPositionFilterChange={(value) => updateDirectoryParam("position", value)}
+          availablePositionValues={availablePositionValues}
           campusFilter={campusFilter}
           onCampusFilterChange={(value) => updateDirectoryParam("campus", value)}
           genderFilter={genderFilter}
           onGenderFilterChange={(value) => updateDirectoryParam("gender", value)}
           showGenderFilter={true}
+          roleFilter={roleFilter}
+          onRoleFilterChange={(value) => updateDirectoryParam("role", value)}
+          showRoleFilter={true}
         />
       </div>
 
@@ -650,7 +741,7 @@ export default function Team() {
           <Users className="h-16 w-16 text-muted-foreground/30" />
           <h2 className="mt-4 text-lg font-semibold text-foreground">No team members found</h2>
           <p className="mt-2 text-muted-foreground">
-            {search || positionFilter !== "all" || campusFilter !== "all" || genderFilter !== "all"
+            {search || positionFilter !== "all" || campusFilter !== "all" || genderFilter !== "all" || roleFilter !== "all"
               ? "Try adjusting your filters"
               : "Team members will appear here once they sign up"}
           </p>

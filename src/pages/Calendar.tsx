@@ -101,6 +101,7 @@ const LEADER_SERVICE_OVERRIDE_ROLES = new Set([
   "admin",
   "campus_admin",
   "campus_worship_pastor",
+  "network_student_pastor",
   "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",
@@ -475,7 +476,10 @@ function StandardCalendar() {
   const isCampusAdmin =
     userRole === 'campus_admin' ||
     userRole === 'campus_worship_pastor' ||
-    userRole === 'admin';
+    userRole === 'admin' ||
+    roleNames.includes('network_worship_pastor') ||
+    roleNames.includes('network_student_pastor') ||
+    roleNames.includes('network_worship_leader');
   const canManageWeekendOverrides = userRole ? LEADER_SERVICE_OVERRIDE_ROLES.has(userRole) : false;
   const userCampusIds = useMemo(
     () => userCampuses.map((entry) => entry.campus_id).filter(Boolean),
@@ -1326,22 +1330,15 @@ function StandardCalendar() {
             className="mb-4 rounded-lg border border-border bg-card p-2 sm:p-4 overflow-hidden"
           >
             {/* Weekday headers */}
-            <div className={`mb-1 sm:mb-2 grid gap-0.5 sm:gap-1 ${hideWeekends ? 'grid-cols-5' : 'grid-cols-7'}`}>
-              {WEEKDAYS.filter((_, idx) => !hideWeekends || idx !== 0 && idx !== 6).map(day => <div key={day} className="py-1 sm:py-2 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
+            <div className="mb-1 sm:mb-2 grid gap-0.5 sm:gap-1 grid-cols-7">
+              {WEEKDAYS.map(day => <div key={day} className="py-1 sm:py-2 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
                   {day}
                 </div>)}
             </div>
 
             {/* Days grid */}
-            <div className={`grid gap-0.5 sm:gap-1 ${hideWeekends ? 'grid-cols-5' : 'grid-cols-7'}`}>
+            <div className="grid gap-0.5 sm:gap-1 grid-cols-7">
               {calendarDays.map((day, index) => {
-              // For network-wide view, skip weekend days and their empty cells
-              if (hideWeekends) {
-                const dayOfWeek = index % 7;
-                if (dayOfWeek === 0 || dayOfWeek === 6) {
-                  return null; // Skip Sunday (0) and Saturday (6)
-                }
-              }
               if (day === null) {
                 return <div key={`empty-${index}`} className="aspect-square" />;
               }

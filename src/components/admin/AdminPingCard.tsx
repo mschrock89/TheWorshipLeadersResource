@@ -41,6 +41,7 @@ const GLOBAL_PING_SENDER_ROLES = new Set([
   "admin",
   "network_worship_pastor",
   "network_worship_leader",
+  "network_student_pastor",
   "campus_worship_pastor",
   "student_pastor",
   "student_worship_pastor",

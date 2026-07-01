@@ -18,7 +18,7 @@ import { SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
-import { isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { format } from "date-fns";
 
 interface PublishSetlistDialogProps {
@@ -104,11 +104,15 @@ export function PublishSetlistDialog({
       let existingQuery = supabase
         .from("draft_sets")
         .select("id")
-        .eq("campus_id", campusId)
         .eq("ministry_type", ministryType)
         .eq("plan_date", planDate)
         .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId)
+
+      // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared.
+      existingQuery = isNetworkWideMinistryType(ministryType)
+        ? existingQuery.is("campus_id", null)
+        : existingQuery.eq("campus_id", campusId);
       
       if (customServiceId) {
         existingQuery = existingQuery.eq("custom_service_id", customServiceId);

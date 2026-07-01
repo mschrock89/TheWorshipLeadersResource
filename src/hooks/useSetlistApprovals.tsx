@@ -307,11 +307,16 @@ export function useSubmitForApproval() {
       let duplicateQuery = supabase
         .from("draft_sets")
         .select("id")
-        .eq("campus_id", thisSet.campus_id)
         .eq("ministry_type", thisSet.ministry_type)
         .eq("plan_date", thisSet.plan_date)
         .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId);
+
+      // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared, so
+      // scope the duplicate cleanup to the matching NULL campus.
+      duplicateQuery = thisSet.campus_id
+        ? duplicateQuery.eq("campus_id", thisSet.campus_id)
+        : duplicateQuery.is("campus_id", null);
 
       if (thisSet.custom_service_id) {
         duplicateQuery = duplicateQuery.eq("custom_service_id", thisSet.custom_service_id);

@@ -196,6 +196,7 @@ export default function SetPlanner() {
   const hasNetworkAccess = useMemo(() => {
     return allUserRoles.some(r => 
       r.role === 'network_worship_pastor' || 
+      r.role === 'network_student_pastor' || 
       r.role === 'admin' || 
       r.role === 'network_worship_leader'
     );

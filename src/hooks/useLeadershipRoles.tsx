@@ -14,6 +14,7 @@ interface LeadershipRolesData {
   admins: LeadershipUser[];
   campusAdmins: LeadershipUser[];
   networkWorshipPastors: LeadershipUser[];
+  networkStudentPastors: LeadershipUser[];
   worshipPastors: LeadershipUser[];
 }
 
@@ -27,7 +28,7 @@ export function useLeadershipRoles() {
         supabase
           .from("user_roles")
           .select("user_id, role, admin_campus_id")
-          .in("role", ["admin", "campus_admin", "network_worship_pastor", "campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor"]),
+          .in("role", ["admin", "campus_admin", "network_worship_pastor", "network_student_pastor", "campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor"]),
         supabase.rpc("get_basic_profiles"),
         supabase.from("campuses").select("id, name"),
       ]);
@@ -48,6 +49,7 @@ export function useLeadershipRoles() {
       const admins: LeadershipUser[] = [];
       const campusAdmins: LeadershipUser[] = [];
       const networkWorshipPastors: LeadershipUser[] = [];
+      const networkStudentPastors: LeadershipUser[] = [];
       const worshipPastors: LeadershipUser[] = [];
 
       roles.forEach(role => {
@@ -79,6 +81,12 @@ export function useLeadershipRoles() {
               networkWorshipPastors.push(user);
             }
             break;
+          case "network_student_pastor":
+            // Network-wide role, so dedupe by user (no campus scoping)
+            if (!networkStudentPastors.find(n => n.id === user.id)) {
+              networkStudentPastors.push(user);
+            }
+            break;
           case "campus_worship_pastor":
           case "student_pastor":
           case "student_worship_pastor":
@@ -99,6 +107,7 @@ export function useLeadershipRoles() {
         admins: admins.sort(sortByName),
         campusAdmins: campusAdmins.sort(sortByName),
         networkWorshipPastors: networkWorshipPastors.sort(sortByName),
+        networkStudentPastors: networkStudentPastors.sort(sortByName),
         worshipPastors: worshipPastors.sort(sortByName),
       };
     },

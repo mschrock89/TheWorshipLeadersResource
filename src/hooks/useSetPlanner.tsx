@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { useToast } from "./use-toast";
 import { format } from "date-fns";
 import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
-import { getSessionSetVariants, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { getSessionSetVariants, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -24,7 +24,7 @@ export interface SongAvailability {
 
 export interface DraftSet {
   id: string;
-  campus_id: string;
+  campus_id: string | null;
   custom_service_id?: string | null;
   plan_date: string;
   ministry_type: string;
@@ -238,10 +238,12 @@ export function useExistingSet(
   planDate: string,
   customServiceId?: string | null
 ) {
+  const networkWide = isNetworkWideMinistryType(ministryType);
+
   return useQuery({
-    queryKey: ['existing-set', campusId, ministryType, planDate, customServiceId || null],
+    queryKey: ['existing-set', networkWide ? 'network-wide' : campusId, ministryType, planDate, customServiceId || null],
     queryFn: async () => {
-      if (!campusId || !planDate) return null;
+      if ((!campusId && !networkWide) || !planDate) return null;
 
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const lookupDates = [planDate];
@@ -300,8 +302,9 @@ export function useExistingSet(
         let query = supabase
           .from('draft_sets')
           .select(options.includeYoutubeUrl ? baseSelect : legacyBaseSelect)
-          .eq('campus_id', campusId)
           .in('plan_date', lookupDates);
+
+        query = networkWide ? query.is('campus_id', null) : query.eq('campus_id', campusId as string);
 
         if (options.includeMinistry) {
           query = query.in('ministry_type', ministryLookupValues);
@@ -405,7 +408,7 @@ export function useExistingSet(
 
       return data;
     },
-    enabled: !!campusId && !!planDate,
+    enabled: (!!campusId || networkWide) && !!planDate,
   });
 }
 
@@ -449,22 +452,31 @@ export function useSaveDraftSet() {
     }) => {
       let setId = draftSet.id;
 
+      // Network-wide ministries (Student Camp) are stored with campus_id = NULL.
+      const networkWide = isNetworkWideMinistryType(draftSet.ministry_type);
+      const effectiveCampusId = resolveMinistryCampusId(draftSet.ministry_type, draftSet.campus_id);
+
       // Before saving, check for existing published sets to copy vocalist assignments
       // This preserves vocalist assignments when the user hasn't explicitly set them
       let existingVocalistMap = new Map<string, string[]>();
       
-      if (draftSet.campus_id && draftSet.plan_date && draftSet.ministry_type) {
+      if ((effectiveCampusId || networkWide) && draftSet.plan_date && draftSet.ministry_type) {
         // Find any published set for the same date/campus/ministry
-        const { data: existingSets } = await supabase
+        let existingSetsQuery = supabase
           .from('draft_sets')
           .select('id')
-          .eq('campus_id', draftSet.campus_id)
           .eq('ministry_type', draftSet.ministry_type)
           .eq('plan_date', draftSet.plan_date)
           .eq('status', 'published')
           .neq('id', setId || '') // Exclude current set if updating
           .order('published_at', { ascending: false })
           .limit(1);
+
+        existingSetsQuery = networkWide
+          ? existingSetsQuery.is('campus_id', null)
+          : existingSetsQuery.eq('campus_id', effectiveCampusId as string);
+
+        const { data: existingSets } = await existingSetsQuery;
 
         if (existingSets && existingSets.length > 0) {
           // Get draft_set_songs first
@@ -543,7 +555,7 @@ export function useSaveDraftSet() {
         const { data, error } = await supabase
           .from('draft_sets')
           .insert({
-            campus_id: draftSet.campus_id,
+            campus_id: effectiveCampusId,
             plan_date: draftSet.plan_date,
             ministry_type: draftSet.ministry_type,
             custom_service_id: draftSet.custom_service_id || null,
@@ -621,7 +633,7 @@ export function useSaveDraftSet() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['draft-sets'] });
       queryClient.invalidateQueries({ queryKey: ['draft-set-songs'] });
-      queryClient.invalidateQueries({ queryKey: ['existing-set', variables.draftSet.campus_id, variables.draftSet.ministry_type, variables.draftSet.plan_date, variables.draftSet.custom_service_id || null] });
+      queryClient.invalidateQueries({ queryKey: ['existing-set', isNetworkWideMinistryType(variables.draftSet.ministry_type) ? 'network-wide' : variables.draftSet.campus_id, variables.draftSet.ministry_type, variables.draftSet.plan_date, variables.draftSet.custom_service_id || null] });
       queryClient.invalidateQueries({ queryKey: ['published-setlists'] });
       queryClient.invalidateQueries({ queryKey: ['approver-published-setlists'] });
       queryClient.invalidateQueries({ queryKey: ['audition-assigned-setlists'] });
@@ -693,9 +705,12 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
       let setQuery = supabase
         .from('draft_sets')
         .select('id')
-        .eq('campus_id', campusId)
         .eq('status', 'published')
         .gte('plan_date', today);
+
+      setQuery = isNetworkWideMinistryType(ministryType)
+        ? setQuery.is('campus_id', null)
+        : setQuery.eq('campus_id', campusId);
 
       if (weekendAliases.includes(ministryType)) {
         setQuery = setQuery.in('ministry_type', weekendAliases);

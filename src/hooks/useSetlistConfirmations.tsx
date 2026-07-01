@@ -19,7 +19,7 @@ export interface SetlistConfirmation {
 
 export interface PublishedSetlist {
   id: string;
-  campus_id: string;
+  campus_id: string | null;
   plan_date: string;
   ministry_type: string;
   custom_service_id: string | null;
@@ -169,7 +169,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       const roles = (userRoles || []).map(r => r.role);
       const leadershipRoles = [
-        "admin", "campus_admin", "campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor",
+        "admin", "campus_admin", "campus_worship_pastor", "network_student_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor",
         "network_worship_pastor", "network_worship_leader", "leader",
         "video_director", "production_manager", "campus_pastor"
       ];
@@ -180,6 +180,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           "admin",
           "campus_admin",
           "campus_worship_pastor",
+          "network_student_pastor",
           "student_pastor",
           "student_worship_pastor",
           "childrens_pastor",
@@ -275,9 +276,14 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       }
       const dateOverrideDates = Array.from(dateOverrideDatesSet);
 
-      // Fetch published setlists for user's campuses
+      // Fetch published setlists for user's campuses, plus Network Wide setlists
+      // (campus_id IS NULL, e.g. Student Camp) which are shared across every campus.
       let setlistsFromCampuses: PublishedSetlistRow[] = [];
-      if (userCampusIds.length > 0) {
+      {
+        const campusFilters = [
+          "campus_id.is.null",
+          ...(userCampusIds.length > 0 ? [`campus_id.in.(${userCampusIds.join(",")})`] : []),
+        ];
         let query = supabase
           .from("draft_sets")
           .select(`
@@ -292,7 +298,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           `)
           .eq("status", "published")
           .not("published_at", "is", null)
-          .in("campus_id", userCampusIds)
+          .or(campusFilters.join(","))
           .order("plan_date", { ascending: includePast ? false : true });
         
         if (!includePast) {
@@ -608,6 +614,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // user is explicitly rostered for via swaps or custom-service assignments.
       if (campusId) {
         setlists = setlists.filter((setlist) => {
+          // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared
+          // across every campus, so never hide them behind a campus filter.
+          if (!setlist.campus_id) return true;
           if (setlist.campus_id === campusId) return true;
           if (canViewAllSetlists) return false;
 
@@ -855,13 +864,18 @@ export function useSetlistConfirmationStatus(draftSetId: string | null) {
           .limit(1)
           .maybeSingle();
 
-        // Get rotation periods for this campus and date
-        const { data: rotationPeriods } = await supabase
+        // Get rotation periods for this campus and date. Network Wide sets
+        // (campus_id IS NULL, e.g. Student Camp) match rotation periods across
+        // every campus, mirroring is_user_on_setlist_roster.
+        let rotationQuery = supabase
           .from("rotation_periods")
           .select("id")
-          .eq("campus_id", draftSet.campus_id)
           .lte("start_date", draftSet.plan_date)
           .gte("end_date", draftSet.plan_date);
+        if (draftSet.campus_id) {
+          rotationQuery = rotationQuery.eq("campus_id", draftSet.campus_id);
+        }
+        const { data: rotationPeriods } = await rotationQuery;
 
         const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
 
@@ -1170,11 +1184,16 @@ export function usePublishSetlist() {
       let duplicateQuery = supabase
         .from("draft_sets")
         .select("id")
-        .eq("campus_id", thisSet.campus_id)
         .eq("ministry_type", thisSet.ministry_type)
         .eq("plan_date", thisSet.plan_date)
         .in("status", ["draft", "pending_approval"])
         .neq("id", draftSetId);
+
+      // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared, so
+      // scope the duplicate cleanup to the matching NULL campus.
+      duplicateQuery = thisSet.campus_id
+        ? duplicateQuery.eq("campus_id", thisSet.campus_id)
+        : duplicateQuery.is("campus_id", null);
 
       if (thisSet.custom_service_id) {
         duplicateQuery = duplicateQuery.eq("custom_service_id", thisSet.custom_service_id);

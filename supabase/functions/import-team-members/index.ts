@@ -30,6 +30,7 @@ interface ImportResult {
 const allowedBaseRoles = [
   'network_worship_pastor',
   'campus_worship_pastor',
+  'network_student_pastor',
   'student_pastor',
   'student_worship_pastor',
   'childrens_pastor',
@@ -51,6 +52,7 @@ const replaceableBaseRoles = [
   'member',
   'network_worship_pastor',
   'campus_worship_pastor',
+  'network_student_pastor',
   'student_pastor',
   'student_worship_pastor',
   'childrens_pastor',
@@ -196,6 +198,7 @@ serve(async (req) => {
       'production_manager',
       'network_worship_pastor',
       'network_worship_leader',
+      'network_student_pastor',
       'leader',
     ];
 

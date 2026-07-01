@@ -667,7 +667,8 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         .limit(isStudentApp ? 50 : 10);
 
       if (selectedCampusId !== "all") {
-        query = query.eq("campus_id", selectedCampusId);
+        // Include Network Wide sets (campus_id IS NULL, e.g. Student Camp).
+        query = query.or(`campus_id.eq.${selectedCampusId},campus_id.is.null`);
       }
 
       if (ministryFilter !== "all" && ministryFilter !== "production" && ministryFilter !== "video") {

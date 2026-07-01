@@ -78,8 +78,10 @@ export function ProtectedLayout({
       return;
     }
     
-    // Check if stored campus is still valid
-    const storedIsValid = selectedCampusId && availableCampuses.some(c => c.campus_id === selectedCampusId);
+    // Check if stored campus is still valid ("network-wide" is a sentinel, not a real campus id)
+    const storedIsValid =
+      selectedCampusId === "network-wide" ||
+      (selectedCampusId && availableCampuses.some(c => c.campus_id === selectedCampusId));
     
     if (!storedIsValid) {
       // For admins/leaders, check if they have a default campus set in their profile

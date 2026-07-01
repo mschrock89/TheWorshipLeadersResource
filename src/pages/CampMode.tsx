@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { format } from "date-fns";
-import { CalendarDays, ExternalLink, Loader2, MapPinned, Tent, Users } from "lucide-react";
+import { CalendarDays, Download, ExternalLink, FileText, Loader2, MapPinned, Paperclip, Tent, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
-import { useActiveCampMode, useCampContentSections } from "@/hooks/useCampMode";
+import {
+  type CampAttachment,
+  getCampAttachmentUrl,
+  useActiveCampMode,
+  useCampAttachments,
+  useCampContentSections,
+} from "@/hooks/useCampMode";
 import { useEvents } from "@/hooks/useEvents";
 import { useTeamSchedule } from "@/hooks/useTeamSchedule";
 import { normalizeSessionSetMinistryType } from "@/lib/constants";
@@ -30,11 +36,82 @@ function timeLabel(startTime?: string | null, endTime?: string | null) {
   return (startTime || endTime || "").slice(0, 5);
 }
 
+function isImageAttachment(attachment: CampAttachment) {
+  return (attachment.mime_type || "").startsWith("image/");
+}
+
+function CampAttachmentCard({ attachment }: { attachment: CampAttachment }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isImageAttachment(attachment)) return;
+    getCampAttachmentUrl(attachment.file_path)
+      .then((url) => {
+        if (!cancelled) setSignedUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setSignedUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.file_path, attachment.mime_type]);
+
+  const handleOpen = async () => {
+    setIsResolving(true);
+    try {
+      const url = signedUrl || (await getCampAttachmentUrl(attachment.file_path));
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      {isImageAttachment(attachment) && signedUrl ? (
+        <button type="button" onClick={handleOpen} className="block w-full">
+          <img
+            src={signedUrl}
+            alt={attachment.title}
+            className="max-h-96 w-full object-contain bg-black/20"
+            loading="lazy"
+          />
+        </button>
+      ) : null}
+      <CardContent className="flex items-center justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {isImageAttachment(attachment) ? (
+            <MapPinned className="h-5 w-5 shrink-0 text-primary" />
+          ) : (
+            <FileText className="h-5 w-5 shrink-0 text-primary" />
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{attachment.title}</p>
+            <p className="truncate text-xs text-muted-foreground">{attachment.file_name}</p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleOpen} disabled={isResolving}>
+          {isResolving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="mr-2 h-4 w-4" />
+          )}
+          Open
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CampMode() {
   const resourceAppKey = getCurrentResourceAppKey();
   const { user } = useAuth();
   const { data: activeCamp, isLoading: campLoading } = useActiveCampMode();
   const { data: sections = [], isLoading: sectionsLoading } = useCampContentSections(activeCamp?.id);
+  const { data: attachments = [], isLoading: attachmentsLoading } = useCampAttachments(activeCamp?.id);
   const { data: allCampuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const { data: events = [], isLoading: eventsLoading } = useEvents();
@@ -199,6 +276,20 @@ export default function CampMode() {
               </Card>
             ))
           )}
+
+          {attachmentsLoading ? null : attachments.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pt-2">
+                <Paperclip className="h-5 w-5 text-primary" />
+                <h2 className="text-lg font-semibold">Camp Map &amp; Files</h2>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {attachments.map((attachment) => (
+                  <CampAttachmentCard key={attachment.id} attachment={attachment} />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="schedule" className="space-y-4">

@@ -129,6 +129,7 @@ export default function PlanningCenter() {
     role === "admin" ||
     role === "campus_admin" ||
     role === "campus_worship_pastor" ||
+    role === "network_student_pastor" ||
     role === "student_pastor" ||
     role === "student_worship_pastor" ||
     role === "childrens_pastor" ||

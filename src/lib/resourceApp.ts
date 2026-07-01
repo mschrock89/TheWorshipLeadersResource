@@ -16,7 +16,10 @@ export function hasStudentAppAdminRole(
   roleNames: string[],
   resourceAppKey: ResourceAppKey | string = getCurrentResourceAppKey(),
 ) {
-  return isStudentResourceAppKey(resourceAppKey) && roleNames.includes("student_pastor");
+  return (
+    isStudentResourceAppKey(resourceAppKey) &&
+    (roleNames.includes("student_pastor") || roleNames.includes("network_student_pastor"))
+  );
 }
 
 export function hasOrgAdminPrivilegesForResourceApp(

@@ -3,11 +3,11 @@ import { addWeeks, format, isAfter, isBefore, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
-import { normalizeSessionSetMinistryType } from "@/lib/constants";
+import { isNetworkWideMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
 
 export interface CustomService {
   id: string;
-  campus_id: string;
+  campus_id: string | null;
   ministry_type: string;
   service_name: string;
   service_date: string;
@@ -115,8 +115,10 @@ export function useCustomServiceDefinitions(campusId?: string) {
         .eq("is_active", true)
         .order("service_date", { ascending: true });
 
+      // Include Network Wide services (campus_id IS NULL, e.g. Student Camp)
+      // alongside the selected campus.
       if (campusId) {
-        query = query.eq("campus_id", campusId);
+        query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -154,8 +156,13 @@ export function useCustomServiceOccurrences({
         .lte("service_date", endDate)
         .order("service_date", { ascending: true });
 
-      if (campusId) {
-        query = query.eq("campus_id", campusId);
+      // Network-wide ministries (Student Camp) live under campus_id IS NULL. When a
+      // specific network-wide ministry is requested, target NULL directly; otherwise
+      // include NULL network-wide rows alongside the selected campus.
+      if (isNetworkWideMinistryType(normalizedMinistryType) || isNetworkWideMinistryType(ministryType)) {
+        query = query.is("campus_id", null);
+      } else if (campusId) {
+        query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }
       // Some specialty services have legacy rows stored under weekend and detected by name.
       // Filter after normalization so base camp filters can include session variants too.
@@ -207,6 +214,8 @@ export function useCreateCustomService() {
         .from("custom_services")
         .insert({
           ...payload,
+          // Network-wide ministries (Student Camp) are stored with campus_id = NULL.
+          campus_id: resolveMinistryCampusId(payload.ministry_type, payload.campus_id),
           created_by: user?.id ?? null,
         })
         .select()

@@ -122,7 +122,11 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
         .gte("plan_date", today)
         .order("plan_date", { ascending: true });
 
-      const scopedQuery = selectedCampusId === "all" ? primaryQuery : primaryQuery.eq("campus_id", selectedCampusId);
+      // Include Network Wide sets (campus_id IS NULL, e.g. Student Camp) alongside
+      // the selected campus.
+      const scopedQuery = selectedCampusId === "all"
+        ? primaryQuery
+        : primaryQuery.or(`campus_id.eq.${selectedCampusId},campus_id.is.null`);
       let { data, error } = await scopedQuery;
 
       if (error && isMissingYoutubeUrlColumnError(error)) {
@@ -150,7 +154,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
           .gte("plan_date", today)
           .order("plan_date", { ascending: true });
 
-        ({ data, error } = await (selectedCampusId === "all" ? legacyQuery : legacyQuery.eq("campus_id", selectedCampusId)));
+        ({ data, error } = await (selectedCampusId === "all" ? legacyQuery : legacyQuery.or(`campus_id.eq.${selectedCampusId},campus_id.is.null`)));
       }
 
       if (error) throw error;

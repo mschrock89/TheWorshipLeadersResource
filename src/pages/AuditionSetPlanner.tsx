@@ -42,6 +42,7 @@ const LEADER_ROLES = [
   "campus_admin",
   "network_worship_pastor",
   "campus_worship_pastor",
+  "network_student_pastor",
   "student_pastor",
   "student_worship_pastor",
   "childrens_pastor",

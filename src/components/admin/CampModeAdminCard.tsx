@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, ExternalLink, FileUp, Loader2, MapPinned, Paperclip, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,15 +9,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  type CampAttachment,
   type CampAudience,
   type CampInstance,
   type CampContentSection,
   type CampStatus,
+  getCampAttachmentUrl,
+  useCampAttachments,
   useCampContentSections,
   useCampInstances,
+  useDeleteCampAttachment,
   useDeleteCampContentSection,
   useSaveCampContentSection,
   useSaveCampInstance,
+  useUploadCampAttachment,
 } from "@/hooks/useCampMode";
 import { useCampuses } from "@/hooks/useCampuses";
 import { toast } from "sonner";
@@ -110,9 +115,18 @@ export function CampModeAdminCard() {
     () => campInstances.find((camp) => camp.status === "active") || campInstances[0] || null,
     [campInstances],
   );
+  const uploadAttachment = useUploadCampAttachment();
+  const deleteAttachment = useDeleteCampAttachment();
   const [campForm, setCampForm] = useState<CampFormState>(emptyCampForm);
   const [sectionForm, setSectionForm] = useState<SectionFormState>(emptySectionForm);
+  const [attachmentForm, setAttachmentForm] = useState<{ title: string; audience: CampAudience }>({
+    title: "",
+    audience: "everyone",
+  });
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const { data: sections = [] } = useCampContentSections(campForm.id);
+  const { data: attachments = [] } = useCampAttachments(campForm.id);
 
   useEffect(() => {
     setCampForm(buildCampForm(selectedCamp));
@@ -167,6 +181,52 @@ export function CampModeAdminCard() {
       toast.success("Camp info deleted.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to delete camp info.");
+    }
+  };
+
+  const handleUploadAttachment = async () => {
+    if (!campForm.id) {
+      toast.error("Save the camp before uploading files.");
+      return;
+    }
+    if (!attachmentFile) {
+      toast.error("Choose a file to upload.");
+      return;
+    }
+
+    try {
+      await uploadAttachment.mutateAsync({
+        camp_instance_id: campForm.id,
+        title: attachmentForm.title.trim() || attachmentFile.name,
+        audience: attachmentForm.audience,
+        sort_order: attachments.length,
+        file: attachmentFile,
+      });
+      setAttachmentForm({ title: "", audience: "everyone" });
+      setAttachmentFile(null);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      toast.success("Camp file uploaded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to upload file.");
+    }
+  };
+
+  const handleOpenAttachment = async (attachment: CampAttachment) => {
+    try {
+      const url = await getCampAttachmentUrl(attachment.file_path);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to open file.");
+    }
+  };
+
+  const handleDeleteAttachment = async (attachment: CampAttachment) => {
+    if (!window.confirm(`Delete "${attachment.title}" from Camp Mode?`)) return;
+    try {
+      await deleteAttachment.mutateAsync(attachment);
+      toast.success("Camp file deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to delete file.");
     }
   };
 
@@ -376,6 +436,100 @@ export function CampModeAdminCard() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 border-t border-border pt-5">
+              <div>
+                <h3 className="flex items-center gap-2 font-semibold">
+                  <MapPinned className="h-4 w-4 text-primary" />
+                  Camp Map &amp; Files
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Upload the camp map, packing PDFs, forms, and other file attachments. Images and PDFs preview in Camp Mode.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                <Input
+                  value={attachmentForm.title}
+                  onChange={(event) => setAttachmentForm((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Camp Map"
+                />
+                <Select
+                  value={attachmentForm.audience}
+                  onValueChange={(audience) =>
+                    setAttachmentForm((current) => ({ ...current, audience: audience as CampAudience }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIENCE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <Input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(event) => setAttachmentFile(event.target.files?.[0] || null)}
+                />
+                <Button onClick={handleUploadAttachment} disabled={uploadAttachment.isPending || !attachmentFile}>
+                  {uploadAttachment.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="mr-2 h-4 w-4" />
+                  )}
+                  Upload
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No files uploaded yet.</p>
+                ) : (
+                  attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                      <button
+                        type="button"
+                        className="flex min-w-0 items-center gap-2 text-left"
+                        onClick={() => handleOpenAttachment(attachment)}
+                      >
+                        <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{attachment.title}</span>
+                          <span className="block text-xs capitalize text-muted-foreground">
+                            {attachment.audience} • {attachment.file_name}
+                          </span>
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground"
+                          onClick={() => handleOpenAttachment(attachment)}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteAttachment(attachment)}
+                          disabled={deleteAttachment.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}

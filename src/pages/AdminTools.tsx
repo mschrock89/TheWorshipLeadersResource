@@ -45,6 +45,7 @@ function getRoleBadgeLabel(role: string): string {
     case "campus_admin": return "Campus Admin";
     case "network_worship_pastor": return "Network Pastor";
     case "campus_worship_pastor": return "Worship Pastor";
+    case "network_student_pastor": return "Network Student Pastor";
     case "student_pastor": return "Student Pastor";
     case "student_worship_pastor": return "Student Leader";
     case "student": return "Student";
@@ -58,6 +59,7 @@ function getRoleBadgeVariant(role: string): "default" | "secondary" | "outline" 
     case "admin": return "default";
     case "campus_admin": return "secondary";
     case "network_worship_pastor": return "secondary";
+    case "network_student_pastor": return "secondary";
     default: return "outline";
   }
 }
@@ -500,6 +502,7 @@ export default function AdminTools() {
     leadershipData.admins.forEach(addUser);
     leadershipData.campusAdmins.forEach(addUser);
     leadershipData.networkWorshipPastors.forEach(addUser);
+    leadershipData.networkStudentPastors.forEach(addUser);
     leadershipData.worshipPastors.forEach(addUser);
     
     const rolePriority: Record<string, number> = {
@@ -507,9 +510,10 @@ export default function AdminTools() {
       campus_admin: 1,
       network_worship_pastor: 2,
       campus_worship_pastor: 3,
-      student_pastor: 4,
-      student_worship_pastor: 5,
-      childrens_pastor: 6,
+      network_student_pastor: 4,
+      student_pastor: 5,
+      student_worship_pastor: 6,
+      childrens_pastor: 7,
     };
     
     return Array.from(userMap.values()).sort((a, b) => {

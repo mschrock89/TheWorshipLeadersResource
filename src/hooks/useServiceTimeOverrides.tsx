@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { getMinistryLabel } from "@/lib/constants";
+import { getMinistryLabel, isNetworkWideMinistryType, resolveMinistryCampusId } from "@/lib/constants";
 
 export interface ServiceTimeOverride {
   id: string;
-  campus_id: string;
+  campus_id: string | null;
   ministry_type: string;
   service_date: string;
   service_times: string[];
@@ -17,7 +17,7 @@ export interface ServiceTimeOverride {
 const WEEKEND_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team"]);
 
 async function syncCustomServicesFromOverride(payload: {
-  campus_id: string;
+  campus_id: string | null;
   ministry_type: string;
   service_date: string;
   service_times: string[];
@@ -25,14 +25,19 @@ async function syncCustomServicesFromOverride(payload: {
 }) {
   if (WEEKEND_OVERRIDE_MINISTRIES.has(payload.ministry_type)) return;
 
-  const { data: existingServices, error: existingServicesError } = await supabase
+  let existingServicesQuery = supabase
     .from("custom_services")
     .select("start_time")
-    .eq("campus_id", payload.campus_id)
     .eq("service_date", payload.service_date)
     .eq("ministry_type", payload.ministry_type)
     .eq("is_active", true)
     .eq("repeats_weekly", false);
+
+  existingServicesQuery = payload.campus_id
+    ? existingServicesQuery.eq("campus_id", payload.campus_id)
+    : existingServicesQuery.is("campus_id", null);
+
+  const { data: existingServices, error: existingServicesError } = await existingServicesQuery;
 
   if (existingServicesError) throw existingServicesError;
 
@@ -85,8 +90,10 @@ export function useServiceTimeOverrides({
         .lte("service_date", endDate)
         .order("service_date", { ascending: true });
 
+      // Include Network Wide overrides (campus_id IS NULL, e.g. Student Camp)
+      // alongside the selected campus.
       if (campusId) {
-        query = query.eq("campus_id", campusId);
+        query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -107,13 +114,21 @@ export function useUpsertServiceTimeOverride() {
       service_date: string;
       service_times: string[];
     }) => {
-      const { data: existingOverride, error: existingError } = await supabase
+      // Network-wide ministries (Student Camp) are stored with campus_id = NULL.
+      const networkWide = isNetworkWideMinistryType(payload.ministry_type);
+      const effectiveCampusId = resolveMinistryCampusId(payload.ministry_type, payload.campus_id);
+
+      let existingQuery = supabase
         .from("service_time_overrides")
-        .select("service_times")
-        .eq("campus_id", payload.campus_id)
+        .select("id, service_times")
         .eq("ministry_type", payload.ministry_type)
-        .eq("service_date", payload.service_date)
-        .maybeSingle();
+        .eq("service_date", payload.service_date);
+
+      existingQuery = networkWide
+        ? existingQuery.is("campus_id", null)
+        : existingQuery.eq("campus_id", effectiveCampusId as string);
+
+      const { data: existingOverride, error: existingError } = await existingQuery.maybeSingle();
 
       if (existingError) throw existingError;
 
@@ -133,32 +148,43 @@ export function useUpsertServiceTimeOverride() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from("service_time_overrides")
-        .upsert(
-          {
-            campus_id: payload.campus_id,
+      // NULL campus_id cannot be deduped via ON CONFLICT (NULLs are distinct), so
+      // resolve the insert/update manually for both network-wide and campus rows.
+      let data: ServiceTimeOverride;
+      if (existingOverride?.id) {
+        const { data: updated, error } = await supabase
+          .from("service_time_overrides")
+          .update({ service_times: normalizedTimes, created_by: user?.id ?? null })
+          .eq("id", existingOverride.id)
+          .select()
+          .single();
+        if (error) throw error;
+        data = updated as ServiceTimeOverride;
+      } else {
+        const { data: inserted, error } = await supabase
+          .from("service_time_overrides")
+          .insert({
+            campus_id: effectiveCampusId,
             ministry_type: payload.ministry_type,
             service_date: payload.service_date,
             service_times: normalizedTimes,
             created_by: user?.id ?? null,
-          },
-          { onConflict: "campus_id,service_date,ministry_type" },
-        )
-        .select()
-        .single();
-
-      if (error) throw error;
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        data = inserted as ServiceTimeOverride;
+      }
 
       await syncCustomServicesFromOverride({
-        campus_id: payload.campus_id,
+        campus_id: effectiveCampusId,
         ministry_type: payload.ministry_type,
         service_date: payload.service_date,
         service_times: normalizedTimes,
         created_by: user?.id ?? null,
       });
 
-      return data as ServiceTimeOverride;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["service-time-overrides"] });

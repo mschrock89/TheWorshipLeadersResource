@@ -3,6 +3,7 @@ export const ROLE_LABELS: Record<string, string> = {
   campus_admin: "Campus Admin",
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
+  network_student_pastor: "Network Student Pastor",
   student_pastor: "Student Pastor",
   student_worship_pastor: "Student Worship Leader",
   childrens_pastor: "Children's Pastor",
@@ -136,7 +137,7 @@ export function getAppUrl(path: string) {
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'ms_leader_weekend', 'hs_leader', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'network_student_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'ms_leader_weekend', 'hs_leader', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -566,6 +567,30 @@ export function getSessionSetVariants(ministryType: string | null | undefined): 
     return ministryType ? [ministryType] : [];
   }
   return [base, ...SESSION_SET_SUFFIXES.map((suffix) => `${base}${suffix}`)];
+}
+
+// Ministries that are Network Wide instead of scoped to a single campus. Their
+// saved sets, custom services, service-time overrides, camp instances, calendar
+// events, and team schedule are shared across every campus and stored with a NULL
+// campus_id (the app-wide "network wide" convention). Reads/writes for these
+// ministries must target campus_id IS NULL rather than a concrete campus.
+export const NETWORK_WIDE_MINISTRY_TYPES = new Set<string>([
+  "student_camp",
+  "student_camp_morning",
+  "student_camp_evening",
+]);
+
+export function isNetworkWideMinistryType(ministryType: string | null | undefined): boolean {
+  return !!ministryType && NETWORK_WIDE_MINISTRY_TYPES.has(ministryType);
+}
+
+// Resolve the campus_id that reads/writes for a ministry should target: NULL for
+// network-wide ministries (Student Camp), otherwise the provided campus.
+export function resolveMinistryCampusId(
+  ministryType: string | null | undefined,
+  campusId: string | null | undefined,
+): string | null {
+  return isNetworkWideMinistryType(ministryType) ? null : campusId ?? null;
 }
 
 // Multi-session day services (e.g. Kids Camp Morning/Afternoon, Student Camp

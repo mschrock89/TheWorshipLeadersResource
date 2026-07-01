@@ -12,6 +12,7 @@ const SENDER_ROLES = new Set([
   "campus_admin",
   "network_worship_pastor",
   "network_worship_leader",
+  "network_student_pastor",
   "campus_worship_pastor",
   "student_pastor",
   "student_worship_pastor",
@@ -23,6 +24,7 @@ const LEADER_RECIPIENT_ROLES = new Set([
   "ms_leader",
   "ms_leader_weekend",
   "hs_leader",
+  "network_student_pastor",
   "student_pastor",
   "student_worship_pastor",
   "campus_worship_pastor",
@@ -90,7 +92,10 @@ function uniqueNumbers(values: Array<number | string | null | undefined>) {
 }
 
 function isStudentAppAdmin(roleNames: string[], resourceAppKey: string) {
-  return STUDENT_APP_KEYS.has(resourceAppKey) && roleNames.includes("student_pastor");
+  return (
+    STUDENT_APP_KEYS.has(resourceAppKey) &&
+    (roleNames.includes("student_pastor") || roleNames.includes("network_student_pastor"))
+  );
 }
 
 function hasSendPermission(roleRows: Array<{ role: string; admin_campus_id: string | null }>, resourceAppKey: string, campusId: string | null) {
@@ -281,6 +286,7 @@ serve(async (req: Request): Promise<Response> => {
       }
       if (
         row.role === "leader" ||
+        row.role === "network_student_pastor" ||
         row.role === "student_pastor" ||
         row.role === "student_worship_pastor" ||
         (targetResourceAppKeys.includes("students_ms") &&

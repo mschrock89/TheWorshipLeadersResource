@@ -35,6 +35,24 @@ export interface CampContentSection {
   updated_at: string;
 }
 
+export interface CampAttachment {
+  id: string;
+  camp_instance_id: string;
+  title: string;
+  file_path: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | null;
+  audience: CampAudience;
+  sort_order: number;
+  is_published: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const CAMP_FILES_BUCKET = "camp_files";
+
 export interface CampInstanceInput {
   id?: string;
   name: string;
@@ -72,13 +90,20 @@ function getAudienceForResourceApp(resourceAppKey: string): "ms" | "hs" | null {
   return null;
 }
 
+export function shouldShowForCampAudience(
+  audience: CampAudience,
+  params: { resourceAppKey: string; isLeader: boolean },
+) {
+  if (audience === "everyone") return true;
+  if (audience === "leaders") return params.isLeader;
+  return audience === getAudienceForResourceApp(params.resourceAppKey);
+}
+
 export function shouldShowCampContentSection(
   section: CampContentSection,
   params: { resourceAppKey: string; isLeader: boolean },
 ) {
-  if (section.audience === "everyone") return true;
-  if (section.audience === "leaders") return params.isLeader;
-  return section.audience === getAudienceForResourceApp(params.resourceAppKey);
+  return shouldShowForCampAudience(section.audience, params);
 }
 
 export function useActiveCampMode() {
@@ -142,6 +167,113 @@ export function useCampContentSections(campInstanceId?: string | null) {
       return ((data || []) as CampContentSection[]).filter((section) =>
         shouldShowCampContentSection(section, { resourceAppKey, isLeader }),
       );
+    },
+  });
+}
+
+export function useCampAttachments(campInstanceId?: string | null) {
+  const { isLeader } = useAuth();
+  const resourceAppKey = getCurrentResourceAppKey();
+
+  return useQuery({
+    queryKey: ["camp-mode", "attachments", campInstanceId, resourceAppKey, isLeader],
+    enabled: !!campInstanceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("camp_attachments")
+        .select("*")
+        .eq("camp_instance_id", campInstanceId)
+        .eq("is_published", true)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      return ((data || []) as CampAttachment[]).filter((attachment) =>
+        shouldShowForCampAudience(attachment.audience, { resourceAppKey, isLeader }),
+      );
+    },
+  });
+}
+
+export async function getCampAttachmentUrl(filePath: string, expiresInSeconds = 3600) {
+  const { data, error } = await supabase.storage
+    .from(CAMP_FILES_BUCKET)
+    .createSignedUrl(filePath, expiresInSeconds);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+export function useUploadCampAttachment() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async (input: {
+      camp_instance_id: string;
+      title: string;
+      audience: CampAudience;
+      sort_order?: number;
+      file: File;
+    }) => {
+      if (!user?.id) throw new Error("You must be signed in to manage Camp Mode.");
+
+      const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${input.camp_instance_id}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(CAMP_FILES_BUCKET)
+        .upload(filePath, input.file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: input.file.type || undefined,
+        });
+      if (uploadError) throw uploadError;
+
+      const { data, error } = await supabase
+        .from("camp_attachments")
+        .insert({
+          camp_instance_id: input.camp_instance_id,
+          title: input.title.trim() || input.file.name,
+          file_path: filePath,
+          file_name: input.file.name,
+          mime_type: input.file.type || null,
+          file_size: input.file.size ?? null,
+          audience: input.audience,
+          sort_order: input.sort_order ?? 0,
+          is_published: true,
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        await supabase.storage.from(CAMP_FILES_BUCKET).remove([filePath]);
+        throw error;
+      }
+      return data as CampAttachment;
+    },
+    onSuccess: (attachment) => {
+      queryClient.invalidateQueries({ queryKey: ["camp-mode", "attachments", attachment.camp_instance_id] });
+    },
+  });
+}
+
+export function useDeleteCampAttachment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (attachment: Pick<CampAttachment, "id" | "camp_instance_id" | "file_path">) => {
+      const { error } = await supabase
+        .from("camp_attachments")
+        .delete()
+        .eq("id", attachment.id);
+      if (error) throw error;
+
+      await supabase.storage.from(CAMP_FILES_BUCKET).remove([attachment.file_path]);
+      return attachment;
+    },
+    onSuccess: (attachment) => {
+      queryClient.invalidateQueries({ queryKey: ["camp-mode", "attachments", attachment.camp_instance_id] });
     },
   });
 }

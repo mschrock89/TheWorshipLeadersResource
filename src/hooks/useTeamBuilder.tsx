@@ -824,6 +824,7 @@ export function useMultiTeamAssignableMembers(campusId: string | null) {
         .in("role", [
           "network_worship_pastor",
           "campus_worship_pastor",
+          "network_student_pastor",
           "student_pastor",
           "student_worship_pastor",
           "childrens_pastor",

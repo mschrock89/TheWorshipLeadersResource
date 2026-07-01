@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,8 +9,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, X } from "lucide-react";
-import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { useCampuses } from "@/hooks/useCampuses";
+
+const STUDENT_LEADER_ROLE_FILTERS = ["ms_leader", "hs_leader", "ms_leader_weekend"] as const;
 
 interface TeamFiltersProps {
   search: string;
@@ -18,11 +21,15 @@ interface TeamFiltersProps {
   onSortByChange: (value: string) => void;
   positionFilter: string;
   onPositionFilterChange: (value: string) => void;
+  availablePositionValues?: Set<string> | null;
   campusFilter: string;
   onCampusFilterChange: (value: string) => void;
   genderFilter?: string;
   onGenderFilterChange?: (value: string) => void;
   showGenderFilter?: boolean;
+  roleFilter?: string;
+  onRoleFilterChange?: (value: string) => void;
+  showRoleFilter?: boolean;
 }
 
 export function TeamFilters({
@@ -32,11 +39,15 @@ export function TeamFilters({
   onSortByChange,
   positionFilter,
   onPositionFilterChange,
+  availablePositionValues = null,
   campusFilter,
   onCampusFilterChange,
   genderFilter = "all",
   onGenderFilterChange,
   showGenderFilter = false,
+  roleFilter = "all",
+  onRoleFilterChange,
+  showRoleFilter = false,
 }: TeamFiltersProps) {
   const { data: campuses = [] } = useCampuses();
   const ministrySortOptions = Array.from(
@@ -47,6 +58,22 @@ export function TeamFilters({
       }),
     ).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
+
+  const positionGroups = [
+    { label: "Vocals", positions: POSITION_CATEGORIES.vocals },
+    { label: "Speaker", positions: POSITION_CATEGORIES.speaker },
+    { label: "Instruments", positions: POSITION_CATEGORIES.instruments },
+    { label: "Audio", positions: POSITION_CATEGORIES.audio },
+    { label: "Video", positions: POSITION_CATEGORIES.video },
+    { label: "Creative", positions: POSITION_CATEGORIES.creative },
+  ]
+    .map((group) => ({
+      ...group,
+      positions: availablePositionValues
+        ? group.positions.filter((pos) => availablePositionValues.has(pos))
+        : group.positions,
+    }))
+    .filter((group) => group.positions.length > 0);
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -109,47 +136,18 @@ export function TeamFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All positions</SelectItem>
-          
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Vocals</div>
-          {POSITION_CATEGORIES.vocals.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
-          ))}
 
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Speaker</div>
-          {POSITION_CATEGORIES.speaker.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
-          ))}
-          
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Instruments</div>
-          {POSITION_CATEGORIES.instruments.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
-          ))}
-          
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Audio</div>
-          {POSITION_CATEGORIES.audio.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
-          ))}
-          
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Video</div>
-          {POSITION_CATEGORIES.video.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
-          ))}
-
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Creative</div>
-          {POSITION_CATEGORIES.creative.map((pos) => (
-            <SelectItem key={pos} value={pos}>
-              {POSITION_LABELS[pos]}
-            </SelectItem>
+          {positionGroups.map((group) => (
+            <Fragment key={group.label}>
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                {group.label}
+              </div>
+              {group.positions.map((pos) => (
+                <SelectItem key={pos} value={pos}>
+                  {POSITION_LABELS[pos]}
+                </SelectItem>
+              ))}
+            </Fragment>
           ))}
         </SelectContent>
       </Select>
@@ -165,6 +163,24 @@ export function TeamFilters({
             <SelectItem value="male">Male</SelectItem>
             <SelectItem value="female">Female</SelectItem>
             <SelectItem value="not_set">Not set</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Role filter */}
+      {showRoleFilter && onRoleFilterChange && (
+        <Select value={roleFilter} onValueChange={onRoleFilterChange}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="All roles" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All roles</SelectItem>
+            {STUDENT_LEADER_ROLE_FILTERS.map((role) => (
+              <SelectItem key={role} value={role}>
+                {ROLE_LABELS[role] || role}
+              </SelectItem>
+            ))}
+            <SelectItem value="other_ministries">Other Ministries</SelectItem>
           </SelectContent>
         </Select>
       )}
