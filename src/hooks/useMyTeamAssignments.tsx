@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { parseLocalDate } from "@/lib/utils";
+import { parseLocalDate, campusHasServiceOnDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -80,18 +80,6 @@ function isWeekendFamilyScheduleMinistry(ministryType: string): boolean {
   const normalized = normalizeWeekendWorshipMinistryType(ministryType) || ministryType;
   return normalized === "weekend" || normalized === "production" || normalized === "video" || normalized === "speaker";
 }
-
-function campusHasServiceOnDate(
-  campus: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | undefined,
-  dateStr: string,
-): boolean {
-  if (!campus) return true;
-  const dayOfWeek = parseLocalDate(dateStr).getDay();
-  if (dayOfWeek === 6) return !!campus.has_saturday_service;
-  if (dayOfWeek === 0) return !!campus.has_sunday_service;
-  return true;
-}
-
 
 export function useMyTeamAssignments() {
   const { user } = useAuth();

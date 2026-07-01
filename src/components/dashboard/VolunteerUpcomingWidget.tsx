@@ -2,25 +2,30 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
-import { useUserCampuses } from "@/hooks/useCampuses";
+import { useUserCampuses, useCampuses } from "@/hooks/useCampuses";
 import { useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { usePublishedSetlists } from "@/hooks/useSetlistConfirmations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarDays, Music, Clock, MapPin, ChevronRight } from "lucide-react";
-import { format, addDays } from "date-fns";
+import { format } from "date-fns";
 import { POSITION_LABELS } from "@/lib/constants";
-import { getWeekendKey, getWeekendPairDate, isWeekend } from "@/lib/utils";
+import { getWeekendKey, getWeekendPairDate, isWeekend, formatWeekendGroupDateLabel } from "@/lib/utils";
 
 export function VolunteerUpcomingWidget() {
   const { user } = useAuth();
   const { scheduledDates, uniqueTeams, isLoading: scheduleLoading } = useMyTeamAssignments();
   const { data: userCampuses = [], isLoading: campusLoading } = useUserCampuses(user?.id);
+  const { data: campuses = [] } = useCampuses();
 
   // Get the user's primary campus (first one)
   const primaryCampus = userCampuses[0]?.campuses;
   const primaryCampusId = primaryCampus?.id;
+  const campusById = useMemo(
+    () => new Map(campuses.map((campus) => [campus.id, campus])),
+    [campuses],
+  );
 
   // Find the next upcoming weekend
   const nextWeekend = useMemo(() => {
@@ -38,6 +43,20 @@ export function VolunteerUpcomingWidget() {
   // only ever see set content they are actually eligible to review.
   const upcomingCampusId = nextWeekend?.campusId || primaryCampusId;
   const upcomingCampusName = nextWeekend?.campusName || primaryCampus?.name;
+  const upcomingCampusConfig = upcomingCampusId
+    ? campusById.get(upcomingCampusId)
+    : undefined;
+
+  const upcomingWeekendLabel = useMemo(() => {
+    if (!nextWeekend) return null;
+    const targetDate = format(nextWeekend.date, "yyyy-MM-dd");
+    if (!isWeekend(targetDate)) {
+      return format(nextWeekend.date, "EEEE, MMMM d, yyyy");
+    }
+    const saturdayDate = getWeekendKey(targetDate);
+    const sundayDate = getWeekendPairDate(saturdayDate) || targetDate;
+    return formatWeekendGroupDateLabel(saturdayDate, sundayDate, upcomingCampusConfig);
+  }, [nextWeekend, upcomingCampusConfig]);
 
   const { data: publishedSetlists = [], isLoading: setsLoading } = usePublishedSetlists(
     upcomingCampusId || undefined,
@@ -128,9 +147,13 @@ export function VolunteerUpcomingWidget() {
         <div className="rounded-lg border border-border/50 bg-card/50 p-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-lg text-muted-foreground">Weekend of the</p>
+              <p className="text-lg text-muted-foreground">
+                {upcomingWeekendLabel && isWeekend(format(nextWeekend.date, "yyyy-MM-dd"))
+                  ? "Upcoming weekend"
+                  : "Upcoming service"}
+              </p>
               <p className="text-2xl font-bold text-foreground">
-                {format(nextWeekend.date, "MMM do")} - {format(addDays(nextWeekend.date, 1), "do")}
+                {upcomingWeekendLabel}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge 

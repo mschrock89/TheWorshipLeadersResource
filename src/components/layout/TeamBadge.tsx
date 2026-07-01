@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
+import { useCampuses } from "@/hooks/useCampuses";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -8,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Star, Music, Flame, Sparkles, Heart, Sun, Moon, Zap, Users } from "lucide-react";
 import { format } from "date-fns";
-import { parseLocalDate, groupByWeekend, isWeekend } from "@/lib/utils";
+import { parseLocalDate, groupByWeekend, isWeekend, formatWeekendGroupDateLabelCompact } from "@/lib/utils";
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   star: Star,
@@ -23,6 +25,11 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 
 export function TeamBadge() {
   const { uniqueTeams, scheduledDates, isLoading } = useMyTeamAssignments();
+  const { data: campuses = [] } = useCampuses();
+  const campusById = useMemo(
+    () => new Map(campuses.map((campus) => [campus.id, campus])),
+    [campuses],
+  );
 
   if (isLoading || uniqueTeams.length === 0) {
     return null;
@@ -36,15 +43,29 @@ export function TeamBadge() {
 
   const weekendGroups = groupByWeekend(upcomingDates);
   const nextWeekend = weekendGroups[0];
+
+  const formatScheduledWeekendLabel = (
+    saturdayDate: string,
+    sundayDate: string,
+    campusId: string | null | undefined,
+  ) => {
+    const campus = campusId ? campusById.get(campusId) : undefined;
+    if (isWeekend(saturdayDate) && saturdayDate !== sundayDate) {
+      return formatWeekendGroupDateLabelCompact(saturdayDate, sundayDate, campus);
+    }
+    return format(parseLocalDate(saturdayDate), "MMM d, yyyy");
+  };
   
   // Format for display
   const formatNextDate = () => {
     if (!nextWeekend) return null;
-    const satDate = parseLocalDate(nextWeekend.saturdayDate);
-    if (isWeekend(nextWeekend.saturdayDate) && nextWeekend.saturdayDate !== nextWeekend.sundayDate) {
-      return `Next: ${format(satDate, "MMM d")} weekend`;
-    }
-    return `Next: ${format(satDate, "MMM d")}`;
+    const nextCampusId = nextWeekend.items[0]?.campusId;
+    const label = formatScheduledWeekendLabel(
+      nextWeekend.saturdayDate,
+      nextWeekend.sundayDate,
+      nextCampusId,
+    );
+    return `Next: ${label}`;
   };
 
   if (uniqueTeams.length === 1) {
@@ -94,11 +115,12 @@ export function TeamBadge() {
           
           const formatTeamNextDate = () => {
             if (!teamNextWeekend) return null;
-            const satDate = parseLocalDate(teamNextWeekend.saturdayDate);
-            if (isWeekend(teamNextWeekend.saturdayDate) && teamNextWeekend.saturdayDate !== teamNextWeekend.sundayDate) {
-              return `${format(satDate, "MMM d")} weekend`;
-            }
-            return format(satDate, "MMM d");
+            const teamCampusId = teamNextWeekend.items[0]?.campusId;
+            return formatScheduledWeekendLabel(
+              teamNextWeekend.saturdayDate,
+              teamNextWeekend.sundayDate,
+              teamCampusId,
+            );
           };
           
           return (

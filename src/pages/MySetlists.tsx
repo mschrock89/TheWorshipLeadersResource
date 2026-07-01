@@ -29,7 +29,7 @@ import { usePublishedSetlists, useConfirmSetlist, useConfirmSetlists } from "@/h
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession } from "@/lib/constants";
-import { groupByWeekend, parseLocalDate } from "@/lib/utils";
+import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
@@ -292,6 +292,10 @@ function StandardMySetlists() {
   const isMobile = useIsMobile();
 
   const today = new Date().toISOString().split("T")[0];
+  const campusById = useMemo(
+    () => new Map((campuses || []).map((campus) => [campus.id, campus])),
+    [campuses],
+  );
 
   // Combine all setlists into one chronological list (past first, then upcoming)
   const allGroupedSetlists = useMemo(() => {
@@ -398,15 +402,19 @@ function StandardMySetlists() {
   // Format the date header
   const getDateHeader = () => {
     if (!currentGroup) return "";
-    
-    const satDate = parseLocalDate(currentGroup.saturdayDate);
-    
-    if (isWeekendGroup) {
-      const sunDate = parseLocalDate(currentGroup.sundayDate);
-      return `${format(satDate, "MMM d")} - ${format(sunDate, "d, yyyy")}`;
-    }
-    
-    return format(satDate, "EEEE, MMMM d, yyyy");
+
+    const groupCampusId =
+      currentGroup.items.find((item) => item.campus_id)?.campus_id ?? normalizedCampusId;
+    const groupCampus =
+      groupCampusId && groupCampusId !== "__none__"
+        ? campusById.get(groupCampusId)
+        : undefined;
+
+    return formatWeekendGroupDateLabel(
+      currentGroup.saturdayDate,
+      currentGroup.sundayDate,
+      groupCampus,
+    );
   };
 
   type GroupItem = (typeof allGroupedSetlists)[number]["items"][number];

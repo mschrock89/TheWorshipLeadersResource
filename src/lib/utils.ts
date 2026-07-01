@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { format } from "date-fns";
 import { POSITION_LABELS } from "./constants";
 
 export function cn(...inputs: ClassValue[]) {
@@ -74,6 +75,76 @@ export function getWeekendPairDate(dateStr: string): string | null {
     return formatDateForDB(saturday);
   }
   return null;
+}
+
+export interface CampusWeekendServiceConfig {
+  has_saturday_service?: boolean | null;
+  has_sunday_service?: boolean | null;
+}
+
+/** Whether a campus actually runs service on a given weekend day. */
+export function campusHasServiceOnDate(
+  campus: CampusWeekendServiceConfig | undefined | null,
+  dateStr: string,
+): boolean {
+  if (!campus) return true;
+  const dayOfWeek = parseLocalDate(dateStr).getDay();
+  if (dayOfWeek === 6) return !!campus.has_saturday_service;
+  if (dayOfWeek === 0) return !!campus.has_sunday_service;
+  return true;
+}
+
+/**
+ * Format a grouped weekend for display, respecting each campus's Sat/Sun service config.
+ * Sunday-only campuses (e.g. Tullahoma) show the single service day instead of "Jul 4 - 5".
+ */
+export function formatWeekendGroupDateLabel(
+  saturdayDate: string,
+  sundayDate: string,
+  campus?: CampusWeekendServiceConfig | null,
+): string {
+  const satDate = parseLocalDate(saturdayDate);
+  const sunDate = parseLocalDate(sundayDate);
+  const showSaturday =
+    saturdayDate !== sundayDate && campusHasServiceOnDate(campus, saturdayDate);
+  const showSunday =
+    saturdayDate !== sundayDate && campusHasServiceOnDate(campus, sundayDate);
+
+  if (showSaturday && showSunday) {
+    return `${format(satDate, "MMM d")} - ${format(sunDate, "d, yyyy")}`;
+  }
+  if (showSunday) {
+    return format(sunDate, "EEEE, MMMM d, yyyy");
+  }
+  if (showSaturday) {
+    return format(satDate, "EEEE, MMMM d, yyyy");
+  }
+  return format(sunDate, "MMMM d, yyyy");
+}
+
+/** Compact label for nav badges/widgets (e.g. "Jul 5" or "Jul 4 - 5"). */
+export function formatWeekendGroupDateLabelCompact(
+  saturdayDate: string,
+  sundayDate: string,
+  campus?: CampusWeekendServiceConfig | null,
+): string {
+  const satDate = parseLocalDate(saturdayDate);
+  const sunDate = parseLocalDate(sundayDate);
+  const showSaturday =
+    saturdayDate !== sundayDate && campusHasServiceOnDate(campus, saturdayDate);
+  const showSunday =
+    saturdayDate !== sundayDate && campusHasServiceOnDate(campus, sundayDate);
+
+  if (showSaturday && showSunday) {
+    return `${format(satDate, "MMM d")} - ${format(sunDate, "d, yyyy")}`;
+  }
+  if (showSunday) {
+    return format(sunDate, "MMM d, yyyy");
+  }
+  if (showSaturday) {
+    return format(satDate, "MMM d, yyyy");
+  }
+  return format(sunDate, "MMM d, yyyy");
 }
 
 export interface WeekendGroup<T> {
