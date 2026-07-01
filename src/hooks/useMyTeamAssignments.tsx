@@ -75,6 +75,23 @@ function assignmentMatchesMinistryTypes(
   });
 }
 
+/** Weekend-family schedule rows should respect each campus's Sat/Sun service config. */
+function isWeekendFamilyScheduleMinistry(ministryType: string): boolean {
+  const normalized = normalizeWeekendWorshipMinistryType(ministryType) || ministryType;
+  return normalized === "weekend" || normalized === "production" || normalized === "video" || normalized === "speaker";
+}
+
+function campusHasServiceOnDate(
+  campus: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | undefined,
+  dateStr: string,
+): boolean {
+  if (!campus) return true;
+  const dayOfWeek = parseLocalDate(dateStr).getDay();
+  if (dayOfWeek === 6) return !!campus.has_saturday_service;
+  if (dayOfWeek === 0) return !!campus.has_sunday_service;
+  return true;
+}
+
 
 export function useMyTeamAssignments() {
   const { user } = useAuth();
@@ -253,15 +270,16 @@ export function useMyTeamAssignments() {
 
   const { data: scheduledDates = [], isLoading: datesLoading } = useQuery({
     // cache-bust key to ensure date parsing updates reflect immediately
-    queryKey: ["my-scheduled-dates", "local-date-v3", user?.id, assignments, dateOverrides, acceptedSwaps, resourceAppKey],
+    queryKey: ["my-scheduled-dates", "local-date-v4", user?.id, assignments, dateOverrides, acceptedSwaps, resourceAppKey],
     queryFn: async () => {
       if (!user?.id || (assignments.length === 0 && dateOverrides.length === 0)) return [];
 
       const teamIds = [...new Set([...assignments.map((a) => a.teamId), ...dateOverrides.map((o) => o.teamId)])];
 
-      const { data, error } = await supabase
-        .from("team_schedule")
-        .select(`
+      const [{ data, error }, { data: campusRows, error: campusError }] = await Promise.all([
+        supabase
+          .from("team_schedule")
+          .select(`
           schedule_date,
           team_id,
           campus_id,
@@ -276,11 +294,29 @@ export function useMyTeamAssignments() {
             color
           )
         `)
-        .eq("resource_app_key", resourceAppKey)
-        .in("team_id", teamIds)
-        .gte("schedule_date", today);
+          .eq("resource_app_key", resourceAppKey)
+          .in("team_id", teamIds)
+          .gte("schedule_date", today),
+        supabase
+          .from("campuses")
+          .select("id, has_saturday_service, has_sunday_service")
+          .eq("is_network_wide", false),
+      ]);
 
       if (error) throw error;
+      if (campusError) throw campusError;
+
+      const campusById = new Map(
+        (campusRows || []).map((campus) => [campus.id, campus]),
+      );
+      const includeScheduledDateForCampus = (
+        campusId: string | null | undefined,
+        scheduleDate: string,
+        ministryType: string,
+      ) => {
+        if (!campusId || !isWeekendFamilyScheduleMinistry(ministryType)) return true;
+        return campusHasServiceOnDate(campusById.get(campusId), scheduleDate);
+      };
 
       const { data: allOverrideRows, error: allOverridesError } = await supabase
         .from("team_member_date_overrides")
@@ -418,6 +454,11 @@ export function useMyTeamAssignments() {
           if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
 
+          const overrideMinistryType = (entry as any).ministry_type || "weekend";
+          if (!includeScheduledDateForCampus(campusId, override.scheduleDate, overrideMinistryType)) {
+            continue;
+          }
+
           results.push({
             scheduleDate: override.scheduleDate,
             date: parseLocalDate(override.scheduleDate),
@@ -438,13 +479,15 @@ export function useMyTeamAssignments() {
         const scheduleMinistryType = (entry as any).ministry_type || 'weekend';
         const scheduleCampusId = (entry as any).campus_id || null;
         const scheduleCampusName = (entry as any)?.campuses?.name || null;
-        const hasCampusSpecificSibling = (data || []).some((other: any) =>
-          other !== entry &&
-          other.schedule_date === entry.schedule_date &&
-          other.team_id === entry.team_id &&
-          (other.ministry_type || "weekend") === scheduleMinistryType &&
-          !!other.campus_id
-        );
+        const hasCampusSpecificSiblingForCampus = (targetCampusId: string | null) =>
+          !!targetCampusId &&
+          (data || []).some((other: any) =>
+            other !== entry &&
+            other.schedule_date === entry.schedule_date &&
+            other.team_id === entry.team_id &&
+            (other.ministry_type || "weekend") === scheduleMinistryType &&
+            other.campus_id === targetCampusId
+          );
         
         // Skip dates user has swapped out
         if (swappedOutDates.has(entry.schedule_date)) continue;
@@ -485,10 +528,11 @@ export function useMyTeamAssignments() {
               const hasCampusMembership = userCampuses.some((uc: any) => uc.campus_id === scheduleCampusId);
               if (!hasCampusMembership) return false;
             }
-          } else if (assignmentCampusId && hasCampusSpecificSibling) {
+          } else if (assignmentCampusId && hasCampusSpecificSiblingForCampus(assignmentCampusId)) {
             // Some schedules include a generic network row plus campus-specific rows for the same
-            // service. For personal calendar highlights, prefer the campus-specific row so a
-            // volunteer's dates don't light up for another campus's weekend.
+            // service. Prefer the campus-specific row ONLY when one exists for this volunteer's own
+            // campus; otherwise (e.g. another campus has a dedicated row but theirs does not) the
+            // volunteer must still light up via the shared network row.
             return false;
           } else if (
             !scheduleCampusId &&
@@ -546,7 +590,11 @@ export function useMyTeamAssignments() {
           
           if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
-          
+
+          if (!includeScheduledDateForCampus(campusId, entry.schedule_date, scheduleMinistryType)) {
+            continue;
+          }
+
           results.push({
             scheduleDate: entry.schedule_date,
             date: parseLocalDate(entry.schedule_date),
@@ -576,6 +624,10 @@ export function useMyTeamAssignments() {
         const fallbackCampus = userCampuses[0];
         const campusId = (fallbackCampus as any)?.campuses?.id || null;
         const campusName = (fallbackCampus as any)?.campuses?.name || null;
+
+        if (!includeScheduledDateForCampus(campusId, swapDate, "weekend")) {
+          continue;
+        }
         
         results.push({
           scheduleDate: swapDate,
