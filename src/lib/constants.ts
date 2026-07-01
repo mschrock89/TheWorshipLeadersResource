@@ -584,6 +584,21 @@ export function isNetworkWideMinistryType(ministryType: string | null | undefine
   return !!ministryType && NETWORK_WIDE_MINISTRY_TYPES.has(ministryType);
 }
 
+// Camp-family ministries (Student Camp, Kids Camp, and their session variants). These
+// are the ministries offered under the "Network Wide" pseudo-campus in Campus
+// Assignments, and Team Builder resolves their eligibility to that campus so a person's
+// camp assignment is shared across the network rather than tied to a physical campus.
+export const CAMP_FAMILY_MINISTRY_TYPES = new Set<string>([
+  ...SESSION_SET_BASE_MINISTRY_TYPES.flatMap((base) => [
+    base,
+    ...SESSION_SET_SUFFIXES.map((suffix) => `${base}${suffix}`),
+  ]),
+]);
+
+export function isCampFamilyMinistry(ministryType: string | null | undefined): boolean {
+  return !!ministryType && CAMP_FAMILY_MINISTRY_TYPES.has(ministryType);
+}
+
 // Resolve the campus_id that reads/writes for a ministry should target: NULL for
 // network-wide ministries (Student Camp), otherwise the provided campus.
 export function resolveMinistryCampusId(

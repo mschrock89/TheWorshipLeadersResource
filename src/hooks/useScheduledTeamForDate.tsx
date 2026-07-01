@@ -107,7 +107,10 @@ export function useScheduledTeamForDate(
         .eq("resource_app_key", resourceAppKey)
         .eq("schedule_date", dateStr);
 
-      if (campusId) {
+      if (campusId === null) {
+        // Network-wide schedule rows (e.g. Student Camp) live at campus_id IS NULL.
+        query = query.is("campus_id", null);
+      } else if (campusId) {
         // Get campus-specific entry first, fall back to shared (null) entry
         query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);
       }

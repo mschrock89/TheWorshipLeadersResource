@@ -46,7 +46,7 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
@@ -298,6 +298,10 @@ function StandardCalendar() {
   const [ministryFilter, setMinistryFilter] = useState<string>(
     () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
   );
+  // Student Camp is a Network Wide ministry (its schedule lives at campus_id IS NULL and
+  // is shared across every campus/app), so it must stay visible in the network-wide view.
+  const isStudentCampMinistryFilter =
+    normalizeSessionSetMinistryType(ministryFilter) === "student_camp";
   const [newEvent, setNewEvent] = useState(() =>
     buildDefaultNewEventState(getResourceAppMinistryTypes(getCurrentResourceAppKey())),
   );
@@ -432,8 +436,9 @@ function StandardCalendar() {
   } = useTeamSchedule(
     undefined,
     effectiveCampusId,
-    isStudentResourceAppKey(resourceAppKey) &&
-    normalizeSessionSetMinistryType(ministryFilter) === "student_camp"
+    // Student Camp is shared across the HS/MS student apps and worship, so pull its
+    // network-wide schedule from all of them regardless of which app is active.
+    isStudentCampMinistryFilter
       ? ["students_hs", "students_ms", "worship"]
       : undefined,
   );
@@ -846,8 +851,11 @@ function StandardCalendar() {
     return days;
   }, [year, month]);
 
-  // Check if we should hide weekends (for network-wide view)
-  const hideWeekends = isCampusAdmin && campusFilter === "network-wide";
+  // Check if we should hide weekends (for network-wide view). Weekend worship teams are
+  // per-campus and ambiguous network-wide, so they're hidden — but Student Camp is itself a
+  // Network Wide ministry (campus_id IS NULL), so keep it visible when that filter is active.
+  const hideWeekends =
+    isCampusAdmin && campusFilter === "network-wide" && !isStudentCampMinistryFilter;
 
   const getBaseScheduleEntriesForDate = useCallback((targetDateStr: string) => {
     let entries = teamSchedule.filter((scheduleEntry) => scheduleEntry.schedule_date === targetDateStr);

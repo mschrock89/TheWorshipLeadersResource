@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile, useUpdateProfile, TeamPosition, useUpdateServingRequirements } from "@/hooks/useProfiles";
-import { useCampuses, useUserCampuses, useUpdateUserCampuses } from "@/hooks/useCampuses";
+import { useCampuses, useUserCampuses, useUpdateUserCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useUserRoles, useUserAdminCampuses, useAddUserRole, useRemoveUserRole, useToggleUserRole, useUpdateBaseRoles } from "@/hooks/useUserRoles";
 import { useUserMinistryAssignments, useToggleMinistryAssignment } from "@/hooks/useMinistryAssignments";
 import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from "@/hooks/useCampusMinistryPositions";
@@ -29,7 +29,7 @@ import {
 import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft, ListMusic } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
+import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
@@ -114,6 +114,7 @@ export default function Profile() {
 
   const { data: profile, isLoading } = useProfile(profileId);
   const { data: campuses = [] } = useCampuses();
+  const { data: networkWideCampus } = useNetworkWideCampus();
   const { data: userCampuses = [] } = useUserCampuses(profileId);
   const { data: userRoles = [], isLoading: isRolesLoading } = useUserRoles(profileId);
   const { data: adminCampusIds = [] } = useUserAdminCampuses(profileId);
@@ -148,9 +149,16 @@ export default function Profile() {
     baseRoles[1] || "none",
     baseRoles[2] || "none",
   ] as const;
+  // Real campuses plus the Network Wide sentinel, used only for Campus Assignments and
+  // the Ministries-by-Campus card. All other campus-selection surfaces keep using
+  // `campuses` (which excludes the sentinel).
+  const assignableCampuses = useMemo(
+    () => (networkWideCampus ? [...campuses, networkWideCampus] : campuses),
+    [campuses, networkWideCampus],
+  );
   const campusNameById = useMemo(
-    () => new Map(campuses.map((campus) => [campus.id, campus.name])),
-    [campuses],
+    () => new Map(assignableCampuses.map((campus) => [campus.id, campus.name])),
+    [assignableCampuses],
   );
   const displayRoleGroups = useMemo(() => {
     const campusAdminCampusNames = userRoles
@@ -1185,7 +1193,7 @@ export default function Profile() {
                     Campus Assignments
                   </Label>
                   <div className="flex flex-wrap gap-3">
-                    {campuses.map((campus) => (
+                    {assignableCampuses.map((campus) => (
                       <label
                         key={campus.id}
                         className="flex items-center gap-2 cursor-pointer"
@@ -1262,7 +1270,7 @@ export default function Profile() {
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {(canManageTeam ? campuses.filter(c => selectedCampuses.includes(c.id)) : campuses.filter(c => userCampuses.some(uc => uc.campus_id === c.id))).map((campus) => {
+                    {(canManageTeam ? assignableCampuses.filter(c => selectedCampuses.includes(c.id)) : assignableCampuses.filter(c => userCampuses.some(uc => uc.campus_id === c.id))).map((campus) => {
                       const campusMinistries = Array.from(
                         new Set(
                           ministryAssignments
@@ -1285,6 +1293,8 @@ export default function Profile() {
                                 .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] =>
                                   Boolean(ministry) && !("hidden" in ministry && ministry.hidden)
                                 )
+                                // The Network Wide campus only offers camp-family ministries (Student Camp, Kids Camp).
+                                .filter((ministry) => !campus.is_network_wide || isCampFamilyMinistry(ministry.value))
                                 .map((ministry) => {
                                 const isActive = campusMinistries.includes(ministry.value);
                                 return (

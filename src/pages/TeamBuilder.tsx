@@ -74,7 +74,7 @@ import {
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useProfilesWithCampuses, useUserCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
@@ -83,6 +83,7 @@ import {
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
+  isCampFamilyMinistry,
 } from "@/lib/constants";
 import {
   TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME,
@@ -327,7 +328,14 @@ export default function TeamBuilder() {
     assigningSlot?.slot,
   );
   const { data: campuses = [], isLoading: campusesLoading } = useAllCampuses();
+  const { data: networkWideCampus } = useNetworkWideCampus();
   const { data: adminCampusInfo, isLoading: adminCampusLoading } = useAdminCampusId();
+  // Camp-family ministries (Student Camp, Kids Camp) draw their eligible people from the
+  // network-wide pool rather than the selected physical campus. Teams/schedule/periods
+  // still key off the selected campus.
+  const eligibilityCampusId = isCampFamilyMinistry(selectedMinistryType)
+    ? networkWideCampus?.id ?? selectedCampusId
+    : selectedCampusId;
   const { data: periods = [], isLoading: periodsLoading } = useRotationPeriodsForCampus(selectedCampusId);
   const { data: teams = [], isLoading: teamsLoading } = useWorshipTeams(selectedCampusId, selectedMinistryType);
   const { data: members = [], isLoading: membersLoading } = useTeamMembersForPeriod(selectedPeriodId);
@@ -338,13 +346,13 @@ export default function TeamBuilder() {
     [dateOverrides, supportsDateSpecificAssignments],
   );
   const { data: availableMembers = [] } = useAvailableMembers(
-    selectedCampusId,
+    eligibilityCampusId,
     selectedMinistryType,
   );
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
-  const { data: multiTeamAssignableMembers = [] } = useMultiTeamAssignableMembers(selectedCampusId);
+  const { data: multiTeamAssignableMembers = [] } = useMultiTeamAssignableMembers(eligibilityCampusId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
   const selectedCampus = campuses.find(c => c.id === selectedCampusId);

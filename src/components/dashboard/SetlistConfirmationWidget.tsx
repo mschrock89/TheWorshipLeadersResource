@@ -81,6 +81,35 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+async function fetchActiveCustomServicesForSetlists(
+  dates: string[],
+  campusIds: Array<string | null>,
+  ministryTypes: string[],
+) {
+  const concreteCampusIds = [...new Set(campusIds.filter(Boolean))] as string[];
+  const includeNetworkWide = campusIds.some((campusId) => campusId == null);
+
+  let query = supabase
+    .from("custom_services")
+    .select("id, service_date, campus_id, ministry_type, is_active")
+    .eq("is_active", true)
+    .in("service_date", dates)
+    .in("ministry_type", ministryTypes);
+
+  // PostgREST cannot match NULL via `.in()`, so split network-wide rows from campus rows.
+  if (includeNetworkWide && concreteCampusIds.length > 0) {
+    query = query.or(`campus_id.is.null,campus_id.in.(${concreteCampusIds.join(",")})`);
+  } else if (includeNetworkWide) {
+    query = query.is("campus_id", null);
+  } else if (concreteCampusIds.length > 0) {
+    query = query.in("campus_id", concreteCampusIds);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
 function isAnnouncementRosterMember(member: RosterMember) {
   return member.positionSlots.includes("announcement") || member.positions.every((position) => position === "announcement");
 }
@@ -144,6 +173,13 @@ function ConfirmationRowView({
   onToggle: () => void;
 }) {
   if (!details) {
+    if (isLoading) {
+      return (
+        <div className="w-full p-4 rounded-lg border border-border bg-secondary/20">
+          <Skeleton className="h-16 w-full" />
+        </div>
+      );
+    }
     return null;
   }
 
@@ -736,15 +772,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
         const dates = [...new Set(unresolved.map((set) => set.plan_date))];
         const campusIds = [...new Set(unresolved.map((set) => set.campus_id))];
         const ministryTypes = [...new Set(unresolved.map((set) => set.ministry_type))];
-        const { data: customServices, error: customServicesError } = await supabase
-          .from("custom_services")
-          .select("id, service_date, campus_id, ministry_type, is_active")
-          .eq("is_active", true)
-          .in("service_date", dates)
-          .in("campus_id", campusIds)
-          .in("ministry_type", ministryTypes);
-
-        if (customServicesError) throw customServicesError;
+        const customServices = await fetchActiveCustomServicesForSetlists(
+          dates,
+          campusIds,
+          ministryTypes,
+        );
 
         const grouped = new Map<string, string[]>();
         for (const customService of customServices || []) {

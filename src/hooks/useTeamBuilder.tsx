@@ -422,9 +422,12 @@ export function useAllCampuses() {
   return useQuery({
     queryKey: ["all-campuses"],
     queryFn: async () => {
+      // Exclude the Network Wide sentinel campus so it stays out of the Team Builder
+      // campus dropdown; camp-family ministry eligibility resolves to it separately.
       const { data, error } = await supabase
         .from("campuses")
         .select("id, name, has_saturday_service, has_sunday_service")
+        .eq("is_network_wide", false)
         .order("name");
 
       if (error) throw error;

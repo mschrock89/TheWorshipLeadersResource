@@ -494,14 +494,27 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         const dates = [...new Set(unresolved.map((s) => s.plan_date))];
         const campusIds = [...new Set(unresolved.map((s) => s.campus_id))];
         const ministryTypes = [...new Set(unresolved.map((s) => s.ministry_type))];
+        const concreteCampusIds = campusIds.filter(Boolean) as string[];
+        const includeNetworkWide = campusIds.some((campusId) => campusId == null);
 
-        const { data: customServices } = await supabase
+        let customServicesQuery = supabase
           .from("custom_services")
           .select("id, service_date, campus_id, ministry_type, is_active")
           .eq("is_active", true)
           .in("service_date", dates)
-          .in("campus_id", campusIds)
           .in("ministry_type", ministryTypes);
+
+        if (includeNetworkWide && concreteCampusIds.length > 0) {
+          customServicesQuery = customServicesQuery.or(
+            `campus_id.is.null,campus_id.in.(${concreteCampusIds.join(",")})`,
+          );
+        } else if (includeNetworkWide) {
+          customServicesQuery = customServicesQuery.is("campus_id", null);
+        } else if (concreteCampusIds.length > 0) {
+          customServicesQuery = customServicesQuery.in("campus_id", concreteCampusIds);
+        }
+
+        const { data: customServices } = await customServicesQuery;
 
         const customByKey = new Map<string, string[]>();
         for (const service of customServices || []) {

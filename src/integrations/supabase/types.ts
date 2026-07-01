@@ -354,6 +354,7 @@ export type Database = {
           has_saturday_service: boolean | null
           has_sunday_service: boolean | null
           id: string
+          is_network_wide: boolean
           name: string
           saturday_service_time: string[] | null
           sunday_service_time: string[] | null
@@ -363,6 +364,7 @@ export type Database = {
           has_saturday_service?: boolean | null
           has_sunday_service?: boolean | null
           id?: string
+          is_network_wide?: boolean
           name: string
           saturday_service_time?: string[] | null
           sunday_service_time?: string[] | null
@@ -372,6 +374,7 @@ export type Database = {
           has_saturday_service?: boolean | null
           has_sunday_service?: boolean | null
           id?: string
+          is_network_wide?: boolean
           name?: string
           saturday_service_time?: string[] | null
           sunday_service_time?: string[] | null

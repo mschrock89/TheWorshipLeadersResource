@@ -10,6 +10,7 @@ export interface Campus {
   has_sunday_service: boolean;
   saturday_service_time: string[] | null;
   sunday_service_time: string[] | null;
+  is_network_wide: boolean;
 }
 
 export interface UserCampus {
@@ -24,13 +25,37 @@ export function useCampuses() {
     queryKey: ["campuses"],
     staleTime: 10 * 60 * 1000, // 10 minutes - campuses rarely change
     queryFn: async () => {
+      // Exclude the Network Wide sentinel campus so it never leaks into Default Campus,
+      // Calendar filters, service-time config, or the other campus-selection surfaces.
+      // It is surfaced explicitly via useNetworkWideCampus() where needed.
       const { data, error } = await supabase
         .from("campuses")
         .select("*")
+        .eq("is_network_wide", false)
         .order("name", { ascending: true });
       
       if (error) throw error;
       return data as Campus[];
+    },
+  });
+}
+
+// The single "Network Wide" pseudo-campus (is_network_wide = true), used to attach
+// camp-family ministry assignments (Student Camp, Kids Camp) that are shared across the
+// whole network rather than tied to a physical campus.
+export function useNetworkWideCampus() {
+  return useQuery({
+    queryKey: ["network-wide-campus"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campuses")
+        .select("*")
+        .eq("is_network_wide", true)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data as Campus | null) ?? null;
     },
   });
 }
