@@ -168,6 +168,42 @@ function swapMatchesRosterFilter(
   );
 }
 
+function buildSupportSlotTokens(
+  member: Pick<TeamMemberLike, "position" | "position_slot">,
+): string[] {
+  const tokens = new Set<string>();
+  for (const value of [member.position_slot, member.position]) {
+    const token = normalizeSwapPositionToken(value);
+    if (token) tokens.add(token);
+  }
+  return Array.from(tokens);
+}
+
+function swapAffectsSupportMinistry(
+  swap: Pick<{ position?: string | null }, "position">,
+  ministryType: string,
+  supportAssignments: Array<Pick<TeamMemberLike, "position" | "position_slot">>,
+): boolean {
+  if (!swap.position || supportAssignments.length === 0) return false;
+
+  // Ignore band/vocal/speaker swaps entirely for production/video pushes.
+  if (!swapMatchesRosterFilter(swap, ministryType)) return false;
+
+  const swapToken = normalizeSwapPositionToken(swap.position);
+  if (!swapToken) return false;
+
+  return supportAssignments.some((assignment) =>
+    buildSupportSlotTokens(assignment).includes(swapToken)
+  );
+}
+
+function isCoverSwapRequest(swap: {
+  request_type?: string | null;
+  swap_date?: string | null;
+}): boolean {
+  return swap.request_type === "fill_in" || !swap.swap_date;
+}
+
 function assignmentMatchesRosterFilter(
   assignment: Pick<TeamMemberLike, "ministry_types" | "position" | "position_slot">,
   ministryType: string,
@@ -332,9 +368,12 @@ async function resolveSupportTeamNotificationUserIdsForDate(
     }
   }
 
+  const supportAssignments = effectiveMembers;
+  const scheduledSupportUserIds = new Set(userIds);
+
   const { data: swapsForDate, error: swapsForDateError } = await supabase
     .from("swap_requests")
-    .select("requester_id, accepted_by_id, position, status")
+    .select("requester_id, accepted_by_id, position, status, request_type, swap_date")
     .eq("original_date", scheduleDate)
     .eq("team_id", teamId)
     .eq("status", "accepted");
@@ -342,7 +381,20 @@ async function resolveSupportTeamNotificationUserIdsForDate(
   if (swapsForDateError) throw swapsForDateError;
 
   for (const swap of swapsForDate || []) {
-    if (!swapMatchesRosterFilter(swap, ministryType)) {
+    if (isCoverSwapRequest(swap)) {
+      // Covers only affect this push when the covered person is scheduled production/video crew.
+      if (!swap.requester_id || !scheduledSupportUserIds.has(swap.requester_id)) {
+        continue;
+      }
+
+      userIds.delete(swap.requester_id);
+      if (swap.accepted_by_id) {
+        userIds.add(swap.accepted_by_id);
+      }
+      continue;
+    }
+
+    if (!swapAffectsSupportMinistry(swap, ministryType, supportAssignments)) {
       continue;
     }
 
@@ -356,18 +408,27 @@ async function resolveSupportTeamNotificationUserIdsForDate(
 
   const { data: swapsOnDate, error: swapsOnDateError } = await supabase
     .from("swap_requests")
-    .select("requester_id, accepted_by_id, position, status")
+    .select("requester_id, accepted_by_id, position, status, request_type, swap_date")
     .eq("swap_date", scheduleDate)
     .eq("status", "accepted");
 
   if (swapsOnDateError) throw swapsOnDateError;
 
-  const teamMemberUserIds = new Set(effectiveMembers.map((member) => member.user_id).filter(Boolean));
   for (const swap of swapsOnDate || []) {
-    if (!swap.requester_id || !swap.accepted_by_id || !teamMemberUserIds.has(swap.accepted_by_id)) {
+    if (!swap.requester_id || !swap.accepted_by_id) {
       continue;
     }
-    if (!swapMatchesRosterFilter(swap, ministryType)) {
+
+    if (isCoverSwapRequest(swap)) {
+      continue;
+    }
+
+    // Reverse side of a direct swap: only when the outgoing person is scheduled crew
+    // and the swap touches one of their production/video slots.
+    if (!scheduledSupportUserIds.has(swap.accepted_by_id)) {
+      continue;
+    }
+    if (!swapAffectsSupportMinistry(swap, ministryType, supportAssignments)) {
       continue;
     }
 
