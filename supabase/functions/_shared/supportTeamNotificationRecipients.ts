@@ -6,40 +6,66 @@ import {
 } from "./supportTeamPushContent.ts";
 
 const WEEKEND_ROSTER_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
-const PRODUCTION_POSITION_SLOTS = new Set([
-  "foh",
-  "mon",
-  "broadcast",
-  "audio_shadow",
-  "lighting",
-  "propresenter",
-  "producer",
-]);
-const VIDEO_POSITION_SLOTS = new Set([
-  "tri_pod_camera",
-  "hand_held_camera",
-  "director",
-  "graphics",
-  "producer",
-  "switcher",
-]);
-const BAND_VOCAL_POSITION_SLOTS = new Set([
-  "vocal_1",
-  "vocal_2",
-  "vocal_3",
-  "vocal_4",
-  "vocal_5",
-  "vocal_6",
-  "ag_1",
-  "ag_2",
-  "eg_1",
-  "eg_2",
-  "drums",
-  "bass",
-  "keys",
-  "piano",
-  "percussion",
-]);
+
+// Keep in sync with POSITION_SLOTS in src/lib/constants.ts so support-team push
+// recipients match the Calendar production/video roster columns.
+const POSITION_SLOT_DEFINITIONS: Array<{ slot: string; position: string; category: string }> = [
+  { slot: "vocalist_1", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_2", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_3", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_4", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_5", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_6", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_7", position: "vocalist", category: "Vocalists" },
+  { slot: "vocalist_8", position: "vocalist", category: "Vocalists" },
+  { slot: "teacher", position: "teacher", category: "Speaker" },
+  { slot: "announcement", position: "announcement", category: "Speaker" },
+  { slot: "closing_prayer", position: "closing_prayer", category: "Speaker" },
+  { slot: "drums", position: "drums", category: "Band" },
+  { slot: "bass", position: "bass", category: "Band" },
+  { slot: "keys", position: "keys", category: "Band" },
+  { slot: "pad", position: "pad", category: "Band" },
+  { slot: "eg_1", position: "electric_guitar", category: "Band" },
+  { slot: "eg_2", position: "electric_guitar", category: "Band" },
+  { slot: "eg_3", position: "electric_guitar", category: "Band" },
+  { slot: "eg_4", position: "electric_guitar", category: "Band" },
+  { slot: "ag_1", position: "acoustic_guitar", category: "Band" },
+  { slot: "ag_2", position: "acoustic_guitar", category: "Band" },
+  { slot: "foh", position: "sound_tech", category: "Production" },
+  { slot: "mon", position: "mon", category: "Production" },
+  { slot: "broadcast", position: "broadcast", category: "Production" },
+  { slot: "audio_shadow", position: "audio_shadow", category: "Production" },
+  { slot: "lighting", position: "lighting", category: "Production" },
+  { slot: "propresenter", position: "media", category: "Production" },
+  { slot: "producer", position: "producer", category: "Production" },
+  { slot: "tri_pod_camera_1", position: "tri_pod_camera", category: "Video" },
+  { slot: "tri_pod_camera_2", position: "tri_pod_camera", category: "Video" },
+  { slot: "tri_pod_camera_3", position: "tri_pod_camera", category: "Video" },
+  { slot: "tri_pod_camera_4", position: "tri_pod_camera", category: "Video" },
+  { slot: "hand_held_camera_1", position: "hand_held_camera", category: "Video" },
+  { slot: "hand_held_camera_2", position: "hand_held_camera", category: "Video" },
+  { slot: "hand_held_camera_3", position: "hand_held_camera", category: "Video" },
+  { slot: "hand_held_camera_4", position: "hand_held_camera", category: "Video" },
+  { slot: "director", position: "director", category: "Video" },
+  { slot: "director_2", position: "director", category: "Video" },
+  { slot: "director_3", position: "director", category: "Video" },
+  { slot: "director_4", position: "director", category: "Video" },
+  { slot: "graphics", position: "graphics", category: "Video" },
+  { slot: "graphics_2", position: "graphics", category: "Video" },
+  { slot: "graphics_3", position: "graphics", category: "Video" },
+  { slot: "graphics_4", position: "graphics", category: "Video" },
+  { slot: "switcher", position: "switcher", category: "Video" },
+  { slot: "switcher_2", position: "switcher", category: "Video" },
+  { slot: "switcher_3", position: "switcher", category: "Video" },
+  { slot: "switcher_4", position: "switcher", category: "Video" },
+];
+
+const POSITION_CATEGORY_BY_VALUE = new Map(
+  POSITION_SLOT_DEFINITIONS.flatMap((entry) => [
+    [entry.slot.toLowerCase(), entry.category],
+    [entry.position.toLowerCase(), entry.category],
+  ]),
+);
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -96,11 +122,25 @@ function ministryMatchesRosterFilter(
   return memberMinistries.includes(ministryType);
 }
 
-function getInferredMinistryType(positionSlot?: string | null): string | null {
-  const slot = positionSlot?.toLowerCase();
-  if (!slot) return null;
-  if (PRODUCTION_POSITION_SLOTS.has(slot)) return "production";
-  if (VIDEO_POSITION_SLOTS.has(slot)) return "video";
+function getInferredPositionCategory(
+  position?: string | null,
+  positionSlot?: string | null,
+): string | undefined {
+  const slot = positionSlot?.toLowerCase() || "";
+  if (slot.startsWith("vocalist_") || slot.startsWith("vocal_")) {
+    return "Vocalists";
+  }
+
+  const slotCategory = slot ? POSITION_CATEGORY_BY_VALUE.get(slot) : undefined;
+  if (slotCategory) return slotCategory;
+
+  return position ? POSITION_CATEGORY_BY_VALUE.get(position.toLowerCase()) : undefined;
+}
+
+function getInferredMinistryTypeForCategory(category?: string): string | null {
+  if (category === "Production") return "production";
+  if (category === "Video") return "video";
+  if (category === "Speaker") return "speaker";
   return null;
 }
 
@@ -108,10 +148,15 @@ function assignmentMatchesRosterFilter(
   assignment: Pick<TeamMemberLike, "ministry_types" | "position" | "position_slot">,
   ministryType: string,
 ): boolean {
-  const slot = assignment.position_slot?.toLowerCase() || "";
+  const inferredPositionCategory = getInferredPositionCategory(
+    assignment.position,
+    assignment.position_slot,
+  );
+  const inferredMinistryType = getInferredMinistryTypeForCategory(inferredPositionCategory);
+
   if (
-    (ministryType === "production" || ministryType === "video") &&
-    BAND_VOCAL_POSITION_SLOTS.has(slot)
+    (inferredPositionCategory === "Band" || inferredPositionCategory === "Vocalists") &&
+    (ministryType === "production" || ministryType === "video")
   ) {
     return false;
   }
@@ -119,16 +164,18 @@ function assignmentMatchesRosterFilter(
   const ministryTypes = assignment.ministry_types;
   const hasMinistryTags = Array.isArray(ministryTypes) && ministryTypes.length > 0;
 
+  // Ministry tags are authoritative when present. Inferring production/video from the
+  // FOH slot alone would include stale rows (e.g. a weekend-tagged duplicate).
   if (hasMinistryTags) {
     return ministryMatchesRosterFilter(ministryTypes, ministryType);
   }
 
-  const inferredMinistryType = getInferredMinistryType(assignment.position_slot);
   if (inferredMinistryType) {
     return ministryMatchesRosterFilter([inferredMinistryType], ministryType);
   }
 
-  return ministryMatchesRosterFilter(ministryTypes, ministryType);
+  // Support-team pushes should only reach explicit production/video roles.
+  return false;
 }
 
 async function resolveRotationPeriodIds(
