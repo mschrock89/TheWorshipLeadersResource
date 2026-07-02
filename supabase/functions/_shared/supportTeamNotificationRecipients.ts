@@ -144,6 +144,30 @@ function getInferredMinistryTypeForCategory(category?: string): string | null {
   return null;
 }
 
+function normalizeSwapPositionToken(position?: string | null): string {
+  return (position || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function swapMatchesRosterFilter(
+  swap: Pick<{ position?: string | null }, "position">,
+  ministryType: string,
+): boolean {
+  if (!swap.position) return false;
+
+  const positionSlot = normalizeSwapPositionToken(swap.position);
+  return assignmentMatchesRosterFilter(
+    {
+      position: swap.position,
+      position_slot: positionSlot || null,
+      ministry_types: null,
+    },
+    ministryType,
+  );
+}
+
 function assignmentMatchesRosterFilter(
   assignment: Pick<TeamMemberLike, "ministry_types" | "position" | "position_slot">,
   ministryType: string,
@@ -318,6 +342,10 @@ async function resolveSupportTeamNotificationUserIdsForDate(
   if (swapsForDateError) throw swapsForDateError;
 
   for (const swap of swapsForDate || []) {
+    if (!swapMatchesRosterFilter(swap, ministryType)) {
+      continue;
+    }
+
     if (swap.requester_id) {
       userIds.delete(swap.requester_id);
     }
@@ -337,6 +365,9 @@ async function resolveSupportTeamNotificationUserIdsForDate(
   const teamMemberUserIds = new Set(effectiveMembers.map((member) => member.user_id).filter(Boolean));
   for (const swap of swapsOnDate || []) {
     if (!swap.requester_id || !swap.accepted_by_id || !teamMemberUserIds.has(swap.accepted_by_id)) {
+      continue;
+    }
+    if (!swapMatchesRosterFilter(swap, ministryType)) {
       continue;
     }
 
