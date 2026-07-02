@@ -281,7 +281,6 @@ function StandardCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
-  const [sendingScheduleNotificationKey, setSendingScheduleNotificationKey] = useState<string | null>(null);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -1099,50 +1098,6 @@ function StandardCalendar() {
     });
   }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
 
-  const handleSendScheduleNotification = async (target: ScheduleNotificationTarget) => {
-    const key = `${target.teamId}:${target.ministryType}:${selectedDateStr || ""}`;
-    setSendingScheduleNotificationKey(key);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("notify-team-schedule-date", {
-        body: {
-          scheduleDate: selectedDateStr,
-          campusId: target.campusId,
-          ministryType: target.ministryType,
-          teamId: target.teamId,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      const readNumber = (key: string) =>
-        data && typeof data === "object" && key in data && typeof (data as Record<string, unknown>)[key] === "number"
-          ? ((data as Record<string, number>)[key])
-          : 0;
-
-      const recipientCount = readNumber("recipients");
-      const pushSent = readNumber("pushSent");
-
-      if (recipientCount === 0) {
-        toast.success(`No ${target.teamName} team members were eligible to notify.`);
-      } else if (pushSent === 0) {
-        toast.warning(
-          `${recipientCount} ${target.teamName} member${recipientCount === 1 ? "" : "s"} flagged, but no push was delivered (no enabled devices or push isn't configured).`,
-        );
-      } else {
-        toast.success(
-          `Push delivered to ${pushSent} device${pushSent === 1 ? "" : "s"} for ${target.teamName}.`,
-        );
-      }
-    } catch (error) {
-      console.error("Failed to send team schedule notification:", error);
-      toast.error("Failed to send the schedule notification.");
-    } finally {
-      setSendingScheduleNotificationKey(null);
-    }
-  };
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));
     setSelectedDate(null);
@@ -1558,15 +1513,23 @@ function StandardCalendar() {
                     {selectedSupportNotificationTargets.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
                         {selectedSupportNotificationTargets.map((target) => {
                       const targetKey = `${target.teamId}:${target.ministryType}:${selectedDateStr || ""}`;
-                      const isSending = sendingScheduleNotificationKey === targetKey;
                       const ministryLabel = getMinistryLabel(target.ministryType);
-                      return <Button key={targetKey} variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => handleSendScheduleNotification(target)} disabled={isSending}>
-                              {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Megaphone className="h-3 w-3" />}
-                              Notify {ministryLabel}
-                            </Button>;
+                      return (
+                        <TeamSchedulePushButton
+                          key={targetKey}
+                          scheduleDate={selectedDateStr}
+                          campusId={target.campusId}
+                          ministryType={target.ministryType}
+                          teamId={target.teamId}
+                          serviceLabel={target.teamName}
+                          buttonLabel={`Notify ${ministryLabel}`}
+                          className="h-7 gap-1 px-2 text-xs"
+                          compact
+                        />
+                      );
                     })}
                         <span className="text-xs text-muted-foreground">
-                          Send a reminder to the scheduled Production or Video team for this date.
+                          Preview recipients, then send a reminder to the scheduled Production or Video team.
                         </span>
                       </div>}
                   </div>
@@ -2533,6 +2496,8 @@ function TeamSchedulePushButton({
   teamId,
   serviceLabel,
   className,
+  buttonLabel = "Push",
+  compact = false,
 }: {
   scheduleDate?: string | null;
   campusId?: string;
@@ -2540,6 +2505,8 @@ function TeamSchedulePushButton({
   teamId?: string | null;
   serviceLabel?: string;
   className?: string;
+  buttonLabel?: string;
+  compact?: boolean;
 }) {
   const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
   const [isSending, setIsSending] = useState(false);
@@ -2676,8 +2643,9 @@ function TeamSchedulePushButton({
   };
 
   const pushEnabledRecipients = previewRecipients.filter((recipient) => recipient.hasPushSubscription);
-  const pushUnavailableRecipients = previewRecipients.filter((recipient) => !recipient.hasPushSubscription);
-  const recipientCount = pushEnabledRecipients.length;
+  const eligibleRecipientCount = previewRecipients.length;
+  const pushRecipientCount = pushEnabledRecipients.length;
+  const iconClassName = compact ? "h-3 w-3" : "h-4 w-4";
 
   return (
     <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
@@ -2688,10 +2656,14 @@ function TeamSchedulePushButton({
         className={className || "gap-1.5"}
         onClick={loadPreview}
         disabled={isLoadingPreview || isSending || !canSend}
-        title={disabledTitle || `Prepare ${ministryLabel} schedule push to the team`}
+        title={disabledTitle || `Preview ${ministryLabel} schedule push recipients`}
       >
-        {isLoadingPreview || isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-        Push
+        {isLoadingPreview || isSending ? (
+          <Loader2 className={`${iconClassName} animate-spin`} />
+        ) : (
+          <Megaphone className={iconClassName} />
+        )}
+        {buttonLabel}
       </Button>
       <DialogContent className="max-h-[85vh] overflow-hidden bg-card sm:max-w-md">
         <DialogHeader>
@@ -2715,43 +2687,33 @@ function TeamSchedulePushButton({
             <>
               <div className="rounded-md border border-border p-3">
                 <p className="text-sm font-medium text-foreground">
-                  {recipientCount} recipient{recipientCount === 1 ? "" : "s"} with push enabled
+                  {eligibleRecipientCount} team member{eligibleRecipientCount === 1 ? "" : "s"} will be notified
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These team members have an active push subscription and will receive the notification.
+                  {pushRecipientCount > 0
+                    ? `${pushRecipientCount} with push enabled will also receive a device notification.`
+                    : "No one on this list currently has push enabled, but in-app notifications will still be sent."}
                 </p>
               </div>
 
-              {pushEnabledRecipients.length > 0 ? (
+              {previewRecipients.length > 0 ? (
                 <div className="space-y-1.5">
-                  {pushEnabledRecipients.map((recipient) => (
+                  {previewRecipients.map((recipient) => (
                     <div key={recipient.userId} className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
                       <span className="truncate text-foreground">{recipient.name}</span>
-                      <Badge variant="secondary" className="ml-2 shrink-0 text-xs">
-                        Push enabled
+                      <Badge
+                        variant={recipient.hasPushSubscription ? "secondary" : "outline"}
+                        className="ml-2 shrink-0 text-xs"
+                      >
+                        {recipient.hasPushSubscription ? "Push enabled" : "In-app only"}
                       </Badge>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="rounded-md border border-border p-3 text-sm text-muted-foreground">
-                  No {ministryLabel} team members with push enabled are available for this date.
+                  No {ministryLabel} team members are eligible to notify for this date.
                 </p>
-              )}
-
-              {pushUnavailableRecipients.length > 0 && (
-                <div className="space-y-2 rounded-md border border-border/70 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Scheduled without push enabled
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {pushUnavailableRecipients.map((recipient) => (
-                      <Badge key={recipient.userId} variant="outline" className="text-xs">
-                        {recipient.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
               )}
             </>
           )}
@@ -2769,10 +2731,10 @@ function TeamSchedulePushButton({
                 setIsPreviewOpen(false);
               }
             }}
-            disabled={isLoadingPreview || isSending || !!previewError || recipientCount === 0}
+            disabled={isLoadingPreview || isSending || !!previewError || eligibleRecipientCount === 0}
           >
             {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
-            Send Push
+            Send to {eligibleRecipientCount || ""} recipient{eligibleRecipientCount === 1 ? "" : "s"}
           </Button>
         </DialogFooter>
       </DialogContent>
