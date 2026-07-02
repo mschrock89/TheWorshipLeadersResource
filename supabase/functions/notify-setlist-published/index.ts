@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveWorshipTeamNotificationUserIds } from "../_shared/worshipTeamNotificationRecipients.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,24 @@ interface NotifyRequest {
   draftSetId: string;
   manual?: boolean;
   previewOnly?: boolean;
+  scheduleDate?: string;
+  teamId?: string;
+  ministryType?: string;
+  rotationPeriodName?: string | null;
+}
+
+const WEEKEND_WORSHIP_MINISTRIES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+
+function isWeekendWorshipRosterContext(
+  ministryType?: string | null,
+  teamId?: string | null,
+  scheduleDate?: string | null,
+): boolean {
+  if (!ministryType || !teamId || !scheduleDate) {
+    return false;
+  }
+
+  return ministryType === "weekend_team" || WEEKEND_WORSHIP_MINISTRIES.has(ministryType);
 }
 
 interface RecipientPreview {
@@ -221,7 +240,15 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parse request body
-    const { draftSetId, manual = false, previewOnly = false }: NotifyRequest = await req.json();
+    const {
+      draftSetId,
+      manual = false,
+      previewOnly = false,
+      scheduleDate,
+      teamId,
+      ministryType,
+      rotationPeriodName,
+    }: NotifyRequest = await req.json();
 
     if (!draftSetId) {
       return new Response(
@@ -286,27 +313,50 @@ serve(async (req) => {
 
     const songCount = setlistSongs?.length || 0;
 
-    // 3. Build notification recipient list using the authoritative roster function.
-    // get_setlist_notifiable_user_ids handles all set types (audition, custom service,
-    // team builder), applies accepted swaps / date overrides, and includes support
-    // teams — all in a single DB round-trip.
+    // 3. Build notification recipient list.
+    // Manual Weekend Worship pushes from Calendar resolve the scheduled worship team
+    // roster (band/vocal/speaker) with worship-scoped swaps and covers — matching the
+    // Calendar Band column. Automatic publish keeps the broader setlist roster RPC.
     let userIdsToNotify: string[] = [];
+    const useWeekendWorshipRoster =
+      (manual || previewOnly) &&
+      isWeekendWorshipRosterContext(ministryType, teamId, scheduleDate) &&
+      Boolean(draftSet.campus_id);
 
-    const { data: rosterRows, error: rosterError } = await supabase.rpc(
-      "get_setlist_notifiable_user_ids",
-      { p_draft_set_id: draftSetId },
-    );
-
-    if (rosterError) {
-      console.error("Error fetching setlist notifiable user IDs:", rosterError);
+    if (useWeekendWorshipRoster) {
+      try {
+        const worshipUserIds = await resolveWorshipTeamNotificationUserIds(supabase, {
+          scheduleDate: scheduleDate!,
+          campusId: draftSet.campus_id,
+          teamId: teamId!,
+          ministryType: ministryType === "weekend_team" ? "weekend_team" : ministryType,
+          rotationPeriodName,
+        });
+        userIdsToNotify = await filterNotifiableRosterUserIds(supabase, worshipUserIds);
+      } catch (resolveError) {
+        console.error("Error resolving weekend worship push recipients:", resolveError);
+        return new Response(
+          JSON.stringify({ error: "Failed to load the scheduled worship team roster" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     } else {
-      const allRosterUserIds = (rosterRows || [])
-        .map((row: { user_id: string }) => row.user_id)
-        .filter(Boolean) as string[];
+      const { data: rosterRows, error: rosterError } = await supabase.rpc(
+        "get_setlist_notifiable_user_ids",
+        { p_draft_set_id: draftSetId },
+      );
 
-      // Filter to users with a recognised role (volunteer / member / leadership).
-      // This prevents notifying stale accounts that have no role in the system.
-      userIdsToNotify = await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
+      if (rosterError) {
+        console.error("Error fetching setlist notifiable user IDs:", rosterError);
+      } else {
+        const allRosterUserIds = (rosterRows || [])
+          .map((row: { user_id: string }) => row.user_id)
+          .filter(Boolean) as string[];
+
+        // Filter to users with a recognised role (volunteer / member / leadership).
+        // This prevents notifying stale accounts that have no role in the system.
+        userIdsToNotify = await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
+      }
     }
 
     console.log(`Found ${userIdsToNotify.length} team members to notify for setlist ${draftSetId}`);

@@ -2376,6 +2376,9 @@ function SetlistPushButton({
   serviceLabel,
   className,
   buttonLabel = "Notify Worship",
+  rosterScheduleDate,
+  rosterTeamId,
+  rotationPeriodName,
 }: {
   date: Date;
   campusId?: string;
@@ -2384,6 +2387,9 @@ function SetlistPushButton({
   serviceLabel?: string;
   className?: string;
   buttonLabel?: string;
+  rosterScheduleDate?: string;
+  rosterTeamId?: string;
+  rotationPeriodName?: string | null;
 }) {
   const { isAdmin, canManageTeam } = useAuth();
   const [isSending, setIsSending] = useState(false);
@@ -2393,6 +2399,16 @@ function SetlistPushButton({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const dateStr = formatDateForStorage(date);
   const lookupMinistryType = resolveSetlistPushMinistryType(ministryType);
+  const worshipRosterScheduleDate = rosterScheduleDate ?? dateStr;
+  const worshipRosterContext =
+    rosterTeamId && worshipRosterScheduleDate
+      ? {
+          scheduleDate: worshipRosterScheduleDate,
+          teamId: rosterTeamId,
+          ministryType: lookupMinistryType,
+          rotationPeriodName: rotationPeriodName ?? null,
+        }
+      : null;
   const shouldCheckSet = Boolean(campusId && (isAdmin || canManageTeam));
   const { data: existingSet, isLoading } = useExistingSet(
     shouldCheckSet ? campusId || null : null,
@@ -2428,6 +2444,7 @@ function SetlistPushButton({
         body: {
           draftSetId: existingSet.id,
           manual: true,
+          ...(worshipRosterContext || {}),
         },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
@@ -2482,6 +2499,7 @@ function SetlistPushButton({
           draftSetId: existingSet.id,
           manual: true,
           previewOnly: true,
+          ...(worshipRosterContext || {}),
         },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
@@ -2902,6 +2920,9 @@ function RosterOutreachWidget({
   supportPushMinistry,
   supportPushScheduleDate,
   supportPushTeamId,
+  worshipPushScheduleDate,
+  worshipPushTeamId,
+  worshipPushRotationPeriodName,
 }: {
   date: Date;
   campusId?: string;
@@ -2917,6 +2938,9 @@ function RosterOutreachWidget({
   supportPushMinistry: "production" | "video" | null;
   supportPushScheduleDate?: string | null;
   supportPushTeamId?: string | null;
+  worshipPushScheduleDate?: string;
+  worshipPushTeamId?: string;
+  worshipPushRotationPeriodName?: string | null;
 }) {
   const scheduleDateStr = formatDateForStorage(date);
   const notifyTargets = supportNotificationTargets.filter(
@@ -2942,6 +2966,9 @@ function RosterOutreachWidget({
             campusId={campusId}
             ministryType={ministryFilter}
             serviceLabel={serviceLabel}
+            rosterScheduleDate={worshipPushScheduleDate}
+            rosterTeamId={worshipPushTeamId}
+            rotationPeriodName={worshipPushRotationPeriodName}
             className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
           />
         )}
@@ -3620,6 +3647,9 @@ function BandRoster({
       supportPushMinistry={supportPushMinistry}
       supportPushScheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
       supportPushTeamId={supportPushTeamId}
+      worshipPushScheduleDate={formatDateForStorage(effectiveRosterDate)}
+      worshipPushTeamId={effectiveTeamId}
+      worshipPushRotationPeriodName={effectiveRotationPeriodName}
     />
   );
 
