@@ -37,6 +37,7 @@ import {
   useUpsertServiceTimeOverride,
 } from "@/hooks/useServiceTimeOverrides";
 import { SwapButton } from "@/components/calendar/SwapButton";
+import { CoverButton } from "@/components/calendar/CoverButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
@@ -281,6 +282,7 @@ function StandardCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
+  const [isCoverOpen, setIsCoverOpen] = useState(false);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -1578,7 +1580,12 @@ function StandardCalendar() {
                         </span>
                       </div>
                       {/* Only show swap button if user is on their home team (not swapped in) */}
-                      {!hasSwappedIn && <SwapButton onClick={() => setIsSwapOpen(true)} />}
+                      {!hasSwappedIn && (
+                        <div className="flex items-center gap-2">
+                          <SwapButton onClick={() => setIsSwapOpen(true)} />
+                          <CoverButton onClick={() => setIsCoverOpen(true)} />
+                        </div>
+                      )}
                     </div>
                   </div>}
 
@@ -2044,8 +2051,35 @@ function StandardCalendar() {
                     </div>)}
                 </div>
 
-            {/* Swap Dialog - Only available for home team (not when covering/swapped in) */}
-                {userSchedule && !hasSwappedOut && !hasSwappedIn && <SwapRequestDialog open={isSwapOpen} onOpenChange={setIsSwapOpen} originalDate={selectedDate} position={userSchedule.position || ""} teamId={userSchedule.teamId} teamName={userSchedule.teamName} campusId={userSchedule.campusId} ministryType={userSchedule.ministryType} rotationPeriodId={userSchedule.rotationPeriodId} />}
+            {/* Swap/Cover dialogs - only available for home team (not when covering/swapped in) */}
+                {userSchedule && !hasSwappedOut && !hasSwappedIn && (
+                  <>
+                    <SwapRequestDialog
+                      open={isSwapOpen}
+                      onOpenChange={setIsSwapOpen}
+                      requestMode="swap"
+                      originalDate={selectedDate}
+                      position={userSchedule.position || ""}
+                      teamId={userSchedule.teamId}
+                      teamName={userSchedule.teamName}
+                      campusId={userSchedule.campusId}
+                      ministryType={userSchedule.ministryType}
+                      rotationPeriodId={userSchedule.rotationPeriodId}
+                    />
+                    <SwapRequestDialog
+                      open={isCoverOpen}
+                      onOpenChange={setIsCoverOpen}
+                      requestMode="fill_in"
+                      originalDate={selectedDate}
+                      position={userSchedule.position || ""}
+                      teamId={userSchedule.teamId}
+                      teamName={userSchedule.teamName}
+                      campusId={userSchedule.campusId}
+                      ministryType={userSchedule.ministryType}
+                      rotationPeriodId={userSchedule.rotationPeriodId}
+                    />
+                  </>
+                )}
               </div>;
         })()}
 

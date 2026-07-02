@@ -32,6 +32,7 @@ import { toast } from "sonner";
 interface SwapRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  requestMode: "swap" | "fill_in";
   originalDate: Date;
   position: string;
   teamId: string;
@@ -43,13 +44,13 @@ interface SwapRequestDialogProps {
 
 const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals", "vocals", "vocalist 1", "vocalist"];
 
-type RequestMode = "swap" | "fill_in";
 type SwapType = "open" | "direct";
-type Step = "mode" | "type" | "details";
+type Step = "type" | "details";
 
 export function SwapRequestDialog({
   open,
   onOpenChange,
+  requestMode,
   originalDate,
   position,
   teamId,
@@ -60,8 +61,7 @@ export function SwapRequestDialog({
 }: SwapRequestDialogProps) {
   const { user } = useAuth();
   const { data: userProfile } = useProfile(user?.id);
-  const [step, setStep] = useState<Step>("mode");
-  const [requestMode, setRequestMode] = useState<RequestMode>("swap");
+  const [step, setStep] = useState<Step>("type");
   const [swapType, setSwapType] = useState<SwapType>("open");
   const [targetUserId, setTargetUserId] = useState<string>("");
   const [swapDate, setSwapDate] = useState<Date | undefined>();
@@ -159,8 +159,7 @@ export function SwapRequestDialog({
     onOpenChange(false);
     // Reset state after close animation
     setTimeout(() => {
-      setStep("mode");
-      setRequestMode("swap");
+      setStep("type");
       setSwapType("open");
       setTargetUserId("");
       setSwapDate(undefined);
@@ -199,11 +198,8 @@ export function SwapRequestDialog({
     : (swapType === "open" || (swapType === "direct" && targetUserId && swapDate));
 
   const getStepDescription = () => {
-    if (step === "mode") {
-      return "What kind of coverage do you need?";
-    }
     if (step === "type") {
-      return requestMode === "fill_in" 
+      return requestMode === "fill_in"
         ? "Choose how you want to request a cover"
         : "Choose how you want to request a swap";
     }
@@ -229,12 +225,12 @@ export function SwapRequestDialog({
           <DialogDescription>{getStepDescription()}</DialogDescription>
         </DialogHeader>
 
-        {/* Step 1: Choose Mode (Swap vs Cover) */}
-        {step === "mode" && (
+        {/* Step 1: Choose Type (Open vs Direct) */}
+        {step === "type" && (
           <div className="space-y-4 py-4">
             <div className="rounded-lg border p-3 bg-muted/50">
               <p className="text-sm text-muted-foreground">
-                You're scheduled to play the{" "}
+                You're scheduled for{" "}
                 <span className="font-medium text-foreground">
                   {formatWeekendDisplay()}
                 </span>{" "}
@@ -243,55 +239,6 @@ export function SwapRequestDialog({
               </p>
             </div>
 
-            <RadioGroup
-              value={requestMode}
-              onValueChange={(v) => setRequestMode(v as RequestMode)}
-              className="space-y-3"
-            >
-              <div
-                className={cn(
-                  "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
-                  requestMode === "swap" && "border-primary bg-primary/5"
-                )}
-                onClick={() => setRequestMode("swap")}
-              >
-                <RadioGroupItem value="swap" id="mode-swap" className="mt-1" />
-                <div className="flex-1">
-                  <Label htmlFor="mode-swap" className="flex items-center gap-2 cursor-pointer">
-                    <ArrowLeftRight className="h-4 w-4" />
-                    Swap dates
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Trade your date with someone else's date
-                  </p>
-                </div>
-              </div>
-
-              <div
-                className={cn(
-                  "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors",
-                  requestMode === "fill_in" && "border-primary bg-primary/5"
-                )}
-                onClick={() => setRequestMode("fill_in")}
-              >
-                <RadioGroupItem value="fill_in" id="mode-fill-in" className="mt-1" />
-                <div className="flex-1">
-                  <Label htmlFor="mode-fill-in" className="flex items-center gap-2 cursor-pointer">
-                    <UserPlus className="h-4 w-4" />
-                    Ask someone to cover
-                  </Label>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Have someone cover for you without trading dates
-                  </p>
-                </div>
-              </div>
-            </RadioGroup>
-          </div>
-        )}
-
-        {/* Step 2: Choose Type (Open vs Direct) */}
-        {step === "type" && (
-          <div className="space-y-4 py-4">
             <RadioGroup
               value={swapType}
               onValueChange={(v) => setSwapType(v as SwapType)}
@@ -518,19 +465,12 @@ export function SwapRequestDialog({
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
-          {step === "type" && (
-            <Button variant="ghost" onClick={() => setStep("mode")}>
-              Back
-            </Button>
-          )}
           {step === "details" && (
             <Button variant="ghost" onClick={() => setStep("type")}>
               Back
             </Button>
           )}
-          {step === "mode" ? (
-            <Button onClick={() => setStep("type")}>Continue</Button>
-          ) : step === "type" ? (
+          {step === "type" ? (
             <Button onClick={() => setStep("details")}>Continue</Button>
           ) : (
             <Button
