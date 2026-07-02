@@ -45,6 +45,23 @@ function formatDateLabel(dateStr: string) {
   });
 }
 
+function buildPushContent(params: {
+  campusName: string;
+  ministryType: "production" | "video";
+  senderName: string;
+  teamName: string;
+  scheduleDate: string;
+}) {
+  const ministryLabel = MINISTRY_LABELS[params.ministryType] || params.ministryType;
+  const formattedDate = formatDateLabel(params.scheduleDate);
+
+  return {
+    title: `${params.campusName} ${ministryLabel} Team Update`,
+    message: `${params.senderName} sent a reminder for ${params.teamName} on ${formattedDate}. Open Calendar to view your schedule.`,
+    link: "/calendar",
+  };
+}
+
 async function buildRecipientPreview(
   supabase: ReturnType<typeof createClient>,
   userIds: string[],
@@ -274,6 +291,13 @@ serve(async (req: Request): Promise<Response> => {
     if (previewOnly) {
       const recipients = await buildRecipientPreview(supabase, recipientUserIds);
       const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
+      const pushPreview = buildPushContent({
+        campusName: campusResult.data?.name || "Campus",
+        ministryType,
+        senderName: senderProfileResult.data?.full_name?.trim() || "Your team lead",
+        teamName,
+        scheduleDate,
+      });
 
       return new Response(
         JSON.stringify({
@@ -282,18 +306,20 @@ serve(async (req: Request): Promise<Response> => {
           recipients,
           recipientCount: recipients.length,
           pushRecipientUserCount,
+          pushPreview,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const ministryLabel = MINISTRY_LABELS[ministryType] || ministryType;
-    const campusName = campusResult.data?.name || "Campus";
-    const senderName = senderProfileResult.data?.full_name?.trim() || "Your team lead";
-    const formattedDate = formatDateLabel(scheduleDate);
-    const title = `${campusName} ${ministryLabel} Team Update`;
-    const message = `${senderName} sent a reminder for ${teamName} on ${formattedDate}. Open Calendar to view your schedule.`;
-    const link = "/calendar";
+    const pushContent = buildPushContent({
+      campusName: campusResult.data?.name || "Campus",
+      ministryType,
+      senderName: senderProfileResult.data?.full_name?.trim() || "Your team lead",
+      teamName,
+      scheduleDate,
+    });
+    const { title, message, link } = pushContent;
 
     let pushSent = 0;
     let pushFailed = 0;

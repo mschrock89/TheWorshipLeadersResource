@@ -250,6 +250,42 @@ type SetlistPushRecipientPreview = {
   hasPushSubscription: boolean;
 };
 
+type TeamSchedulePushPreview = {
+  title: string;
+  message: string;
+  link: string;
+};
+
+function PushNotificationPreviewCard({
+  title,
+  message,
+  linkLabel = "Opens Calendar",
+}: {
+  title: string;
+  message: string;
+  linkLabel?: string;
+}) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Push Preview
+      </p>
+      <div className="mt-3 rounded-2xl border border-border/80 bg-background p-3 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Megaphone className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold leading-snug text-foreground">{title}</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{message}</p>
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">Tapping the notification {linkLabel.toLowerCase()}.</p>
+    </div>
+  );
+}
+
 const defaultNewEventState = {
   event_type: "team_event" as "team_event" | "service",
   title: "",
@@ -2547,6 +2583,7 @@ function TeamSchedulePushButton({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewRecipients, setPreviewRecipients] = useState<SetlistPushRecipientPreview[]>([]);
+  const [pushPreview, setPushPreview] = useState<TeamSchedulePushPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const canManageMinistry =
@@ -2636,6 +2673,7 @@ function TeamSchedulePushButton({
     setIsLoadingPreview(true);
     setPreviewError(null);
     setPreviewRecipients([]);
+    setPushPreview(null);
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -2655,6 +2693,17 @@ function TeamSchedulePushButton({
       if (data?.error) throw new Error(data.error);
 
       setPreviewRecipients(Array.isArray(data?.recipients) ? data.recipients : []);
+      if (
+        data?.pushPreview &&
+        typeof data.pushPreview.title === "string" &&
+        typeof data.pushPreview.message === "string"
+      ) {
+        setPushPreview({
+          title: data.pushPreview.title,
+          message: data.pushPreview.message,
+          link: typeof data.pushPreview.link === "string" ? data.pushPreview.link : "/calendar",
+        });
+      }
     } catch (error) {
       console.error("Failed to prepare team schedule push preview:", error);
       let message = error instanceof Error ? error.message : "Failed to prepare the push preview.";
@@ -2719,6 +2768,13 @@ function TeamSchedulePushButton({
             </div>
           ) : (
             <>
+              {pushPreview && (
+                <PushNotificationPreviewCard
+                  title={pushPreview.title}
+                  message={pushPreview.message}
+                />
+              )}
+
               <div className="rounded-md border border-border p-3">
                 <p className="text-sm font-medium text-foreground">
                   {eligibleRecipientCount} team member{eligibleRecipientCount === 1 ? "" : "s"} will be notified
