@@ -254,16 +254,19 @@ type TeamSchedulePushPreview = {
   title: string;
   message: string;
   link: string;
+  actions?: Array<{ action: string; title: string }>;
 };
 
 function PushNotificationPreviewCard({
   title,
   message,
-  linkLabel = "Opens My Setlists",
+  linkLabel = "Opens My Setlists to confirm",
+  actions = [],
 }: {
   title: string;
   message: string;
   linkLabel?: string;
+  actions?: Array<{ action: string; title: string }>;
 }) {
   return (
     <div className="rounded-md border border-border p-3">
@@ -278,6 +281,18 @@ function PushNotificationPreviewCard({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold leading-snug text-foreground">{title}</p>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{message}</p>
+            {actions.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {actions.map((action) => (
+                  <span
+                    key={action.action}
+                    className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                  >
+                    {action.title}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1001,6 +1016,52 @@ function StandardCalendar() {
   const selectedDayScheduleEntries = selectedDate
     ? getBaseScheduleEntriesForDate(formatDateForStorage(selectedDate))
     : [];
+  const headerFlowCampusId = campusFilter !== "network-wide" ? campusFilter : undefined;
+  const { data: headerPlansWithSongs = [] } = useSongsForDate(
+    selectedDateStr,
+    headerFlowCampusId,
+    ministryFilter,
+  );
+  const headerServiceFlowLink = selectedDateStr
+    ? `/service-flow?date=${selectedDateStr}${headerFlowCampusId ? `&campus=${headerFlowCampusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}`
+    : null;
+  const showHeaderServiceFlowButton = useMemo(() => {
+    if (!selectedDateStr || isCrossCampusReadOnly || selectedDayServices.length > 0) {
+      return false;
+    }
+
+    const hasSongs = headerPlansWithSongs.some((plan) => (plan.songs || []).length > 0);
+    if (!hasSongs || !headerServiceFlowLink) {
+      return false;
+    }
+
+    if (ministryFilter && isSessionSetMinistryType(ministryFilter)) {
+      const sessionBase = normalizeSessionSetMinistryType(ministryFilter);
+      const seenSessionTimes = new Set<string>();
+      const sessionCount = selectedDayScheduleEntries
+        .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
+        .filter((entry) => {
+          const timeOfDay = entry.time_of_day;
+          if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
+          seenSessionTimes.add(timeOfDay);
+          return true;
+        }).length;
+
+      if (sessionCount > 1) {
+        return false;
+      }
+    }
+
+    return true;
+  }, [
+    headerPlansWithSongs,
+    headerServiceFlowLink,
+    isCrossCampusReadOnly,
+    ministryFilter,
+    selectedDateStr,
+    selectedDayScheduleEntries,
+    selectedDayServices.length,
+  ]);
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. HS Worship) should still show even if the user isn't personally scheduled.
@@ -1126,12 +1187,21 @@ function StandardCalendar() {
       }
       seen.add(dedupeKey);
 
+      const baseTeamName = entry.worship_teams?.name || "Team";
+      const selectedDayOfWeek = new Date(`${selectedDateStr}T12:00:00`).getDay();
+      const videoServiceDayLabel =
+        entry.ministry_type === "video" && selectedDayOfWeek === 6
+          ? "Saturday"
+          : entry.ministry_type === "video" && selectedDayOfWeek === 0
+            ? "Sunday"
+            : null;
+
       return [{
         campusId: campusFilter,
         campusName: campuses.find((campus) => campus.id === campusFilter)?.name || "Campus",
         ministryType: entry.ministry_type,
         teamId: entry.team_id,
-        teamName: entry.worship_teams?.name || "Team",
+        teamName: videoServiceDayLabel ? `${baseTeamName} ${videoServiceDayLabel}` : baseTeamName,
       }];
     });
   }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
@@ -1453,13 +1523,23 @@ function StandardCalendar() {
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
           return <div className="rounded-lg border border-border bg-card p-3 sm:p-4">
                 {/* Header Row */}
-                <div className="flex items-start justify-between mb-2 gap-2">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="text-base sm:text-lg font-semibold text-foreground">
-                      {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
-                    </h2>
+                <div className="mb-2">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-semibold leading-none text-foreground">
+                        {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
+                      </h2>
+                      {showHeaderServiceFlowButton && headerServiceFlowLink && (
+                        <ServiceFlowLinkButton to={headerServiceFlowLink} compact />
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="min-w-0">
                     {/* Service Times */}
-                    {serviceTimes && serviceTimes.length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {serviceTimes && serviceTimes.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-1">
                         {serviceTimes.map((st, idx) => <span key={idx} className="text-xs text-muted-foreground">
                             <span className="font-medium text-foreground/70">{st.campusName}</span>
                             {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
@@ -1548,33 +1628,6 @@ function StandardCalendar() {
                           Add extra Friday, Saturday, or Sunday services for this specific weekend.
                         </span>
                       </div>}
-                    {selectedSupportNotificationTargets.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {selectedSupportNotificationTargets.map((target) => {
-                      const targetKey = `${target.teamId}:${target.ministryType}:${selectedDateStr || ""}`;
-                      const ministryLabel = getMinistryLabel(target.ministryType);
-                      return (
-                        <TeamSchedulePushButton
-                          key={targetKey}
-                          scheduleDate={selectedDateStr}
-                          campusId={target.campusId}
-                          ministryType={target.ministryType}
-                          teamId={target.teamId}
-                          serviceLabel={target.teamName}
-                          buttonLabel={`Notify ${ministryLabel}`}
-                          className="h-7 gap-1 px-2 text-xs"
-                          compact
-                        />
-                      );
-                    })}
-                        <span className="text-xs text-muted-foreground">
-                          Preview recipients, then send a reminder to the scheduled Production or Video team.
-                        </span>
-                      </div>}
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="text-muted-foreground hover:text-foreground h-7 w-7">
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
 
@@ -1781,7 +1834,7 @@ function StandardCalendar() {
                                   ministryFilter={variant}
                                   readOnly={isCrossCampusReadOnly}
                                 />
-                                <div className="flex items-center justify-between mb-2 gap-2">
+                                <div className="mb-2">
                                   <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
                                 </div>
                                 <BandRoster
@@ -1812,8 +1865,9 @@ function StandardCalendar() {
                         campusId={sessionCampusId}
                         ministryFilter={ministryFilter}
                         readOnly={isCrossCampusReadOnly}
+                        hideServiceFlowButton={showHeaderServiceFlowButton}
                       />
-                      <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="mb-2">
                         <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
                       </div>
                       <BandRoster
@@ -1831,6 +1885,7 @@ function StandardCalendar() {
                           return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
                         })()}
                         campusId={sessionCampusId}
+                        supportNotificationTargets={selectedSupportNotificationTargets}
                       />
                     </>
                   );
@@ -2320,6 +2375,7 @@ function SetlistPushButton({
   customServiceId = null,
   serviceLabel,
   className,
+  buttonLabel = "Notify Worship",
 }: {
   date: Date;
   campusId?: string;
@@ -2327,6 +2383,7 @@ function SetlistPushButton({
   customServiceId?: string | null;
   serviceLabel?: string;
   className?: string;
+  buttonLabel?: string;
 }) {
   const { isAdmin, canManageTeam } = useAuth();
   const [isSending, setIsSending] = useState(false);
@@ -2470,7 +2527,7 @@ function SetlistPushButton({
         title={disabledTitle || `Prepare ${serviceLabel || "setlist"} push to the roster`}
       >
         {isLoadingPreview || isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-        Push
+        {buttonLabel}
       </Button>
       <DialogContent className="max-h-[85vh] overflow-hidden bg-card sm:max-w-md">
         <DialogHeader>
@@ -2701,7 +2758,8 @@ function TeamSchedulePushButton({
         setPushPreview({
           title: data.pushPreview.title,
           message: data.pushPreview.message,
-          link: typeof data.pushPreview.link === "string" ? data.pushPreview.link : "/calendar",
+          link: typeof data.pushPreview.link === "string" ? data.pushPreview.link : "/my-setlists",
+          actions: Array.isArray(data.pushPreview.actions) ? data.pushPreview.actions : [],
         });
       }
     } catch (error) {
@@ -2772,6 +2830,7 @@ function TeamSchedulePushButton({
                 <PushNotificationPreviewCard
                   title={pushPreview.title}
                   message={pushPreview.message}
+                  actions={pushPreview.actions}
                 />
               )}
 
@@ -2833,6 +2892,108 @@ function TeamSchedulePushButton({
 }
 
 // Band Roster Component
+function RosterOutreachWidget({
+  date,
+  campusId,
+  ministryFilter,
+  serviceLabel,
+  groupTextMembers,
+  supportNotificationTargets = [],
+  supportPushMinistry,
+  supportPushScheduleDate,
+  supportPushTeamId,
+}: {
+  date: Date;
+  campusId?: string;
+  ministryFilter?: string;
+  serviceLabel?: string;
+  groupTextMembers: Array<{
+    memberName: string;
+    phone: string | null;
+    ministryTypes?: string[] | null;
+    positions: string[];
+  }>;
+  supportNotificationTargets?: ScheduleNotificationTarget[];
+  supportPushMinistry: "production" | "video" | null;
+  supportPushScheduleDate?: string | null;
+  supportPushTeamId?: string | null;
+}) {
+  const scheduleDateStr = formatDateForStorage(date);
+  const notifyTargets = supportNotificationTargets.filter(
+    (target) => target.ministryType !== supportPushMinistry,
+  );
+  const showSetlistPush = !supportPushMinistry;
+  const showSupportPush = Boolean(supportPushMinistry);
+  const showGroupText = groupTextMembers.length > 0;
+
+  if (!showSetlistPush && !showSupportPush && notifyTargets.length === 0 && !showGroupText) {
+    return null;
+  }
+
+  return (
+    <div className="mb-3 rounded-lg border border-border/70 bg-muted/15 p-3">
+      <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        Team Outreach
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {showSetlistPush && (
+          <SetlistPushButton
+            date={date}
+            campusId={campusId}
+            ministryType={ministryFilter}
+            serviceLabel={serviceLabel}
+            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
+          />
+        )}
+        {showSupportPush && supportPushMinistry && (
+          <TeamSchedulePushButton
+            scheduleDate={supportPushScheduleDate ?? scheduleDateStr}
+            campusId={campusId}
+            ministryType={supportPushMinistry}
+            teamId={supportPushTeamId}
+            serviceLabel={serviceLabel}
+            buttonLabel={`Notify ${getMinistryLabel(supportPushMinistry)}`}
+            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
+            compact
+          />
+        )}
+        {showGroupText && (
+          <GroupTextButton
+            phoneNumbers={groupTextMembers.map((member) => member.phone)}
+            rosterMembers={groupTextMembers.map((member) => ({
+              name: member.memberName,
+              phone: member.phone,
+              ministryTypes: member.ministryTypes,
+              positions: member.positions,
+            }))}
+            defaultMessage={buildRosterGroupTextTemplate({
+              date,
+              serviceLabel,
+            })}
+            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
+          />
+        )}
+        {notifyTargets.map((target) => {
+          const ministryLabel = getMinistryLabel(target.ministryType);
+          return (
+            <TeamSchedulePushButton
+              key={`${target.teamId}:${target.ministryType}`}
+              scheduleDate={scheduleDateStr}
+              campusId={target.campusId}
+              ministryType={target.ministryType}
+              teamId={target.teamId}
+              serviceLabel={target.teamName}
+              buttonLabel={`Notify ${ministryLabel}`}
+              className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
+              compact
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function BandRoster({
   date,
   teamId,
@@ -2843,6 +3004,7 @@ function BandRoster({
   scheduledMinistries = [],
   rotationPeriodName,
   timeOfDay,
+  supportNotificationTargets = [],
 }: {
   date: Date;
   teamId?: string;
@@ -2855,6 +3017,7 @@ function BandRoster({
   // For multi-session services (e.g. Student Camp Morning/Evening) this selects the
   // matching team_schedule row by its time_of_day so each session shows its own team.
   timeOfDay?: string | null;
+  supportNotificationTargets?: ScheduleNotificationTarget[];
 }) {
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -3446,38 +3609,18 @@ function BandRoster({
     ministryFilter === "production" ? "production" : ministryFilter === "video" ? "video" : null;
   const supportPushEntry = supportPushMinistry === "production" ? productionEntry : videoEntry;
   const supportPushTeamId = supportPushMinistry === "production" ? productionTeamId : videoTeamId;
-  const rosterActions = (
-    <div className="flex flex-wrap justify-end gap-2">
-      {supportPushMinistry ? (
-        <TeamSchedulePushButton
-          scheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
-          campusId={campusId}
-          ministryType={supportPushMinistry}
-          teamId={supportPushTeamId}
-          serviceLabel={serviceLabel}
-        />
-      ) : (
-        <SetlistPushButton
-          date={date}
-          campusId={campusId}
-          ministryType={ministryFilter}
-          serviceLabel={serviceLabel}
-        />
-      )}
-      <GroupTextButton
-        phoneNumbers={groupTextMembers.map((member) => member.phone)}
-        rosterMembers={groupTextMembers.map((member) => ({
-          name: member.memberName,
-          phone: member.phone,
-          ministryTypes: member.ministryTypes,
-          positions: member.positions,
-        }))}
-        defaultMessage={buildRosterGroupTextTemplate({
-          date,
-          serviceLabel,
-        })}
-      />
-    </div>
+  const outreachWidget = (
+    <RosterOutreachWidget
+      date={date}
+      campusId={campusId}
+      ministryFilter={ministryFilter}
+      serviceLabel={serviceLabel}
+      groupTextMembers={groupTextMembers}
+      supportNotificationTargets={supportNotificationTargets}
+      supportPushMinistry={supportPushMinistry}
+      supportPushScheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
+      supportPushTeamId={supportPushTeamId}
+    />
   );
 
   // Position priority functions
@@ -3702,7 +3845,7 @@ function BandRoster({
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
-        {rosterActions}
+        {outreachWidget}
         <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
           {/* Left Column: Vocalists + Band by Ministry */}
           <div className="space-y-6">
@@ -3728,7 +3871,7 @@ function BandRoster({
   : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !fallbackProductionVideoMembers.includes(m)); // Exclude production/video from band list
 
   return <div className="mb-4">
-      <div className="mb-3">{rosterActions}</div>
+      {outreachWidget}
       <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
         {/* Left Column: Vocalists + Band */}
         <div>
@@ -3742,16 +3885,43 @@ function BandRoster({
 }
 
 // Songs Preview Component
+function ServiceFlowLinkButton({
+  to,
+  compact = false,
+}: {
+  to: string;
+  compact?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={
+        compact
+          ? "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+          : "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700"
+      }
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-75"></span>
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200"></span>
+      </span>
+      Service Flow
+    </Link>
+  );
+}
+
 function SongsPreview({
   date,
   campusId,
   ministryFilter,
   readOnly = false,
+  hideServiceFlowButton = false,
 }: {
   date: Date;
   campusId?: string;
   ministryFilter?: string;
   readOnly?: boolean;
+  hideServiceFlowButton?: boolean;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -3772,26 +3942,22 @@ function SongsPreview({
   const allSongs = plansWithSongs.flatMap(p => p.songs || []);
   if (allSongs.length === 0) return null;
   return <div className="mb-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className={`mb-2 ${hideServiceFlowButton && !readOnly ? "" : "flex items-center justify-between"}`}>
         <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
           <Music className="h-3.5 w-3.5" />
           Songs
         </h3>
+        {!hideServiceFlowButton && (
         <div className="flex items-center gap-2">
           {readOnly ? (
             <Badge variant="outline" className="text-xs">
               View only
             </Badge>
           ) : (
-            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-              </span>
-              Service Flow
-            </Link>
+            <ServiceFlowLinkButton to={serviceFlowLink} />
           )}
         </div>
+        )}
       </div>
       <div className="space-y-1.5">
         {allSongs.slice(0, 6).map((song, index) => <div key={`${song.id}-${index}`} className="flex items-center justify-between text-sm py-1">
@@ -3861,13 +4027,7 @@ function CustomServiceSongsPreview({
     if (readOnly) return null;
 
     return <div className="mb-4 flex justify-end">
-        <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-          </span>
-          Service Flow
-        </Link>
+        <ServiceFlowLinkButton to={serviceFlowLink} />
       </div>;
   }
 
@@ -3884,13 +4044,7 @@ function CustomServiceSongsPreview({
               View only
             </Badge>
           ) : (
-            <Link to={serviceFlowLink} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span>
-              </span>
-              Service Flow
-            </Link>
+            <ServiceFlowLinkButton to={serviceFlowLink} />
           )}
         </div>
       </div>

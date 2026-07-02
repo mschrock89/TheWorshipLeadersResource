@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSupportTeamNotificationUserIds } from "../_shared/supportTeamNotificationRecipients.ts";
+import {
+  buildSupportTeamPushContent,
+  getSupportTeamPushTag,
+  resolveSetlistConfirmLink,
+} from "../_shared/supportTeamPushContent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,10 +23,6 @@ const ADMIN_LIKE_ROLES = new Set([
   "network_worship_leader",
 ]);
 
-const MINISTRY_LABELS: Record<string, string> = {
-  production: "Production",
-  video: "Video",
-};
 
 interface NotifyScheduleRequest {
   scheduleDate: string;
@@ -35,29 +36,6 @@ interface RecipientPreview {
   userId: string;
   name: string;
   hasPushSubscription: boolean;
-}
-
-function formatDateLabel(dateStr: string) {
-  return new Date(`${dateStr}T12:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function buildPushContent(params: {
-  ministryType: "production" | "video";
-  teamName: string;
-  scheduleDate: string;
-}) {
-  const ministryLabel = MINISTRY_LABELS[params.ministryType] || params.ministryType;
-  const formattedDate = formatDateLabel(params.scheduleDate);
-
-  return {
-    title: `${params.teamName} ${ministryLabel} — ${formattedDate}`,
-    message: `You're scheduled to serve with ${params.teamName} on ${formattedDate}. Open My Setlists to confirm you've reviewed the setlist.`,
-    link: "/my-setlists",
-  };
 }
 
 async function buildRecipientPreview(
@@ -166,7 +144,7 @@ serve(async (req: Request): Promise<Response> => {
         .eq("user_id", user.id),
       supabase
         .from("campuses")
-        .select("name")
+        .select("name, has_saturday_service, has_sunday_service")
         .eq("id", campusId)
         .maybeSingle(),
       supabase
@@ -258,6 +236,13 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    const campusWeekendConfig = campusResult.data
+      ? {
+        has_saturday_service: campusResult.data.has_saturday_service,
+        has_sunday_service: campusResult.data.has_sunday_service,
+      }
+      : null;
+
     let recipientUserIds: string[] = [];
     try {
       recipientUserIds = await resolveSupportTeamNotificationUserIds(supabase, {
@@ -266,6 +251,7 @@ serve(async (req: Request): Promise<Response> => {
         ministryType,
         teamId: resolvedTeamId,
         rotationPeriodName,
+        campus: campusWeekendConfig,
       });
     } catch (resolveError) {
       console.error("Failed to resolve schedule notification recipients:", resolveError);
@@ -289,10 +275,17 @@ serve(async (req: Request): Promise<Response> => {
     if (previewOnly) {
       const recipients = await buildRecipientPreview(supabase, recipientUserIds);
       const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
-      const pushPreview = buildPushContent({
+      const confirmLink = await resolveSetlistConfirmLink(supabase, {
+        campusId,
+        scheduleDate,
+        campus: campusWeekendConfig,
+      });
+      const pushPreview = buildSupportTeamPushContent({
         ministryType,
         teamName,
         scheduleDate,
+        campus: campusWeekendConfig,
+        confirmLink,
       });
 
       return new Response(
@@ -308,12 +301,19 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const pushContent = buildPushContent({
+    const confirmLink = await resolveSetlistConfirmLink(supabase, {
+      campusId,
+      scheduleDate,
+      campus: campusWeekendConfig,
+    });
+    const pushContent = buildSupportTeamPushContent({
       ministryType,
       teamName,
       scheduleDate,
+      campus: campusWeekendConfig,
+      confirmLink,
     });
-    const { title, message, link } = pushContent;
+    const { title, message, link, actions } = pushContent;
 
     let pushSent = 0;
     let pushFailed = 0;
@@ -329,7 +329,8 @@ serve(async (req: Request): Promise<Response> => {
           title,
           message,
           url: link,
-          tag: `schedule-date-${ministryType}-${campusId}-${scheduleDate}`,
+          actions,
+          tag: getSupportTeamPushTag({ ministryType, campusId, scheduleDate }),
           userIds: recipientUserIds,
           contextType: "team-schedule-date",
         }),

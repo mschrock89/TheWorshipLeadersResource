@@ -220,8 +220,9 @@ function StandardMySetlists() {
   const { isAdmin, canManageTeam, user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
   const setlistsPageLabel = "My Setlists";
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const highlightSetId = searchParams.get("setId");
+  const shouldConfirmFromLink = searchParams.get("confirm") === "1";
   const { data: campuses } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const { data: userRoles = [] } = useUserRoles(user?.id);
@@ -287,6 +288,7 @@ function StandardMySetlists() {
   const confirmSetlist = useConfirmSetlist();
   const confirmSetlists = useConfirmSetlists();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const autoConfirmAttemptedRef = useRef(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; draftSetSongId?: string | null; originalKey?: string | null } | null>(null);
   const isMobile = useIsMobile();
@@ -361,6 +363,72 @@ function StandardMySetlists() {
       }
     }
   }, [highlightSetId, visibleGroupedSetlists, isLoading]);
+
+  useEffect(() => {
+    if (
+      !shouldConfirmFromLink ||
+      !highlightSetId ||
+      isLoading ||
+      autoConfirmAttemptedRef.current ||
+      confirmSetlist.isPending ||
+      confirmSetlists.isPending
+    ) {
+      return;
+    }
+
+    const targetSetlist = visibleGroupedSetlists
+      .flatMap((group) => group.items)
+      .find((item) => item.id === highlightSetId);
+
+    if (!targetSetlist || targetSetlist.myConfirmation || targetSetlist.amIOnRoster !== true) {
+      return;
+    }
+
+    const group = visibleGroupedSetlists.find((entry) =>
+      entry.items.some((item) => item.id === highlightSetId),
+    );
+    if (!group) return;
+
+    const clearConfirmParam = () => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("confirm");
+      setSearchParams(nextParams, { replace: true });
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      autoConfirmAttemptedRef.current = true;
+
+      const combinedUnit = buildSessionRenderUnits(group.items).find(
+        (unit) =>
+          unit.kind === "combined" &&
+          unit.sessions.some((session) => session.id === highlightSetId),
+      );
+
+      if (combinedUnit) {
+        const unconfirmedSessionIds = combinedUnit.sessions
+          .filter((session) => !session.myConfirmation)
+          .map((session) => session.id);
+
+        if (unconfirmedSessionIds.length > 0) {
+          confirmSetlists.mutate(unconfirmedSessionIds, { onSettled: clearConfirmParam });
+          return;
+        }
+      }
+
+      confirmSetlist.mutate(highlightSetId, { onSettled: clearConfirmParam });
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    confirmSetlist,
+    confirmSetlists,
+    highlightSetId,
+    isLoading,
+    searchParams,
+    setSearchParams,
+    shouldConfirmFromLink,
+    visibleGroupedSetlists,
+  ]);
 
   const goToPrevious = () => {
     setCurrentIndex(prev => Math.max(0, prev - 1));

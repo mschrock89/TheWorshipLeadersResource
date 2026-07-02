@@ -1,4 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  type CampusWeekendServiceConfig,
+  getWeekendScheduleDates,
+  isWeekend,
+} from "./supportTeamPushContent.ts";
 
 const WEEKEND_ROSTER_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
 const PRODUCTION_POSITION_SLOTS = new Set([
@@ -178,7 +183,19 @@ function memberMatchesRotationPeriod(
   return !!member.rotation_period_id && rotationPeriodIds.includes(member.rotation_period_id);
 }
 
-export async function resolveSupportTeamNotificationUserIds(
+function assignmentMatchesServiceDayForMinistry(
+  assignment: Pick<TeamMemberLike, "service_day">,
+  dateStr: string,
+  ministryType: "production" | "video",
+): boolean {
+  if (ministryType === "production") {
+    return true;
+  }
+
+  return assignmentMatchesServiceDay(assignment, dateStr);
+}
+
+async function resolveSupportTeamNotificationUserIdsForDate(
   supabase: SupabaseClient,
   params: {
     scheduleDate: string;
@@ -206,7 +223,7 @@ export async function resolveSupportTeamNotificationUserIds(
 
   const baseMembers = (members || []).filter((member) =>
     memberMatchesRotationPeriod(member, rotationPeriodIds) &&
-    assignmentMatchesServiceDay(member, scheduleDate) &&
+    assignmentMatchesServiceDayForMinistry(member, scheduleDate, ministryType) &&
     assignmentMatchesRosterFilter(member, ministryType),
   );
 
@@ -281,4 +298,40 @@ export async function resolveSupportTeamNotificationUserIds(
   }
 
   return Array.from(userIds);
+}
+
+export async function resolveSupportTeamNotificationUserIds(
+  supabase: SupabaseClient,
+  params: {
+    scheduleDate: string;
+    campusId: string;
+    ministryType: "production" | "video";
+    teamId: string;
+    rotationPeriodName?: string | null;
+    campus?: CampusWeekendServiceConfig | null;
+  },
+): Promise<string[]> {
+  const { scheduleDate, ministryType, campus } = params;
+  const scheduleDates =
+    ministryType === "production" && isWeekend(scheduleDate)
+      ? getWeekendScheduleDates(scheduleDate, campus)
+      : [scheduleDate];
+
+  if (scheduleDates.length === 1) {
+    return resolveSupportTeamNotificationUserIdsForDate(supabase, {
+      ...params,
+      scheduleDate: scheduleDates[0],
+    });
+  }
+
+  const recipientSets = await Promise.all(
+    scheduleDates.map((date) =>
+      resolveSupportTeamNotificationUserIdsForDate(supabase, {
+        ...params,
+        scheduleDate: date,
+      }),
+    ),
+  );
+
+  return Array.from(new Set(recipientSets.flat()));
 }

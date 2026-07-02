@@ -45,7 +45,10 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  const url = event.notification.data?.url || '/';
+  let url = event.notification.data?.url || '/';
+  if (event.action === 'confirm') {
+    url = event.notification.data?.confirmUrl || url;
+  }
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {

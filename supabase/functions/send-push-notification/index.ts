@@ -21,6 +21,7 @@ interface PushPayload {
   createdBy?: string;
   metadata?: Record<string, unknown>;
   skipLogging?: boolean;
+  actions?: Array<{ action: string; title: string }>;
 }
 
 const ADMIN_TEST_ROLES = [
@@ -649,8 +650,10 @@ serve(async (req) => {
       icon: "/em-logo-white.png",
       badge: "/em-badge.png",
       tag: payload.tag || "default",
+      actions: payload.actions || [],
       data: {
         url: payload.url || "/dashboard",
+        confirmUrl: payload.url || "/dashboard",
       },
     });
 
