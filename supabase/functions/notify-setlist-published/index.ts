@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveWorshipTeamNotificationUserIds } from "../_shared/worshipTeamNotificationRecipients.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,7 +14,6 @@ interface NotifyRequest {
   scheduleDate?: string;
   teamId?: string;
   ministryType?: string;
-  rotationPeriodName?: string | null;
 }
 
 const WEEKEND_WORSHIP_MINISTRIES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
@@ -247,7 +245,6 @@ serve(async (req) => {
       scheduleDate,
       teamId,
       ministryType,
-      rotationPeriodName,
     }: NotifyRequest = await req.json();
 
     if (!draftSetId) {
@@ -324,22 +321,28 @@ serve(async (req) => {
       Boolean(draftSet.campus_id);
 
     if (useWeekendWorshipRoster) {
-      try {
-        const worshipUserIds = await resolveWorshipTeamNotificationUserIds(supabase, {
-          scheduleDate: scheduleDate!,
-          campusId: draftSet.campus_id,
-          teamId: teamId!,
-          ministryType: ministryType === "weekend_team" ? "weekend_team" : ministryType,
-          rotationPeriodName,
-        });
-        userIdsToNotify = await filterNotifiableRosterUserIds(supabase, worshipUserIds);
-      } catch (resolveError) {
-        console.error("Error resolving weekend worship push recipients:", resolveError);
+      const { data: worshipRosterRows, error: worshipRosterError } = await supabase.rpc(
+        "get_roster_notifiable_user_ids",
+        {
+          p_schedule_date: scheduleDate,
+          p_campus_id: draftSet.campus_id,
+          p_ministry_type: ministryType === "weekend_team" ? "weekend_team" : ministryType,
+          p_team_id: teamId,
+        },
+      );
+
+      if (worshipRosterError) {
+        console.error("Error fetching weekend worship push recipients:", worshipRosterError);
         return new Response(
           JSON.stringify({ error: "Failed to load the scheduled worship team roster" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
+
+      const worshipUserIds = (worshipRosterRows || [])
+        .map((row: { user_id: string }) => row.user_id)
+        .filter(Boolean) as string[];
+      userIdsToNotify = await filterNotifiableRosterUserIds(supabase, worshipUserIds);
     } else {
       const { data: rosterRows, error: rosterError } = await supabase.rpc(
         "get_setlist_notifiable_user_ids",
