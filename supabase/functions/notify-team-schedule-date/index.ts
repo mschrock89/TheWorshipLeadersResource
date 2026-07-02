@@ -332,7 +332,8 @@ serve(async (req: Request): Promise<Response> => {
       const roles = rolesByUser.get(userId) || [];
       const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.has(role));
       const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-      return isVolunteer && !hasLeadershipRole;
+      // Roster membership is already scoped above; include volunteers and rostered admins/leaders.
+      return isVolunteer || hasLeadershipRole;
     });
 
     if (recipientUserIds.length === 0) {

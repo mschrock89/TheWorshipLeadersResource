@@ -22,12 +22,21 @@ import {
 } from "@/lib/constants";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
+import { useCampuses, type Campus } from "@/hooks/useCampuses";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import {
   filterByResourceAppMinistry,
   filterStudentWednesdayFlows,
   getResourceAppMinistryTypes,
 } from "@/lib/studentFlow";
+import {
+  formatWeekendGroupDateLabelCompact,
+  getWeekendKey,
+  getWeekendPairDate,
+  isWeekend,
+  parseLocalDate,
+  type CampusWeekendServiceConfig,
+} from "@/lib/utils";
 
 interface SetlistMember {
   userId: string;
@@ -70,6 +79,23 @@ function getTargetRosterMinistry(ministryFilter: string, setlistMinistry: string
 
 function getMinistryLabel(type: string) {
   return MINISTRY_TYPES.find((ministry) => ministry.value === type)?.label || type;
+}
+
+function formatSetlistPlanDateLabel(
+  planDate: string,
+  ministryType: string,
+  campus?: CampusWeekendServiceConfig | null,
+): string {
+  const normalizedMinistry = normalizeWeekendWorshipMinistryType(ministryType) || ministryType;
+  if (
+    (WEEKEND_MINISTRY_ALIASES.has(ministryType) || normalizedMinistry === "weekend") &&
+    isWeekend(planDate)
+  ) {
+    const saturdayDate = getWeekendKey(planDate);
+    const sundayDate = getWeekendPairDate(saturdayDate) || planDate;
+    return formatWeekendGroupDateLabelCompact(saturdayDate, sundayDate, campus);
+  }
+  return format(parseLocalDate(planDate), "MMM d, yyyy");
 }
 
 function getInitials(name: string) {
@@ -376,12 +402,14 @@ function CombinedSessionSetlistRow({
   sessions,
   selectedCampusId,
   ministryFilter,
+  campusById,
   isExpanded,
   onToggle,
 }: {
   sessions: PublishedSetlist[];
   selectedCampusId: string;
   ministryFilter: string;
+  campusById: Map<string, Campus>;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -460,7 +488,11 @@ function CombinedSessionSetlistRow({
 
   return (
     <ConfirmationRowView
-      dateLabel={format(setDate, "MMM d, yyyy")}
+      dateLabel={formatSetlistPlanDateLabel(
+        first.plan_date,
+        baseMinistry,
+        first.campus_id ? campusById.get(first.campus_id) : undefined,
+      )}
       ministryLabel={getMinistryLabel(baseMinistry)}
       showCampus={selectedCampusId === "all"}
       campusName={first.campuses?.name}
@@ -477,12 +509,14 @@ function SetlistRow({
   setlist,
   selectedCampusId,
   ministryFilter,
+  campusById,
   isExpanded,
   onToggle,
 }: {
   setlist: PublishedSetlist;
   selectedCampusId: string;
   ministryFilter: string;
+  campusById: Map<string, Campus>;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -638,7 +672,11 @@ function SetlistRow({
 
   return (
     <ConfirmationRowView
-      dateLabel={format(new Date(`${setlist.plan_date}T00:00:00`), "MMM d, yyyy")}
+      dateLabel={formatSetlistPlanDateLabel(
+        setlist.plan_date,
+        setlist.ministry_type,
+        setlist.campus_id ? campusById.get(setlist.campus_id) : undefined,
+      )}
       ministryLabel={getMinistryLabel(setlist.ministry_type)}
       showCampus={selectedCampusId === "all"}
       campusName={setlist.campuses?.name}
@@ -681,6 +719,11 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
     ? "Publish a setlist to track confirmations"
     : "Publish a setlist from Set Builder to track confirmations";
   const today = format(new Date(), "yyyy-MM-dd");
+  const { data: campuses = [] } = useCampuses();
+  const campusById = useMemo(
+    () => new Map(campuses.map((campus) => [campus.id, campus])),
+    [campuses],
+  );
 
   const { data: setlists = [], isLoading } = useQuery({
     queryKey: ["admin-setlist-confirmations", selectedCampusId, ministryFilter, isStudentApp, resourceAppKey, today],
@@ -887,6 +930,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
                     sessions={unit.sessions}
                     selectedCampusId={selectedCampusId}
                     ministryFilter={ministryFilter}
+                    campusById={campusById}
                     isExpanded={expandedSetlistId === unit.key}
                     onToggle={() => setExpandedSetlistId(expandedSetlistId === unit.key ? null : unit.key)}
                   />
@@ -896,6 +940,7 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
                     setlist={unit.setlist}
                     selectedCampusId={selectedCampusId}
                     ministryFilter={ministryFilter}
+                    campusById={campusById}
                     isExpanded={expandedSetlistId === unit.setlist.id}
                     onToggle={() => setExpandedSetlistId(expandedSetlistId === unit.setlist.id ? null : unit.setlist.id)}
                   />

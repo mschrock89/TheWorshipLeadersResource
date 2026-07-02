@@ -90,7 +90,7 @@ import {
   isBlankTeamBuilderAssignment,
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
-import { formatPositionLabel, getWeekendKey, isWeekend } from "@/lib/utils";
+import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
@@ -129,6 +129,39 @@ function shouldUseSplitTeamCards(ministryType: string, campusName?: string | nul
   }
 
   return ministryType === "eon_weekend" && campusName === "Murfreesboro Central";
+}
+
+function getServiceDayForDate(dateStr: string): "saturday" | "sunday" | null {
+  const day = parseLocalDate(dateStr).getDay();
+  if (day === 6) return "saturday";
+  if (day === 0) return "sunday";
+  return null;
+}
+
+function filterScheduleDatesForServiceDay(
+  scheduleDates: string[],
+  serviceDay: "saturday" | "sunday" | null,
+): string[] {
+  if (!serviceDay) return scheduleDates;
+  return scheduleDates.filter((date) => getServiceDayForDate(date) === serviceDay);
+}
+
+function filterOverridesByServiceDay<T>(
+  overridesBySlot: Record<string, Record<string, T>>,
+  serviceDay: "saturday" | "sunday" | null,
+): Record<string, Record<string, T>> {
+  if (!serviceDay) return overridesBySlot;
+
+  return Object.fromEntries(
+    Object.entries(overridesBySlot).map(([slot, overridesByDate]) => [
+      slot,
+      Object.fromEntries(
+        Object.entries(overridesByDate).filter(
+          ([date]) => getServiceDayForDate(date) === serviceDay,
+        ),
+      ),
+    ]),
+  );
 }
 
 const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
@@ -1830,15 +1863,28 @@ export default function TeamBuilder() {
                       campusName={selectedCampus?.name}
                       slotConflictDates={combinedConflictDatesByTeamSlot[team.id] || {}}
                       slotScheduleDates={
-                        serviceDay || !supportsDateSpecificAssignments ? [] : scheduleDatesByTeam[team.id] || []
+                        !supportsDateSpecificAssignments
+                          ? []
+                          : filterScheduleDatesForServiceDay(
+                              scheduleDatesByTeam[team.id] || [],
+                              serviceDay,
+                            )
                       }
                       slotDateOverrides={
-                        serviceDay || !supportsDateSpecificAssignments ? {} : dateOverridesByTeamSlot[team.id] || {}
+                        !supportsDateSpecificAssignments
+                          ? {}
+                          : filterOverridesByServiceDay(
+                              dateOverridesByTeamSlot[team.id] || {},
+                              serviceDay,
+                            )
                       }
                       slotDateOverrideConflictDates={
-                        serviceDay || !supportsDateSpecificAssignments
+                        !supportsDateSpecificAssignments
                           ? {}
-                          : blackoutConflictDatesByTeamSlotDateOverride[team.id] || {}
+                          : filterOverridesByServiceDay(
+                              blackoutConflictDatesByTeamSlotDateOverride[team.id] || {},
+                              serviceDay,
+                            )
                       }
                       titleOverride={title}
                     />
