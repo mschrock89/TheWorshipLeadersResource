@@ -1,25 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveSupportTeamNotificationUserIds } from "../_shared/supportTeamNotificationRecipients.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-resource-app-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const LEADERSHIP_ROLES = new Set([
-  "admin",
-  "campus_admin",
-  "campus_worship_pastor",
-  "student_worship_pastor",
-  "childrens_pastor",
-  "network_worship_pastor",
-  "network_worship_leader",
-  "leader",
-  "video_director",
-  "production_manager",
-  "campus_pastor",
-]);
 
 const ADMIN_LIKE_ROLES = new Set([
   "admin",
@@ -55,42 +42,6 @@ function formatDateLabel(dateStr: string) {
     weekday: "short",
     month: "short",
     day: "numeric",
-  });
-}
-
-async function filterNotifiableRosterUserIds(
-  supabase: ReturnType<typeof createClient>,
-  userIds: string[],
-): Promise<string[]> {
-  const dedupedUserIds = Array.from(new Set(userIds.filter(Boolean)));
-  if (dedupedUserIds.length === 0) {
-    return [];
-  }
-
-  const { data: recipientRoles, error: recipientRolesError } = await supabase
-    .from("user_roles")
-    .select("user_id, role")
-    .in("user_id", dedupedUserIds);
-
-  if (recipientRolesError) {
-    console.error("Failed to load recipient roles:", recipientRolesError);
-    return [];
-  }
-
-  const rolesByUser = new Map<string, string[]>();
-  for (const row of recipientRoles || []) {
-    const next = rolesByUser.get(row.user_id) || [];
-    next.push(row.role);
-    rolesByUser.set(row.user_id, next);
-  }
-
-  return dedupedUserIds.filter((userId) => {
-    const roles = rolesByUser.get(userId) || [];
-    const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.has(role));
-    const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-    // Roster membership is already scoped by get_roster_notifiable_user_ids; include
-    // volunteers and rostered admins/leaders, matching published setlist pushes.
-    return isVolunteer || hasLeadershipRole;
   });
 }
 
@@ -250,7 +201,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const scheduleQuery = supabase
       .from("team_schedule")
-      .select("team_id, worship_teams(name)")
+      .select("team_id, rotation_period, worship_teams(name)")
       .eq("schedule_date", scheduleDate)
       .eq("ministry_type", ministryType)
       .or(`campus_id.eq.${campusId},campus_id.is.null`);
@@ -279,29 +230,35 @@ serve(async (req: Request): Promise<Response> => {
     const teamName =
       ((matchedSchedules[0]?.worship_teams as { name?: string } | null)?.name || "Team");
     const resolvedTeamId = teamId || teamIds[0] || null;
+    const rotationPeriodName = matchedSchedules[0]?.rotation_period || null;
 
-    const { data: rosterRows, error: rosterError } = await supabase.rpc(
-      "get_roster_notifiable_user_ids",
-      {
-        p_schedule_date: scheduleDate,
-        p_campus_id: campusId,
-        p_ministry_type: ministryType,
-        p_team_id: resolvedTeamId,
-      },
-    );
+    if (!resolvedTeamId) {
+      return new Response(
+        JSON.stringify(
+          previewOnly
+            ? { success: true, previewOnly: true, recipients: [] }
+            : { success: true, recipients: 0, pushSent: 0 },
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
-    if (rosterError) {
-      console.error("Failed to resolve schedule notification recipients:", rosterError);
+    let recipientUserIds: string[] = [];
+    try {
+      recipientUserIds = await resolveSupportTeamNotificationUserIds(supabase, {
+        scheduleDate,
+        campusId,
+        ministryType,
+        teamId: resolvedTeamId,
+        rotationPeriodName,
+      });
+    } catch (resolveError) {
+      console.error("Failed to resolve schedule notification recipients:", resolveError);
       return new Response(
         JSON.stringify({ error: "Failed to load scheduled team members" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const rosterUserIds = Array.from(
-      new Set((rosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
-    );
-    const recipientUserIds = await filterNotifiableRosterUserIds(supabase, rosterUserIds);
 
     if (recipientUserIds.length === 0) {
       return new Response(
