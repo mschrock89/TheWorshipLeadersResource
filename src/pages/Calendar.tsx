@@ -259,7 +259,7 @@ type TeamSchedulePushPreview = {
 function PushNotificationPreviewCard({
   title,
   message,
-  linkLabel = "Opens Calendar",
+  linkLabel = "Opens My Setlists",
 }: {
   title: string;
   message: string;

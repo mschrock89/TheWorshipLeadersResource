@@ -46,9 +46,7 @@ function formatDateLabel(dateStr: string) {
 }
 
 function buildPushContent(params: {
-  campusName: string;
   ministryType: "production" | "video";
-  senderName: string;
   teamName: string;
   scheduleDate: string;
 }) {
@@ -56,9 +54,9 @@ function buildPushContent(params: {
   const formattedDate = formatDateLabel(params.scheduleDate);
 
   return {
-    title: `${params.campusName} ${ministryLabel} Team Update`,
-    message: `${params.senderName} sent a reminder for ${params.teamName} on ${formattedDate}. Open Calendar to view your schedule.`,
-    link: "/calendar",
+    title: `${params.teamName} ${ministryLabel} — ${formattedDate}`,
+    message: `You're scheduled to serve with ${params.teamName} on ${formattedDate}. Open My Setlists to confirm you've reviewed the setlist.`,
+    link: "/my-setlists",
   };
 }
 
@@ -292,9 +290,7 @@ serve(async (req: Request): Promise<Response> => {
       const recipients = await buildRecipientPreview(supabase, recipientUserIds);
       const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
       const pushPreview = buildPushContent({
-        campusName: campusResult.data?.name || "Campus",
         ministryType,
-        senderName: senderProfileResult.data?.full_name?.trim() || "Your team lead",
         teamName,
         scheduleDate,
       });
@@ -313,9 +309,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const pushContent = buildPushContent({
-      campusName: campusResult.data?.name || "Campus",
       ministryType,
-      senderName: senderProfileResult.data?.full_name?.trim() || "Your team lead",
       teamName,
       scheduleDate,
     });
