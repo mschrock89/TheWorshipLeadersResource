@@ -58,6 +58,42 @@ function formatDateLabel(dateStr: string) {
   });
 }
 
+async function filterNotifiableRosterUserIds(
+  supabase: ReturnType<typeof createClient>,
+  userIds: string[],
+): Promise<string[]> {
+  const dedupedUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  if (dedupedUserIds.length === 0) {
+    return [];
+  }
+
+  const { data: recipientRoles, error: recipientRolesError } = await supabase
+    .from("user_roles")
+    .select("user_id, role")
+    .in("user_id", dedupedUserIds);
+
+  if (recipientRolesError) {
+    console.error("Failed to load recipient roles:", recipientRolesError);
+    return [];
+  }
+
+  const rolesByUser = new Map<string, string[]>();
+  for (const row of recipientRoles || []) {
+    const next = rolesByUser.get(row.user_id) || [];
+    next.push(row.role);
+    rolesByUser.set(row.user_id, next);
+  }
+
+  return dedupedUserIds.filter((userId) => {
+    const roles = rolesByUser.get(userId) || [];
+    const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.has(role));
+    const isVolunteer = roles.includes("volunteer") || roles.includes("member");
+    // Roster membership is already scoped by get_roster_notifiable_user_ids; include
+    // volunteers and rostered admins/leaders, matching published setlist pushes.
+    return isVolunteer || hasLeadershipRole;
+  });
+}
+
 async function buildRecipientPreview(
   supabase: ReturnType<typeof createClient>,
   userIds: string[],
@@ -242,99 +278,30 @@ serve(async (req: Request): Promise<Response> => {
     const teamIds = Array.from(new Set(matchedSchedules.map((row) => row.team_id)));
     const teamName =
       ((matchedSchedules[0]?.worship_teams as { name?: string } | null)?.name || "Team");
+    const resolvedTeamId = teamId || teamIds[0] || null;
 
-    const { data: rotationPeriods, error: rotationError } = await supabase
-      .from("rotation_periods")
-      .select("id")
-      .eq("campus_id", campusId)
-      .lte("start_date", scheduleDate)
-      .gte("end_date", scheduleDate);
+    const { data: rosterRows, error: rosterError } = await supabase.rpc(
+      "get_roster_notifiable_user_ids",
+      {
+        p_schedule_date: scheduleDate,
+        p_campus_id: campusId,
+        p_ministry_type: ministryType,
+        p_team_id: resolvedTeamId,
+      },
+    );
 
-    if (rotationError) {
-      console.error("Failed to load rotation periods:", rotationError);
-      return new Response(
-        JSON.stringify({ error: "Failed to load the active rotation period" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const rotationIds = (rotationPeriods || []).map((row) => row.id);
-    const membersQuery = supabase
-      .from("team_members")
-      .select("user_id, ministry_types")
-      .in("team_id", teamIds)
-      .not("user_id", "is", null);
-
-    const { data: teamMembers, error: membersError } = rotationIds.length > 0
-      ? await membersQuery.or(
-          `rotation_period_id.is.null,rotation_period_id.in.(${rotationIds.join(",")})`,
-        )
-      : await membersQuery.is("rotation_period_id", null);
-
-    if (membersError) {
-      console.error("Failed to load team members:", membersError);
+    if (rosterError) {
+      console.error("Failed to resolve schedule notification recipients:", rosterError);
       return new Response(
         JSON.stringify({ error: "Failed to load scheduled team members" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const potentialUserIds = Array.from(
-      new Set(
-        (teamMembers || [])
-          .filter((member) => {
-            if (!member.user_id) {
-              return false;
-            }
-
-            if (!member.ministry_types || member.ministry_types.length === 0) {
-              return true;
-            }
-
-            return member.ministry_types.includes(ministryType);
-          })
-          .map((member) => member.user_id),
-      ),
+    const rosterUserIds = Array.from(
+      new Set((rosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
     );
-
-    if (potentialUserIds.length === 0) {
-      return new Response(
-        JSON.stringify(
-          previewOnly
-            ? { success: true, previewOnly: true, recipients: [] }
-            : { success: true, recipients: 0, pushSent: 0 },
-        ),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const { data: recipientRoles, error: recipientRolesError } = await supabase
-      .from("user_roles")
-      .select("user_id, role")
-      .in("user_id", potentialUserIds);
-
-    if (recipientRolesError) {
-      console.error("Failed to load recipient roles:", recipientRolesError);
-      return new Response(
-        JSON.stringify({ error: "Failed to verify recipients" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const rolesByUser = new Map<string, string[]>();
-    for (const row of recipientRoles || []) {
-      const next = rolesByUser.get(row.user_id) || [];
-      next.push(row.role);
-      rolesByUser.set(row.user_id, next);
-    }
-
-    const recipientUserIds = potentialUserIds.filter((userId) => {
-      const roles = rolesByUser.get(userId) || [];
-      const hasLeadershipRole = roles.some((role) => LEADERSHIP_ROLES.has(role));
-      const isVolunteer = roles.includes("volunteer") || roles.includes("member");
-      // Roster membership is already scoped above; include volunteers and rostered admins/leaders.
-      return isVolunteer || hasLeadershipRole;
-    });
+    const recipientUserIds = await filterNotifiableRosterUserIds(supabase, rosterUserIds);
 
     if (recipientUserIds.length === 0) {
       return new Response(
