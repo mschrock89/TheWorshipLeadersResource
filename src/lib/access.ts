@@ -148,6 +148,37 @@ export function filterGroupTextRecipients<T extends { ministryTypes?: string[] |
   return members;
 }
 
+// Team Roster section visibility. Weekend worship volunteers don't need the
+// Production/Video sections, and production/video volunteers only need to see
+// each other. Leaders (canManageTeam) always see the full roster.
+export type RosterVisibilityScope = "all" | "worship" | "support";
+
+const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
+  "weekend",
+  "weekend_team",
+  "sunday_am",
+  "speaker",
+]);
+const ROSTER_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+
+export function getRosterVisibilityScope(params: {
+  canManageTeam: boolean;
+  ministryTypes: string[] | null | undefined;
+}): RosterVisibilityScope {
+  const { canManageTeam, ministryTypes } = params;
+
+  if (canManageTeam) return "all";
+
+  const types = ministryTypes || [];
+  const hasSupport = types.some((type) => ROSTER_SUPPORT_MINISTRY_TYPES.has(type));
+  const hasWorship = types.some((type) => ROSTER_WORSHIP_MINISTRY_ALIASES.has(type));
+
+  if (hasSupport && !hasWorship) return "support";
+  if (hasWorship && !hasSupport) return "worship";
+  // Both (serves across teams), neither, or other ministries: fail open.
+  return "all";
+}
+
 export function canManageReferenceTracks(params: {
   isAdmin: boolean;
   roleNames: string[];

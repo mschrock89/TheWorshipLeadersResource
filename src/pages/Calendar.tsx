@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, useUpdateEvent, Event } from "@/hooks/useEvents";
 import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
@@ -3049,6 +3050,11 @@ function BandRoster({
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
+  // Weekend worship volunteers don't see the Production/Video column, and
+  // production/video volunteers only see each other (no band column).
+  const rosterScope = useRosterVisibilityScope();
+  const showWorshipSections = rosterScope !== "support";
+  const showSupportSections = showAudioVideo && rosterScope !== "worship";
 
   const resourceAppKey = getCurrentResourceAppKey();
   const dateStr = date
@@ -3429,7 +3435,7 @@ function BandRoster({
         </div>
       </div>;
   }
-  if (roster.length === 0 && !(showAudioVideo && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
+  if (roster.length === 0 && !(showSupportSections && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
     return null;
   }
 
@@ -3619,8 +3625,10 @@ function BandRoster({
       existing.avatarUrl = existing.avatarUrl || member.avatarUrl;
     };
 
-    roster.filter((m) => !fallbackProductionVideoMembers.includes(m)).forEach(add);
-    if (showAudioVideo) {
+    if (showWorshipSections) {
+      roster.filter((m) => !fallbackProductionVideoMembers.includes(m)).forEach(add);
+    }
+    if (showSupportSections) {
       shownProductionMembers.forEach(add);
       shownVideoMembers.forEach(add);
     }
@@ -3811,7 +3819,7 @@ function BandRoster({
       </div>;
   };
   const renderProductionVideoSection = () => {
-    if (!showAudioVideo) return null;
+    if (!showSupportSections) return null;
     const audioMembers = dedupeMembersForDisplay(shownProductionMembers).sort(
       (a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions),
     );
@@ -3876,9 +3884,9 @@ function BandRoster({
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
         {outreachWidget}
-        <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
+        <div className={`grid grid-cols-1 ${showWorshipSections && showSupportSections ? 'md:grid-cols-2' : ''} gap-6`}>
           {/* Left Column: Vocalists + Band by Ministry */}
-          <div className="space-y-6">
+          {showWorshipSections && <div className="space-y-6">
             {ministriesToShow.map(ministry => {
             const members = getMembersForMinistry(ministry);
             if (members.length === 0) return null;
@@ -3887,8 +3895,8 @@ function BandRoster({
                   {renderBandSection(members, label)}
                 </div>;
           })}
-          </div>
-          
+          </div>}
+
           {/* Right Column: Production + Video */}
           {renderProductionVideoSection()}
         </div>
@@ -3902,12 +3910,12 @@ function BandRoster({
 
   return <div className="mb-4">
       {outreachWidget}
-      <div className={`grid grid-cols-1 ${showAudioVideo ? 'md:grid-cols-2' : ''} gap-6`}>
+      <div className={`grid grid-cols-1 ${showWorshipSections && showSupportSections ? 'md:grid-cols-2' : ''} gap-6`}>
         {/* Left Column: Vocalists + Band */}
-        <div>
+        {showWorshipSections && <div>
           {renderBandSection(membersToShow)}
-        </div>
-        
+        </div>}
+
         {/* Right Column: Production + Video */}
         {renderProductionVideoSection()}
       </div>

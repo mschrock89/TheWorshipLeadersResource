@@ -31,6 +31,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
@@ -611,6 +612,20 @@ function StandardMySetlists() {
           </TooltipProvider>
         </div>
 
+        {/* Audio library playlist(s) attached to this setlist */}
+        {setlistPlaylists.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <div className="flex items-center gap-2">
+              <Headphones className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">References</span>
+            </div>
+            <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
+            {setlistPlaylists.map((playlist) => (
+              <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
+            ))}
+          </div>
+        )}
+
         {/* Notes */}
         {setlist.notes && (
           <div className="text-sm p-3 rounded-lg bg-muted/50 border">
@@ -651,20 +666,6 @@ function StandardMySetlists() {
           <p className="text-xs text-center text-muted-foreground">
             Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
           </p>
-        )}
-
-        {/* Audio library playlist(s) attached to this setlist */}
-        {setlistPlaylists.length > 0 && (
-          <div className="space-y-2 pt-2 border-t border-border">
-            <div className="flex items-center gap-2">
-              <Headphones className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">References</span>
-            </div>
-            <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
-            {setlistPlaylists.map((playlist) => (
-              <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
-            ))}
-          </div>
         )}
       </>
     );
@@ -1008,6 +1009,11 @@ function SetlistTeamRoster({
   getInitials: (name: string) => string;
 }) {
   const { user } = useAuth();
+  // Weekend worship volunteers don't see the Production/Video sections, and
+  // production/video volunteers only see each other.
+  const rosterScope = useRosterVisibilityScope();
+  const showWorshipSections = rosterScope !== "support";
+  const showSupportSections = rosterScope !== "worship";
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
   // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) may be linked to a
@@ -1696,6 +1702,25 @@ function SetlistTeamRoster({
     }));
   }, [isWeekendSetlist, pairVideoRows, planDate, primaryVideoRows, videoPairTeamEntry?.schedule_date, videoRows, videoTeamEntry?.schedule_date]);
 
+  // Keep the group text recipients in sync with the sections the viewer can see.
+  const visibleRosterRows = useMemo(
+    () =>
+      rosterRows.filter((member) => {
+        const isSupport = member.hasProductionRole || member.hasVideoRole;
+        const isWorship =
+          member.hasVocalistRole || member.hasBandRole || member.hasSpeakerRole || member.hasPastorRole;
+        if (!showSupportSections && isSupport && !isWorship) return false;
+        if (!showWorshipSections && isWorship && !isSupport) return false;
+        return true;
+      }),
+    [rosterRows, showSupportSections, showWorshipSections]
+  );
+
+  const hasVisibleSections =
+    (showWorshipSections &&
+      (pastorRows.length > 0 || vocalistRows.length > 0 || bandRows.length > 0 || speakerRows.length > 0)) ||
+    (showSupportSections && (productionRows.length > 0 || videoDaySections.length > 0));
+
   const serviceLabel = useMemo(() => {
     if (effectiveCustomServiceId) return "this custom service";
     if (ministryType === "audition") return "this audition";
@@ -1726,13 +1751,17 @@ function SetlistTeamRoster({
     return null;
   }
 
+  if (!hasVisibleSections) {
+    return null;
+  }
+
   return (
     <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
       <div className="flex items-center gap-2">
         <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
         <GroupTextButton
-          phoneNumbers={rosterRows.map((member) => member.phone)}
-          rosterMembers={rosterRows.map((member) => ({
+          phoneNumbers={visibleRosterRows.map((member) => member.phone)}
+          rosterMembers={visibleRosterRows.map((member) => ({
             name: getRosterMemberDisplayName(member.memberName),
             phone: member.phone,
             ministryTypes: member.ministryTypes,
@@ -1746,7 +1775,7 @@ function SetlistTeamRoster({
         />
       </div>
 
-      {pastorRows.length > 0 && (
+      {showWorshipSections && pastorRows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Church className="h-4 w-4" />
@@ -1779,7 +1808,7 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {vocalistRows.length > 0 && (
+      {showWorshipSections && vocalistRows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Mic2 className="h-4 w-4" />
@@ -1812,7 +1841,7 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {bandRows.length > 0 && (
+      {showWorshipSections && bandRows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Guitar className="h-4 w-4" />
@@ -1845,7 +1874,7 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {speakerRows.length > 0 && (
+      {showWorshipSections && speakerRows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <BookOpen className="h-4 w-4" />
@@ -1878,7 +1907,7 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {productionRows.length > 0 && (
+      {showSupportSections && productionRows.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Headphones className="h-4 w-4" />
@@ -1911,7 +1940,7 @@ function SetlistTeamRoster({
         </div>
       )}
 
-      {videoDaySections.length > 0 && (
+      {showSupportSections && videoDaySections.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <Video className="h-4 w-4" />
