@@ -102,31 +102,59 @@ serve(async (req: Request): Promise<Response> => {
       teamNamesMap[schedule.team_id] = teamData?.name || "Team";
     }
 
-    const dow = new Date(`${todayStr}T12:00:00Z`).getUTCDay();
-    const serviceDay = dow === 6 ? "saturday" : dow === 0 ? "sunday" : null;
-
+    // Attribute team/position detail per schedule row using the SAME authoritative
+    // RPC that decided who to notify (rotation period, ministry type, date overrides,
+    // and swaps) — a raw team_members join here previously listed every team a person
+    // is a member of anywhere, even ones from a past/inactive rotation (e.g. "Team 1 &
+    // Team 3" when only Team 1 was actually theirs today).
     const userNotifications: Record<string, { positions: string[]; teams: string[] }> = {};
-    if (teamIds.length > 0) {
-      const { data: teamMembers } = await supabase
-        .from("team_members")
-        .select(`user_id, position, team_id, service_day`)
-        .in("team_id", teamIds)
-        .in("user_id", recipientUserIds)
-        .not("user_id", "is", null);
+    for (const schedule of schedules) {
+      if (!schedule.team_id) continue;
 
-      for (const member of teamMembers || []) {
-        if (!member.user_id) continue;
-        // Only attribute a slot to the message if the service_day matches (or is unset).
-        if (member.service_day && serviceDay && member.service_day !== serviceDay) continue;
-        if (!userNotifications[member.user_id]) {
-          userNotifications[member.user_id] = { positions: [], teams: [] };
+      const { data: teamRosterRows, error: teamRosterError } = await supabase.rpc(
+        "get_roster_notifiable_user_ids",
+        {
+          p_schedule_date: todayStr,
+          p_campus_id: schedule.campus_id,
+          p_ministry_type: schedule.ministry_type,
+          p_team_id: schedule.team_id,
+        },
+      );
+
+      if (teamRosterError) {
+        console.error(`Error resolving roster for team ${schedule.team_id}:`, teamRosterError);
+        continue;
+      }
+
+      const teamUserIds = Array.from(
+        new Set((teamRosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
+      );
+      if (teamUserIds.length === 0) continue;
+
+      const { data: positionRows } = await supabase
+        .from("team_members")
+        .select(`user_id, position`)
+        .eq("team_id", schedule.team_id)
+        .in("user_id", teamUserIds);
+
+      const positionsByUser: Record<string, string[]> = {};
+      for (const row of positionRows || []) {
+        if (!row.user_id || !row.position) continue;
+        (positionsByUser[row.user_id] ??= []).push(row.position);
+      }
+
+      const teamName = teamNamesMap[schedule.team_id];
+      for (const userId of teamUserIds) {
+        if (!userNotifications[userId]) {
+          userNotifications[userId] = { positions: [], teams: [] };
         }
-        if (member.position && !userNotifications[member.user_id].positions.includes(member.position)) {
-          userNotifications[member.user_id].positions.push(member.position);
+        if (teamName && !userNotifications[userId].teams.includes(teamName)) {
+          userNotifications[userId].teams.push(teamName);
         }
-        const teamName = teamNamesMap[member.team_id];
-        if (teamName && !userNotifications[member.user_id].teams.includes(teamName)) {
-          userNotifications[member.user_id].teams.push(teamName);
+        for (const position of positionsByUser[userId] || []) {
+          if (!userNotifications[userId].positions.includes(position)) {
+            userNotifications[userId].positions.push(position);
+          }
         }
       }
     }
