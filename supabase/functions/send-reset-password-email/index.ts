@@ -251,21 +251,12 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const userId = data.user?.id;
-    if (userId) {
-      const { error: updateError } = await adminClient.auth.admin.updateUserById(userId, {
-        password: "123456",
-      });
-
-      if (updateError) {
-        console.error(`Failed to reset password for ${normalizedEmail}:`, updateError);
-        return new Response(
-          JSON.stringify({ error: "Failed to reset password" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-    }
-
+    // Do NOT reset the password here: this endpoint is unauthenticated by design
+    // (a caller who forgot their password can't prove identity yet), so setting a
+    // known password for any email an attacker supplies would be an account
+    // takeover. The client sets the default password itself, from
+    // src/hooks/useAuth.tsx, only after Supabase verifies the one-time recovery
+    // token from this link and establishes a real session (PASSWORD_RECOVERY event).
     const userProfileName =
       typeof data.user?.user_metadata?.full_name === "string"
         ? data.user.user_metadata.full_name

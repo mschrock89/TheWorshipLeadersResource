@@ -5,10 +5,6 @@ export interface BibleBook {
   chapters: number;
 }
 
-export const BIBLE_TRANSLATIONS: Array<{ value: BibleTranslation; label: string; description: string }> = [
-  { value: "ESV", label: "ESV", description: "English Standard Version" },
-];
-
 export function getBibleReaderTranslation(translation?: string | null): BibleTranslation {
   return "ESV";
 }

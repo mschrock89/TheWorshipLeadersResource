@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { format, parseISO, isSameDay, addDays, getDay, isSaturday, isSunday } from "date-fns";
+import { format, parseISO, addDays, getDay } from "date-fns";
 import { Star, Heart, Zap, Diamond, Mic2, Drum, Guitar, Piano, AudioWaveform, Home, CalendarDays } from "lucide-react";
 import { MINISTRY_TYPES, POSITION_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { Home, Trash2, Check, Music, Calendar, Building2, Filter, CheckSquare, Square, AlertTriangle, CalendarX } from "lucide-react";
+import { Home, Trash2, Check, Music, Calendar, Building2, Filter, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { CancelServiceDialog } from "@/components/set-planner/CancelServiceDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

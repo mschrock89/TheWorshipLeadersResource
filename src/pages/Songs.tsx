@@ -70,7 +70,7 @@ import { usePcoConnection, useAnyPcoConnection } from "@/hooks/usePlanningCenter
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
-import { format, parseISO, isAfter, isBefore } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 
 export default function Songs() {
@@ -436,14 +436,6 @@ export default function Songs() {
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     song.author?.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const sortedByFrequency = [...(filteredSongs || [])].sort((a, b) => b.usage_count - a.usage_count);
-  const sortedByRecent = [...(filteredSongs || [])].sort((a, b) => {
-    if (!a.last_used && !b.last_used) return 0;
-    if (!a.last_used) return 1;
-    if (!b.last_used) return -1;
-    return new Date(b.last_used).getTime() - new Date(a.last_used).getTime();
-  });
 
   // Show loading state while we determine what view to show
   if (isInitialLoading) {

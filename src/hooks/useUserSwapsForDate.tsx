@@ -85,7 +85,7 @@ export function useUserSwapsForDate(date: Date | null) {
 
       const swappedOut = (swapsOut || []).length > 0;
       const swappedIn = (swapsIn || []).length > 0;
-      const swapInDetails = swapsIn?.[0] as SwapInfo | null;
+      const swapInDetails = (swapsIn?.[0] as SwapInfo | undefined) ?? null;
 
       return {
         swappedOut,

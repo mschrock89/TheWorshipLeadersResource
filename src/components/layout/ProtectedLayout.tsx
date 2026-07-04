@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useMemo } from "react";
+import { ReactNode, useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { MainHeader } from "./MainHeader";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,7 +37,7 @@ export function ProtectedLayout({
   // Use external state if provided, otherwise use internal
   const selectedCampusId = externalCampusId ?? internalCampusId;
   
-  const setSelectedCampusId = (campusId: string | null) => {
+  const setSelectedCampusId = useCallback((campusId: string | null) => {
     if (campusId) {
       localStorage.setItem(CAMPUS_STORAGE_KEY, campusId);
     } else {
@@ -49,7 +49,7 @@ export function ProtectedLayout({
     } else {
       setInternalCampusId(campusId);
     }
-  };
+  }, [externalOnSelectCampus]);
 
   const assignedCampusIds = useMemo(
     () => new Set((userCampuses || []).map((uc) => uc.campus_id)),
@@ -95,7 +95,7 @@ export function ProtectedLayout({
       // Use first available campus (assigned first for leaders)
       setSelectedCampusId(availableCampuses[0].campus_id);
     }
-  }, [availableCampuses, selectedCampusId, isAdmin, isLeader, profile?.default_campus_id, userCampusesLoading, allCampusesLoading]);
+  }, [availableCampuses, selectedCampusId, setSelectedCampusId, isAdmin, isLeader, profile?.default_campus_id, userCampusesLoading, allCampusesLoading]);
 
   const isOnChatPage = location.pathname === "/chat";
   
@@ -103,8 +103,13 @@ export function ProtectedLayout({
   const audioPlayer = useAudioPlayerSafe();
   const hasActivePlayer = !!audioPlayer?.currentTrack;
 
+  const campusSelectionValue = useMemo(
+    () => ({ selectedCampusId, setSelectedCampusId }),
+    [selectedCampusId, setSelectedCampusId]
+  );
+
   return (
-    <CampusSelectionProvider value={{ selectedCampusId, setSelectedCampusId }}>
+    <CampusSelectionProvider value={campusSelectionValue}>
       <div className="min-h-screen bg-background">
         <MainHeader />
         <main className={isOnChatPage ? "" : `container px-4 py-6 ${hasActivePlayer ? "pb-36" : "pb-24"}`}>{children}</main>

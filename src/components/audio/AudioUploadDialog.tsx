@@ -80,6 +80,8 @@ export function AudioUploadDialog({
     setUploading(true);
     setProgress(0);
 
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
+
     try {
       // Generate unique filename
       const fileExt = selectedFile.name.split(".").pop();
@@ -87,7 +89,7 @@ export function AudioUploadDialog({
       const filePath = `songs/${fileName}`;
 
       // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
@@ -100,6 +102,7 @@ export function AudioUploadDialog({
         });
 
       clearInterval(progressInterval);
+      progressInterval = null;
 
       if (uploadError) throw uploadError;
 
@@ -141,6 +144,7 @@ export function AudioUploadDialog({
         variant: "destructive",
       });
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setUploading(false);
     }
   };

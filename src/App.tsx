@@ -155,7 +155,6 @@ type RouteDefinition = {
   component: ComponentType;
   hideInStudentApps?: boolean;
   studentAppOnly?: boolean;
-  hideForStudentBaseRole?: boolean;
 };
 
 const publicRoutes: RouteDefinition[] = [
@@ -166,37 +165,37 @@ const publicRoutes: RouteDefinition[] = [
 ];
 
 const protectedRoutes: RouteDefinition[] = [
-  { path: "/chat", component: Chat, hideForStudentBaseRole: true },
+  { path: "/chat", component: Chat },
   { path: "/calendar", component: Calendar },
   { path: "/camp", component: CampMode, studentAppOnly: true },
   { path: "/schedule", component: Schedule },
-  { path: "/dashboard", component: Dashboard, hideForStudentBaseRole: true },
-  { path: "/team", component: Team, hideForStudentBaseRole: true },
-  { path: "/team/:id", component: Profile, hideForStudentBaseRole: true },
+  { path: "/dashboard", component: Dashboard },
+  { path: "/team", component: Team },
+  { path: "/team/:id", component: Profile },
   { path: "/profile", component: Profile },
-  { path: "/settings/planning-center", component: PlanningCenter, hideForStudentBaseRole: true },
-  { path: "/swaps", component: SwapRequests, hideForStudentBaseRole: true },
-  { path: "/songs", component: Songs, hideInStudentApps: true, hideForStudentBaseRole: true },
+  { path: "/settings/planning-center", component: PlanningCenter },
+  { path: "/swaps", component: SwapRequests },
+  { path: "/songs", component: Songs, hideInStudentApps: true },
   { path: "/my-setlists", component: MySetlists },
-  { path: "/set-planner", component: SetPlanner, hideForStudentBaseRole: true },
-  { path: "/weekend-rundown", component: WeekendRundown, hideForStudentBaseRole: true },
-  { path: "/auditions", component: Auditions, hideForStudentBaseRole: true },
-  { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner, hideForStudentBaseRole: true },
-  { path: "/manage-sets", component: ManageSets, hideForStudentBaseRole: true },
-  { path: "/team-builder", component: TeamBuilder, hideForStudentBaseRole: true },
-  { path: "/life-groups", component: LifeGroups, hideForStudentBaseRole: true },
-  { path: "/approvals", component: Approvals, hideForStudentBaseRole: true },
-  { path: "/admin-tools", component: AdminTools, hideForStudentBaseRole: true },
+  { path: "/set-planner", component: SetPlanner },
+  { path: "/weekend-rundown", component: WeekendRundown },
+  { path: "/auditions", component: Auditions },
+  { path: "/set-planner/audition/:candidateId", component: AuditionSetPlanner },
+  { path: "/manage-sets", component: ManageSets },
+  { path: "/team-builder", component: TeamBuilder },
+  { path: "/life-groups", component: LifeGroups },
+  { path: "/approvals", component: Approvals },
+  { path: "/admin-tools", component: AdminTools },
   { path: "/resources", component: Resources },
   { path: "/feed", component: Feed },
   { path: "/attendance", component: Attendance, studentAppOnly: true },
-  { path: "/drum-tech", component: DrumTech, hideForStudentBaseRole: true },
+  { path: "/drum-tech", component: DrumTech },
   { path: "/bible", component: Bible },
-  { path: "/service-flow", component: ServiceFlow, hideForStudentBaseRole: true },
-  { path: "/snake", component: Snake, hideForStudentBaseRole: true },
-  { path: "/pong", component: Pong, hideForStudentBaseRole: true },
-  { path: "/galaga", component: Galaga, hideForStudentBaseRole: true },
-  { path: "/games", component: Games, hideForStudentBaseRole: true },
+  { path: "/service-flow", component: ServiceFlow },
+  { path: "/snake", component: Snake },
+  { path: "/pong", component: Pong },
+  { path: "/galaga", component: Galaga },
+  { path: "/games", component: Games },
 ];
 
 function AppRoutes() {

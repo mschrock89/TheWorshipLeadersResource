@@ -52,15 +52,3 @@ export function haptic(pattern: HapticPattern = 'light'): void {
     // Silently fail on unsupported devices
   }
 }
-
-export function stopHaptics(): void {
-  if (!isHapticsSupported()) {
-    return;
-  }
-
-  try {
-    navigator.vibrate(0);
-  } catch {
-    // Silently fail on unsupported devices
-  }
-}

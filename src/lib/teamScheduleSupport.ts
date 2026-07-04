@@ -1,6 +1,5 @@
 export const WEEKEND_ANCHOR_MINISTRY_TYPES = new Set(["weekend", "sunday_am", "weekend_team"]);
 export const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
-export const WEEKEND_SCHEDULE_MINISTRY_ALIASES = WEEKEND_ANCHOR_MINISTRY_TYPES;
 
 export interface TeamScheduleRowLike {
   team_id: string;
@@ -8,21 +7,6 @@ export interface TeamScheduleRowLike {
   rotation_period?: string | null;
   campus_id?: string | null;
   ministry_type?: string | null;
-}
-
-export function isSupportTeamScheduleMinistry(ministryType?: string | null): boolean {
-  return ministryType === "production" || ministryType === "video";
-}
-
-// Production/video teams rotate on their own schedule in Team Builder, independent of
-// the weekend worship team for a given date (e.g. video can be Team 1 while weekend
-// worship is Team 3). Always honor the support schedule row as authored, rather than
-// requiring it to share the weekend worship team for that date.
-export function supportScheduleHasWeekendAnchor(
-  _entry: TeamScheduleRowLike,
-  _allEntries: TeamScheduleRowLike[],
-): boolean {
-  return true;
 }
 
 export function filterValidSupportTeamScheduleEntries<T extends TeamScheduleRowLike>(

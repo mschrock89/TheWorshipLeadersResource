@@ -196,23 +196,6 @@ export function useProfiles() {
   });
 }
 
-// Use this for chat/team display - only returns basic info (id, name, avatar)
-export function useBasicProfiles() {
-  const { user, isLoading } = useAuth();
-
-  return useQuery({
-    queryKey: ["basic-profiles"],
-    staleTime: 2 * 60 * 1000, // 2 minutes - basic profiles change occasionally
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_basic_profiles");
-      
-      if (error) throw error;
-      return data as BasicProfile[];
-    },
-    enabled: !!user && !isLoading,
-  });
-}
-
 // Use the secure RPC function for viewing individual profiles
 export function useProfile(id: string | undefined) {
   const { user, isLoading } = useAuth();

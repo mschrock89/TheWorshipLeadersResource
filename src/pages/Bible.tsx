@@ -362,10 +362,7 @@ export default function Bible() {
                   "w-full rounded-xl border px-3 py-3 text-left transition-colors hover:bg-muted/60",
                   passage?.id === item.passage_cache_id && "border-primary bg-primary/5"
                 )}
-                onClick={() => {
-                  setTranslation(item.translation as BibleTranslation);
-                  submitReference(item.reference);
-                }}
+                onClick={() => submitReference(item.reference)}
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{item.reference}</p>
@@ -387,10 +384,7 @@ export default function Bible() {
                   "w-full rounded-xl border px-3 py-3 text-left transition-colors hover:bg-muted/60",
                   passage?.id === item.passage_cache_id && "border-primary bg-primary/5"
                 )}
-                onClick={() => {
-                  setTranslation(item.translation as BibleTranslation);
-                  submitReference(item.reference);
-                }}
+                onClick={() => submitReference(item.reference)}
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{item.reference}</p>

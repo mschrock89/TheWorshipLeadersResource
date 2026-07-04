@@ -1,10 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Plus, AtSign, Smile, Camera, X, Loader2, Send } from "lucide-react";
+import { Plus, Camera, X, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { EmojiPicker } from "./EmojiPicker";
 import { MentionPicker } from "./MentionPicker";
-import { ChatGifPicker } from "./GifPicker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -84,10 +82,15 @@ export function MessageInput({
     typingTimeoutRef.current = setTimeout(() => onTyping?.(false), 2000);
   }, [onTyping]);
 
+  const pendingFilesRef = useRef<PendingFile[]>([]);
+  useEffect(() => {
+    pendingFilesRef.current = pendingFiles;
+  }, [pendingFiles]);
+
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      pendingFiles.forEach(pf => URL.revokeObjectURL(pf.preview));
+      pendingFilesRef.current.forEach(pf => URL.revokeObjectURL(pf.preview));
     };
   }, []);
 
@@ -258,23 +261,6 @@ export function MessageInput({
     }
   };
 
-  const handleEmojiSelect = (emoji: string) => {
-    const input = inputRef.current;
-    if (!input) {
-      setMessage(prev => prev + emoji);
-      return;
-    }
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    const newMessage = message.slice(0, start) + emoji + message.slice(end);
-    setMessage(newMessage);
-
-    setTimeout(() => {
-      input.setSelectionRange(start + emoji.length, start + emoji.length);
-      input.focus();
-    }, 0);
-  };
-
   const handleMentionSelect = (profile: { id: string; full_name: string | null }) => {
     if (mentionStartIndex === null) return;
     const beforeMention = message.slice(0, mentionStartIndex);
@@ -289,20 +275,6 @@ export function MessageInput({
       inputRef.current?.focus();
       const newCursorPos = beforeMention.length + mentionText.length;
       inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
-    }, 0);
-  };
-
-  const handleAtButtonClick = () => {
-    const input = inputRef.current;
-    if (!input) return;
-    const start = input.selectionStart || message.length;
-    const newMessage = message.slice(0, start) + "@" + message.slice(start);
-    setMessage(newMessage);
-    setMentionSearch("");
-    setMentionStartIndex(start);
-    setTimeout(() => {
-      input.setSelectionRange(start + 1, start + 1);
-      input.focus();
     }, 0);
   };
 

@@ -576,22 +576,6 @@ export function getPreviousPeriodId(periods: RotationPeriod[], currentPeriodId: 
   return previousPeriods[0].id;
 }
 
-export function getNextPeriodId(periods: RotationPeriod[], currentPeriodId: string | null): string | null {
-  if (!currentPeriodId || periods.length === 0) return null;
-
-  const currentPeriod = periods.find((period) => period.id === currentPeriodId);
-  if (!currentPeriod) return null;
-
-  const nextPeriods = periods.filter(
-    (period) => compareRotationPeriods(period, currentPeriod) > 0,
-  );
-
-  if (nextPeriods.length === 0) return null;
-
-  nextPeriods.sort((a, b) => compareRotationPeriods(a, b));
-  return nextPeriods[0].id;
-}
-
 // Get members for the previous period (for consecutive break detection)
 export function usePreviousPeriodMembers(
   periods: RotationPeriod[],

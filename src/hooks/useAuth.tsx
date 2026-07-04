@@ -35,9 +35,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+
+        // Fires only once Supabase verifies the one-time token from a password
+        // reset email and establishes a real session — safe to set the known
+        // default password here because clicking the link proves inbox ownership.
+        if (event === "PASSWORD_RECOVERY") {
+          supabase.auth.updateUser({ password: "123456" }).then(({ error }) => {
+            if (error) console.error("Failed to set default password after recovery:", error);
+          });
+        }
 
         // Defer role check to avoid deadlock
         if (session?.user) {
@@ -69,11 +78,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const checkUserRole = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", userId);
-    
+
+    // On a transient fetch failure, keep the current role flags instead of
+    // silently demoting the user (e.g. stripping admin UI until the next check).
+    if (error) {
+      console.error("Failed to fetch user roles:", error);
+      return;
+    }
+
     const roles = data?.map(r => r.role) || [];
     const hasRole = (role: typeof roles[number]) => roles.includes(role);
     const resourceAppKey = getCurrentResourceAppKey();

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { formatDateForDB } from "@/lib/utils";
 
 export type AuditionStage = "pre_audition" | "audition";
 export type AuditionTrack = "vocalist" | "instrumentalist";
@@ -52,7 +53,7 @@ export function useUpcomingAudition(candidateId: string | undefined) {
     queryFn: async () => {
       if (!candidateId) return null;
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = formatDateForDB(new Date());
 
       const { data, error } = await supabase
         .from("auditions")
@@ -78,7 +79,7 @@ export function useAssignedAuditionSetlists(candidateId: string | undefined) {
     queryFn: async (): Promise<AssignedAuditionSetlist[]> => {
       if (!candidateId) return [];
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = formatDateForDB(new Date());
 
       const { data: assignments, error: assignmentError } = await supabase
         .from("audition_setlist_assignments")
@@ -177,7 +178,7 @@ export function useCandidateAudition(candidateId: string | undefined) {
     queryFn: async () => {
       if (!candidateId) return null;
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = formatDateForDB(new Date());
       const upcoming = await supabase
         .from("auditions")
         .select("*, campuses(name)")

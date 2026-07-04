@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { Track } from "./useAudioPlayer";
@@ -290,59 +290,5 @@ export function useMySetlistPlaylists() {
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
-/**
- * Hook to create a setlist playlist (used by edge function, but exposed for admin manual creation)
- */
-export function useCreateSetlistPlaylist() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (params: {
-      draftSetId: string;
-      campusId: string;
-      serviceDate: string;
-      ministryType: string;
-    }) => {
-      const { data, error } = await supabase
-        .from("setlist_playlists")
-        .insert({
-          draft_set_id: params.draftSetId,
-          campus_id: params.campusId,
-          service_date: params.serviceDate,
-          ministry_type: params.ministryType,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
-    },
-  });
-}
-
-/**
- * Hook to delete a setlist playlist
- */
-export function useDeleteSetlistPlaylist() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (playlistId: string) => {
-      const { error } = await supabase
-        .from("setlist_playlists")
-        .delete()
-        .eq("id", playlistId);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
-    },
   });
 }

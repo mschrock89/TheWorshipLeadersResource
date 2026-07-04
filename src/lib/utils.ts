@@ -238,11 +238,3 @@ export function sortPositionsByPriority(positions: string[]): string[] {
     return a.localeCompare(b);
   });
 }
-
-/**
- * Get the primary (highest priority) position for a member
- */
-export function getPrimaryPosition(positions: string[]): string | null {
-  if (positions.length === 0) return null;
-  return sortPositionsByPriority(positions)[0];
-}

@@ -408,14 +408,6 @@ export const SET_PLANNER_MINISTRY_OPTIONS = [
   { value: "evident", label: "Evident Life" },
 ] as const;
 
-// Service Flow item types
-export const SERVICE_FLOW_ITEM_TYPES = {
-  header: { label: "Header", description: "Section divider" },
-  item: { label: "Item", description: "General service element" },
-  song: { label: "Song", description: "Song from setlist" },
-  song_placeholder: { label: "Song Placeholder", description: "Placeholder for template" },
-} as const;
-
 // Which slot categories are available for each ministry type
 // Production and Video only show when those specific ministries are selected
 export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
@@ -525,12 +517,6 @@ export function isKidsCampSetMinistryType(ministryType: string | null | undefine
   return !!ministryType && KIDS_CAMP_SET_MINISTRY_TYPE_SET.has(ministryType);
 }
 
-export function normalizeKidsCampSetMinistryType(
-  ministryType: string | null | undefined,
-): string | null | undefined {
-  return isKidsCampSetMinistryType(ministryType) ? "kids_camp" : ministryType;
-}
-
 // "Session set" services run multiple worship sets on the same day (Kids Camp
 // Morning/Afternoon, Student Camp Morning/Evening, ...). They may be linked to a
 // custom service for date/service-flow scoping, but their roster, publish flow, and
@@ -638,10 +624,6 @@ export function getMinistrySession(
     }
   }
   return { baseMinistryType: ministryType ?? "", sessionLabel: null, sessionOrder: -1 };
-}
-
-export function isSessionMinistryType(ministryType: string | null | undefined): boolean {
-  return getMinistrySession(ministryType).sessionLabel !== null;
 }
 
 export function normalizeWeekendWorshipMinistryType(

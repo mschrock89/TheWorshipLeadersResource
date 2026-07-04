@@ -124,10 +124,12 @@ export function useCancelService() {
         
         deletedSongs += draftSongs?.length || 0;
 
-        await supabase
+        const { error: draftSongsError } = await supabase
           .from('draft_set_songs')
           .delete()
           .in('draft_set_id', draftSetIds);
+
+        if (draftSongsError) throw draftSongsError;
 
         const { error: draftError } = await supabase
           .from('draft_sets')
@@ -147,10 +149,12 @@ export function useCancelService() {
         
         deletedSongs += planSongs?.length || 0;
 
-        await supabase
+        const { error: planSongsError } = await supabase
           .from('plan_songs')
           .delete()
           .in('plan_id', servicePlanIds);
+
+        if (planSongsError) throw planSongsError;
 
         const { error: planError } = await supabase
           .from('service_plans')

@@ -25,8 +25,6 @@ export const STUDENT_CHAT_MINISTRY_TYPES = [
   { value: "small_group_8", label: "Small Group 8" },
 ] as const;
 
-export const CHAT_MINISTRY_TYPES = WORSHIP_CHAT_MINISTRY_TYPES;
-
 const WEEKEND_CHAT_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const STUDENT_CHAT_MINISTRY_VALUES = new Set<string>(STUDENT_CHAT_MINISTRY_TYPES.map((chat) => chat.value));
 const CHAT_MINISTRY_LABELS = new Map<string, string>(

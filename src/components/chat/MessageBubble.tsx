@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Heart, Smile, Pencil, Trash2, X, Check, Paperclip } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,13 @@ export function MessageBubble({
     setIsDeleting(false);
     setShowDeleteDialog(false);
   };
+
+  // Clear any pending long-press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    };
+  }, []);
 
   const handleTouchStart = () => {
     if (!isOwnMessage) return;

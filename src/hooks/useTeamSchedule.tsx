@@ -3,31 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { TeamTemplateConfig } from "@/lib/teamTemplates";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
-/** Get the rotation period name that covers a given date for a campus (for filtering team_schedule) */
-export function useRotationPeriodForDate(campusId: string | null, date: Date | null) {
-  const dateStr = date
-    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
-    : null;
-
-  return useQuery({
-    queryKey: ["rotation-period-for-date", campusId, dateStr],
-    queryFn: async (): Promise<string | null> => {
-      if (!campusId || !dateStr) return null;
-      const { data, error } = await supabase
-        .from("rotation_periods")
-        .select("name")
-        .eq("campus_id", campusId)
-        .lte("start_date", dateStr)
-        .gte("end_date", dateStr)
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data?.name ?? null;
-    },
-    enabled: !!campusId && !!dateStr,
-  });
-}
-
 export interface WorshipTeam {
   id: string;
   name: string;
@@ -193,32 +168,4 @@ export function useTeamSchedule(
       return data as TeamScheduleEntry[];
     },
   });
-}
-
-export function useTeamForDate(date: Date) {
-  const dateStr = date.toISOString().split("T")[0];
-  const resourceAppKey = getCurrentResourceAppKey();
-  
-  return useQuery({
-    queryKey: ["team-for-date", dateStr, resourceAppKey],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("team_schedule")
-        .select("*, worship_teams(*)")
-        .eq("schedule_date", dateStr)
-        .eq("resource_app_key", resourceAppKey)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as TeamScheduleEntry | null;
-    },
-  });
-}
-
-export function getTeamIcon(icon: string) {
-  return icon;
-}
-
-export function getTeamColor(color: string) {
-  return color;
 }

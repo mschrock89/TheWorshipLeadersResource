@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
-import { parseLocalDate, campusHasServiceOnDate } from "@/lib/utils";
+import { formatDateForDB, parseLocalDate, campusHasServiceOnDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -83,7 +83,7 @@ function isWeekendFamilyScheduleMinistry(ministryType: string): boolean {
 
 export function useMyTeamAssignments() {
   const { user } = useAuth();
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateForDB(new Date());
   const resourceAppKey = getCurrentResourceAppKey();
 
   // Fetch user's campuses as fallback for assignments without rotation periods
@@ -192,7 +192,7 @@ export function useMyTeamAssignments() {
         .eq("status", "accepted")
         .eq("resource_app_key", resourceAppKey)
         .or(`requester_id.eq.${user.id},accepted_by_id.eq.${user.id}`)
-        .gte("original_date", new Date().toISOString().split("T")[0]);
+        .gte("original_date", formatDateForDB(new Date()));
 
       if (error) throw error;
       return data || [];

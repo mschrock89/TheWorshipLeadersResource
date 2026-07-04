@@ -57,28 +57,6 @@ export function useServiceFlowTemplates(campusId?: string | null, ministryType?:
   });
 }
 
-export function useServiceFlowTemplate(campusId: string | null, ministryType: string | null) {
-  return useQuery({
-    queryKey: ["service-flow-template", campusId, ministryType],
-    queryFn: async () => {
-      if (!campusId || !ministryType) return null;
-      
-      const { data, error } = await supabase
-        .from("service_flow_templates")
-        .select("*")
-        .eq("campus_id", campusId)
-        .eq("ministry_type", ministryType)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as ServiceFlowTemplate | null;
-    },
-    enabled: !!campusId && !!ministryType,
-  });
-}
-
 export function useServiceFlowTemplateItems(templateId: string | null) {
   return useQuery({
     queryKey: ["service-flow-template-items", templateId],

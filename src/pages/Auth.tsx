@@ -32,21 +32,12 @@ const signupSchema = z.object({
   email: z.string().email("Please enter a valid email"),
 });
 
-const changePasswordSchema = z.object({
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
-
 export default function Auth() {
   const { user, isLoading: authLoading, signIn, signUp } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -59,10 +50,6 @@ export default function Auth() {
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupEmailSentTo, setSignupEmailSentTo] = useState("");
-
-  // Change password form state
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
 
   // Handle magic link / invite token from URL
   useEffect(() => {
@@ -210,82 +197,6 @@ export default function Auth() {
       });
     }
     // Note: mustChangePassword check happens via useEffect after user state updates
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const validation = changePasswordSchema.safeParse({ newPassword, confirmPassword });
-    if (!validation.success) {
-      toast({
-        title: "Validation error",
-        description: validation.error.errors[0].message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsChangingPassword(true);
-    
-    try {
-      // Update password
-      const { data, error: updateError } = await supabase.auth.updateUser({ password: newPassword });
-      
-      console.log("Password update response:", { data, error: updateError });
-      
-      if (updateError) {
-        setIsChangingPassword(false);
-        toast({
-          title: "Failed to update password",
-          description: updateError.message || "An error occurred while updating your password. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (!data?.user) {
-        setIsChangingPassword(false);
-        toast({
-          title: "Failed to update password",
-          description: "Session may have expired. Please sign out and sign in again.",
-          variant: "destructive",
-        });
-        return;
-      }
-    } catch (err) {
-      console.error("Password update exception:", err);
-      setIsChangingPassword(false);
-      toast({
-        title: "Failed to update password",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Clear the must_change_password flag
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ must_change_password: false })
-      .eq("id", user!.id);
-
-    setIsChangingPassword(false);
-
-    if (profileError) {
-      toast({
-        title: "Password updated",
-        description: "Your password was changed, but there was an issue updating your profile.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    toast({
-      title: "Password changed",
-      description: "Your password has been updated successfully.",
-    });
-    
-    setMustChangePassword(false);
   };
 
   const submitSignup = async () => {

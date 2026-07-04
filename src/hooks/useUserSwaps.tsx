@@ -80,29 +80,41 @@ export function useUserSwaps() {
 
       if (accepterError) throw accepterError;
 
+      // Cache related-date lookups: each one is a Supabase query, and multiple
+      // swaps often share the same date (avoids an N+1 query pattern).
+      const relatedDatesCache = new Map<string, string[]>();
+      const getRelatedDates = async (dateStr: string) => {
+        let related = relatedDatesCache.get(dateStr);
+        if (!related) {
+          related = await getRelatedWeekendServiceDates(dateStr);
+          relatedDatesCache.set(dateStr, related);
+        }
+        return related;
+      };
+
       // Build set of dates user has swapped OUT of (including weekend pair dates)
       const swappedOutDates = new Set<string>();
       for (const swap of swapsAsRequester || []) {
-        const relatedDates = await getRelatedWeekendServiceDates(swap.original_date);
+        const relatedDates = await getRelatedDates(swap.original_date);
         relatedDates.forEach((relatedDate) => swappedOutDates.add(relatedDate));
       }
 
       // Build map of dates user has swapped IN to (including weekend pair dates)
       const swappedInDates = new Map<string, SwapInfo>();
-      
+
       // As requester: if there's a swap_date, user is swapped IN to that date
       for (const swap of swapsAsRequester || []) {
         if (swap.swap_date) {
           const swapInfo = swap as SwapInfo;
-          const relatedDates = await getRelatedWeekendServiceDates(swap.swap_date);
+          const relatedDates = await getRelatedDates(swap.swap_date);
           relatedDates.forEach((relatedDate) => swappedInDates.set(relatedDate, swapInfo));
         }
       }
-      
+
       // As accepter: user is swapped IN to the original_date
       for (const swap of swapsAsAccepter || []) {
         const swapInfo = swap as SwapInfo;
-        const relatedDates = await getRelatedWeekendServiceDates(swap.original_date);
+        const relatedDates = await getRelatedDates(swap.original_date);
         relatedDates.forEach((relatedDate) => swappedInDates.set(relatedDate, swapInfo));
       }
 
