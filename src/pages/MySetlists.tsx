@@ -615,10 +615,6 @@ function StandardMySetlists() {
         {/* Audio library playlist(s) attached to this setlist */}
         {setlistPlaylists.length > 0 && (
           <div className="space-y-2 pt-2 border-t border-border">
-            <div className="flex items-center gap-2">
-              <Headphones className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">References</span>
-            </div>
             <SetlistYoutubeLinks songs={setlist.songs} compact={isMobile} />
             {setlistPlaylists.map((playlist) => (
               <SetlistPlaylistCard key={playlist.id} playlist={playlist} />
