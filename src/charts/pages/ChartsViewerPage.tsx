@@ -19,8 +19,6 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   buildRenderedBlocks,
   detectKeyIndexFromChart,
-  KEY_LABELS_FLAT,
-  KEY_LABELS_SHARP,
   RenderedLine,
   RENDERED_CHART_FONT_FAMILY,
   renderChordChartText,

@@ -205,6 +205,8 @@ export function ReferenceTrackUploadDialog({
     setUploadPhase("uploading");
     setProgress(0);
 
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
+
     try {
       // Generate unique filename
       const fileExt = selectedFile.name.split(".").pop();
@@ -212,7 +214,7 @@ export function ReferenceTrackUploadDialog({
       const filePath = `reference-tracks/${fileName}`;
 
       // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + 10, 90));
       }, 200);
 
@@ -225,6 +227,7 @@ export function ReferenceTrackUploadDialog({
         });
 
       clearInterval(progressInterval);
+      progressInterval = null;
 
       if (uploadError) throw uploadError;
 
@@ -342,6 +345,7 @@ export function ReferenceTrackUploadDialog({
         variant: "destructive",
       });
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setUploading(false);
       setUploadPhase("idle");
     }

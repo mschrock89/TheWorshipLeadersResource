@@ -82,12 +82,6 @@ export function useUserAdminCampuses(userId: string | undefined) {
   });
 }
 
-// Legacy - returns first admin campus for backwards compatibility
-export function useUserAdminCampus(userId: string | undefined) {
-  const { data: campuses = [], ...rest } = useUserAdminCampuses(userId);
-  return { data: campuses[0] || null, ...rest };
-}
-
 // Returns all roles for a user
 export function useUserRoles(userId: string | undefined) {
   return useQuery({
@@ -359,64 +353,4 @@ export function useUpdateBaseRole() {
       options?: Parameters<typeof updateBaseRoles.mutateAsync>[1],
     ) => updateBaseRoles.mutateAsync({ userId: variables.userId, roles: [variables.role] }, options),
   };
-}
-
-// Legacy - kept for backwards compatibility but now just updates base role
-export function useUpdateUserRole() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async ({ userId, role, adminCampusId }: { userId: string; role: AppRole; adminCampusId?: string | null }) => {
-      // Check if user already has THIS SPECIFIC role
-      const { data: existingRole } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("role", role)
-        .maybeSingle();
-
-      const adminCampusValue = role === 'campus_admin' ? (adminCampusId || null) : null;
-
-      if (existingRole) {
-        // Update existing role's admin_campus_id
-        const { error } = await supabase
-          .from("user_roles")
-          .update({ admin_campus_id: adminCampusValue })
-          .eq("id", existingRole.id);
-        
-        if (error) throw error;
-      } else {
-        // Delete any existing roles for this user first (single role model)
-        await supabase
-          .from("user_roles")
-          .delete()
-          .eq("user_id", userId);
-        
-        // Insert new role
-        const { error } = await supabase
-          .from("user_roles")
-          .insert({ user_id: userId, role, admin_campus_id: adminCampusValue });
-        
-        if (error) throw error;
-      }
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["user-role", variables.userId] });
-      queryClient.invalidateQueries({ queryKey: ["user-admin-campuses", variables.userId] });
-      queryClient.invalidateQueries({ queryKey: ["user-roles", variables.userId] });
-      queryClient.invalidateQueries({ queryKey: ["leadership-roles"] });
-      toast({
-        title: "Role updated",
-        description: "The user's permission level has been changed.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to update role",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 }

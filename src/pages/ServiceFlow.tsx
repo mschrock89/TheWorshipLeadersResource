@@ -2,7 +2,6 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
-import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -14,7 +13,6 @@ import {
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
 
 export default function ServiceFlow() {
-  const { isLeader } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");

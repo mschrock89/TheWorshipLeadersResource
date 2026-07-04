@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { formatPositionLabel, parseLocalDate, isWeekend, getWeekendKey } from "@/lib/utils";
+import { formatDateForDB, formatPositionLabel, parseLocalDate, isWeekend, getWeekendKey } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getMinistryLabel, isVideoPosition } from "@/lib/constants";
 import { useActiveCampMode } from "@/hooks/useCampMode";
@@ -146,7 +146,7 @@ export function useNotifications() {
             campus_id,
             campuses:campuses(name)
           `)
-          .gte("event_date", new Date().toISOString().split("T")[0])
+          .gte("event_date", formatDateForDB(new Date()))
           .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
           .order("created_at", { ascending: false })
           .limit(10),

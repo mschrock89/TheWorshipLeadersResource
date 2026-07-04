@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/re
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { formatDateForDB } from "@/lib/utils";
 
 export interface Song {
   id: string;
@@ -96,25 +97,6 @@ export function useSongs() {
 
       if (error) throw error;
       return data as Song[];
-    },
-  });
-}
-
-export function useSongVersions(songId: string | null, enabled = true) {
-  return useQuery({
-    queryKey: ["song-versions", songId],
-    enabled: enabled && !!songId,
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("song_versions")
-        .select("id, song_id, version_name, lyrics, chord_chart_text, chord_sheet_file_path, is_primary, created_at, updated_at")
-        .eq("song_id", songId)
-        .order("is_primary", { ascending: false })
-        .order("version_name", { ascending: true });
-
-      if (error) throw error;
-      return (data || []) as SongVersion[];
     },
   });
 }
@@ -267,7 +249,7 @@ export function useSongsWithStats() {
         }
       };
 
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = formatDateForDB(new Date());
       const bySongId = new Map<string, SongWithStats>();
       songsWithStats.forEach((song) => bySongId.set(song.id, song));
 
@@ -327,7 +309,7 @@ export function useSongsWithStats() {
 }
 
 export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; all?: boolean }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDateForDB(new Date());
   
   return useQuery({
     queryKey: ["service-plans", options],
@@ -960,12 +942,12 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         // Also check Sunday (next day)
         const sunday = new Date(dateObj);
         sunday.setDate(sunday.getDate() + 1);
-        datesToCheck.push(sunday.toISOString().split("T")[0]);
+        datesToCheck.push(formatDateForDB(sunday));
       } else if (isSunday) {
         // Also check Saturday (previous day)
         const saturday = new Date(dateObj);
         saturday.setDate(saturday.getDate() - 1);
-        datesToCheck.push(saturday.toISOString().split("T")[0]);
+        datesToCheck.push(formatDateForDB(saturday));
       }
 
       // Also get published sets from draft_sets (manually built sets)
@@ -1197,29 +1179,6 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
   });
 }
 
-export function useSyncProgress(startYear?: number, endYear?: number) {
-  return useQuery({
-    queryKey: ["sync-progress", startYear, endYear],
-    enabled: startYear !== undefined && endYear !== undefined,
-    refetchInterval: 2000, // Poll every 2 seconds while syncing
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data, error } = await supabase
-        .from("sync_progress")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("start_year", startYear!)
-        .eq("end_year", endYear!)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data as SyncProgress | null;
-    },
-  });
-}
-
 export function useAllSyncProgress() {
   return useQuery({
     queryKey: ["all-sync-progress"],
@@ -1238,128 +1197,6 @@ export function useAllSyncProgress() {
       return data as SyncProgress[];
     },
   });
-}
-
-export function useSyncPlans() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("pco-sync-plans");
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-with-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["service-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["plan-songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-for-date"] });
-
-      const results = data.results;
-      toast({
-        title: "Plans Synced",
-        description: `${results.plans_synced} plans, ${results.songs_synced} songs synced`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Sync Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-}
-
-export function useForceFullSync() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("pco-sync-plans", {
-        body: { force_full_sync: true },
-      });
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-with-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["service-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["plan-songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-for-date"] });
-
-      const results = data.results;
-      toast({
-        title: "Full Sync Complete",
-        description: `${results.plans_synced} plans, ${results.songs_synced} songs synced`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Full Sync Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-}
-
-export function useHistoricalSync() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async ({ startYear, endYear, resume = false }: { startYear: number; endYear: number; resume?: boolean }) => {
-      const { data, error } = await supabase.functions.invoke("pco-sync-plans", {
-        body: { sync_start_year: startYear, sync_end_year: endYear, resume },
-      });
-      if (error) throw error;
-      return { data, startYear, endYear };
-    },
-    onSuccess: ({ data, startYear, endYear }) => {
-      queryClient.invalidateQueries({ queryKey: ["songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-with-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["service-plans"] });
-      queryClient.invalidateQueries({ queryKey: ["plan-songs"] });
-      queryClient.invalidateQueries({ queryKey: ["songs-for-date"] });
-      queryClient.invalidateQueries({ queryKey: ["sync-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["all-sync-progress"] });
-
-      const results = data.results;
-      
-      if (results.timed_out) {
-        toast({
-          title: `Sync Paused (${startYear})`,
-          description: `${results.plans_synced} plans synced. Auto-resuming in 3s...`,
-        });
-        
-        // Auto-resume after 3 seconds
-        setTimeout(() => {
-          mutation.mutate({ startYear, endYear, resume: true });
-        }, 3000);
-      } else {
-        toast({
-          title: `Historical Sync Complete (${startYear})`,
-          description: `${results.plans_synced} plans, ${results.songs_synced} songs synced`,
-        });
-      }
-    },
-    onError: (error: Error) => {
-      queryClient.invalidateQueries({ queryKey: ["sync-progress"] });
-      queryClient.invalidateQueries({ queryKey: ["all-sync-progress"] });
-      toast({
-        title: "Historical Sync Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  return mutation;
 }
 
 export function useCreateSong() {

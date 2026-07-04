@@ -137,27 +137,6 @@ export function useAttendancePresence(campusId: string | null | undefined) {
   });
 }
 
-export function useMyActiveAttendance() {
-  return useQuery({
-    queryKey: ["my-active-attendance"],
-    queryFn: async () => {
-      const activeSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { data, error } = await attendanceSupabase
-        .from<AttendancePresence & { campuses?: { name: string } | null }>("student_attendance_sessions")
-        .select("id,user_id,campus_id,checked_in_at,last_seen_at,checked_out_at,distance_meters,location_accuracy_meters,campuses(name)")
-        .is("checked_out_at", null)
-        .gte("last_seen_at", activeSince)
-        .order("last_seen_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60 * 1000,
-  });
-}
-
 export function useRecordAttendance() {
   const queryClient = useQueryClient();
 

@@ -293,9 +293,14 @@ export default function Profile() {
     setAuditionNotes(candidateAudition.notes || "");
   }, [candidateAudition]);
 
+  const userCampusIdsKey = userCampuses.map(uc => uc.campus_id).join(",");
   useEffect(() => {
-    setSelectedCampuses(userCampuses.map(uc => uc.campus_id));
-  }, [userCampuses]);
+    setSelectedCampuses(userCampusIdsKey ? userCampusIdsKey.split(",") : []);
+    // userCampuses is refetched with a new array reference on every render while its
+    // query data is undefined (e.g. loading/erroring), so depend on the derived id
+    // string instead — otherwise this effect never stabilizes and loops forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCampusIdsKey]);
 
   useEffect(() => {
     const syncHapticsPreference = () => {
@@ -346,18 +351,6 @@ export default function Profile() {
         campusIds: selectedCampuses,
       });
     }
-  };
-
-  const togglePosition = (pos: TeamPosition) => {
-    setPositions((prev) =>
-      prev.includes(pos) ? prev.filter((p) => p !== pos) : [...prev, pos]
-    );
-  };
-
-  const toggleMinistry = (ministry: string) => {
-    setMinistryTypes((prev) =>
-      prev.includes(ministry) ? prev.filter((m) => m !== ministry) : [...prev, ministry]
-    );
   };
 
   const toggleCampus = (campusId: string) => {

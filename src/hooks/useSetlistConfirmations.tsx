@@ -4,7 +4,7 @@ import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { getPriorUseCountsForSongs } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
-import { getWeekendPairDate, isWeekend } from "@/lib/utils";
+import { formatDateForDB, getWeekendPairDate, isWeekend } from "@/lib/utils";
 import { normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterByResourceAppMinistry, filterStudentWednesdayFlows } from "@/lib/studentFlow";
@@ -241,7 +241,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       const customAssignmentServiceIdsByDate = new Map<string, Set<string>>();
       for (const row of customAssignments || []) {
         if (!row.assignment_date) continue;
-        if (!includePast && row.assignment_date < new Date().toISOString().split("T")[0]) continue;
+        if (!includePast && row.assignment_date < formatDateForDB(new Date())) continue;
         customAssignmentDates.add(row.assignment_date);
         if (row.custom_service_id) {
           if (!customAssignmentServiceIdsByDate.has(row.assignment_date)) {
@@ -260,7 +260,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .eq("user_id", user.id);
 
       if (!includePast) {
-        dateOverrideQuery = dateOverrideQuery.gte("schedule_date", new Date().toISOString().split("T")[0]);
+        dateOverrideQuery = dateOverrideQuery.gte("schedule_date", formatDateForDB(new Date()));
       }
 
       const { data: dateOverrideAssignments } = await dateOverrideQuery;
@@ -302,7 +302,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .order("plan_date", { ascending: includePast ? false : true });
         
         if (!includePast) {
-          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+          query = query.gte("plan_date", formatDateForDB(new Date()));
         }
 
         if (ministryType) {
@@ -337,7 +337,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .in("plan_date", swapDates);
         
         if (!includePast) {
-          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+          query = query.gte("plan_date", formatDateForDB(new Date()));
         }
 
         if (ministryType) {
@@ -374,7 +374,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .in("plan_date", customAssignmentDateList);
 
         if (!includePast) {
-          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+          query = query.gte("plan_date", formatDateForDB(new Date()));
         }
 
         if (ministryType) {
@@ -410,7 +410,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .in("plan_date", dateOverrideDates);
 
         if (!includePast) {
-          query = query.gte("plan_date", new Date().toISOString().split("T")[0]);
+          query = query.gte("plan_date", formatDateForDB(new Date()));
         }
 
         if (ministryType) {
@@ -797,279 +797,6 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
   });
 }
 
-// Fetch confirmation status for a specific setlist (admin view)
-export function useSetlistConfirmationStatus(draftSetId: string | null) {
-  return useQuery({
-    queryKey: ["setlist-confirmation-status", draftSetId],
-    queryFn: async () => {
-      if (!draftSetId) return { confirmations: [], totalScheduled: 0 };
-
-      // Get the draft set details
-      const { data: draftSet, error: draftSetError } = await supabase
-        .from("draft_sets")
-        .select("campus_id, plan_date, ministry_type, custom_service_id")
-        .eq("id", draftSetId)
-        .single();
-
-      if (draftSetError || !draftSet) {
-        throw new Error("Draft set not found");
-      }
-
-      // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) may be linked
-      // to a custom service for service-flow/date scoping, but their roster always comes from
-      // the Team Builder schedule (kept aligned with Set Builder and is_user_on_setlist_roster).
-      // Force the scheduled-team path and normalize the ministry to the base so team_members
-      // filtering matches.
-      const isSessionSet = isSessionSetMinistryType(draftSet.ministry_type);
-      const rosterMinistryType =
-        normalizeSessionSetMinistryType(draftSet.ministry_type) || draftSet.ministry_type;
-
-      let effectiveCustomServiceId = isSessionSet ? null : (draftSet.custom_service_id as string | null);
-
-      // Backward compatibility for older published rows that missed custom_service_id.
-      if (!effectiveCustomServiceId && !isSessionSet) {
-        const { data: matchingCustomServices } = await supabase
-          .from("custom_services")
-          .select("id")
-          .eq("is_active", true)
-          .eq("service_date", draftSet.plan_date)
-          .eq("campus_id", draftSet.campus_id)
-          .eq("ministry_type", draftSet.ministry_type);
-
-        if ((matchingCustomServices || []).length === 1) {
-          effectiveCustomServiceId = matchingCustomServices![0].id;
-        }
-      }
-
-      let scheduledMembers: { user_id: string; member_name: string; isSwappedIn: boolean }[] = [];
-      const swappedInUserIds = new Set<string>();
-
-      if (effectiveCustomServiceId) {
-        const { data: customAssignments } = await supabase
-          .from("custom_service_assignments")
-          .select(`
-            user_id,
-            profiles!custom_service_assignments_user_id_fkey(full_name)
-          `)
-          .eq("custom_service_id", effectiveCustomServiceId)
-          .eq("assignment_date", draftSet.plan_date);
-
-        const seenAssignedUsers = new Set<string>();
-        scheduledMembers = ((customAssignments || []) as CustomServiceConfirmationAssignment[])
-          .filter((assignment) => Boolean(assignment.user_id))
-          .filter((assignment) => {
-            if (seenAssignedUsers.has(assignment.user_id)) return false;
-            seenAssignedUsers.add(assignment.user_id);
-            return true;
-          })
-          .map((assignment) => ({
-            user_id: assignment.user_id,
-            member_name: getJoinedFullName(assignment.profiles) || "Unknown",
-            isSwappedIn: false,
-          }));
-      } else {
-        // Get team scheduled for this date
-        const { data: teamSchedule } = await supabase
-          .from("team_schedule")
-          .select("team_id")
-          .eq("resource_app_key", resourceAppKey)
-          .eq("schedule_date", draftSet.plan_date)
-          .limit(1)
-          .maybeSingle();
-
-        // Get rotation periods for this campus and date. Network Wide sets
-        // (campus_id IS NULL, e.g. Student Camp) match rotation periods across
-        // every campus, mirroring is_user_on_setlist_roster.
-        let rotationQuery = supabase
-          .from("rotation_periods")
-          .select("id")
-          .lte("start_date", draftSet.plan_date)
-          .gte("end_date", draftSet.plan_date);
-        if (draftSet.campus_id) {
-          rotationQuery = rotationQuery.eq("campus_id", draftSet.campus_id);
-        }
-        const { data: rotationPeriods } = await rotationQuery;
-
-        const rotationPeriodIds = (rotationPeriods || []).map(rp => rp.id);
-
-        // Fetch team members for this scheduled team (used for roster + to decide
-        // whether a swap applies to THIS scheduled team)
-        const { data: members } = teamSchedule?.team_id && rotationPeriodIds.length > 0
-          ? await supabase
-              .from("team_members")
-              .select("user_id, member_name, ministry_types")
-              .eq("team_id", teamSchedule.team_id)
-              .in("rotation_period_id", rotationPeriodIds)
-              .not("user_id", "is", null)
-          : { data: [] as TeamMemberConfirmationRow[] };
-
-        const rawTeamUserIds = new Set((members || []).map(m => m.user_id).filter(Boolean));
-
-        // Get swaps where original_date matches (requester out, accepted_by in)
-        const { data: swapsOnOriginalDate } = await supabase
-          .from("swap_requests")
-          .select(`
-            requester_id,
-            accepted_by_id,
-            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-          `)
-          .eq("original_date", draftSet.plan_date)
-          .eq("resource_app_key", resourceAppKey)
-          .eq("status", "accepted");
-
-        // Get swaps where swap_date matches (accepted_by out, requester in)
-        const { data: swapsOnSwapDate } = await supabase
-          .from("swap_requests")
-          .select(`
-            requester_id,
-            accepted_by_id,
-            requester:profiles!swap_requests_requester_id_fkey(id, full_name),
-            accepted_by:profiles!swap_requests_accepted_by_id_fkey(id, full_name)
-          `)
-          .eq("swap_date", draftSet.plan_date)
-          .eq("resource_app_key", resourceAppKey)
-          .eq("status", "accepted")
-          .not("swap_date", "is", null);
-
-        // Build sets for who's out and who's in FOR THIS TEAM on THIS DATE
-        const swappedOutUserIds = new Set<string>();
-        const swappedInMembers: { user_id: string; member_name: string }[] = [];
-
-        // On original_date: requester is out, accepted_by is in (apply only if requester is on this team's roster)
-        for (const swap of swapsOnOriginalDate || []) {
-          if (swap.requester_id && rawTeamUserIds.has(swap.requester_id)) {
-            swappedOutUserIds.add(swap.requester_id);
-            if (swap.accepted_by_id) {
-              swappedInMembers.push({
-                user_id: swap.accepted_by_id,
-                member_name: getJoinedFullName(swap.accepted_by) || "Unknown",
-              });
-            }
-          }
-        }
-
-        // On swap_date: accepted_by is out, requester is in (apply only if accepted_by is on this team's roster)
-        for (const swap of swapsOnSwapDate || []) {
-          if (swap.accepted_by_id && rawTeamUserIds.has(swap.accepted_by_id)) {
-            swappedOutUserIds.add(swap.accepted_by_id);
-            if (swap.requester_id) {
-              swappedInMembers.push({
-                user_id: swap.requester_id,
-                member_name: getJoinedFullName(swap.requester) || "Unknown",
-              });
-            }
-          }
-        }
-
-        // Dedupe and filter swapped-in members
-        const seenSwappedIn = new Set<string>();
-        const uniqueSwappedInMembers = swappedInMembers
-          .filter(m => !swappedOutUserIds.has(m.user_id))
-          .filter(m => {
-            if (seenSwappedIn.has(m.user_id)) return false;
-            seenSwappedIn.add(m.user_id);
-            return true;
-          });
-        uniqueSwappedInMembers.forEach((member) => swappedInUserIds.add(member.user_id));
-
-        // Deduplicate by user_id (a person can have multiple positions like vocalist + instrument)
-        const seenUserIds = new Set<string>();
-        scheduledMembers = (members || [])
-          .filter(m => {
-            if (!m.ministry_types || m.ministry_types.length === 0) return true;
-            return m.ministry_types.includes(rosterMinistryType);
-          })
-          .filter(m => !swappedOutUserIds.has(m.user_id!))
-          .filter(m => {
-            if (seenUserIds.has(m.user_id!)) return false;
-            seenUserIds.add(m.user_id!);
-            return true;
-          })
-          .map(m => ({ user_id: m.user_id!, member_name: m.member_name, isSwappedIn: false }));
-
-        // Add members who swapped in
-        const existingUserIds = new Set(scheduledMembers.map(m => m.user_id));
-        for (const swappedIn of uniqueSwappedInMembers) {
-          if (!existingUserIds.has(swappedIn.user_id)) {
-            scheduledMembers.push({
-              user_id: swappedIn.user_id,
-              member_name: swappedIn.member_name,
-              isSwappedIn: true,
-            });
-          }
-        }
-      }
-
-      // Get confirmations for this setlist
-      const { data: confirmations } = await supabase
-        .from("setlist_confirmations")
-        .select(`
-          id,
-          user_id,
-          confirmed_at
-        `)
-        .eq("draft_set_id", draftSetId);
-
-      // Get profile info for confirmed users
-      const confirmedUserIds = (confirmations || []).map(c => c.user_id);
-      
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", confirmedUserIds.length > 0 ? confirmedUserIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
-
-      // Build detailed confirmation list
-      const confirmedList = (confirmations || []).map(c => {
-        const profile = profileMap.get(c.user_id);
-        const member = scheduledMembers.find(m => m.user_id === c.user_id);
-        return {
-          userId: c.user_id,
-          name: profile?.full_name || member?.member_name || "Unknown",
-          avatarUrl: profile?.avatar_url || null,
-          confirmedAt: c.confirmed_at,
-          isSwappedIn: swappedInUserIds.has(c.user_id),
-        };
-      });
-
-      // Build unconfirmed list
-      const confirmedUserIdSet = new Set(confirmedUserIds);
-      const unconfirmedList = scheduledMembers
-        .filter(m => !confirmedUserIdSet.has(m.user_id))
-        .map(m => ({
-          userId: m.user_id,
-          name: m.member_name,
-          avatarUrl: null as string | null,
-          isSwappedIn: m.isSwappedIn,
-        }));
-
-      // Get avatar URLs for unconfirmed members
-      if (unconfirmedList.length > 0) {
-        const { data: unconfirmedProfiles } = await supabase
-          .from("profiles")
-          .select("id, avatar_url")
-          .in("id", unconfirmedList.map(u => u.userId));
-
-        for (const profile of unconfirmedProfiles || []) {
-          const member = unconfirmedList.find(u => u.userId === profile.id);
-          if (member) {
-            member.avatarUrl = profile.avatar_url;
-          }
-        }
-      }
-
-      return {
-        confirmed: confirmedList,
-        unconfirmed: unconfirmedList,
-        totalScheduled: scheduledMembers.length,
-      };
-    },
-    enabled: !!draftSetId,
-  });
-}
-
 // Confirm a setlist
 export function useConfirmSetlist() {
   const queryClient = useQueryClient();
@@ -1170,115 +897,6 @@ export function useConfirmSetlists() {
       toast({
         title: "Error confirming setlist",
         description: message,
-        variant: "destructive",
-      });
-    },
-  });
-}
-
-// Publish a setlist and notify team
-export function usePublishSetlist() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (draftSetId: string) => {
-      // First, get the details of this set to find replaceable draft duplicates
-      const { data: thisSet, error: fetchError } = await supabase
-        .from("draft_sets")
-        .select("campus_id, ministry_type, plan_date, custom_service_id")
-        .eq("id", draftSetId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // Only clean up other in-progress drafts in the same service context.
-      // Never auto-delete already published/approved sets.
-      let duplicateQuery = supabase
-        .from("draft_sets")
-        .select("id")
-        .eq("ministry_type", thisSet.ministry_type)
-        .eq("plan_date", thisSet.plan_date)
-        .in("status", ["draft", "pending_approval"])
-        .neq("id", draftSetId);
-
-      // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared, so
-      // scope the duplicate cleanup to the matching NULL campus.
-      duplicateQuery = thisSet.campus_id
-        ? duplicateQuery.eq("campus_id", thisSet.campus_id)
-        : duplicateQuery.is("campus_id", null);
-
-      if (thisSet.custom_service_id) {
-        duplicateQuery = duplicateQuery.eq("custom_service_id", thisSet.custom_service_id);
-      } else {
-        duplicateQuery = duplicateQuery.is("custom_service_id", null);
-      }
-
-      const { data: duplicateSets } = await duplicateQuery;
-
-      const deletedCount = duplicateSets?.length || 0;
-
-      if (deletedCount > 0) {
-        const idsToDelete = duplicateSets.map(s => s.id);
-        
-        // Delete the duplicate sets (cascade will handle draft_set_songs)
-        const { error: deleteError } = await supabase
-          .from("draft_sets")
-          .delete()
-          .in("id", idsToDelete);
-
-        if (deleteError) {
-          console.error("Error deleting duplicate sets:", deleteError);
-          // Continue anyway - not critical
-        }
-      }
-
-      // Update the draft set to published status
-      const { error: updateError } = await supabase
-        .from("draft_sets")
-        .update({
-          status: "published",
-          published_at: new Date().toISOString(),
-        })
-        .eq("id", draftSetId);
-
-      if (updateError) throw updateError;
-
-      // Call the notify edge function
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await supabase.functions.invoke("notify-setlist-published", {
-        body: { draftSetId },
-      });
-
-      if (response.error) {
-        console.error("Notification error:", response.error);
-        // Don't throw - the setlist is still published even if notification fails
-      }
-
-      return { ...response.data, deletedCount };
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
-      queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
-      
-      let description = data?.teamMembersNotified 
-        ? `${data.teamMembersNotified} team members have been notified.`
-        : "Your team has been notified.";
-      
-      if (data?.deletedCount > 0) {
-        description += ` (Cleaned up ${data.deletedCount} old version${data.deletedCount > 1 ? 's' : ''})`;
-      }
-      
-      toast({
-        title: "Setlist published!",
-        description,
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error publishing setlist",
-        description: error.message,
         variant: "destructive",
       });
     },

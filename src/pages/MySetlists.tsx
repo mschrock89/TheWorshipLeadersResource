@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { addDays, format, getDay, parseISO, subDays } from "date-fns";
-import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, XCircle, FileText, BookOpen, Youtube, Video, Church } from "lucide-react";
+import { format, getDay, parseISO } from "date-fns";
+import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, FileText, BookOpen, Youtube, Video, Church } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +48,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 
-const WEEKEND_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
 const TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME = "Empty";
@@ -117,38 +116,6 @@ function buildSessionRenderUnits<
     });
   }
   return units;
-}
-
-function getSetlistDisplayDate(planDate: string, ministryType: string) {
-  const date = parseLocalDate(planDate);
-  const day = getDay(date);
-
-  if (WEEKEND_MINISTRY_TYPES.has(ministryType)) {
-    const saturday = day === 0 ? subDays(date, 1) : date;
-    const sunday = addDays(saturday, 1);
-    return `${format(saturday, "EEEE, MMMM d")} - ${format(sunday, "EEEE, MMMM d, yyyy")}`;
-  }
-
-  return format(date, "EEEE, MMMM d, yyyy");
-}
-
-function getCompactSetlistDisplayDate(planDate: string, ministryType: string) {
-  const date = parseLocalDate(planDate);
-  const day = getDay(date);
-
-  if (WEEKEND_MINISTRY_TYPES.has(ministryType)) {
-    const saturday = day === 0 ? subDays(date, 1) : date;
-    const sunday = addDays(saturday, 1);
-    const sameMonth = format(saturday, "MMM") === format(sunday, "MMM");
-
-    if (sameMonth) {
-      return `${format(saturday, "MMM d")}-${format(sunday, "d, yyyy")}`;
-    }
-
-    return `${format(saturday, "MMM d")} - ${format(sunday, "MMM d, yyyy")}`;
-  }
-
-  return format(date, "MMM d, yyyy");
 }
 
 function YouTubeButton({
@@ -274,14 +241,17 @@ function StandardMySetlists() {
     }
   }, [normalizedCampusId, selectedCampusId]);
 
+  // "__none__" means the user has no campus at all — pass no filter rather than
+  // leaking that sentinel into a `campus_id.in.(__none__)` query (invalid UUID, 400).
+  const campusIdFilter = normalizedCampusId === "__none__" ? undefined : normalizedCampusId;
   const { data: upcomingSetlists, isLoading: loadingUpcoming } = usePublishedSetlists(
-    normalizedCampusId,
-    undefined, 
+    campusIdFilter,
+    undefined,
     false
   );
   const { data: pastSetlists, isLoading: loadingPast } = usePublishedSetlists(
-    normalizedCampusId,
-    undefined, 
+    campusIdFilter,
+    undefined,
     true
   );
   const { data: playlists, isLoading: loadingPlaylists } = useMySetlistPlaylists();

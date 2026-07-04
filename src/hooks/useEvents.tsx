@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { formatDateForDB } from "@/lib/utils";
 
 export interface Event {
   id: string;
@@ -78,8 +79,8 @@ export function useEvents() {
 
 export function useEventsForMonth(year: number, month: number) {
   const { user } = useAuth();
-  const startDate = new Date(year, month, 1).toISOString().split("T")[0];
-  const endDate = new Date(year, month + 1, 0).toISOString().split("T")[0];
+  const startDate = formatDateForDB(new Date(year, month, 1));
+  const endDate = formatDateForDB(new Date(year, month + 1, 0));
 
   return useQuery({
     queryKey: ["events", year, month, user?.id],

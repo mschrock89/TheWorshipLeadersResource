@@ -113,7 +113,7 @@ const previousRosterUserIds = new Set(
 
 const mustServe = availableUsers
   .filter((profile) => !previousRosterUserIds.has(profile.id))
-  .sort((a, b) => a.full_name.localeCompare(b.full_name));
+  .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
 
 console.log(
   JSON.stringify(

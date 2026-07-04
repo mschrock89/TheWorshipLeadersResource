@@ -6,6 +6,7 @@ import { useToast } from "./use-toast";
 import { format } from "date-fns";
 import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
 import { getSessionSetVariants, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
+import { formatDateForDB } from "@/lib/utils";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -212,25 +213,6 @@ export function useSongAvailability(
   return { availability, isLoading };
 }
 
-export function useDraftSets(campusId: string | null) {
-  return useQuery({
-    queryKey: ['draft-sets', campusId],
-    queryFn: async () => {
-      if (!campusId) return [];
-      
-      const { data, error } = await supabase
-        .from('draft_sets')
-        .select('*')
-        .eq('campus_id', campusId)
-        .order('plan_date', { ascending: true });
-
-      if (error) throw error;
-      return data as DraftSet[];
-    },
-    enabled: !!campusId,
-  });
-}
-
 // Fetch existing draft/published set for a specific date, campus, and ministry
 export function useExistingSet(
   campusId: string | null,
@@ -255,11 +237,11 @@ export function useExistingSet(
       if (isSaturday) {
         const sunday = new Date(planDateValue);
         sunday.setDate(sunday.getDate() + 1);
-        lookupDates.push(sunday.toISOString().split("T")[0]);
+        lookupDates.push(formatDateForDB(sunday));
       } else if (isSunday) {
         const saturday = new Date(planDateValue);
         saturday.setDate(saturday.getDate() - 1);
-        lookupDates.push(saturday.toISOString().split("T")[0]);
+        lookupDates.push(formatDateForDB(saturday));
       }
 
       const ministryLookupValues = weekendAliases.includes(ministryType)
@@ -651,36 +633,6 @@ export function useSaveDraftSet() {
     onError: (error) => {
       toast({
         title: 'Error saving set',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
-}
-
-export function useDeleteDraftSet() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (draftSetId: string) => {
-      const { error } = await supabase
-        .from('draft_sets')
-        .delete()
-        .eq('id', draftSetId);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['draft-sets'] });
-      toast({
-        title: 'Set deleted',
-        description: 'The draft set has been removed.',
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Error deleting set',
         description: error.message,
         variant: 'destructive',
       });

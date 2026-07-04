@@ -2,37 +2,22 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useProfile } from "@/hooks/useProfiles";
-import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, ChevronDown, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import emLogo from "@/assets/em-logo-transparent-new.png";
 import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
-import { useMemo, useEffect, useState } from "react";
-import { useCampusSelectionOptional } from "./CampusSelectionContext";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
-interface MainHeaderProps {
-  selectedCampusId?: string | null;
-  onSelectCampus?: (campusId: string) => void;
-}
-export function MainHeader({
-  selectedCampusId: selectedCampusIdProp,
-  onSelectCampus: onSelectCampusProp
-}: MainHeaderProps) {
+export function MainHeader() {
   const {
     user,
-    signOut,
-    canManageTeam,
-    canSwitchCampusChat,
-    isLeader
+    signOut
   } = useAuth();
   const location = useLocation();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -41,12 +26,6 @@ export function MainHeader({
   const {
     data: profile
   } = useProfile(user?.id);
-  const {
-    data: userCampuses
-  } = useUserCampuses(user?.id);
-  const {
-    data: allCampuses
-  } = useCampuses();
   const {
     data: isApprover
   } = useIsApprover();
@@ -58,25 +37,7 @@ export function MainHeader({
   } = usePendingSwapRequestsCount();
   const drumTechAccess = useDrumTechAccess();
   const isStudentApp = isCurrentStudentResourceApp();
-  const campusCtx = useCampusSelectionOptional();
-  const selectedCampusId = selectedCampusIdProp ?? campusCtx?.selectedCampusId;
-  const onSelectCampus = onSelectCampusProp ?? campusCtx?.setSelectedCampusId;
   const isOnChatPage = location.pathname === "/chat";
-
-  // Admins see all campuses, others see only their assigned campuses
-  const availableCampuses = useMemo(() => {
-    if (isLeader && allCampuses) {
-      return allCampuses.map(c => ({
-        campus_id: c.id,
-        campuses: c
-      }));
-    }
-    return userCampuses || [];
-  }, [isLeader, allCampuses, userCampuses]);
-  const selectedCampus = useMemo(() => availableCampuses.find(uc => uc.campus_id === selectedCampusId), [availableCampuses, selectedCampusId]);
-
-  // Don't show campus selector in MainHeader for chat page - ChatHeader handles it
-  const showCampusSelector = false;
 
   // Get initials from full name
   const getInitials = () => {
@@ -94,29 +55,13 @@ export function MainHeader({
     paddingTop: 'env(safe-area-inset-top, 0px)'
   }}>
       <div className="container flex h-14 items-center justify-between px-4 relative">
-        {/* Left side - Home button (on chat), Logo and Campus selector */}
+        {/* Left side - Home button (on chat) */}
         <div className="flex items-center gap-3">
           {isOnChatPage && <Link to="/">
               <Button variant="ghost" size="icon" className="h-9 w-9">
                 <Home className="h-5 w-5" />
               </Button>
             </Link>}
-          <Link to="/dashboard">
-            
-          </Link>
-          {showCampusSelector && <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-2 text-foreground hover:text-foreground/80 transition-colors">
-                <span className="text-lg font-semibold">
-                  {selectedCampus?.campuses?.name || "Select Campus"}
-                </span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56 bg-popover">
-                {availableCampuses.map(uc => <DropdownMenuItem key={uc.campus_id} onClick={() => onSelectCampus(uc.campus_id)} className={cn(selectedCampusId === uc.campus_id && "bg-accent")}>
-                    {uc.campuses?.name}
-                  </DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>}
         </div>
 
         {/* Center - Mini Player (absolutely centered) */}

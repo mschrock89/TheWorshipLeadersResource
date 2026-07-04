@@ -40,7 +40,9 @@ export async function getRelatedWeekendServiceDates(dateStr: string, campusId?: 
     query = query.eq("campus_id", campusId);
   }
 
-  const { data, error } = await query.maybeSingle();
+  // limit(1): multiple campuses can each have an override on the same Friday when
+  // no campusId filter is applied; maybeSingle() alone would error on >1 row.
+  const { data, error } = await query.limit(1).maybeSingle();
   if (error) throw error;
 
   if (!data) {

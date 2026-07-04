@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { parseLocalDate, getWeekendPairDate } from "@/lib/utils";
+import { formatDateForDB, parseLocalDate, getWeekendPairDate } from "@/lib/utils";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import {
   assignmentMatchesServiceDay,
@@ -830,80 +830,6 @@ async function getCampusAssignmentEligibleUserIds(args: {
   return eligibleUserIds;
 }
 
-export function usePositionMembers(
-  position: string,
-  excludeUserId?: string,
-  campusId?: string,
-  rotationPeriodId?: string,
-  ministryType?: string,
-  requesterGender?: string | null,
-  teamId?: string
-) {
-  // Check if this is a vocalist position - vocalists can swap across teams
-  const isVocalist = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
-  const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
-
-  return useQuery({
-    queryKey: [
-      "position-members",
-      position,
-      excludeUserId,
-      campusId,
-      rotationPeriodId,
-      effectiveMinistryType,
-      requesterGender,
-      teamId,
-    ],
-    queryFn: async (): Promise<PositionMember[]> => {
-      let query = supabase
-        .from("team_members")
-        .select(
-          `
-          id,
-          user_id,
-          member_name,
-          position,
-          team_id,
-          rotation_period_id,
-          ministry_types,
-          worship_teams(id, name)
-        `
-        );
-
-      query = query.in("position", getSwapPositionVariants(position));
-
-      if (excludeUserId) {
-        query = query.neq("user_id", excludeUserId);
-      }
-
-      // Filter by team ONLY for non-vocalist positions
-      // Vocalists can swap across teams within the same ministry/rotation
-      if (teamId && !isVocalist) {
-        query = query.eq("team_id", teamId);
-      }
-
-      // Filter by rotation period if provided
-      if (rotationPeriodId) {
-        query = query.eq("rotation_period_id", rotationPeriodId);
-      }
-
-      const { data: members, error } = await query;
-      if (error) throw error;
-
-      return await hydrateAndFilterMembers({
-        members: (members as any[]) || [],
-        campusId,
-        rotationPeriodId,
-        ministryType: effectiveMinistryType,
-        requesterGender,
-        position,
-        strictMinistryMatch: true,
-      });
-    },
-    enabled: !!position,
-  });
-}
-
 /**
  * Returns members for a position that are eligible to swap for a specific date.
  *
@@ -1265,7 +1191,7 @@ export function useUserScheduledDates(userId: string | undefined, teamId?: strin
     // cache-bust key to ensure date parsing updates reflect immediately
     queryKey: ["user-scheduled-dates", "local-date-v2", userId, teamId, resourceAppKey],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
+      const today = formatDateForDB(new Date());
 
       const { data: memberData, error: memberError } = await supabase
         .from("team_members")
