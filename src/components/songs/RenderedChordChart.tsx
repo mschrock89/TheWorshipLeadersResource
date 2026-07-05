@@ -1,5 +1,11 @@
 import { CSSProperties, Ref, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { paginateRenderedChordLines, RenderedLine, renderChordChartText, RENDERED_CHART_FONT_FAMILY } from "@/lib/chordChart";
+import {
+  buildChordLyricWords,
+  paginateRenderedChordLines,
+  RenderedLine,
+  renderChordChartText,
+  RENDERED_CHART_FONT_FAMILY,
+} from "@/lib/chordChart";
 
 interface RenderedChordChartProps {
   title: string;
@@ -106,7 +112,7 @@ export function RenderedChordChart({
         localContainerRef.current = node;
         assignRef(containerRef, node);
       }}
-      className={`${isScaled ? "overflow-hidden" : "overflow-auto overscroll-contain touch-pan-x touch-pan-y"} rounded-md border bg-background p-3 sm:p-4 ${scaleClassName} ${className || ""}`.trim()}
+      className={`${isScaled ? "overflow-hidden" : "overflow-auto"} rounded-md border bg-background p-3 sm:p-4 ${scaleClassName} ${className || ""}`.trim()}
       style={{ fontFamily: RENDERED_CHART_FONT_FAMILY, ...style }}
     >
       {showHeader ? (
@@ -136,7 +142,7 @@ export function RenderedChartLines({
   lineOffset?: number;
 }) {
   return (
-    <div className="h-full w-max max-w-none space-y-0.5 pr-2">
+    <div className="h-full w-full min-w-0 space-y-1">
       {lines.map((line, index) => {
         const lineIndex = lineOffset + index;
 
@@ -146,37 +152,50 @@ export function RenderedChartLines({
 
         if (line.kind === "section") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="mt-2 whitespace-pre font-bold">
-              {line.text}
-            </pre>
+            <div key={index} data-line-index={lineIndex} className="mt-3 first:mt-0">
+              <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-[0.72em] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                {line.text}
+              </span>
+            </div>
           );
         }
 
         if (line.kind === "chords") {
           return (
-            <pre key={index} data-line-index={lineIndex} className="whitespace-pre font-bold">
+            <p
+              key={index}
+              data-line-index={lineIndex}
+              className="whitespace-pre-wrap break-words font-bold text-primary"
+            >
               {line.text}
-            </pre>
+            </p>
           );
         }
 
         if (line.kind === "lyricWithChords") {
+          const words = buildChordLyricWords(line.lyric, line.chords);
           return (
-            <div key={index} data-line-index={lineIndex} className="space-y-0">
-              {line.chords.trim().length > 0 ? (
-                <pre className="whitespace-pre font-bold">{line.chords}</pre>
-              ) : (
-                <div className="h-[1.45em]" />
-              )}
-              <pre className="whitespace-pre">{line.lyric}</pre>
+            <div key={index} data-line-index={lineIndex} className="flex flex-wrap items-end gap-x-[0.5ch] gap-y-1">
+              {words.map((word, wordIndex) => (
+                <span key={wordIndex} className="inline-flex items-end whitespace-pre">
+                  {word.map((fragment, fragmentIndex) => (
+                    <span key={fragmentIndex} className="inline-flex flex-col">
+                      {fragment.chord ? (
+                        <span className="pr-[0.5ch] font-bold leading-[1.2] text-primary">{fragment.chord}</span>
+                      ) : null}
+                      <span>{fragment.text || " "}</span>
+                    </span>
+                  ))}
+                </span>
+              ))}
             </div>
           );
         }
 
         return (
-          <pre key={index} data-line-index={lineIndex} className="whitespace-pre">
+          <p key={index} data-line-index={lineIndex} className="whitespace-pre-wrap break-words">
             {line.text}
-          </pre>
+          </p>
         );
       })}
     </div>

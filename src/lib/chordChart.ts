@@ -40,6 +40,14 @@ const NOTE_INDEX: Record<string, number> = {
   Cb: 11,
 };
 
+export function parseKeyIndex(keyLabel?: string | null): number | null {
+  if (!keyLabel) return null;
+  const rootMatch = keyLabel.trim().match(/^([A-G](?:#|b)?)/);
+  if (!rootMatch) return null;
+  const keyIndex = NOTE_INDEX[rootMatch[1]];
+  return typeof keyIndex === "number" ? keyIndex : null;
+}
+
 function padToLength(input: string, targetLength: number): string {
   if (input.length >= targetLength) return input;
   return input + " ".repeat(targetLength - input.length);
@@ -53,6 +61,7 @@ function isSectionHeader(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
   if (trimmed.includes("[") || trimmed.includes("]")) return false;
+  if (isPlainChordLine(trimmed)) return false;
   if (/^(intro|verse(?:\s+\d+)?|chorus|bridge|tag|turnaround|pre[-\s]?chorus|outro|interlude|repeat chorus|ending|ending chorus|instrumental|refrain|hook)$/i.test(trimmed)) {
     return true;
   }
@@ -69,11 +78,28 @@ function isSectionHeader(line: string): boolean {
   return false;
 }
 
+const CHORD_ONLY_TOKEN_REGEX =
+  /^[A-G](?:#|b)?(?:(?:m|maj|min|dim|aug|sus|add)?[0-9()#b+-]*)*(?:\/[A-G](?:#|b)?)?$/;
+
+function isChordSequence(text: string): boolean {
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return false;
+  return tokens.every((token) => CHORD_ONLY_TOKEN_REGEX.test(token) || /^[|:().x%\d-]+$/.test(token));
+}
+
 function isChordOnlyLine(line: string): boolean {
   if (!line.includes("[")) return false;
   const stripped = stripBracketedChords(line).trim();
   if (!stripped) return true;
-  return /^[A-Ga-g0-9#b/().+|:\s-]+$/.test(stripped);
+  return isChordSequence(stripped);
+}
+
+// Chord lines typed without brackets, e.g. "G   D   Em   C" above a lyric line.
+function isPlainChordLine(line: string): boolean {
+  if (line.includes("[") || line.includes("]")) return false;
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  return isChordSequence(trimmed);
 }
 
 function buildLyricAndChordLine(line: string): { lyric: string; chords: string } {
@@ -107,31 +133,121 @@ function buildLyricAndChordLine(line: string): { lyric: string; chords: string }
 }
 
 export function renderChordChartText(chordChartText: string): RenderedLine[] {
-  return chordChartText.split("\n").map((rawLine) => {
-    const line = rawLine.replace(/\t/g, "  ");
+  const rawLines = chordChartText.split("\n").map((rawLine) => rawLine.replace(/\t/g, "  "));
+  const result: RenderedLine[] = [];
+
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const line = rawLines[index];
     const trimmed = line.trim();
 
     if (!trimmed) {
-      return { kind: "empty" } as RenderedLine;
+      result.push({ kind: "empty" });
+      continue;
     }
 
     if (isSectionHeader(trimmed)) {
-      return { kind: "section", text: trimmed } as RenderedLine;
+      result.push({ kind: "section", text: trimmed });
+      continue;
     }
 
     if (isChordOnlyLine(line)) {
-      return { kind: "chords", text: stripBracketedChords(line).trimEnd() } as RenderedLine;
+      result.push({ kind: "chords", text: stripBracketedChords(line).trimEnd() });
+      continue;
     }
 
     if (line.includes("[")) {
       const { lyric, chords } = buildLyricAndChordLine(line);
       if (lyric || chords) {
-        return { kind: "lyricWithChords", lyric, chords } as RenderedLine;
+        result.push({ kind: "lyricWithChords", lyric, chords });
+        continue;
       }
     }
 
-    return { kind: "text", text: line.trimEnd() } as RenderedLine;
+    if (isPlainChordLine(line)) {
+      // Pair a bare chord line with the lyric line below it (column-aligned
+      // two-line charts) so chords stay attached to their words when wrapping.
+      const nextLine = rawLines[index + 1];
+      const nextTrimmed = nextLine?.trim() ?? "";
+      const nextIsLyric =
+        !!nextTrimmed &&
+        !nextLine.includes("[") &&
+        !isSectionHeader(nextTrimmed) &&
+        !isPlainChordLine(nextLine);
+
+      if (nextIsLyric) {
+        result.push({ kind: "lyricWithChords", lyric: nextLine.trimEnd(), chords: line.trimEnd() });
+        index += 1;
+      } else {
+        result.push({ kind: "chords", text: line.trimEnd() });
+      }
+      continue;
+    }
+
+    result.push({ kind: "text", text: line.trimEnd() });
+  }
+
+  return result;
+}
+
+export type ChordLyricFragment = {
+  chord: string | null;
+  text: string;
+};
+
+// A "word" is a run of fragments with no internal whitespace. Line wrapping may
+// only happen between words so chords stay attached to their syllables.
+export type ChordLyricWord = ChordLyricFragment[];
+
+export function buildChordLyricWords(lyric: string, chords: string): ChordLyricWord[] {
+  const chordTokens: Array<{ position: number; chord: string }> = [];
+  const tokenRegex = /\S+/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(chords)) !== null) {
+    chordTokens.push({ position: match.index, chord: match[0] });
+  }
+
+  const paddedLyric = padToLength(lyric, chords.length);
+  const fragments: ChordLyricFragment[] = [];
+  let cursor = 0;
+  chordTokens.forEach((token, index) => {
+    if (token.position > cursor) {
+      fragments.push({ chord: null, text: paddedLyric.slice(cursor, token.position) });
+    }
+    const end = chordTokens[index + 1]?.position ?? paddedLyric.length;
+    fragments.push({ chord: token.chord, text: paddedLyric.slice(token.position, end) });
+    cursor = end;
   });
+  if (cursor < paddedLyric.length) {
+    fragments.push({ chord: null, text: paddedLyric.slice(cursor) });
+  }
+
+  const words: ChordLyricWord[] = [];
+  let currentWord: ChordLyricFragment[] = [];
+  const closeWord = () => {
+    if (currentWord.length) {
+      words.push(currentWord);
+      currentWord = [];
+    }
+  };
+
+  for (const fragment of fragments) {
+    const pieces = fragment.text.split(/(\s+)/).filter((piece) => piece.length > 0);
+    if (!pieces.length) pieces.push("");
+    pieces.forEach((piece, pieceIndex) => {
+      const chord = pieceIndex === 0 ? fragment.chord : null;
+      if (/^\s+$/.test(piece)) {
+        if (chord) {
+          currentWord.push({ chord, text: "" });
+        }
+        closeWord();
+        return;
+      }
+      currentWord.push({ chord, text: piece });
+    });
+  }
+  closeWord();
+
+  return words;
 }
 
 export function getRenderedLineUnits(line: RenderedLine): number {
@@ -317,20 +433,62 @@ export function detectKeyIndexFromChart(chordChartText: string): number {
     if (rootIndex === undefined) return;
 
     const suffix = (rootMatch[2] || "").toLowerCase();
-    const isMinor = suffix.startsWith("m") && !suffix.startsWith("maj");
-    addVote(rootIndex, positionWeight, rootVotes);
-    addVote(rootIndex, isMinor ? 1 : 2, functionVotes);
+    const isMinor =
+      /^m(?!aj)/.test(suffix) ||
+      /\bmin\b/.test(suffix) ||
+      /-/.test(suffix);
 
-    const dominantIndex = (rootIndex + 7) % 12;
-    const subdominantIndex = (rootIndex + 5) % 12;
-    addVote(dominantIndex, 0.4 * positionWeight, functionVotes);
-    addVote(subdominantIndex, 0.3 * positionWeight, functionVotes);
+    addVote(rootIndex, 2 * positionWeight, rootVotes);
+
+    // Score likely tonal centers by diatonic-function fit.
+    // Major: I, IV, V strongest, then ii/iii/vi.
+    // Minor: i, iv, v strongest, then III/VI/VII.
+    const majorCandidates = [
+      { tonicOffset: 0, weight: 5 },  // I
+      { tonicOffset: 5, weight: 4 },  // IV
+      { tonicOffset: 7, weight: 4 },  // V
+      { tonicOffset: 2, weight: 2 },  // ii
+      { tonicOffset: 4, weight: 2 },  // iii
+      { tonicOffset: 9, weight: 2 },  // vi
+    ];
+    const minorCandidates = [
+      { tonicOffset: 0, weight: 5 },  // i
+      { tonicOffset: 5, weight: 4 },  // iv
+      { tonicOffset: 7, weight: 3 },  // v
+      { tonicOffset: 3, weight: 2 },  // III
+      { tonicOffset: 8, weight: 2 },  // VI
+      { tonicOffset: 10, weight: 2 }, // VII
+    ];
+
+    const candidates = isMinor ? minorCandidates : majorCandidates;
+    for (const candidate of candidates) {
+      const tonic = (rootIndex - candidate.tonicOffset + 12) % 12;
+      addVote(tonic, candidate.weight * positionWeight, functionVotes);
+    }
   };
 
-  chordChartText.split("\n").forEach((line) => {
-    const tokens = Array.from(line.matchAll(tokenRegex)).map((match) => match[1]);
-    tokens.forEach((token, index) => registerChordToken(token, index === 0 ? 2 : 1));
-  });
+  const lines = chordChartText.split("\n");
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const weight = lineIndex < 6 ? 1.5 : 1;
+
+    if (line.includes("[")) {
+      const bracketRegex = /\[([^\]]+)\]/g;
+      let bracketMatch: RegExpExecArray | null;
+      while ((bracketMatch = bracketRegex.exec(line)) !== null) {
+        registerChordToken(bracketMatch[1].trim(), weight);
+      }
+      continue;
+    }
+
+    if (isChordOnlyLine(line)) {
+      let tokenMatch: RegExpExecArray | null;
+      while ((tokenMatch = tokenRegex.exec(line)) !== null) {
+        registerChordToken(tokenMatch[1], weight);
+      }
+      tokenRegex.lastIndex = 0;
+    }
+  }
 
   if (functionVotes.size === 0 && rootVotes.size === 0) return 0;
 
@@ -345,6 +503,24 @@ export function detectKeyIndexFromChart(chordChartText: string): number {
   }
 
   return bestIndex;
+}
+
+export function upsertExplicitKeyLine(chordChartText: string, keyLabel: string): string {
+  const keyLine = `Key: ${keyLabel}`;
+  const lines = chordChartText.split("\n");
+  const keyLineRegex = /^\s*key\s*[:=-]\s*[A-G](?:#|b)?\s*$/i;
+  const existingIndex = lines.findIndex((line) => keyLineRegex.test(line));
+
+  if (existingIndex >= 0) {
+    lines[existingIndex] = keyLine;
+    return lines.join("\n");
+  }
+
+  if (!chordChartText.trim()) {
+    return `${keyLine}\n`;
+  }
+
+  return `${keyLine}\n${chordChartText}`;
 }
 
 export function getSignedSemitoneDelta(fromIndex: number, toIndex: number): number {

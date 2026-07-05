@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -22,6 +21,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSongChartVersions } from "@/hooks/useSongs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { RenderedChordChart } from "@/components/songs/RenderedChordChart";
+import {
+  DisplayMode,
+  KEY_LABELS_FLAT,
+  KEY_LABELS_SHARP,
+  detectKeyIndexFromChart,
+  getSignedSemitoneDelta,
+  parseKeyIndex,
+  transposeChordChartText,
+  upsertExplicitKeyLine,
+} from "@/lib/chordChart";
 
 interface ChordChartDialogProps {
   open: boolean;
@@ -34,405 +44,6 @@ interface ChordChartDialogProps {
     originalKey?: string | null;
     openInRawEdit?: boolean;
   } | null;
-}
-
-type DisplayMode = "rendered" | "raw";
-
-type RenderedLine =
-  | { kind: "empty" }
-  | { kind: "section"; text: string }
-  | { kind: "chords"; text: string }
-  | { kind: "lyricWithChords"; lyric: string; chords: string }
-  | { kind: "text"; text: string };
-
-const RENDERED_CHART_FONT_FAMILY =
-  '"Helvetica Neue", Helvetica, Arial, sans-serif';
-
-const NOTE_SEQUENCE_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const NOTE_SEQUENCE_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-const KEY_LABELS_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const KEY_LABELS_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-const NOTE_INDEX: Record<string, number> = {
-  C: 0,
-  "B#": 0,
-  "C#": 1,
-  Db: 1,
-  D: 2,
-  "D#": 3,
-  Eb: 3,
-  E: 4,
-  Fb: 4,
-  F: 5,
-  "E#": 5,
-  "F#": 6,
-  Gb: 6,
-  G: 7,
-  "G#": 8,
-  Ab: 8,
-  A: 9,
-  "A#": 10,
-  Bb: 10,
-  B: 11,
-  Cb: 11,
-};
-
-function parseKeyIndex(keyLabel?: string | null): number | null {
-  if (!keyLabel) return null;
-  const rootMatch = keyLabel.trim().match(/^([A-G](?:#|b)?)/);
-  if (!rootMatch) return null;
-  const keyIndex = NOTE_INDEX[rootMatch[1]];
-  return typeof keyIndex === "number" ? keyIndex : null;
-}
-
-function padToLength(input: string, targetLength: number): string {
-  if (input.length >= targetLength) return input;
-  return input + " ".repeat(targetLength - input.length);
-}
-
-function stripBracketedChords(line: string): string {
-  return line.replace(/\[([^\]]+)\]/g, "$1");
-}
-
-function isSectionHeader(line: string): boolean {
-  const trimmed = line.trim();
-  if (!trimmed) return false;
-  if (trimmed.includes("[") || trimmed.includes("]")) return false;
-  return /^(intro|verse(?:\s+\d+)?|chorus|bridge|tag|turnaround|pre[-\s]?chorus|outro|interlude|repeat chorus)$/i.test(trimmed);
-}
-
-function isChordOnlyLine(line: string): boolean {
-  if (!line.includes("[")) return false;
-  const stripped = stripBracketedChords(line).trim();
-  if (!stripped) return true;
-  return /^[A-Ga-g0-9#b/().+|:\s-]+$/.test(stripped);
-}
-
-function buildLyricAndChordLine(line: string): { lyric: string; chords: string } {
-  const regex = /\[([^\]]+)\]/g;
-  let match: RegExpExecArray | null;
-  let cursor = 0;
-  let lyricLine = "";
-  let chordLine = "";
-
-  while ((match = regex.exec(line)) !== null) {
-    const lyricChunk = line.slice(cursor, match.index);
-    lyricLine += lyricChunk;
-    chordLine = padToLength(chordLine, lyricLine.length);
-
-    const chord = match[1].trim();
-    if (chord) {
-      chordLine += chord;
-    }
-
-    cursor = regex.lastIndex;
-  }
-
-  const trailingLyrics = line.slice(cursor);
-  lyricLine += trailingLyrics;
-  chordLine = padToLength(chordLine, lyricLine.length);
-
-  return {
-    lyric: lyricLine,
-    chords: chordLine,
-  };
-}
-
-function renderChordChartText(chordChartText: string): RenderedLine[] {
-  return chordChartText.split("\n").map((rawLine) => {
-    const line = rawLine.replace(/\t/g, "  ");
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      return { kind: "empty" } as RenderedLine;
-    }
-
-    if (isSectionHeader(trimmed)) {
-      return { kind: "section", text: trimmed };
-    }
-
-    if (isChordOnlyLine(line)) {
-      return { kind: "chords", text: stripBracketedChords(line).trimEnd() };
-    }
-
-    if (line.includes("[")) {
-      const { lyric, chords } = buildLyricAndChordLine(line);
-      if (lyric || chords) {
-        return { kind: "lyricWithChords", lyric, chords };
-      }
-    }
-
-    return { kind: "text", text: line.trimEnd() };
-  });
-}
-
-function transposeNote(note: string, semitones: number): string {
-  const index = NOTE_INDEX[note];
-  if (index === undefined) return note;
-
-  const wrapped = (((index + semitones) % 12) + 12) % 12;
-  const preferFlats = note.includes("b") && !note.includes("#");
-  return preferFlats ? NOTE_SEQUENCE_FLAT[wrapped] : NOTE_SEQUENCE_SHARP[wrapped];
-}
-
-function transposeNoteWithPreference(
-  note: string,
-  semitones: number,
-  accidentalPreference: "sharps" | "flats",
-): string {
-  const index = NOTE_INDEX[note];
-  if (index === undefined) return note;
-  const wrapped = (((index + semitones) % 12) + 12) % 12;
-  return accidentalPreference === "flats" ? NOTE_SEQUENCE_FLAT[wrapped] : NOTE_SEQUENCE_SHARP[wrapped];
-}
-
-function transposeChordToken(
-  token: string,
-  semitones: number,
-  accidentalPreference: "sharps" | "flats",
-): string {
-  if (!token || semitones === 0) return token;
-
-  const [mainPart, bassPart] = token.split("/");
-  const mainMatch = mainPart.match(/^([A-G](?:#|b)?)(.*)$/);
-  if (!mainMatch) return token;
-
-  const transposedMainRoot = transposeNoteWithPreference(mainMatch[1], semitones, accidentalPreference);
-  const transposedMain = `${transposedMainRoot}${mainMatch[2] || ""}`;
-
-  if (!bassPart) return transposedMain;
-
-  const bassMatch = bassPart.match(/^([A-G](?:#|b)?)(.*)$/);
-  if (!bassMatch) return transposedMain;
-  const transposedBassRoot = transposeNoteWithPreference(bassMatch[1], semitones, accidentalPreference);
-  return `${transposedMain}/${transposedBassRoot}${bassMatch[2] || ""}`;
-}
-
-function transposeChordChartText(
-  chordChartText: string,
-  semitones: number,
-  accidentalPreference: "sharps" | "flats",
-): string {
-  if (semitones === 0) return chordChartText;
-
-  const transposeFreeChordTokens = (input: string): string =>
-    input.replace(
-      /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g,
-      (match) => transposeChordToken(match, semitones, accidentalPreference),
-    );
-
-  return chordChartText
-    .split("\n")
-    .map((line) => {
-      if (line.includes("[")) {
-        return line.replace(/\[([^\]]+)\]/g, (_, token: string) => {
-          const transposed = transposeChordToken(token.trim(), semitones, accidentalPreference);
-          return `[${transposed}]`;
-        });
-      }
-      return transposeFreeChordTokens(line);
-    })
-    .join("\n");
-}
-
-function detectKeyIndexFromChart(chordChartText: string): number {
-  // Prefer explicit chart metadata if present.
-  const explicitKeyPatterns = [
-    /\bkey\s*[:=-]\s*([A-G](?:#|b)?)/i,
-    /\bcapo\s+\d+.*\bkey\s*[:=-]?\s*([A-G](?:#|b)?)/i,
-  ];
-  for (const pattern of explicitKeyPatterns) {
-    const match = chordChartText.match(pattern);
-    if (match?.[1]) {
-      const idx = NOTE_INDEX[match[1]];
-      if (typeof idx === "number") return idx;
-    }
-  }
-
-  // Gather chord tokens from bracketed charts and plain chord-only lines.
-  const tokenRegex = /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g;
-  const rootVotes = new Map<number, number>();
-  const functionVotes = new Map<number, number>();
-
-  const addVote = (index: number, amount: number, target: Map<number, number>) => {
-    target.set(index, (target.get(index) || 0) + amount);
-  };
-
-  const registerChordToken = (token: string, positionWeight = 1) => {
-    const main = token.split("/")[0];
-    const rootMatch = main.match(/^([A-G](?:#|b)?)(.*)$/);
-    if (!rootMatch) return;
-    const rootIndex = NOTE_INDEX[rootMatch[1]];
-    if (rootIndex === undefined) return;
-
-    const suffix = (rootMatch[2] || "").toLowerCase();
-    const isMinor =
-      /^m(?!aj)/.test(suffix) ||
-      /\bmin\b/.test(suffix) ||
-      /-/.test(suffix);
-
-    addVote(rootIndex, 2 * positionWeight, rootVotes);
-
-    // Score likely tonal centers by diatonic-function fit.
-    // Major: I, IV, V strongest, then ii/iii/vi.
-    // Minor: i, iv, v strongest, then III/VI/VII.
-    const majorCandidates = [
-      { tonicOffset: 0, weight: 5 },  // I
-      { tonicOffset: 5, weight: 4 },  // IV
-      { tonicOffset: 7, weight: 4 },  // V
-      { tonicOffset: 2, weight: 2 },  // ii
-      { tonicOffset: 4, weight: 2 },  // iii
-      { tonicOffset: 9, weight: 2 },  // vi
-    ];
-    const minorCandidates = [
-      { tonicOffset: 0, weight: 5 },  // i
-      { tonicOffset: 5, weight: 4 },  // iv
-      { tonicOffset: 7, weight: 3 },  // v
-      { tonicOffset: 3, weight: 2 },  // III
-      { tonicOffset: 8, weight: 2 },  // VI
-      { tonicOffset: 10, weight: 2 }, // VII
-    ];
-
-    if (isMinor) {
-      for (const candidate of minorCandidates) {
-        const tonic = (rootIndex - candidate.tonicOffset + 12) % 12;
-        addVote(tonic, candidate.weight * positionWeight, functionVotes);
-      }
-    } else {
-      for (const candidate of majorCandidates) {
-        const tonic = (rootIndex - candidate.tonicOffset + 12) % 12;
-        addVote(tonic, candidate.weight * positionWeight, functionVotes);
-      }
-    }
-  };
-
-  const lines = chordChartText.split("\n");
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    const weight = lineIndex < 6 ? 1.5 : 1;
-
-    if (line.includes("[")) {
-      const bracketRegex = /\[([^\]]+)\]/g;
-      let bracketMatch: RegExpExecArray | null;
-      while ((bracketMatch = bracketRegex.exec(line)) !== null) {
-        registerChordToken(bracketMatch[1].trim(), weight);
-      }
-      continue;
-    }
-
-    if (isChordOnlyLine(line)) {
-      let tokenMatch: RegExpExecArray | null;
-      while ((tokenMatch = tokenRegex.exec(line)) !== null) {
-        registerChordToken(tokenMatch[1], weight);
-      }
-      tokenRegex.lastIndex = 0;
-    }
-  }
-
-  if (functionVotes.size === 0 && rootVotes.size === 0) return 0;
-
-  // Combine functional harmony and raw frequency, preferring functional score.
-  let bestIndex = 0;
-  let bestScore = -Infinity;
-  for (let tonic = 0; tonic < 12; tonic += 1) {
-    const score = (functionVotes.get(tonic) || 0) * 3 + (rootVotes.get(tonic) || 0);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = tonic;
-    }
-  }
-
-  return bestIndex;
-}
-
-function upsertExplicitKeyLine(chordChartText: string, keyLabel: string): string {
-  const keyLine = `Key: ${keyLabel}`;
-  const lines = chordChartText.split("\n");
-  const keyLineRegex = /^\s*key\s*[:=-]\s*[A-G](?:#|b)?\s*$/i;
-  const existingIndex = lines.findIndex((line) => keyLineRegex.test(line));
-
-  if (existingIndex >= 0) {
-    lines[existingIndex] = keyLine;
-    return lines.join("\n");
-  }
-
-  if (!chordChartText.trim()) {
-    return `${keyLine}\n`;
-  }
-
-  return `${keyLine}\n${chordChartText}`;
-}
-
-function getSignedSemitoneDelta(fromIndex: number, toIndex: number): number {
-  let delta = (toIndex - fromIndex + 12) % 12;
-  if (delta > 6) delta -= 12;
-  return delta;
-}
-
-function RenderedChordChart({
-  title,
-  author,
-  chordChartText,
-}: {
-  title: string;
-  author: string | null;
-  chordChartText: string;
-}) {
-  const renderedLines = useMemo(() => renderChordChartText(chordChartText), [chordChartText]);
-
-  return (
-    <div
-      className="overflow-auto overscroll-contain rounded-md border bg-background p-4 text-[20px] leading-[1.45] touch-pan-x touch-pan-y sm:text-[22px]"
-      style={{ fontFamily: RENDERED_CHART_FONT_FAMILY }}
-    >
-      <div className="mb-5 border-b pb-3">
-        <h3 className="text-xl font-bold">{title}</h3>
-        {author ? <p className="text-sm text-muted-foreground">{author}</p> : null}
-      </div>
-
-      <div className="min-w-max space-y-0.5 pr-2">
-        {renderedLines.map((line, index) => {
-          if (line.kind === "empty") {
-            return <div key={index} className="h-4" />;
-          }
-
-          if (line.kind === "section") {
-            return (
-              <pre key={index} className="mt-2 whitespace-pre font-bold">
-                {line.text}
-              </pre>
-            );
-          }
-
-          if (line.kind === "chords") {
-            return (
-              <pre key={index} className="whitespace-pre font-bold">
-                {line.text}
-              </pre>
-            );
-          }
-
-          if (line.kind === "lyricWithChords") {
-            return (
-              <div key={index} className="space-y-0">
-                {line.chords.trim().length > 0 ? (
-                  <pre className="whitespace-pre font-bold">{line.chords}</pre>
-                ) : (
-                  <div className="h-[1.45em]" />
-                )}
-                <pre className="whitespace-pre">{line.lyric}</pre>
-              </div>
-            );
-          }
-
-          return (
-            <pre key={index} className="whitespace-pre">
-              {line.text}
-            </pre>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogProps) {
@@ -646,11 +257,11 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
         <div className="flex h-full max-h-[100dvh] flex-col sm:max-h-[92vh]">
           <div className="px-4 pt-5 sm:px-6 sm:pt-6">
         <DialogHeader>
-          <DialogTitle className="flex items-start gap-2 pr-12 text-[1.85rem] leading-tight sm:items-center sm:text-lg sm:leading-none">
-            <Music className="h-5 w-5" />
+          <DialogTitle className="flex items-start gap-2 pr-12 text-xl leading-tight sm:items-center sm:text-lg sm:leading-none">
+            <Music className="h-5 w-5 shrink-0" />
             {song?.title || "Chord Chart"}
           </DialogTitle>
-          <DialogDescription className="text-base sm:text-sm">{song?.author || "Unknown author"}</DialogDescription>
+          <DialogDescription className="text-sm">{song?.author || "Unknown author"}</DialogDescription>
         </DialogHeader>
           </div>
 
@@ -677,7 +288,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5 sm:gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">
                   {versions.length} version{versions.length === 1 ? "" : "s"}
@@ -689,10 +300,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
               </div>
 
               <div className="w-full">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-12">
-                  <div className="sm:col-span-2 xl:col-span-3">
+                <div className="grid grid-cols-2 gap-2 xl:grid-cols-12">
+                  <div className="col-span-2 xl:col-span-3">
                     <Select value={selectedVersion?.id || ""} onValueChange={setSelectedVersionId}>
-                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
+                      <SelectTrigger className="h-10 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Select version" />
                       </SelectTrigger>
                       <SelectContent>
@@ -715,7 +326,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       }}
                       disabled={isEditingRaw || saveOriginalKey.isPending}
                     >
-                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
+                      <SelectTrigger className="h-10 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Original Key" />
                       </SelectTrigger>
                       <SelectContent>
@@ -733,7 +344,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       onValueChange={(value) => setTargetKeyIndex(Number(value))}
                       disabled={isEditingRaw}
                     >
-                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
+                      <SelectTrigger className="h-10 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Target Key" />
                       </SelectTrigger>
                       <SelectContent>
@@ -751,7 +362,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       onValueChange={(value: "sharps" | "flats") => setAccidentalPreference(value)}
                       disabled={isEditingRaw}
                     >
-                      <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
+                      <SelectTrigger className="h-10 text-sm sm:h-12 sm:text-base">
                         <SelectValue placeholder="Accidentals" />
                       </SelectTrigger>
                       <SelectContent>
@@ -760,24 +371,24 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 xl:col-span-3">
+                  <div className="grid grid-cols-2 gap-2 xl:col-span-3">
                     <Button
                       type="button"
                       variant={displayMode === "rendered" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setDisplayMode("rendered")}
                       disabled={isEditingRaw}
-                      className="h-11 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
+                      className="h-10 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
                     >
                       <Eye className="h-4 w-4" />
-                      Rendered
+                      Chart
                     </Button>
                     <Button
                       type="button"
                       variant={displayMode === "raw" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setDisplayMode("raw")}
-                      className="h-11 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
+                      className="h-10 w-full gap-1.5 text-sm sm:h-12 sm:text-base"
                     >
                       <Code2 className="h-4 w-4" />
                       Raw
@@ -787,10 +398,10 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
               </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/20">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-md border bg-muted/20">
               <div className="space-y-5 p-3 sm:space-y-6 sm:p-4">
                 <section className="space-y-2">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                       Chord Chart
                     </h3>
@@ -853,6 +464,8 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                         title={song?.title || "Chord Chart"}
                         author={song?.author || null}
                         chordChartText={transposedChordChartText}
+                        showHeader={false}
+                        scaleClassName="text-[16px] leading-[1.3] sm:text-[18px] sm:leading-[1.35] lg:text-[20px]"
                       />
                     ) : (
                       <div className="flex min-h-[220px] items-center justify-center rounded-md border bg-background p-4 text-center text-muted-foreground">
@@ -884,7 +497,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                 ) : null}
 
               </div>
-            </ScrollArea>
+            </div>
           </div>
         )}
         </div>
