@@ -20,10 +20,12 @@ import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprov
 import { cn } from "@/lib/utils";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
+import { useVisualViewportOffset } from "@/hooks/useKeyboardOffset";
 
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
+  const { translateY, isKeyboardOpen } = useVisualViewportOffset();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
@@ -87,8 +89,17 @@ export function BottomNav() {
   }
 
   return (
-    <nav 
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe"
+    <nav
+      className={cn(
+        "fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe",
+        isKeyboardOpen && "invisible"
+      )}
+      style={{
+        transform:
+          !isKeyboardOpen && translateY !== 0
+            ? `translateY(${translateY}px)`
+            : undefined,
+      }}
     >
       <div
         className={cn(
