@@ -179,6 +179,26 @@ export function getRosterVisibilityScope(params: {
   return "all";
 }
 
+// Assignment-based overrides for the scope above: a volunteer must always see
+// the roster sections they're actually scheduled in, even when their profile
+// ministry classification says otherwise (profiles commonly default to
+// "weekend", which would hide the Video/Production sections from their own crew).
+export function hasSupportPosition(positions: string[] | null | undefined) {
+  return (positions || []).some(
+    (position) =>
+      matchesPositionKeyword(position, PRODUCTION_POSITION_KEYWORDS) ||
+      matchesPositionKeyword(position, VIDEO_POSITION_KEYWORDS),
+  );
+}
+
+export function hasWorshipPosition(positions: string[] | null | undefined) {
+  return (positions || []).some(
+    (position) =>
+      !matchesPositionKeyword(position, PRODUCTION_POSITION_KEYWORDS) &&
+      !matchesPositionKeyword(position, VIDEO_POSITION_KEYWORDS),
+  );
+}
+
 export function canManageReferenceTracks(params: {
   isAdmin: boolean;
   roleNames: string[];

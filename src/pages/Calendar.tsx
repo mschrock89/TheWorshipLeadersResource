@@ -45,7 +45,7 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
-import { filterGroupTextRecipients, isAuditionCandidateRole } from "@/lib/access";
+import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -3051,10 +3051,9 @@ function BandRoster({
   const { data: roles = [] } = useUserRoles(user?.id);
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
   // Weekend worship volunteers don't see the Production/Video column, and
-  // production/video volunteers only see each other (no band column).
+  // production/video volunteers only see each other (no band column). Being
+  // assigned on a roster always unlocks those sections — see below.
   const rosterScope = useRosterVisibilityScope();
-  const showWorshipSections = rosterScope !== "support";
-  const showSupportSections = showAudioVideo && rosterScope !== "worship";
 
   const resourceAppKey = getCurrentResourceAppKey();
   const dateStr = date
@@ -3317,6 +3316,23 @@ function BandRoster({
     () => normalizeRosterMembers(videoRosterRaw),
     [normalizeRosterMembers, videoRosterRaw],
   );
+
+  // Assignment overrides the profile-based scope: whatever sections the viewer
+  // is actually scheduled in on this date must stay visible to them.
+  const memberRoleValues = (member: { positions: string[]; positionSlots?: string[] }) => [
+    ...member.positions,
+    ...(member.positionSlots || []),
+  ];
+  const amAssignedSupport =
+    !!user &&
+    ([...normalizedProductionRoster, ...normalizedVideoRoster].some((m) => m.userId === user.id) ||
+      normalizedRosterRaw.some((m) => m.userId === user.id && hasSupportPosition(memberRoleValues(m))));
+  const amAssignedWorship =
+    !!user &&
+    normalizedRosterRaw.some((m) => m.userId === user.id && hasWorshipPosition(memberRoleValues(m)));
+  const showWorshipSections = rosterScope !== "support" || amAssignedWorship;
+  const showSupportSections = showAudioVideo && (rosterScope !== "worship" || amAssignedSupport);
+
   const serviceLabel = useMemo(() => {
     if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
       return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;

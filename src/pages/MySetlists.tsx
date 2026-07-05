@@ -1006,10 +1006,9 @@ function SetlistTeamRoster({
 }) {
   const { user } = useAuth();
   // Weekend worship volunteers don't see the Production/Video sections, and
-  // production/video volunteers only see each other.
+  // production/video volunteers only see each other. Being assigned on the
+  // roster always unlocks those sections — see below rosterRows.
   const rosterScope = useRosterVisibilityScope();
-  const showWorshipSections = rosterScope !== "support";
-  const showSupportSections = rosterScope !== "worship";
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);
   // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) may be linked to a
@@ -1395,6 +1394,7 @@ function SetlistTeamRoster({
         string,
         {
           id: string;
+          userId: string | null;
           memberName: string;
           avatarUrl: string | null;
           phone: string | null;
@@ -1428,6 +1428,7 @@ function SetlistTeamRoster({
         if (!existing) {
           byPerson.set(key, {
             id: assignment.id,
+            userId: assignment.user_id || null,
             memberName: name,
             avatarUrl: assignment.profiles?.avatar_url || null,
             phone: safePhoneMap.get(assignment.user_id) || null,
@@ -1482,6 +1483,7 @@ function SetlistTeamRoster({
 
           return {
             id: candidate.id,
+            userId: candidate.candidate_id || null,
             memberName: candidate.profiles?.full_name || "Audition Candidate",
             avatarUrl: candidate.profiles?.avatar_url || null,
             phone: safePhoneMap.get(candidate.candidate_id) || null,
@@ -1505,6 +1507,7 @@ function SetlistTeamRoster({
       string,
       {
         id: string;
+        userId: string | null;
         memberName: string;
         avatarUrl: string | null;
         phone: string | null;
@@ -1550,6 +1553,7 @@ function SetlistTeamRoster({
       if (!existing) {
         byPerson.set(key, {
           id: member.id,
+          userId: member.userId ?? null,
           memberName: member.memberName,
           avatarUrl: member.avatarUrl,
           phone: member.phone,
@@ -1570,6 +1574,7 @@ function SetlistTeamRoster({
         ministryTypes.forEach((value) => existing.ministryTypes.add(value));
         existing.isSwapped = existing.isSwapped || member.isSwapped;
         existing.phone = existing.phone || member.phone;
+        existing.userId = existing.userId || member.userId || null;
         existing.hasVocalistRole = existing.hasVocalistRole || hasVocalistRole;
         existing.hasBandRole = existing.hasBandRole || hasBandRole;
         existing.hasSpeakerRole = existing.hasSpeakerRole || hasSpeakerRole;
@@ -1697,6 +1702,23 @@ function SetlistTeamRoster({
       rows: section.rows,
     }));
   }, [isWeekendSetlist, pairVideoRows, planDate, primaryVideoRows, videoPairTeamEntry?.schedule_date, videoRows, videoTeamEntry?.schedule_date]);
+
+  // Assignment overrides the profile-based scope: whatever sections the viewer
+  // is actually scheduled in on this setlist must stay visible to them.
+  const myRosterRow = useMemo(
+    () => rosterRows.find((row) => row.userId && row.userId === user?.id),
+    [rosterRows, user?.id]
+  );
+  const showWorshipSections =
+    rosterScope !== "support" ||
+    !!(myRosterRow &&
+      (myRosterRow.hasVocalistRole ||
+        myRosterRow.hasBandRole ||
+        myRosterRow.hasSpeakerRole ||
+        myRosterRow.hasPastorRole));
+  const showSupportSections =
+    rosterScope !== "worship" ||
+    !!(myRosterRow && (myRosterRow.hasProductionRole || myRosterRow.hasVideoRole));
 
   // Keep the group text recipients in sync with the sections the viewer can see.
   const visibleRosterRows = useMemo(
