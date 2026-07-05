@@ -194,7 +194,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const scheduleQuery = supabase
       .from("team_schedule")
-      .select("team_id, rotation_period, worship_teams(name)")
+      .select("team_id, rotation_period, resource_app_key, worship_teams(name)")
       .eq("schedule_date", scheduleDate)
       .eq("ministry_type", ministryType)
       .or(`campus_id.eq.${campusId},campus_id.is.null`);
@@ -333,6 +333,8 @@ serve(async (req: Request): Promise<Response> => {
           tag: getSupportTeamPushTag({ ministryType, campusId, scheduleDate }),
           userIds: recipientUserIds,
           contextType: "team-schedule-date",
+          // Scope delivery to the app this scheduled team belongs to.
+          metadata: { resourceAppKey: matchedSchedules[0]?.resource_app_key || "worship" },
         }),
       });
 

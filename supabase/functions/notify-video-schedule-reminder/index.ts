@@ -126,7 +126,8 @@ serve(async (req: Request): Promise<Response> => {
           tag: `video-reminder-${targetDate}`,
           userIds: recipientUserIds,
           contextType: "video-schedule-reminder",
-          metadata: { scheduleDate: targetDate, ministryType: MINISTRY_TYPE },
+          // Video ministry is Worship-only; scope delivery to worship subscriptions.
+          metadata: { scheduleDate: targetDate, ministryType: MINISTRY_TYPE, resourceAppKey: "worship" },
         }),
       });
 

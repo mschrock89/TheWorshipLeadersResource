@@ -218,6 +218,8 @@ serve(async (req) => {
             playlistId,
             referenceTrackId,
             type: "weekend_track_uploaded",
+            // Weekend tracks are a Worship-only feature; scope to worship subscriptions.
+            resourceAppKey: "worship",
           },
         }),
       });

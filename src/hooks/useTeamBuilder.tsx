@@ -1727,7 +1727,8 @@ export function usePublishRotation() {
               url: notification.url || "/team-builder",
               userIds: [notification.userId],
               tag: notification.tag,
-              metadata: notification.metadata,
+              // Scope delivery to the app this team builder session belongs to.
+              metadata: { ...(notification.metadata || {}), resourceAppKey: getCurrentResourceAppKey() },
             },
           }),
         ),

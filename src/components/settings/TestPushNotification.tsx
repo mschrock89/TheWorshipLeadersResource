@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 const TEST_PUSH_TIMEOUT_MS = 15000;
 
@@ -46,6 +47,8 @@ export function TestPushNotification() {
             createdBy: user.id,
             metadata: {
               source: "admin_test_push",
+              // Keep the test push within the app it was fired from.
+              resourceAppKey: getCurrentResourceAppKey(),
             },
           },
         }),
@@ -117,7 +120,7 @@ export function TestPushNotification() {
         <div>
           <p className="text-sm font-medium">Test Push Notifications</p>
           <p className="text-xs text-muted-foreground">
-            Send a test notification to all subscribed devices
+            Send a test notification to devices subscribed in this app
           </p>
         </div>
       </div>

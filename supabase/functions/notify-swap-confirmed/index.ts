@@ -297,7 +297,8 @@ serve(async (req: Request): Promise<Response> => {
         status,
         requester_id,
         accepted_by_id,
-        target_user_id
+        target_user_id,
+        resource_app_key
       `)
       .eq("id", swapRequestId)
       .single();
@@ -418,6 +419,8 @@ serve(async (req: Request): Promise<Response> => {
           url: "/swap-requests",
           tag: "swap-confirmed",
           userIds: leaderIdsToNotify,
+          // Scope delivery to the app this swap request belongs to.
+          metadata: { resourceAppKey: swapRequest.resource_app_key || "worship" },
         }),
       });
 

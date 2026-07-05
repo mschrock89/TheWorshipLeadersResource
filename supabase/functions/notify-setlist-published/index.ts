@@ -431,6 +431,8 @@ serve(async (req) => {
           planDate: draftSet.plan_date,
           ministryType: draftSet.ministry_type,
           manual,
+          // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
+          resourceAppKey: "worship",
         },
       };
 

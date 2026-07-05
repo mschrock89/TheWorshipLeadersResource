@@ -545,6 +545,16 @@ serve(async (req) => {
 
     if (resourceAppKey) {
       query = query.eq("resource_app_key", resourceAppKey);
+    } else if (hasExplicitRecipientList) {
+      // Safety net: a targeted push (explicit userIds) should always declare the
+      // originating app so it is delivered only to that app's subscriptions.
+      // Without it, recipients subscribed to multiple resource apps get the push
+      // on every install. Warn so any regression is visible in the logs.
+      console.warn("Push request missing metadata.resourceAppKey; delivering to ALL of the recipients' app subscriptions", {
+        title: payload.title,
+        tag: payload.tag,
+        contextType: payload.contextType,
+      });
     }
 
     const { data: subscriptions, error: fetchError } = await query;
