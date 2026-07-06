@@ -92,8 +92,13 @@ export function useVisualViewportOffset(): VisualViewportOffset {
     if (!viewport) return;
 
     const keyboardOffset = window.innerHeight - viewport.height;
-    const translateY = Math.round(
-      viewport.offsetTop + viewport.height - window.innerHeight
+    // The stuck-pan bug always leaves fixed elements too high, so the
+    // correction is only ever downward. iOS can report a slightly short
+    // visual viewport with the keyboard closed (e.g. home indicator
+    // accounting) — never lift the nav for that.
+    const translateY = Math.max(
+      0,
+      Math.round(viewport.offsetTop + viewport.height - window.innerHeight)
     );
     const isKeyboardOpen = keyboardOffset > 100;
 
