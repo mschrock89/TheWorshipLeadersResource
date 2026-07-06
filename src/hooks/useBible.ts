@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FunctionsHttpError } from "@supabase/supabase-js";
+import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { BibleTranslation } from "@/lib/bible";
@@ -52,28 +52,54 @@ function normalizeLookupKey(reference: string) {
 
 async function getFunctionErrorMessage(error: unknown, translation?: BibleTranslation) {
   if (error instanceof FunctionsHttpError) {
+    const status = error.context?.status;
+    let detail = "";
+
+    // Read the body as text once, then try to parse JSON. Reading `.json()`
+    // directly and then falling back to `.text()` fails because the body can
+    // only be consumed a single time.
     try {
-      const payload = await error.context.json();
-      const message = typeof payload?.error === "string" ? payload.error : "";
-
-      if (message === "ESV_API_KEY is not configured") {
-        return "ESV is not configured yet. Add the ESV_API_KEY secret to your Supabase project.";
-      }
-
-      if (message) {
-        return message;
+      const raw = await error.context.text();
+      try {
+        const payload = JSON.parse(raw);
+        detail = typeof payload?.error === "string" ? payload.error : "";
+      } catch {
+        detail = raw.trim();
       }
     } catch {
-      // Fall through to default handling.
+      // Body was not readable; fall through with whatever status we have.
+    }
+
+    if (detail === "ESV_API_KEY is not configured") {
+      return "ESV is not configured yet. Add the ESV_API_KEY secret to your Supabase project.";
+    }
+
+    if (detail) {
+      return status ? `${detail} (HTTP ${status})` : detail;
+    }
+
+    if (status) {
+      return `The ESV service returned an error (HTTP ${status}).`;
     }
   }
 
-  if (translation === "ESV") {
-    return "The ESV service is unavailable right now.";
+  // These are the cases the old handler silently collapsed into a generic
+  // "unavailable" message, which hid the real failure (a timed-out / crashed
+  // Edge Function surfaces as a relay error, a network failure as a fetch error).
+  if (error instanceof FunctionsRelayError) {
+    return `The ESV service could not be reached (relay error): ${error.message}`;
+  }
+
+  if (error instanceof FunctionsFetchError) {
+    return `Could not reach the ESV service (network error): ${error.message}`;
   }
 
   if (error instanceof Error && error.message) {
     return error.message;
+  }
+
+  if (translation === "ESV") {
+    return "The ESV service is unavailable right now.";
   }
 
   return "Failed to load passage.";
