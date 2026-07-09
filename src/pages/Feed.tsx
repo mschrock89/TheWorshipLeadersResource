@@ -277,10 +277,10 @@ function PostCard({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 border-t border-white/6 pt-5 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-t border-white/6 pt-5 text-sm text-muted-foreground sm:gap-x-3">
             <button
               className={cn(
-                "inline-flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-white/5 hover:text-foreground",
+                "inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-white/5 hover:text-foreground sm:px-3",
                 post.liked_by_me && "bg-primary/10 text-primary"
               )}
               onClick={() => onLikeToggle(post)}
@@ -290,7 +290,7 @@ function PostCard({
               {post.like_count}
             </button>
             <button
-              className="inline-flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-white/5 hover:text-foreground"
+              className="inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-white/5 hover:text-foreground sm:px-3"
               onClick={() => setIsConversationOpen((current) => !current)}
             >
               <MessageSquare className="h-4 w-4" />
@@ -299,23 +299,23 @@ function PostCard({
               <ChevronDown className={cn("h-4 w-4 transition-transform", isConversationOpen && "rotate-180")} />
             </button>
             {isAdmin ? (
-              <>
+              <div className="ml-auto flex items-center gap-x-1 sm:gap-x-3">
                 <button
-                  className="ml-auto inline-flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-white/5 hover:text-foreground"
+                  className="inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-white/5 hover:text-foreground sm:px-3"
                   onClick={() => onEdit(post)}
                 >
                   <Edit3 className="h-4 w-4" />
                   Edit
                 </button>
                 <button
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-destructive transition-colors hover:bg-destructive/10"
+                  className="inline-flex items-center gap-2 rounded-full px-2.5 py-2 text-destructive transition-colors hover:bg-destructive/10 sm:px-3"
                   onClick={() => onDelete(post)}
                   disabled={isDeleting}
                 >
                   {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   Delete
                 </button>
-              </>
+              </div>
             ) : null}
           </div>
 
