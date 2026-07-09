@@ -3556,6 +3556,10 @@ export type Database = {
           usages: Json
         }[]
       }
+      get_unread_chat_counts: {
+        Args: { p_resource_app_key: string; p_camp_instance_id?: string | null }
+        Returns: { campus_id: string; ministry_type: string; unread_count: number }[]
+      }
       get_upcoming_birthdays: {
         Args: never
         Returns: {
@@ -3584,6 +3588,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      is_user_on_setlist_roster: {
+        Args: { p_draft_set_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      is_user_on_setlist_rosters: {
+        Args: { p_draft_set_ids: string[]; p_user_id: string }
+        Returns: { draft_set_id: string; on_roster: boolean }[]
       }
       shares_campus_with: {
         Args: { _profile_id: string; _viewer_id: string }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useLayoutEffect, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { Loader2, ArrowDown, ArrowUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useUserCampuses, useCampuses } from "@/hooks/useCampuses";
@@ -82,14 +83,16 @@ function ChatContent() {
   const {
     messages,
     isLoading,
+    isError,
     sendMessage,
     editMessage,
     deleteMessage,
     toggleReaction,
     refetch,
+    loadOlder,
+    hasOlder,
     currentUserId,
   } = useChatMessages(selectedCampusId, selectedMinistryType);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
   const lastReadRef = useRef<HTMLDivElement>(null);
   const pullToRefreshRef = useRef<PullToRefreshRef>(null);
@@ -97,13 +100,13 @@ function ChatContent() {
   const [newMessageCount, setNewMessageCount] = useState(0);
   const hasInitiallyScrolled = useRef(false);
   const isAtBottomRef = useRef(true);
-  const previousMessageCountRef = useRef(0);
+  const newestMessageIdRef = useRef<string | null>(null);
   const [hasScrolledToLastRead, setHasScrolledToLastRead] = useState(false);
   const [hasClickedJumpToLastRead, setHasClickedJumpToLastRead] = useState(false);
   const lastSeenUnreadIndexRef = useRef<number>(-1);
   
-  // Typing presence
-  const { setTyping } = useTypingPresence(selectedCampusId, selectedMinistryType, userProfile?.full_name ?? null);
+  // Typing presence (one channel tracks our typing state and reads everyone else's)
+  const { setTyping, typingUsers } = useTypingPresence(selectedCampusId, selectedMinistryType, userProfile?.full_name ?? null);
 
   // Determine if we're still loading campuses data
   const isCampusDataLoading = isLeader ? allCampusesLoading : campusesLoading;
@@ -180,7 +183,7 @@ function ChatContent() {
   useEffect(() => {
     hasInitiallyScrolled.current = false;
     isAtBottomRef.current = true;
-    previousMessageCountRef.current = 0;
+    newestMessageIdRef.current = null;
     lastSeenUnreadIndexRef.current = -1;
     setShowScrollButton(false);
     setHasScrolledToLastRead(false);
@@ -298,20 +301,53 @@ function ChatContent() {
     if (isAtBottom) setNewMessageCount(0);
   }, []);
 
-  // Track new messages arriving while scrolled up
+  // Track new messages arriving while scrolled up. Watch the NEWEST message id
+  // rather than the list length, so loading older history (which prepends) never
+  // counts toward the badge.
   useEffect(() => {
     if (!hasInitiallyScrolled.current || isLoading) return;
-    
-    const currentCount = messages.length;
-    const previousCount = previousMessageCountRef.current;
-    
-    if (previousCount > 0 && currentCount > previousCount && !isAtBottomRef.current) {
-      const newMessages = currentCount - previousCount;
-      setNewMessageCount(prev => prev + newMessages);
+
+    const newest = messages[messages.length - 1];
+    const previousNewestId = newestMessageIdRef.current;
+
+    if (
+      newest &&
+      previousNewestId &&
+      newest.id !== previousNewestId &&
+      newest.user_id !== currentUserId &&
+      !isAtBottomRef.current
+    ) {
+      setNewMessageCount(prev => prev + 1);
     }
-    
-    previousMessageCountRef.current = currentCount;
-  }, [messages.length, isLoading]);
+
+    newestMessageIdRef.current = newest?.id ?? null;
+  }, [messages, isLoading, currentUserId]);
+
+  // Pull-to-refresh loads the previous page of history; keep the viewport anchored
+  // on the same message while the older page prepends above it.
+  const handleLoadOlder = useCallback(async () => {
+    if (!hasOlder) {
+      await refetch();
+      return;
+    }
+
+    const container = document.querySelector('[data-pull-to-refresh-container]') as HTMLDivElement | null;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    await loadOlder();
+
+    requestAnimationFrame(() => {
+      const el = document.querySelector('[data-pull-to-refresh-container]') as HTMLDivElement | null;
+      if (el) el.scrollTop = prevScrollTop + (el.scrollHeight - prevScrollHeight);
+    });
+  }, [hasOlder, loadOlder, refetch]);
+
+  // Send optimistically appends the message; jump to it on the next frame.
+  const handleSendMessage = useCallback((content: string, attachments?: string[]) => {
+    void sendMessage(content, attachments);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+  }, [sendMessage, scrollToBottom]);
 
   if (authLoading || isCampusDataLoading) {
     return (
@@ -387,13 +423,26 @@ function ChatContent() {
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <PullToRefresh
           ref={pullToRefreshRef}
-          onRefresh={refetch}
+          onRefresh={handleLoadOlder}
           className="h-full"
           onScrollChange={handleScrollChange}
         >
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-white" />
+            </div>
+          ) : isError && messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+              <p className="text-lg font-medium">Couldn't load messages</p>
+              <p className="text-sm">Check your connection and try again.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+                className="mt-4 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 hover:text-white"
+              >
+                Try again
+              </Button>
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-500">
@@ -402,6 +451,12 @@ function ChatContent() {
             </div>
           ) : (
             <div className="pb-4">
+              {/* Full history is always available — older pages load on pull-to-refresh */}
+              <div className="py-3 text-center text-xs text-zinc-600">
+                {hasOlder
+                  ? "Pull down to load earlier messages"
+                  : "This is the beginning of the conversation"}
+              </div>
               {messages.map((message, index) => (
                 <div
                   key={message.id}
@@ -424,13 +479,12 @@ function ChatContent() {
                   />
                 </div>
               ))}
-              <div ref={messagesEndRef} />
             </div>
           )}
         </PullToRefresh>
         
         {/* Typing indicator */}
-        <TypingIndicator campusId={selectedCampusId} ministryType={selectedMinistryType} />
+        <TypingIndicator typingUsers={typingUsers} />
         
         {/* Floating "Jump to last read" button */}
         {firstUnreadIndex > 0 && 
@@ -472,8 +526,8 @@ function ChatContent() {
           <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-black to-transparent pointer-events-none" />
         )}
         <div className={`bg-black ${keyboardHeight > 0 ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
-          <MessageInput 
-            onSendMessage={sendMessage} 
+          <MessageInput
+            onSendMessage={handleSendMessage}
             onTyping={setTyping}
             campusName={getChatDisplayName()}
             campusId={selectedCampusId}

@@ -39,6 +39,37 @@ interface MessageBubbleProps {
 
 const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🙏", "🔥", "👏", "💯"];
 
+function DeleteMessageDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  isDeleting,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="bg-zinc-900 border-zinc-700">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-white">Delete message?</AlertDialogTitle>
+          <AlertDialogDescription className="text-zinc-400">
+            This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700">Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
+            {isDeleting ? "Deleting..." : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function MessageBubble({
   message,
   isOwnMessage,
@@ -87,10 +118,14 @@ export function MessageBubble({
   const getDisplayName = (name: string | null) => name || "Anonymous";
 
   const isGifUrl = (content: string) => {
-    return content.match(/https?:\/\/.*\.(gif|webp)/i) || 
-           content.includes('tenor.com') || 
-           content.includes('giphy.com') ||
-           content.includes('media.tenor');
+    // Only render as a GIF when the entire message is a single URL — a link
+    // pasted inside a sentence must keep its surrounding text.
+    const trimmed = content.trim();
+    if (!/^https?:\/\/\S+$/i.test(trimmed)) return false;
+    return /\.(gif|webp)(\?|#|$)/i.test(trimmed) ||
+           trimmed.includes('tenor.com') ||
+           trimmed.includes('giphy.com') ||
+           trimmed.includes('media.tenor');
   };
 
   const handleStartEdit = () => {
@@ -422,22 +457,12 @@ export function MessageBubble({
             </Button>
           </div>
         </div>
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent className="bg-zinc-900 border-zinc-700">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-white">Delete message?</AlertDialogTitle>
-              <AlertDialogDescription className="text-zinc-400">
-                This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
-                {isDeleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <DeleteMessageDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={handleDelete}
+          isDeleting={isDeleting}
+        />
       </>
     );
   }
@@ -461,22 +486,12 @@ export function MessageBubble({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent className="bg-zinc-900 border-zinc-700">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-white">Delete message?</AlertDialogTitle>
-              <AlertDialogDescription className="text-zinc-400">
-                This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
-                {isDeleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <DeleteMessageDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={handleDelete}
+          isDeleting={isDeleting}
+        />
       </>
     );
   }

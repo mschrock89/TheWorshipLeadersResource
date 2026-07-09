@@ -840,6 +840,31 @@ export async function getPriorUseCountsForSongs(
   return collapsePriorUsesToCanonical(merged, alternateToCanonical);
 }
 
+/**
+ * Batched variant for setlist list views: one songs-table fetch (title-equivalence)
+ * plus one prior-use lookup per DISTINCT date, instead of three requests per setlist.
+ * Global-scope counts only, which is all a "has this song ever been used before this
+ * date" check (the NEW badge) needs — campus-scoped uses are a subset of global uses.
+ * Returns beforeDate -> (canonical song id -> prior use count).
+ */
+export async function getGlobalPriorUseCountsByDate(
+  songIdsWithTitles: { id: string; title: string }[],
+  beforeDates: string[],
+): Promise<Map<string, Map<string, number>>> {
+  const countsByDate = new Map<string, Map<string, number>>();
+  const uniqueDates = [...new Set(beforeDates)];
+  if (songIdsWithTitles.length === 0 || uniqueDates.length === 0) return countsByDate;
+
+  const { expandedIds, alternateToCanonical } = await getEquivalentSongIds(songIdsWithTitles);
+  await Promise.all(
+    uniqueDates.map(async (date) => {
+      const priorUses = await getPriorUses(expandedIds, date, null, null);
+      countsByDate.set(date, collapsePriorUsesToCanonical(priorUses, alternateToCanonical));
+    }),
+  );
+  return countsByDate;
+}
+
 export function useSongsForDate(date: string | null, campusId?: string, ministryFilter?: string) {
   return useQuery({
     queryKey: ["songs-for-date", date, campusId, ministryFilter],

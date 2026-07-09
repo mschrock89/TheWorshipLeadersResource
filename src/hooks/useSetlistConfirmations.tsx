@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
-import { getPriorUseCountsForSongs } from "./useSongs";
+import { getGlobalPriorUseCountsByDate } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { formatDateForDB, getWeekendPairDate, isWeekend } from "@/lib/utils";
 import { normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
@@ -75,6 +75,20 @@ function getJoinedFullName(profile: unknown): string | null {
 
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 const WEEKEND_SUPPORTING_MINISTRIES = new Set(["production", "video"]);
+
+// How far back "past" setlists load. The My Setlists UI pages one weekend at a
+// time, so preloading unbounded history only slows the initial load down.
+const PAST_SETLIST_WINDOW_DAYS = 90;
+
+function getPastWindowFloorDate(): string {
+  const floor = new Date();
+  floor.setDate(floor.getDate() - PAST_SETLIST_WINDOW_DAYS);
+  return formatDateForDB(floor);
+}
+
+// Module-level so a missing batched RPC (migration not applied yet) only costs
+// one failed request per session before falling back to per-set checks.
+let batchedRosterRpcMissing = false;
 
 function getServiceDayForDate(dateStr: string): "saturday" | "sunday" | null {
   const dayOfWeek = new Date(`${dateStr}T00:00:00`).getDay();
@@ -167,6 +181,10 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .select("role")
         .eq("user_id", user.id);
 
+      // Lower bound for every setlist/date fetch below: today for upcoming-only,
+      // or the trailing PAST_SETLIST_WINDOW_DAYS window when past sets are included.
+      const minPlanDate = includePast ? getPastWindowFloorDate() : formatDateForDB(new Date());
+
       const roles = (userRoles || []).map(r => r.role);
       const leadershipRoles = [
         "admin", "campus_admin", "campus_worship_pastor", "network_student_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor",
@@ -241,7 +259,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       const customAssignmentServiceIdsByDate = new Map<string, Set<string>>();
       for (const row of customAssignments || []) {
         if (!row.assignment_date) continue;
-        if (!includePast && row.assignment_date < formatDateForDB(new Date())) continue;
+        if (row.assignment_date < minPlanDate) continue;
         customAssignmentDates.add(row.assignment_date);
         if (row.custom_service_id) {
           if (!customAssignmentServiceIdsByDate.has(row.assignment_date)) {
@@ -254,14 +272,11 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // Dates where the user was manually assigned for a specific service date.
       // These override rows are used by Team Builder for one-off/split-role assignments
       // and may point to a campus that is not on the user's profile.
-      let dateOverrideQuery = supabase
+      const dateOverrideQuery = supabase
         .from("team_member_date_overrides")
         .select("schedule_date")
-        .eq("user_id", user.id);
-
-      if (!includePast) {
-        dateOverrideQuery = dateOverrideQuery.gte("schedule_date", formatDateForDB(new Date()));
-      }
+        .eq("user_id", user.id)
+        .gte("schedule_date", minPlanDate);
 
       const { data: dateOverrideAssignments } = await dateOverrideQuery;
       const dateOverrideDatesSet = new Set<string>();
@@ -301,9 +316,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .or(campusFilters.join(","))
           .order("plan_date", { ascending: includePast ? false : true });
         
-        if (!includePast) {
-          query = query.gte("plan_date", formatDateForDB(new Date()));
-        }
+        query = query.gte("plan_date", minPlanDate);
 
         if (ministryType) {
           query = query.eq("ministry_type", ministryType);
@@ -336,9 +349,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .not("published_at", "is", null)
           .in("plan_date", swapDates);
         
-        if (!includePast) {
-          query = query.gte("plan_date", formatDateForDB(new Date()));
-        }
+        query = query.gte("plan_date", minPlanDate);
 
         if (ministryType) {
           query = query.eq("ministry_type", ministryType);
@@ -373,9 +384,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .not("published_at", "is", null)
           .in("plan_date", customAssignmentDateList);
 
-        if (!includePast) {
-          query = query.gte("plan_date", formatDateForDB(new Date()));
-        }
+        query = query.gte("plan_date", minPlanDate);
 
         if (ministryType) {
           query = query.eq("ministry_type", ministryType);
@@ -409,9 +418,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
           .not("published_at", "is", null)
           .in("plan_date", dateOverrideDates);
 
-        if (!includePast) {
-          query = query.gte("plan_date", formatDateForDB(new Date()));
-        }
+        query = query.gte("plan_date", minPlanDate);
 
         if (ministryType) {
           query = query.eq("ministry_type", ministryType);
@@ -592,30 +599,60 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         }
       }
 
-      await Promise.all(
-        (setlists || []).map(async (setlist) => {
-          if (setlist.custom_service_id && !isSessionSetMinistryType(setlist.ministry_type)) {
-            const isAssigned = customServiceAssignmentKeys.has(
-              `${setlist.custom_service_id}|${setlist.plan_date}`
-            );
-            rosterEligibilityBySetId.set(setlist.id, isAssigned);
-            return;
+      const rpcSetlists: typeof setlists = [];
+      for (const setlist of setlists) {
+        if (setlist.custom_service_id && !isSessionSetMinistryType(setlist.ministry_type)) {
+          const isAssigned = customServiceAssignmentKeys.has(
+            `${setlist.custom_service_id}|${setlist.plan_date}`
+          );
+          rosterEligibilityBySetId.set(setlist.id, isAssigned);
+        } else {
+          rpcSetlists.push(setlist);
+        }
+      }
+
+      // Resolve roster eligibility for all remaining sets in ONE round trip via the
+      // batched RPC; fall back to one RPC per set if the migration isn't applied yet.
+      if (rpcSetlists.length > 0) {
+        let batchResolved = false;
+        if (!batchedRosterRpcMissing) {
+          const { data: batchedRoster, error: batchedError } = await supabase.rpc(
+            "is_user_on_setlist_rosters",
+            {
+              p_draft_set_ids: rpcSetlists.map((s) => s.id),
+              p_user_id: user.id,
+            },
+          );
+
+          if (batchedError) {
+            batchedRosterRpcMissing = true;
+          } else {
+            for (const row of batchedRoster || []) {
+              rosterEligibilityBySetId.set(row.draft_set_id, Boolean(row.on_roster));
+            }
+            batchResolved = true;
           }
+        }
 
-          const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
-            p_draft_set_id: setlist.id,
-            p_user_id: user.id,
-          });
+        if (!batchResolved) {
+          await Promise.all(
+            rpcSetlists.map(async (setlist) => {
+              const { data, error } = await supabase.rpc("is_user_on_setlist_roster", {
+                p_draft_set_id: setlist.id,
+                p_user_id: user.id,
+              });
 
-          if (error) {
-            console.error("Error checking roster eligibility:", error);
-            rosterEligibilityBySetId.set(setlist.id, false);
-            return;
-          }
+              if (error) {
+                console.error("Error checking roster eligibility:", error);
+                rosterEligibilityBySetId.set(setlist.id, false);
+                return;
+              }
 
-          rosterEligibilityBySetId.set(setlist.id, Boolean(data));
-        }),
-      );
+              rosterEligibilityBySetId.set(setlist.id, Boolean(data));
+            }),
+          );
+        }
+      }
 
       // Non-leadership users should only see setlists where they are actually on the roster.
       // This prevents cross-visibility when multiple custom services share a date/campus/ministry.
@@ -744,27 +781,26 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         .eq("user_id", user.id)
         .in("draft_set_id", setlistIds.length > 0 ? setlistIds : ["00000000-0000-0000-0000-000000000000"]);
 
-      // Prior use counts per setlist (for NEW badge)
-      const setlistSongsWithPrior = await Promise.all(
-        (setlists || []).map(async (setlist) => {
-          const setlistSongItems = (allSongs || []).filter(s => s.draft_set_id === setlist.id);
-          const songIdsWithTitles = setlistSongItems.map(s => ({
-            id: s.song_id,
-            title: (s.songs as { title?: string } | null)?.title ?? "",
-          }));
-          const priorCounts = await getPriorUseCountsForSongs(
-            songIdsWithTitles,
-            setlist.plan_date,
-            setlist.campus_id ? [setlist.campus_id] : null,
-            setlist.ministry_type ? [setlist.ministry_type] : null
-          );
-          return { setlist, setlistSongItems, priorCounts };
-        })
+      // Prior use counts for the NEW badge — batched: one songs-table fetch plus one
+      // lookup per DISTINCT plan date, instead of three requests per setlist.
+      const uniqueSongsById = new Map<string, { id: string; title: string }>();
+      for (const song of allSongs || []) {
+        if (!uniqueSongsById.has(song.song_id)) {
+          uniqueSongsById.set(song.song_id, {
+            id: song.song_id,
+            title: (song.songs as { title?: string } | null)?.title ?? "",
+          });
+        }
+      }
+      const priorCountsByDate = await getGlobalPriorUseCountsByDate(
+        [...uniqueSongsById.values()],
+        setlists.map((s) => s.plan_date),
       );
 
       // Map songs and confirmations to setlists
       return (setlists || []).map(setlist => {
-        const { setlistSongItems, priorCounts } = setlistSongsWithPrior.find(p => p.setlist.id === setlist.id) ?? { setlistSongItems: [], priorCounts: new Map<string, number>() };
+        const setlistSongItems = (allSongs || []).filter(s => s.draft_set_id === setlist.id);
+        const priorCounts = priorCountsByDate.get(setlist.plan_date) ?? new Map<string, number>();
         const amIOnRoster = rosterEligibilityBySetId.get(setlist.id) ?? false;
         return {
           ...setlist,

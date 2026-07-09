@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
@@ -11,39 +12,49 @@ interface UnreadCount {
   count: number;
 }
 
-interface LastReadStatus {
-  campusId: string;
-  ministryType: string;
-  lastReadAt: string | null;
-}
+// Module-level so every hook instance (bottom-nav badge + Chat page) shares one
+// "currently viewing" state, and a missing RPC (migration not applied yet) only
+// costs one failed request per session before falling back to per-pair counts.
+let viewingChat: { campusId: string; ministryType: string } | null = null;
+let unreadCountsRpcMissing = false;
+let unreadChannelSeq = 0;
 
 export function useUnreadMessages(campInstanceId?: string | null) {
-  const [unreadCounts, setUnreadCounts] = useState<UnreadCount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
   const { data: userCampuses } = useUserCampuses(user?.id);
+  const queryClient = useQueryClient();
   const resourceAppKey = getCurrentResourceAppKey();
   const chatMinistryTypes = getChatMinistryTypesForResourceApp(resourceAppKey);
-  
-  // Track which campus+ministry is currently being viewed
-  const viewingChatRef = useRef<{ campusId: string; ministryType: string } | null>(null);
 
-  const fetchUnreadCounts = useCallback(async () => {
-    if (!user || !userCampuses?.length) {
-      setUnreadCounts([]);
-      setIsLoading(false);
-      return;
-    }
+  const campusIds = useMemo(
+    () => (userCampuses || []).map((uc) => uc.campus_id),
+    [userCampuses],
+  );
+  const campusIdsRef = useRef(campusIds);
+  useEffect(() => {
+    campusIdsRef.current = campusIds;
+  }, [campusIds]);
 
-    const campusIds = userCampuses.map((uc) => uc.campus_id);
-    
-    // Get read status for all user's campuses and ministries
+  const queryKey = useMemo(
+    () => ["unread-chat-counts", user?.id, resourceAppKey, campInstanceId ?? null],
+    [user?.id, resourceAppKey, campInstanceId],
+  );
+
+  const knownMinistryValues = useMemo(
+    () => new Set<string>(chatMinistryTypes.map((m) => m.value)),
+    [chatMinistryTypes],
+  );
+
+  const fetchCountsFallback = useCallback(async (): Promise<UnreadCount[]> => {
+    if (!user) return [];
+
+    // Pre-RPC path: read statuses once, then one HEAD count per campus x ministry.
     let readStatusQuery = supabase
       .from("message_read_status")
       .select("campus_id, ministry_type, last_read_at")
       .eq("user_id", user.id)
       .eq("resource_app_key", resourceAppKey)
-      .in("campus_id", campusIds);
+      .in("campus_id", campusIdsRef.current);
 
     readStatusQuery = campInstanceId
       ? readStatusQuery.eq("camp_instance_id", campInstanceId)
@@ -51,22 +62,18 @@ export function useUnreadMessages(campInstanceId?: string | null) {
 
     const { data: readStatuses } = await readStatusQuery;
 
-    // Build a map of campus_id:ministry_type -> last_read_at
     const readStatusMap: Record<string, string> = {};
     readStatuses?.forEach((rs) => {
       const key = `${rs.campus_id}:${normalizeChatMinistryType(rs.ministry_type)}`;
       readStatusMap[key] = rs.last_read_at;
     });
 
-    // Count unread messages for ALL campuses and ministry types in parallel
     const countPromises: Promise<UnreadCount>[] = [];
-    
-    for (const campusId of campusIds) {
+    for (const campusId of campusIdsRef.current) {
       for (const { value: ministryType } of chatMinistryTypes) {
         countPromises.push((async () => {
-          const key = `${campusId}:${ministryType}`;
-          const lastReadAt = readStatusMap[key];
-          
+          const lastReadAt = readStatusMap[`${campusId}:${ministryType}`];
+
           let query = supabase
             .from("chat_messages")
             .select("id", { count: "exact", head: true })
@@ -77,11 +84,11 @@ export function useUnreadMessages(campInstanceId?: string | null) {
           query = campInstanceId
             ? query.eq("camp_instance_id", campInstanceId)
             : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
-          
+
           if (lastReadAt) {
             query = query.gt("created_at", lastReadAt);
           }
-          
+
           const { count } = await query;
           return { campusId, ministryType, count: count || 0 };
         })());
@@ -89,11 +96,48 @@ export function useUnreadMessages(campInstanceId?: string | null) {
     }
 
     const results = await Promise.all(countPromises);
-    const counts = results.filter((r) => r.count > 0);
-    
-    setUnreadCounts(counts);
-    setIsLoading(false);
-  }, [campInstanceId, user, userCampuses, resourceAppKey, chatMinistryTypes]);
+    return results.filter((r) => r.count > 0);
+  }, [user, campInstanceId, resourceAppKey, chatMinistryTypes]);
+
+  const query = useQuery({
+    queryKey,
+    enabled: !!user && campusIds.length > 0,
+    staleTime: 15 * 1000,
+    queryFn: async (): Promise<UnreadCount[]> => {
+      if (!unreadCountsRpcMissing) {
+        const { data, error } = await supabase.rpc("get_unread_chat_counts", {
+          p_resource_app_key: resourceAppKey,
+          p_camp_instance_id: campInstanceId || null,
+        });
+
+        if (!error) {
+          return (data || [])
+            .map((row) => ({
+              campusId: row.campus_id,
+              ministryType: normalizeChatMinistryType(row.ministry_type),
+              count: Number(row.unread_count) || 0,
+            }))
+            .filter((uc) => uc.count > 0 && knownMinistryValues.has(uc.ministryType));
+        }
+        unreadCountsRpcMissing = true;
+      }
+
+      return fetchCountsFallback();
+    },
+  });
+
+  const unreadCounts = useMemo(() => query.data ?? [], [query.data]);
+
+  const removePairFromCache = useCallback(
+    (campusId: string, ministryType: string) => {
+      queryClient.setQueryData<UnreadCount[]>(queryKey, (prev) =>
+        (prev ?? []).filter(
+          (uc) => !(uc.campusId === campusId && uc.ministryType === ministryType),
+        ),
+      );
+    },
+    [queryClient, queryKey],
+  );
 
   const markAsRead = useCallback(async (campusId: string, ministryType: string = "weekend") => {
     if (!user) return;
@@ -113,7 +157,7 @@ export function useUnreadMessages(campInstanceId?: string | null) {
         },
         {
           onConflict: "user_id,campus_id,ministry_type,resource_app_key,camp_instance_id",
-        }
+        },
       );
 
     if (error) {
@@ -121,43 +165,28 @@ export function useUnreadMessages(campInstanceId?: string | null) {
       return;
     }
 
-    // Update local state to remove this campus+ministry from unread counts
-    setUnreadCounts((prev) => 
-      prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
-    );
-  }, [campInstanceId, user, resourceAppKey]);
+    removePairFromCache(campusId, normalizedMinistryType);
+  }, [campInstanceId, user, resourceAppKey, removePairFromCache]);
 
-  // Set which campus+ministry is currently being viewed
+  // Set which campus+ministry is currently being viewed (shared across instances,
+  // so the bottom-nav badge also stops counting the chat that's on screen).
   const setViewingChat = useCallback((campusId: string | null, ministryType: string | null) => {
     const normalizedMinistryType = ministryType ? normalizeChatMinistryType(ministryType) : null;
-    viewingChatRef.current = campusId && ministryType 
-      ? { campusId, ministryType: normalizedMinistryType || ministryType } 
+    viewingChat = campusId && normalizedMinistryType
+      ? { campusId, ministryType: normalizedMinistryType }
       : null;
-    // If we're viewing a chat, immediately clear its unread count
     if (campusId && normalizedMinistryType) {
-      setUnreadCounts((prev) => 
-        prev.filter((uc) => !(uc.campusId === campusId && uc.ministryType === normalizedMinistryType))
-      );
+      removePairFromCache(campusId, normalizedMinistryType);
     }
-  }, []);
+  }, [removePairFromCache]);
 
-  // Legacy: setViewingCampus for backwards compatibility (defaults to weekend)
-  const setViewingCampus = useCallback((campusId: string | null) => {
-    setViewingChat(campusId, campusId ? 'weekend' : null);
-  }, [setViewingChat]);
-
+  // Subscribe to new messages for realtime updates. Each instance invalidates the
+  // shared query (deduped by react-query) instead of keeping its own counter.
   useEffect(() => {
-    fetchUnreadCounts();
-  }, [fetchUnreadCounts]);
+    if (!user || campusIds.length === 0) return;
 
-  // Subscribe to new messages for realtime updates
-  useEffect(() => {
-    if (!user || !userCampuses?.length) return;
-
-    const campusIds = userCampuses.map((uc) => uc.campus_id);
-    
     const channel = supabase
-      .channel("unread-messages")
+      .channel(`unread-messages-${++unreadChannelSeq}`)
       .on(
         "postgres_changes",
         {
@@ -166,78 +195,57 @@ export function useUnreadMessages(campInstanceId?: string | null) {
           table: "chat_messages",
         },
         (payload) => {
-          const newMessage = payload.new as { 
-            campus_id: string; 
-            ministry_type: string; 
+          const newMessage = payload.new as {
+            campus_id: string;
+            ministry_type: string;
             resource_app_key: string;
             camp_instance_id?: string | null;
             user_id: string;
           };
-          
+
           const msgMinistry = normalizeChatMinistryType(newMessage.ministry_type);
-          
-          // Only count if it's in user's campuses, not their own message,
-          // AND they're not currently viewing that campus+ministry
+
+          // Only refresh if it's in the user's campuses, not their own message,
+          // AND they're not currently viewing that campus+ministry.
           if (
-            campusIds.includes(newMessage.campus_id) &&
+            campusIdsRef.current.includes(newMessage.campus_id) &&
             (campInstanceId
               ? newMessage.camp_instance_id === campInstanceId
               : newMessage.resource_app_key === resourceAppKey && !newMessage.camp_instance_id) &&
             newMessage.user_id !== user.id &&
-            !(viewingChatRef.current?.campusId === newMessage.campus_id && 
-              viewingChatRef.current?.ministryType === msgMinistry)
+            !(viewingChat?.campusId === newMessage.campus_id &&
+              viewingChat?.ministryType === msgMinistry)
           ) {
-            setUnreadCounts((prev) => {
-              const existing = prev.find(
-                (uc) => uc.campusId === newMessage.campus_id && uc.ministryType === msgMinistry
-              );
-              if (existing) {
-                return prev.map((uc) =>
-                  uc.campusId === newMessage.campus_id && uc.ministryType === msgMinistry
-                    ? { ...uc, count: uc.count + 1 }
-                    : uc
-                );
-              }
-              return [...prev, { campusId: newMessage.campus_id, ministryType: msgMinistry, count: 1 }];
-            });
+            queryClient.invalidateQueries({ queryKey });
           }
-        }
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campInstanceId, user, userCampuses, resourceAppKey]);
+  }, [campInstanceId, user, campusIds.length, resourceAppKey, queryClient, queryKey]);
 
-  // Get total unread count
   const totalUnread = unreadCounts.reduce((sum, uc) => sum + uc.count, 0);
-  
-  // Get unread count for a specific campus (all ministries combined)
-  const getUnreadForCampus = useCallback((campusId: string) => {
-    return unreadCounts
-      .filter((uc) => uc.campusId === campusId)
-      .reduce((sum, uc) => sum + uc.count, 0);
-  }, [unreadCounts]);
-  
-  // Get unread count for a specific campus+ministry
+
   const getUnreadForCampusMinistry = useCallback((campusId: string, ministryType: string) => {
     const normalizedMinistryType = normalizeChatMinistryType(ministryType);
     return unreadCounts.find(
-      (uc) => uc.campusId === campusId && uc.ministryType === normalizedMinistryType
+      (uc) => uc.campusId === campusId && uc.ministryType === normalizedMinistryType,
     )?.count || 0;
   }, [unreadCounts]);
 
   return {
     unreadCounts,
     totalUnread,
-    isLoading,
+    isLoading: query.isLoading,
     markAsRead,
-    setViewingCampus,
     setViewingChat,
-    getUnreadForCampus,
     getUnreadForCampusMinistry,
-    refetch: fetchUnreadCounts,
+    refetch: async () => {
+      await query.refetch();
+    },
   };
 }
 

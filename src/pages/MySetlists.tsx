@@ -245,12 +245,9 @@ function StandardMySetlists() {
   // "__none__" means the user has no campus at all — pass no filter rather than
   // leaking that sentinel into a `campus_id.in.(__none__)` query (invalid UUID, 400).
   const campusIdFilter = normalizedCampusId === "__none__" ? undefined : normalizedCampusId;
-  const { data: upcomingSetlists, isLoading: loadingUpcoming } = usePublishedSetlists(
-    campusIdFilter,
-    undefined,
-    false
-  );
-  const { data: pastSetlists, isLoading: loadingPast } = usePublishedSetlists(
+  // One fetch covers both recent-past and upcoming sets (includePast returns a
+  // trailing window through the future), instead of running the pipeline twice.
+  const { data: allSetlists, isLoading } = usePublishedSetlists(
     campusIdFilter,
     undefined,
     true
@@ -270,22 +267,19 @@ function StandardMySetlists() {
     [campuses],
   );
 
-  // Combine all setlists into one chronological list (past first, then upcoming)
+  // Group into one chronological list (past first, then upcoming)
   const allGroupedSetlists = useMemo(() => {
-    const pastItems = pastSetlists?.filter(s => s.plan_date < today) || [];
-    const upcomingItems = upcomingSetlists || [];
-    
     // Convert to format expected by groupByWeekend
-    const allWithScheduleDate = [...pastItems, ...upcomingItems].map(s => ({
+    const allWithScheduleDate = (allSetlists || []).map(s => ({
       ...s,
       scheduleDate: s.plan_date
     }));
-    
+
     // Sort chronologically (oldest first)
     allWithScheduleDate.sort((a, b) => a.scheduleDate.localeCompare(b.scheduleDate));
-    
+
     return groupByWeekend(allWithScheduleDate);
-  }, [pastSetlists, upcomingSetlists, today]);
+  }, [allSetlists]);
 
   const visibleGroupedSetlists = useMemo(() => {
     if (isAdmin || canViewCampusWideSetlists) return allGroupedSetlists;
@@ -309,8 +303,6 @@ function StandardMySetlists() {
       setCurrentIndex(initialIndex);
     }
   }, [initialIndex, visibleGroupedSetlists.length]);
-
-  const isLoading = loadingUpcoming || loadingPast;
 
   // Handle deep-link navigation to specific setlist
   useEffect(() => {

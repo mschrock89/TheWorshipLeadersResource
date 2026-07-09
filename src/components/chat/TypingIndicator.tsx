@@ -3,51 +3,82 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
-interface TypingUser {
+export interface TypingUser {
   userId: string;
   name: string;
 }
 
-interface TypingIndicatorProps {
-  campusId: string | null;
-  ministryType: string | null;
+interface TypingPresence {
+  userId?: string;
+  name?: string;
+  isTyping?: boolean;
 }
 
 function getTypingChannelName(campusId: string, ministryType: string | null) {
   return `typing-${getCurrentResourceAppKey()}-${campusId}-${ministryType || "chat"}`;
 }
 
-export function TypingIndicator({ campusId, ministryType }: TypingIndicatorProps) {
+// One presence channel per chat handles both directions: tracking our own typing
+// state and listening for everyone else's (previously two subscriptions to the
+// same topic — one in this component, one in the hook).
+export function useTypingPresence(
+  campusId: string | null,
+  ministryType: string | null,
+  userName: string | null,
+) {
   const { user } = useAuth();
+  const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
 
   useEffect(() => {
-    if (!campusId || !user) return;
+    if (!campusId || !user) {
+      setTypingUsers([]);
+      return;
+    }
 
-    const channel = supabase.channel(getTypingChannelName(campusId, ministryType));
+    const ch = supabase.channel(getTypingChannelName(campusId, ministryType));
 
-    channel
+    ch
       .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
+        const state = ch.presenceState();
         const users: TypingUser[] = [];
-        
-        Object.values(state).forEach((presences: any) => {
-          presences.forEach((presence: any) => {
-            if (presence.userId !== user.id && presence.isTyping) {
-              users.push({ userId: presence.userId, name: presence.name });
+
+        Object.values(state).forEach((presences) => {
+          (presences as TypingPresence[]).forEach((presence) => {
+            if (presence.userId && presence.userId !== user.id && presence.isTyping) {
+              users.push({ userId: presence.userId, name: presence.name || "Someone" });
             }
           });
         });
-        
+
         setTypingUsers(users);
       })
-      .subscribe();
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await ch.track({ userId: user.id, name: userName || "Someone", isTyping: false });
+        }
+      });
+    setChannel(ch);
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(ch);
+      setChannel(null);
+      setTypingUsers([]);
     };
-  }, [campusId, ministryType, user]);
+  }, [campusId, ministryType, user, userName]);
 
+  const setTyping = useCallback(
+    async (isTyping: boolean) => {
+      if (!channel || !user) return;
+      await channel.track({ userId: user.id, name: userName || "Someone", isTyping });
+    },
+    [channel, user, userName]
+  );
+
+  return { setTyping, typingUsers };
+}
+
+export function TypingIndicator({ typingUsers }: { typingUsers: TypingUser[] }) {
   if (typingUsers.length === 0) return null;
 
   const text =
@@ -62,35 +93,4 @@ export function TypingIndicator({ campusId, ministryType }: TypingIndicatorProps
       {text}
     </div>
   );
-}
-
-export function useTypingPresence(campusId: string | null, ministryType: string | null, userName: string | null) {
-  const { user } = useAuth();
-  const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
-
-  useEffect(() => {
-    if (!campusId || !user) return;
-
-    const ch = supabase.channel(getTypingChannelName(campusId, ministryType));
-    ch.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await ch.track({ userId: user.id, name: userName || "Someone", isTyping: false });
-      }
-    });
-    setChannel(ch);
-
-    return () => {
-      supabase.removeChannel(ch);
-    };
-  }, [campusId, ministryType, user, userName]);
-
-  const setTyping = useCallback(
-    async (isTyping: boolean) => {
-      if (!channel || !user) return;
-      await channel.track({ userId: user.id, name: userName || "Someone", isTyping });
-    },
-    [channel, user, userName]
-  );
-
-  return { setTyping };
 }
