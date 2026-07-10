@@ -14,6 +14,141 @@ export type Database = {
   }
   public: {
     Tables: {
+      capabilities: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          key: string
+          label: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          key: string
+          label: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          key?: string
+          label?: string
+        }
+        Relationships: []
+      }
+      role_capabilities: {
+        Row: {
+          capability_key: string
+          created_at: string
+          resource_app: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          capability_key: string
+          created_at?: string
+          resource_app?: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          capability_key?: string
+          created_at?: string
+          resource_app?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_capabilities_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "capabilities"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      user_capability_overrides: {
+        Row: {
+          capability_key: string
+          created_at: string
+          expires_at: string | null
+          granted: boolean
+          note: string | null
+          resource_app: string
+          user_id: string
+        }
+        Insert: {
+          capability_key: string
+          created_at?: string
+          expires_at?: string | null
+          granted: boolean
+          note?: string | null
+          resource_app?: string
+          user_id: string
+        }
+        Update: {
+          capability_key?: string
+          created_at?: string
+          expires_at?: string | null
+          granted?: boolean
+          note?: string | null
+          resource_app?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_capability_overrides_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "capabilities"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      setlist_approval_rules: {
+        Row: {
+          approver_user_id: string | null
+          campus_id: string | null
+          created_at: string
+          id: string
+          ministry_type: string | null
+          note: string | null
+          requires_approval: boolean
+          resource_app: string
+          updated_at: string
+        }
+        Insert: {
+          approver_user_id?: string | null
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string | null
+          note?: string | null
+          requires_approval?: boolean
+          resource_app?: string
+          updated_at?: string
+        }
+        Update: {
+          approver_user_id?: string | null
+          campus_id?: string | null
+          created_at?: string
+          id?: string
+          ministry_type?: string | null
+          note?: string | null
+          requires_approval?: boolean
+          resource_app?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setlist_approval_rules_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       album_tracks: {
         Row: {
           album_id: string
@@ -1551,6 +1686,145 @@ export type Database = {
             columns: ["campus_id"]
             isOneToOne: false
             referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ministries: {
+        Row: {
+          created_at: string
+          is_active: boolean
+          key: string
+          name: string
+          resource_app_key: string
+        }
+        Insert: {
+          created_at?: string
+          is_active?: boolean
+          key: string
+          name: string
+          resource_app_key: string
+        }
+        Update: {
+          created_at?: string
+          is_active?: boolean
+          key?: string
+          name?: string
+          resource_app_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ministries_resource_app_key_fkey"
+            columns: ["resource_app_key"]
+            isOneToOne: false
+            referencedRelation: "resource_apps"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      ministry_memberships: {
+        Row: {
+          campus_id: string
+          created_at: string
+          id: string
+          ministry_key: string
+          user_id: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          id?: string
+          ministry_key: string
+          user_id: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          id?: string
+          ministry_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ministry_memberships_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ministry_memberships_ministry_key_fkey"
+            columns: ["ministry_key"]
+            isOneToOne: false
+            referencedRelation: "ministries"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "ministry_memberships_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      serving_records: {
+        Row: {
+          campus_id: string
+          category: string
+          count: number
+          created_at: string
+          id: string
+          ministry_key: string
+          notes: string | null
+          recorded_by: string | null
+          service_date: string
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          category?: string
+          count: number
+          created_at?: string
+          id?: string
+          ministry_key: string
+          notes?: string | null
+          recorded_by?: string | null
+          service_date: string
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          category?: string
+          count?: number
+          created_at?: string
+          id?: string
+          ministry_key?: string
+          notes?: string | null
+          recorded_by?: string | null
+          service_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "serving_records_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "serving_records_ministry_key_fkey"
+            columns: ["ministry_key"]
+            isOneToOne: false
+            referencedRelation: "ministries"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "serving_records_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

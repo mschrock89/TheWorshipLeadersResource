@@ -7,6 +7,8 @@
     { "source": "/hs/(.*)", "destination": "/students-hs.html" },
     { "source": "/ms", "destination": "/students-ms.html" },
     { "source": "/ms/(.*)", "destination": "/students-ms.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/admin/(.*)", "destination": "/admin.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

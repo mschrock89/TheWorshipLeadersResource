@@ -84,7 +84,7 @@ serve(async (req: Request): Promise<Response> => {
       })
       .eq("id", notificationLogId)
       .is("canceled_at", null)
-      .select("id, title, message, url")
+      .select("id, title, message, url, metadata")
       .single();
 
     if (notificationError) throw notificationError;
@@ -127,6 +127,11 @@ serve(async (req: Request): Promise<Response> => {
           metadata: {
             canceledNotificationLogId: notificationLogId,
             reason: reason || null,
+            // Withdraw within the same app the original push went to. Logs
+            // from before app scoping have no key; those went to every app,
+            // so the correction must too.
+            resourceAppKey:
+              (notificationLog.metadata as Record<string, unknown> | null)?.resourceAppKey ?? "all",
           },
         }),
       });

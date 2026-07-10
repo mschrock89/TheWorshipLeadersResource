@@ -1335,6 +1335,22 @@ export default function AdminTools() {
         </p>
       </div>
 
+      {/* Permissions link */}
+      <Card className="mb-6">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xl font-semibold flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            Permissions
+          </CardTitle>
+          <CardDescription>
+            Edit the role capability matrix, setlist approval routing, and per-user overrides.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={() => navigate("/permissions")}>Open Permissions</Button>
+        </CardContent>
+      </Card>
+
       {/* Leadership Section */}
       <Card className="mb-6">
         <CardHeader className="pb-2">

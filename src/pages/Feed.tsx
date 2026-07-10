@@ -24,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useCapabilities } from "@/hooks/useCapabilities";
 import {
   type FeedCategory,
   type FeedCommentRecord,
@@ -381,7 +382,11 @@ export default function Feed({
 }: FeedProps = {}) {
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAdmin, user } = useAuth();
+  const { user } = useAuth();
+  // Feed posting is gated by the post_feed capability (seeded to match the old
+  // isAdmin set), so it can now be granted to individuals via a user override.
+  const { can } = useCapabilities();
+  const isAdmin = can("post_feed");
   const { toast } = useToast();
   const { data: posts = [], isLoading } = useFeedPosts(campInstanceId);
   const createPost = useCreateFeedPost(campInstanceId);

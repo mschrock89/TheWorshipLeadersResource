@@ -1,11 +1,8 @@
 import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
+import type { ReactElement } from "react";
+import "@/index.css";
 import { getResourceAppForLocation } from "@/lib/constants";
 
-const root = document.getElementById("root")!;
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const DEV_SW_RESET_KEY = "dev-sw-reset-v1";
 const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -108,7 +105,12 @@ async function reloadIfNewAppVersionAvailable(force = false) {
   }
 
   try {
-    const response = await fetch(`/?app-version=${now}`, { cache: "no-store" });
+    // Each resource app has its own HTML entry (and therefore its own entry
+    // chunk), so the version probe must hit this app's path prefix — fetching
+    // "/" from a student app would return the worship entry's HTML and the
+    // script paths would never match.
+    const appPathPrefix = getResourceAppForLocation().pathPrefix;
+    const response = await fetch(`${appPathPrefix}?app-version=${now}`, { cache: "no-store" });
     if (!response.ok) {
       return;
     }
@@ -168,7 +170,11 @@ async function resetDevelopmentBrowserState() {
   sessionStorage.removeItem(DEV_SW_RESET_KEY);
 }
 
-async function bootstrap() {
+export async function bootstrapApp(app: ReactElement) {
+  const root = document.getElementById("root")!;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
   setResourceAppMetadata();
   await resetDevelopmentBrowserState();
   startProductionAppUpdateChecks();
@@ -183,7 +189,5 @@ async function bootstrap() {
     return;
   }
 
-  createRoot(root).render(<App />);
+  createRoot(root).render(app);
 }
-
-void bootstrap();

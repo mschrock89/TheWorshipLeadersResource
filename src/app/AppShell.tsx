@@ -1,0 +1,215 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { useUserRoles } from "@/hooks/useUserRoles";
+import { BottomNav } from "@/components/layout/BottomNav";
+import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
+import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
+import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
+import { AttendanceTrackingProvider } from "@/components/attendance/AttendanceTrackingProvider";
+import {
+  canAuditionCandidateAccessPath,
+  canStudentBaseRoleAccessPath,
+  isAuditionCandidateRole,
+  isStudentBaseRole,
+} from "@/lib/access";
+import { MiniPlayer } from "@/components/audio/MiniPlayer";
+import { AudioPlayer } from "@/components/audio/AudioPlayer";
+import { Loader2 } from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
+import { getRouterBasename } from "@/lib/constants";
+
+export type RouteDefinition = {
+  path: string;
+  component: ComponentType;
+};
+
+const queryClient = new QueryClient();
+
+// Register service worker for push notifications
+if ("serviceWorker" in navigator) {
+  if (import.meta.env.PROD) {
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch((error) => {
+        console.error("Service worker registration failed:", error);
+      });
+  }
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const location = useLocation();
+  const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
+  const roleNames = roles.map((r) => r.role);
+  const isAuditionCandidate = isAuditionCandidateRole(roleNames);
+  const isStudentBase = isStudentBaseRole(roleNames);
+
+  if (isLoading || (user && rolesLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (isAuditionCandidate && !canAuditionCandidateAccessPath(location.pathname)) {
+    return <Navigate to="/calendar" replace />;
+  }
+
+  if (isStudentBase && !isAuditionCandidate && !canStudentBaseRoleAccessPath(location.pathname)) {
+    return <Navigate to="/feed" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function PublicPage({ children }: { children: ReactNode }) {
+  return <AnimatedPage>{children}</AnimatedPage>;
+}
+
+function ProtectedPage({ children }: { children: ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <ProtectedLayout>
+        <AnimatedPage>{children}</AnimatedPage>
+      </ProtectedLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AnimatedPage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="animate-fade-in">
+      {children}
+    </div>
+  );
+}
+
+// Wrapper component to conditionally apply padding based on route
+function MainContent({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const isChat = location.pathname === '/chat';
+  const isHome = location.pathname === '/';
+
+  return (
+    <div
+      className="flex flex-col"
+      style={{ minHeight: '100dvh' }}
+    >
+      <div
+        className="flex-1"
+        style={{
+          paddingBottom: isChat || isHome
+            ? '0px'
+            : 'calc(80px + env(safe-area-inset-bottom, 0px))'
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function AppRoutes({
+  publicRoutes,
+  protectedRoutes,
+  notFound: NotFoundComponent,
+}: {
+  publicRoutes: RouteDefinition[];
+  protectedRoutes: RouteDefinition[];
+  notFound: ComponentType;
+}) {
+  return (
+    <Routes>
+      {publicRoutes.map(({ path, component: Component }) => (
+        <Route
+          key={path}
+          path={path}
+          element={
+            <PublicPage>
+              <Component />
+            </PublicPage>
+          }
+        />
+      ))}
+      <Route path="/planning-center" element={<Navigate to="/settings/planning-center" replace />} />
+      {protectedRoutes.map(({ path, component: Component }) => (
+        <Route
+          key={path}
+          path={path}
+          element={
+            <ProtectedPage>
+              <Component />
+            </ProtectedPage>
+          }
+        />
+      ))}
+      <Route
+        path="*"
+        element={
+          <PublicPage>
+            <NotFoundComponent />
+          </PublicPage>
+        }
+      />
+    </Routes>
+  );
+}
+
+function AudioPlayerWrapper() {
+  const context = useAudioPlayerSafe();
+
+  if (!context || !context.currentTrack) return null;
+
+  return (
+    <>
+      {context.isExpanded ? <AudioPlayer /> : <MiniPlayer />}
+    </>
+  );
+}
+
+export function AppShell({
+  publicRoutes,
+  protectedRoutes,
+  notFound,
+}: {
+  publicRoutes: RouteDefinition[];
+  protectedRoutes: RouteDefinition[];
+  notFound: ComponentType;
+}) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter basename={getRouterBasename()}>
+          <AuthProvider>
+            <AttendanceTrackingProvider>
+              <AudioPlayerProvider>
+                <MainContent>
+                  <AppRoutes
+                    publicRoutes={publicRoutes}
+                    protectedRoutes={protectedRoutes}
+                    notFound={notFound}
+                  />
+                </MainContent>
+                <AudioPlayerWrapper />
+                <BottomNav />
+                <AppOnboardingTour />
+              </AudioPlayerProvider>
+            </AttendanceTrackingProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}

@@ -11,6 +11,7 @@ interface MentionNotificationRequest {
   senderName: string;
   senderId: string;
   campusName: string;
+  resourceAppKey?: string;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -23,7 +24,14 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { messageContent, senderName, senderId, campusName }: MentionNotificationRequest = await req.json();
+    const { messageContent, senderName, senderId, campusName, resourceAppKey }: MentionNotificationRequest = await req.json();
+
+    if (!resourceAppKey) {
+      return new Response(
+        JSON.stringify({ error: "resourceAppKey is required so the push stays within the originating app" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!messageContent) {
       return new Response(
@@ -98,6 +106,7 @@ serve(async (req: Request): Promise<Response> => {
         url: "/chat",
         tag: "chat-mention",
         userIds: mentionedUserIds,
+        metadata: { resourceAppKey },
       }),
     });
 

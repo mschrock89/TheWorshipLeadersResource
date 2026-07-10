@@ -236,7 +236,7 @@ export function PublishSetlistDialog({
                   </>
                 ) : (
                   <>
-                    This will submit the setlist to <span className="font-semibold">Kyle Elkins</span> for approval.
+                    This will submit the setlist to the designated approver for review.
                     Once approved, push notifications will be sent to all{" "}
                     {recipientLabel}.
                   </>

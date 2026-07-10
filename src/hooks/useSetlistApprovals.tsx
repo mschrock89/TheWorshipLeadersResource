@@ -4,43 +4,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
 import { generateServiceFlowFromTemplate } from "./useServiceFlow";
-import { isSessionSetMinistryType } from "@/lib/constants";
-
-// Kyle Elkins' user ID - the designated approver
-export const APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
-
-const DIRECT_PUBLISHER_FIRST_NAMES = new Set(["eli", "christian"]);
-const DIRECT_PUBLISH_MINISTRY_TYPES = new Set(["kids_camp", "encounter", "eon", "eon_weekend"]);
+import {
+  shouldPublishDirectly,
+  resolveApproverUserId,
+  isApproverUser,
+} from "@/lib/setlistApproval";
 
 interface SetlistPublisherProfile {
   full_name: string | null;
   email: string | null;
-}
-
-function normalizeIdentityValue(value: string | null | undefined) {
-  return (value || "").trim().toLowerCase();
-}
-
-function getFirstName(fullName: string | null | undefined) {
-  return normalizeIdentityValue(fullName).split(/\s+/)[0] || "";
-}
-
-function canPublishSetlistDirectly(
-  userId: string | undefined,
-  profile: SetlistPublisherProfile,
-  ministryType?: string | null,
-) {
-  if (!userId) return false;
-  if (userId === APPROVER_USER_ID) return true;
-  if (ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isSessionSetMinistryType(ministryType))) return true;
-
-  const firstName = getFirstName(profile.full_name);
-
-  if (DIRECT_PUBLISHER_FIRST_NAMES.has(firstName)) {
-    return true;
-  }
-
-  return false;
 }
 
 async function getSetlistPublisherProfile(user: User): Promise<SetlistPublisherProfile> {
@@ -218,17 +190,15 @@ async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
   );
 }
 
-// Check if the current user is an approver (Kyle Elkins only)
+// Check if the current user is an approver (any user named in an approval rule).
 export function useIsApprover() {
   const { user } = useAuth();
-  
+
   return useQuery({
     queryKey: ["is-approver", user?.id],
     queryFn: async () => {
       if (!user?.id) return false;
-      
-      // Only Kyle Elkins can approve setlists
-      return user.id === APPROVER_USER_ID;
+      return isApproverUser(user.id);
     },
     enabled: !!user?.id,
   });
@@ -236,20 +206,21 @@ export function useIsApprover() {
 
 export function useCanPublishSetlistDirectly(ministryType?: string | null) {
   const { user } = useAuth();
-  const canPublishMinistryDirectly =
-    !!ministryType && (DIRECT_PUBLISH_MINISTRY_TYPES.has(ministryType) || isSessionSetMinistryType(ministryType));
 
   return useQuery({
     queryKey: ["can-publish-setlist-directly", user?.id, ministryType],
     queryFn: async () => {
-      if (canPublishMinistryDirectly) return true;
       if (!user) return false;
-
       const profile = await getSetlistPublisherProfile(user);
-      return canPublishSetlistDirectly(user.id, profile, ministryType);
+      // No campus context here (dialog decides button copy pre-publish); resolve
+      // against ministry/default scope.
+      return shouldPublishDirectly({
+        userId: user.id,
+        fullName: profile.full_name,
+        ministryType,
+      });
     },
-    enabled: canPublishMinistryDirectly || !!user?.id,
-    initialData: canPublishMinistryDirectly ? true : undefined,
+    enabled: !!user?.id,
   });
 }
 
@@ -337,9 +308,14 @@ export function useSubmitForApproval() {
       }
 
       const publisherProfile = await getSetlistPublisherProfile(user);
-      const shouldPublishDirectly = canPublishSetlistDirectly(user.id, publisherProfile, thisSet.ministry_type);
+      const publishDirectly = await shouldPublishDirectly({
+        userId: user.id,
+        fullName: publisherProfile.full_name,
+        campusId: thisSet.campus_id,
+        ministryType: thisSet.ministry_type,
+      });
 
-      if (shouldPublishDirectly) {
+      if (publishDirectly) {
         const publishTimestamp = new Date().toISOString();
         const { data: publishedSet, error: publishError } = await supabase
           .from("draft_sets")
@@ -419,14 +395,21 @@ export function useSubmitForApproval() {
 
       if (approvalError) throw approvalError;
 
-      // Send push notification to Kyle
+      // Send push notification to whoever approves this set's scope.
+      const approverUserId = await resolveApproverUserId({
+        campusId: thisSet.campus_id,
+        ministryType: thisSet.ministry_type,
+      });
       try {
+        if (!approverUserId) {
+          console.warn("No approver configured for this set; approval push skipped.");
+        }
         const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", {
           body: {
             title: "Setlist Pending Approval",
             message: `A setlist for ${thisSet.plan_date} needs your approval`,
             url: "/approvals",
-            userIds: [APPROVER_USER_ID],
+            userIds: approverUserId ? [approverUserId] : [],
             // Setlists are a Worship-only feature; scope to worship subscriptions.
             metadata: { resourceAppKey: "worship" },
           },
@@ -435,7 +418,7 @@ export function useSubmitForApproval() {
         if (pushError) {
           console.error("Failed to send approval notification:", pushError);
         } else if (!pushResult?.sent) {
-          console.warn("Approval push notification did not reach any subscribed Kyle Elkins accounts.", pushResult);
+          console.warn("Approval push notification did not reach any subscribed approver accounts.", pushResult);
         }
       } catch (e) {
         console.error("Failed to send approval notification:", e);
@@ -466,7 +449,7 @@ export function useSubmitForApproval() {
         return;
       }
 
-      let description = "Kyle Elkins has been notified and will review it shortly.";
+      let description = "The approver has been notified and will review it shortly.";
       if (data?.deletedCount > 0) {
         description += ` (Cleaned up ${data.deletedCount} old version${data.deletedCount > 1 ? 's' : ''})`;
       }

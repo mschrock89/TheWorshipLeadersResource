@@ -543,18 +543,33 @@ serve(async (req) => {
       ? payload.metadata.resourceAppKey
       : null;
 
-    if (resourceAppKey) {
-      query = query.eq("resource_app_key", resourceAppKey);
-    } else if (hasExplicitRecipientList) {
-      // Safety net: a targeted push (explicit userIds) should always declare the
-      // originating app so it is delivered only to that app's subscriptions.
-      // Without it, recipients subscribed to multiple resource apps get the push
-      // on every install. Warn so any regression is visible in the logs.
-      console.warn("Push request missing metadata.resourceAppKey; delivering to ALL of the recipients' app subscriptions", {
+    if (resourceAppKey === "all") {
+      // Deliberate cross-app broadcast; every caller must opt in explicitly.
+      console.log("Cross-app push requested via resourceAppKey 'all'", {
         title: payload.title,
         tag: payload.tag,
         contextType: payload.contextType,
       });
+    } else if (resourceAppKey) {
+      query = query.eq("resource_app_key", resourceAppKey);
+    } else {
+      // Fail closed: without an originating app, recipients subscribed to
+      // multiple resource apps would get the push on every install.
+      console.error("Rejecting push request without metadata.resourceAppKey", {
+        title: payload.title,
+        tag: payload.tag,
+        contextType: payload.contextType,
+      });
+
+      return new Response(
+        JSON.stringify({
+          error: "metadata.resourceAppKey is required (pass 'all' to intentionally send to every app)",
+          sent: 0,
+          failed: 0,
+          total: 0,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const { data: subscriptions, error: fetchError } = await query;
