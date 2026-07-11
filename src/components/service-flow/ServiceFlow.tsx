@@ -154,12 +154,12 @@ export function ServiceFlow({
         <header
           className={cn(
             "service-flow-card-header border-b-2 border-slate-200 bg-slate-100 px-5 py-5 sm:px-7 sm:py-6 print:border-black/30 print:bg-slate-100",
-            printFitHalfSheet && "print:px-3 print:py-1.5",
+            printFitHalfSheet && "print:px-2 print:py-1",
           )}
         >
-          <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:gap-1.5")}>
-            <div className="space-y-1">
-              <p className={cn("text-xs font-bold uppercase tracking-[0.24em] text-primary print:text-black", printFitHalfSheet && "print:text-[10px] print:leading-tight")}>
+          <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:gap-1")}>
+            <div className={cn("space-y-1", printFitHalfSheet && "print:space-y-0")}>
+              <p className={cn("text-xs font-bold uppercase tracking-[0.24em] text-primary print:text-black", printFitHalfSheet && "print:text-[10px] print:leading-none")}>
                 Service Flow
               </p>
               <h2 className={cn("text-2xl font-bold tracking-tight text-slate-950 sm:text-[1.75rem] print:text-black", printFitHalfSheet && "print:text-[19px] print:leading-tight")}>
@@ -171,10 +171,10 @@ export function ServiceFlow({
             </div>
 
             <div className={cn("rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-left shadow-sm print:border-0 print:bg-transparent print:px-0 print:py-0 print:shadow-none sm:min-w-[160px] sm:text-right", printFitHalfSheet && "print:min-w-[92px]")}>
-              <p className={cn("text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 print:text-black/70", printFitHalfSheet && "print:text-[10px] print:leading-tight")}>
+              <p className={cn("text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 print:text-black/70", printFitHalfSheet && "print:text-[10px] print:leading-none")}>
                 Total Time
               </p>
-              <p className={cn("mt-1 text-xl font-bold tracking-tight text-slate-950 print:text-black", printFitHalfSheet && "print:mt-0.5 print:text-[15px] print:leading-tight")}>
+              <p className={cn("mt-1 text-xl font-bold tracking-tight text-slate-950 print:text-black", printFitHalfSheet && "print:mt-0 print:text-[15px] print:leading-tight")}>
                 {service.totalTime}
               </p>
             </div>
@@ -201,7 +201,7 @@ export function ServiceFlow({
           ) : null}
         </header>
 
-        <div className={cn("px-5 py-5 sm:px-7 sm:py-7", compactMode ? "space-y-6" : "space-y-8", printFitHalfSheet && "print:space-y-2.5 print:px-3 print:py-1.5")}>
+        <div className={cn("px-5 py-5 sm:px-7 sm:py-7", compactMode ? "space-y-6" : "space-y-8", printFitHalfSheet && "print:space-y-1 print:px-2 print:py-1")}>
           {service.sections.map((section) => {
             const sectionRuntime = getSectionRuntime(section);
             const isHighlightedSection = section.id === highlightSectionId;
@@ -209,40 +209,42 @@ export function ServiceFlow({
             return (
               <section
                 key={section.id}
-                className={cn("space-y-3", compactMode ? "scroll-mt-20" : "scroll-mt-24", printFitHalfSheet && "print:space-y-1.5")}
+                className={cn("space-y-3", compactMode ? "scroll-mt-20" : "scroll-mt-24", printFitHalfSheet && "print:space-y-0.5")}
                 aria-labelledby={`service-flow-section-${section.id}`}
               >
                 <div className={cn("flex items-center gap-3", printFitHalfSheet && "print:gap-1")}>
                   <div
                     className={cn(
                       "h-0.5 flex-1 bg-slate-300 print:bg-black/25",
+                      printFitHalfSheet && "print:h-px",
                       isHighlightedSection && "bg-primary/60 print:bg-black/35",
                     )}
                   />
-                  <div className="shrink-0 rounded-lg border-2 border-slate-200 bg-slate-50 px-4 py-1.5 text-center print:border-black/30 print:bg-slate-100">
+                  <div className={cn("shrink-0 rounded-lg border-2 border-slate-200 bg-slate-50 px-4 py-1.5 text-center print:border-black/30 print:bg-slate-100", printFitHalfSheet && "print:rounded print:px-2 print:py-0")}>
                     <p
                       id={`service-flow-section-${section.id}`}
                       className={cn(
                         "text-sm font-extrabold uppercase tracking-[0.2em] text-slate-800 print:text-black",
-                        printFitHalfSheet && "print:text-[10.5px] print:leading-tight",
+                        printFitHalfSheet && "print:text-[10.5px] print:leading-none",
                         isHighlightedSection && "text-primary print:text-black",
                       )}
                     >
                       {section.title}
                     </p>
-                    <p className={cn("mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", printFitHalfSheet && "print:mt-0 print:text-[9.5px] print:leading-tight")}>
+                    <p className={cn("mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", printFitHalfSheet && "print:mt-0 print:text-[9.5px] print:leading-none")}>
                       {formatSeconds(sectionRuntime)}
                     </p>
                   </div>
                   <div
                     className={cn(
                       "h-0.5 flex-1 bg-slate-300 print:bg-black/25",
+                      printFitHalfSheet && "print:h-px",
                       isHighlightedSection && "bg-primary/60 print:bg-black/35",
                     )}
                   />
                 </div>
 
-                <div className={cn(compactMode ? "space-y-2.5" : "space-y-3.5", printFitHalfSheet && "print:space-y-1")}>
+                <div className={cn(compactMode ? "space-y-2.5" : "space-y-3.5", printFitHalfSheet && "print:space-y-px")}>
                   {section.items.map((item) => {
                     const Icon = getItemIcon(item);
                     const isSong = item.type === "song";
@@ -252,33 +254,33 @@ export function ServiceFlow({
                       <article
                         key={item.id}
                         className={cn(
-                          "rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-base shadow-sm print:break-inside-avoid print:rounded-xl print:border-[1.5px] print:border-black/30 print:bg-white print:shadow-none",
+                          "rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-base shadow-sm print:rounded-xl print:border-[1.5px] print:border-black/30 print:bg-white print:shadow-none",
                           compactMode ? "px-3.5 py-3" : "px-4 py-4",
-                          printFitHalfSheet && "print:rounded-md print:px-2.5 print:py-1.5",
+                          printFitHalfSheet && "print:rounded-sm print:px-1.5 print:py-0.5",
                           isSong && "border-primary/25 bg-white",
                           isHighlightedItem && "border-primary/50 ring-2 ring-primary/20 print:border-black/35",
                         )}
                       >
-                        <div className={cn("flex items-start gap-3", printFitHalfSheet && "print:items-center print:gap-1.5")}>
+                        <div className={cn("flex items-start gap-3", printFitHalfSheet && "print:items-center print:gap-1")}>
                           {showIcons ? (
                             <div
                               className={cn(
                                 "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 print:border-[1.5px] print:border-black/30 print:bg-white print:text-black/80",
-                                printFitHalfSheet && "print:mt-0 print:h-7 print:w-7 print:rounded-lg",
+                                printFitHalfSheet && "print:mt-0 print:h-5 print:w-5 print:rounded",
                                 isSong && "border-primary/30 bg-primary/10 text-primary print:border-black/35 print:text-black",
                               )}
                             >
-                              <Icon className={cn("h-[18px] w-[18px]", printFitHalfSheet && "print:h-3.5 print:w-3.5")} />
+                              <Icon className={cn("h-[18px] w-[18px]", printFitHalfSheet && "print:h-3 print:w-3")} />
                             </div>
                           ) : null}
 
                           <div className="min-w-0 flex-1">
-                            <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:items-center print:gap-0.5")}>
-                              <div className="min-w-0">
+                            <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:flex-row print:items-center print:gap-1")}>
+                              <div className={cn("min-w-0", printFitHalfSheet && "print:flex print:min-w-0 print:flex-1 print:items-center print:gap-1")}>
                                 <p
                                   className={cn(
                                     "truncate font-semibold tracking-tight text-slate-950 print:text-black",
-                                    printFitHalfSheet && "print:text-[12px] print:leading-tight",
+                                    printFitHalfSheet && "print:min-w-0 print:flex-1 print:text-[12px] print:leading-none",
                                     isSong ? "text-[17px] sm:text-lg" : "text-[16px]",
                                   )}
                                 >
@@ -287,43 +289,42 @@ export function ServiceFlow({
                                 <p className={cn("mt-0.5 text-sm capitalize text-slate-600 print:text-black/70", printFitHalfSheet && "print:hidden")}>
                                   {item.type}
                                 </p>
+                                {isSong ? (
+                                  <div className={cn("mt-3 flex flex-wrap gap-2 text-sm text-slate-700 print:text-black/80", printFitHalfSheet && "print:mt-0 print:flex print:shrink-0 print:flex-nowrap print:gap-0.5 print:text-[9.5px] print:leading-none")}>
+                                    {typeof item.bpm === "number" ? (
+                                      <span className={cn("rounded-lg border-2 border-primary/25 bg-primary/10 px-2.5 py-1 font-semibold text-primary print:border-[1.5px] print:border-black/30 print:bg-transparent print:text-black", printFitHalfSheet && "print:rounded-sm print:px-1 print:py-0")}>
+                                        {item.bpm} BPM
+                                      </span>
+                                    ) : null}
+                                    {item.key ? (
+                                      <span className={cn("rounded-lg border-2 border-slate-200 bg-white px-2.5 py-1 font-semibold print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:rounded-sm print:px-1 print:py-0")}>
+                                        Key {item.key}
+                                      </span>
+                                    ) : null}
+                                    {item.leader ? (
+                                      <span className={cn("rounded-lg border-2 border-slate-200 bg-white px-2.5 py-1 font-medium print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:rounded-sm print:px-1 print:py-0")}>
+                                        Leader {item.leader}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : item.leader ? (
+                                  <p className={cn("mt-2.5 text-sm font-medium text-slate-700 print:text-black/80", printFitHalfSheet && "print:mt-0 print:shrink-0 print:text-[9px] print:leading-none")}>
+                                    Lead: {item.leader}
+                                  </p>
+                                ) : null}
                               </div>
 
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className={cn("flex shrink-0 items-center gap-2", printFitHalfSheet && "print:gap-1")}>
                                 {item.clockTime ? (
-                                  <div className={cn("rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-800 print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:px-2 print:py-0.5 print:text-[10px] print:leading-tight")}>
+                                  <div className={cn("rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-800 print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:rounded-sm print:px-1.5 print:py-0 print:text-[10px] print:leading-none")}>
                                     {item.clockTime}
                                   </div>
                                 ) : null}
-                                <div className={cn("rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-900 print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:px-2 print:py-0.5 print:text-[10px] print:leading-tight")}>
+                                <div className={cn("rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-900 print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:rounded-sm print:px-1.5 print:py-0 print:text-[10px] print:leading-none")}>
                                   {item.duration}
                                 </div>
                               </div>
                             </div>
-
-                            {isSong ? (
-                              <div className={cn("mt-3 flex flex-wrap gap-2 text-sm text-slate-700 print:text-black/80", printFitHalfSheet && "print:mt-1 print:gap-1 print:text-[9.5px] print:leading-tight")}>
-                                {typeof item.bpm === "number" ? (
-                                  <span className={cn("rounded-lg border-2 border-primary/25 bg-primary/10 px-2.5 py-1 font-semibold text-primary print:border-[1.5px] print:border-black/30 print:bg-transparent print:text-black", printFitHalfSheet && "print:px-1.5 print:py-0")}>
-                                    {item.bpm} BPM
-                                  </span>
-                                ) : null}
-                                {item.key ? (
-                                  <span className={cn("rounded-lg border-2 border-slate-200 bg-white px-2.5 py-1 font-semibold print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:px-1.5 print:py-0")}>
-                                    Key {item.key}
-                                  </span>
-                                ) : null}
-                                {item.leader ? (
-                                  <span className={cn("rounded-lg border-2 border-slate-200 bg-white px-2.5 py-1 font-medium print:border-[1.5px] print:border-black/30 print:bg-transparent", printFitHalfSheet && "print:px-1.5 print:py-0")}>
-                                    Leader {item.leader}
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : item.leader ? (
-                              <p className={cn("mt-2.5 text-sm font-medium text-slate-700 print:text-black/80", printFitHalfSheet && "print:mt-1 print:text-[9px]")}>
-                                Lead: {item.leader}
-                              </p>
-                            ) : null}
                           </div>
                         </div>
                       </article>

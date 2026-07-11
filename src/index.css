@@ -632,15 +632,16 @@ html.service-flow-export-mode .service-flow-print-pair {
 html.service-flow-export-mode .service-flow-print-pair {
   width: fit-content !important;
   max-width: 100% !important;
-  margin: 0.2in auto 0 !important;
-  grid-template-columns: repeat(2, minmax(0, 5.2in)) !important;
+  margin: 0.05in auto 0 !important;
+  grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
   justify-content: center !important;
-  gap: 0.2in !important;
+  gap: 0.12in !important;
+  align-items: start !important;
 }
 
 @media print {
   @page {
-    margin: 0;
+    margin: 0.08in;
     size: letter landscape;
   }
 
@@ -686,10 +687,35 @@ html.service-flow-export-mode .service-flow-print-pair {
   .service-flow-print-pair {
     width: fit-content !important;
     max-width: 100% !important;
-    margin: 0.2in auto 0 !important;
-    grid-template-columns: repeat(2, minmax(0, 5.2in)) !important;
+    margin: 0.05in auto 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
     justify-content: center !important;
-    gap: 0.2in !important;
+    gap: 0.12in !important;
+    align-items: start !important;
+  }
+
+  /* Compress half-sheet print cards vertically without shrinking type */
+  .service-flow-print-render article {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .service-flow-print-render .service-flow-card-header {
+    padding-top: 0.04in !important;
+    padding-bottom: 0.04in !important;
+  }
+
+  .service-flow-print-render > section > div:last-child {
+    padding-top: 0.04in !important;
+    padding-bottom: 0.04in !important;
+  }
+
+  .service-flow-print-render section + section {
+    margin-top: 0.04in !important;
+  }
+
+  .service-flow-print-render article + article {
+    margin-top: 0.012in !important;
   }
 
   /* Reset body and html for print - compact for single page */
