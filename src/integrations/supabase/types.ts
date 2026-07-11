@@ -1547,10 +1547,92 @@ export type Database = {
           },
         ]
       }
+      feed_poll_options: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          post_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          post_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          post_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_poll_options_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_poll_votes: {
+        Row: {
+          created_at: string
+          id: string
+          option_id: string
+          post_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          option_id: string
+          post_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          option_id?: string
+          post_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_poll_votes_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "feed_poll_options"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feed_poll_votes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feed_poll_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feed_posts: {
         Row: {
           body: string | null
           camp_instance_id: string | null
+          campus_id: string | null
           category: string
           created_at: string
           created_by: string
@@ -1566,6 +1648,7 @@ export type Database = {
         Insert: {
           body?: string | null
           camp_instance_id?: string | null
+          campus_id?: string | null
           category: string
           created_at?: string
           created_by: string
@@ -1581,6 +1664,7 @@ export type Database = {
         Update: {
           body?: string | null
           camp_instance_id?: string | null
+          campus_id?: string | null
           category?: string
           created_at?: string
           created_by?: string
@@ -1594,6 +1678,13 @@ export type Database = {
           youtube_video_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "feed_posts_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "feed_posts_created_by_fkey"
             columns: ["created_by"]

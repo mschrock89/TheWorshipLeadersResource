@@ -14,6 +14,7 @@ const corsHeaders = {
 interface FeedPostNotifyRequest {
   postId?: string;
   resourceAppKey?: string;
+  campusId?: string | null;
   campInstanceId?: string | null;
 }
 
@@ -62,7 +63,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: post, error: postError } = await supabase
       .from("feed_posts")
-      .select("id, title, category, created_by, resource_app_key, camp_instance_id")
+      .select("id, title, category, created_by, resource_app_key, campus_id, camp_instance_id")
       .eq("id", body.postId)
       .maybeSingle();
 
@@ -74,6 +75,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const campInstanceId = post.camp_instance_id || body.campInstanceId || null;
+    const campusId = post.campus_id || body.campusId || null;
     const resourceAppKey = post.resource_app_key || body.resourceAppKey || null;
     let campResourceAppKeys: string[] = [];
 
@@ -92,6 +94,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Recipients: everyone with a subscription in this app except the author.
+    // Main Feed posts are further limited to users assigned to that campus.
     let subQuery = supabase
       .from("push_subscriptions")
       .select("user_id")
@@ -110,9 +113,26 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error("Failed to fetch recipients");
     }
 
-    const recipientUserIds = Array.from(
+    let recipientUserIds = Array.from(
       new Set((subs || []).map((s: { user_id: string }) => s.user_id).filter(Boolean)),
     );
+
+    if (!campInstanceId && campusId && recipientUserIds.length > 0) {
+      const { data: campusUsers, error: campusUsersError } = await supabase
+        .from("user_campuses")
+        .select("user_id")
+        .eq("campus_id", campusId)
+        .in("user_id", recipientUserIds);
+
+      if (campusUsersError) {
+        console.error("Error filtering feed push recipients by campus:", campusUsersError);
+        throw new Error("Failed to filter recipients by campus");
+      }
+
+      recipientUserIds = Array.from(
+        new Set((campusUsers || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
+      );
+    }
 
     if (recipientUserIds.length === 0) {
       return new Response(
@@ -155,6 +175,7 @@ serve(async (req: Request): Promise<Response> => {
             postId: post.id,
             category: post.category,
             resourceAppKey,
+            campusId,
             campInstanceId,
           },
         }),
