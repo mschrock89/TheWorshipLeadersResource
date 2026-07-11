@@ -169,6 +169,35 @@ function isClosingPrayerContext(title: string, sectionTitle: string) {
   );
 }
 
+function isLessonContext(title: string, sectionTitle: string) {
+  const normalizedTitle = normalizeRoleText(title);
+  const normalizedSectionTitle = normalizeRoleText(sectionTitle);
+  return (
+    normalizedSectionTitle.includes("lesson") ||
+    normalizedSectionTitle.includes("message") ||
+    normalizedSectionTitle.includes("sermon") ||
+    normalizedSectionTitle.includes("teaching") ||
+    normalizedTitle.includes("lesson") ||
+    normalizedTitle.includes("teacher") ||
+    normalizedTitle.includes("message") ||
+    normalizedTitle.includes("sermon")
+  );
+}
+
+function isLessonPlaceholderTitle(title: string) {
+  const normalized = normalizeRoleText(title);
+  return (
+    isNamePlaceholderTitle(title) ||
+    normalized === "lesson" ||
+    normalized === "teacher" ||
+    normalized === "teacher place holder" ||
+    normalized === "teacher placeholder" ||
+    normalized === "speaker" ||
+    normalized === "speaker place holder" ||
+    normalized === "speaker placeholder"
+  );
+}
+
 export function ServiceFlowEditor({ 
   initialDate, 
   initialCampusId, 
@@ -1080,6 +1109,10 @@ export function ServiceFlowEditor({
       scheduledRoster,
       new Set(["closingprayer", "closer"])
     ),
+    teacher: formatRosterRoleNames(
+      scheduledRoster,
+      new Set(["teacher", "speaker", "pastor speaker", "pastorspeaker"])
+    ),
   }), [scheduledRoster]);
 
   const resolvePlaceholderTitle = useCallback((
@@ -1109,11 +1142,21 @@ export function ServiceFlowEditor({
       return scheduledRoleNames.closingPrayer;
     }
 
+    if (isLessonPlaceholderTitle(rawTitle) && isLessonContext(rawTitle, sectionTitle)) {
+      return (
+        teachingWeek?.teacher_name?.trim() ||
+        scheduledRoleNames.teacher ||
+        rawTitle
+      );
+    }
+
     return rawTitle;
   }, [
     scheduledRoleNames.announcements,
     scheduledRoleNames.closingPrayer,
+    scheduledRoleNames.teacher,
     teachingWeek?.announcer_name,
+    teachingWeek?.teacher_name,
   ]);
 
   const resolvedItemTitlesById = useMemo(() => {
@@ -1286,13 +1329,31 @@ export function ServiceFlowEditor({
       return currentSection;
     };
 
-    const inferItemType = (item: ServiceFlowItemType): "song" | "video" | "announcement" | "message" | "other" => {
+    const inferItemType = (
+      item: ServiceFlowItemType,
+      sectionTitle: string
+    ): "song" | "video" | "announcement" | "message" | "speaker" | "other" => {
       if (item.item_type === "song") return "song";
 
       const title = item.title.toLowerCase();
       if (title.includes("video")) return "video";
-      if (title.includes("announcement") || title.includes("welcome") || title.includes("host")) return "announcement";
-      if (title.includes("message") || title.includes("sermon") || title.includes("teaching")) return "message";
+
+      // Person slots (teacher, announcer, etc.) — show as Speaker even when the
+      // title has been replaced with a person's name.
+      if (
+        isLessonContext(item.title, sectionTitle) ||
+        isAnnouncementsContext(item.title, sectionTitle) ||
+        title.includes("message") ||
+        title.includes("sermon") ||
+        title.includes("teaching") ||
+        title.includes("speaker") ||
+        title.includes("welcome") ||
+        title.includes("host")
+      ) {
+        return "speaker";
+      }
+
+      if (title.includes("announcement")) return "announcement";
       return "other";
     };
 
@@ -1327,7 +1388,7 @@ export function ServiceFlowEditor({
       ensureSection().items.push({
         id: item.id,
         title: resolvePlaceholderTitle(item, currentSection?.title || ""),
-        type: inferItemType(item),
+        type: inferItemType(item, currentSection?.title || ""),
         duration: formatItemDuration(item.duration_seconds),
         clockTime: clockTimesByItemId.get(item.id),
         bpm: item.song?.bpm || undefined,
@@ -1420,6 +1481,11 @@ export function ServiceFlowEditor({
             <span className="text-sm font-medium">
               {formatTeachingReference(teachingWeek)}
             </span>
+            {teachingWeek.teacher_name ? (
+              <span className="text-xs font-medium text-foreground">
+                {teachingWeek.teacher_name}
+              </span>
+            ) : null}
             {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
               <span className="text-xs text-muted-foreground">
                 {teachingWeek.themes_manual.join(", ")}

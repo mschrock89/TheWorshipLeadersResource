@@ -19,6 +19,7 @@ export interface TeachingWeekSummary {
   themes_suggested: string[] | null;
   psa_highlight?: string | null;
   announcer_name?: string | null;
+  teacher_name?: string | null;
 }
 
 interface TeachingAnnouncementRow {

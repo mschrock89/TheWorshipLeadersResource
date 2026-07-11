@@ -625,8 +625,10 @@ export default function PlanningCenter() {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle>Google Calendar</CardTitle>
-          <CardDescription>Sync scheduled dates to Google Calendar.</CardDescription>
+          <CardTitle>Google Calendar & Sheets</CardTitle>
+          <CardDescription>
+            Sync scheduled dates to Google Calendar and grant read access for teaching schedule Google Sheets.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded border border-border bg-muted/20 p-3 text-sm">
@@ -690,7 +692,7 @@ export default function PlanningCenter() {
 
           <div className="flex flex-wrap gap-3">
             <Button onClick={handleConnectGoogleCalendar} disabled={googleLoading}>
-              {googleLoading ? "Connecting..." : isGoogleConnected ? "Reconnect Google Calendar" : "Connect Google Calendar"}
+              {googleLoading ? "Connecting..." : isGoogleConnected ? "Reconnect Google" : "Connect Google"}
             </Button>
 
             <Button onClick={handleGoogleResync} disabled={syncLoading || !isGoogleConnected} variant="secondary">

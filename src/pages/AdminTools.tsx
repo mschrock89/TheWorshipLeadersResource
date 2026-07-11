@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
-import { useCampuses, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
+import { useCampuses, useNetworkWideCampus, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
 import { useCreateCustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -102,6 +103,7 @@ interface TeachingWeekRow {
   themes_suggested: string[] | null;
   psa_highlight?: string | null;
   announcer_name?: string | null;
+  teacher_name?: string | null;
 }
 
 interface TeachingScheduleImportRow {
@@ -109,6 +111,7 @@ interface TeachingScheduleImportRow {
   book: string | null;
   chapter: number | null;
   chapter_reference: string | null;
+  teacher_name: string | null;
   themes_manual: string[];
   psa_highlight: string | null;
   announcer_name: string | null;
@@ -125,6 +128,28 @@ interface TeachingScheduleUploadRow {
   row_count: number;
   is_active: boolean;
   created_at: string;
+}
+
+interface TeachingScheduleSheetSourceRow {
+  id: string;
+  campus_id: string;
+  ministry_type: string;
+  google_sheet_id: string;
+  google_sheet_url: string;
+  sheet_tab: string | null;
+  sheet_range: string;
+  last_synced_at: string | null;
+  last_sync_row_count: number;
+}
+
+function extractGoogleSheetId(input?: string | null): string | null {
+  if (!input?.trim()) return null;
+  const trimmed = input.trim();
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(trimmed) && !trimmed.includes("/")) {
+    return trimmed;
+  }
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match?.[1] || null;
 }
 
 function isMissingTeachingScheduleUploadsTable(error: unknown): boolean {
@@ -403,8 +428,16 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             row.announcement_host ||
             row.host ||
             null;
+          const teacherName =
+            row.teacher ||
+            row.teacher_name ||
+            row.speaker ||
+            row.speaker_name ||
+            row.preacher ||
+            row.pastor ||
+            null;
           const hasTeachingData = Boolean(book && parsedChapter && !Number.isNaN(parsedChapter) && parsedChapter > 0);
-          const hasAnnouncementData = Boolean(psaHighlight?.trim() || announcerName?.trim());
+          const hasAnnouncementData = Boolean(psaHighlight?.trim() || announcerName?.trim() || teacherName?.trim());
 
           if (!normalizedDate) {
             errors.push(`Row ${index + headerIndex + 2}: missing or invalid date`);
@@ -435,6 +468,7 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
             chapter_reference: hasTeachingData
               ? (referenceValue.trim() || `${book} ${parsedChapter}`)
               : (existingRow?.chapter_reference || null),
+            teacher_name: teacherName?.trim() || existingRow?.teacher_name || null,
             themes_manual: mergedThemes,
             psa_highlight: psaHighlight?.trim() || existingRow?.psa_highlight || null,
             announcer_name: announcerName?.trim() || existingRow?.announcer_name || null,
@@ -458,6 +492,7 @@ export default function AdminTools() {
   const queryClient = useQueryClient();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
+  const { data: networkWideCampus = null } = useNetworkWideCampus();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
   const updateConfig = useUpdateCampusServiceConfig();
   const { data: customServiceDefinitions = [], isLoading: customServicesLoading } = useCustomServiceDefinitions();
@@ -549,12 +584,15 @@ export default function AdminTools() {
   const [manualThemesInput, setManualThemesInput] = useState<string>("");
   const [teachingPsaHighlight, setTeachingPsaHighlight] = useState<string>("");
   const [teachingAnnouncerName, setTeachingAnnouncerName] = useState<string>("");
+  const [teachingTeacherName, setTeachingTeacherName] = useState<string>("");
   const [isTeachingLoading, setIsTeachingLoading] = useState(false);
   const [isAnalyzingChapter, setIsAnalyzingChapter] = useState(false);
   const [teachingPdfFile, setTeachingPdfFile] = useState<File | null>(null);
   const [teachingScheduleImportFile, setTeachingScheduleImportFile] = useState<File | null>(null);
   const [teachingScheduleImportText, setTeachingScheduleImportText] = useState("");
+  const [teachingSheetUrl, setTeachingSheetUrl] = useState("");
   const [isImportingTeachingSchedule, setIsImportingTeachingSchedule] = useState(false);
+  const [isSyncingTeachingSheet, setIsSyncingTeachingSheet] = useState(false);
   const [isUploadingTeachingPdf, setIsUploadingTeachingPdf] = useState(false);
   const [isOpeningTeachingPdf, setIsOpeningTeachingPdf] = useState(false);
   const [isRemovingTeachingPdf, setIsRemovingTeachingPdf] = useState(false);
@@ -641,6 +679,8 @@ export default function AdminTools() {
     }
   }, [teachingCampusId, campuses]);
 
+  const teachingSheetSourceCampusId = networkWideCampus?.id || teachingCampusId;
+
   const parseThemes = (input: string) =>
     input
       .split(",")
@@ -652,6 +692,7 @@ export default function AdminTools() {
       queryClient.invalidateQueries({ queryKey: ["teaching-week"] }),
       queryClient.invalidateQueries({ queryKey: ["teaching-weeks-range"] }),
       queryClient.invalidateQueries({ queryKey: ["teaching-schedule-uploads"] }),
+      queryClient.invalidateQueries({ queryKey: ["teaching-schedule-sheet-source"] }),
     ]);
   };
 
@@ -690,6 +731,34 @@ export default function AdminTools() {
     },
   });
 
+  const { data: teachingSheetSource = null } = useQuery({
+    queryKey: ["teaching-schedule-sheet-source", teachingSheetSourceCampusId, teachingMinistry],
+    enabled: !!teachingSheetSourceCampusId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("teaching_schedule_sheet_sources")
+        .select("*")
+        .eq("campus_id", teachingSheetSourceCampusId)
+        .eq("ministry_type", teachingMinistry)
+        .maybeSingle();
+
+      if (error) {
+        const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
+        if (message.includes("teaching_schedule_sheet_sources") || (error as { code?: string })?.code === "PGRST205") {
+          return null;
+        }
+        throw error;
+      }
+      return (data || null) as TeachingScheduleSheetSourceRow | null;
+    },
+  });
+
+  useEffect(() => {
+    if (teachingSheetSource?.google_sheet_url) {
+      setTeachingSheetUrl(teachingSheetSource.google_sheet_url);
+    }
+  }, [teachingSheetSource?.google_sheet_url]);
+
   const refreshTeachingWeekById = async (weekId: string) => {
     const { data, error } = await (supabase as any)
       .from("teaching_weeks")
@@ -708,6 +777,7 @@ export default function AdminTools() {
     setManualThemesInput((week.themes_manual || []).join(", "));
     setTeachingPsaHighlight(week.psa_highlight || "");
     setTeachingAnnouncerName(week.announcer_name || "");
+    setTeachingTeacherName(week.teacher_name || "");
     return week;
   };
 
@@ -742,11 +812,13 @@ export default function AdminTools() {
           setManualThemesInput((week.themes_manual || []).join(", "));
           setTeachingPsaHighlight(week.psa_highlight || "");
           setTeachingAnnouncerName(week.announcer_name || "");
+          setTeachingTeacherName(week.teacher_name || "");
         } else {
           setTeachingWeek(null);
           setManualThemesInput("");
           setTeachingPsaHighlight(announcement?.psa_highlight || "");
           setTeachingAnnouncerName(announcement?.announcer_name || "");
+          setTeachingTeacherName("");
         }
       } catch (error) {
         console.error("Failed to load teaching week:", error);
@@ -820,6 +892,7 @@ export default function AdminTools() {
           translation: "ESV",
           chapter_reference: row.chapter_reference,
           themes_manual: row.themes_manual,
+          teacher_name: row.teacher_name,
         }));
 
       const { data: authUser } = await supabase.auth.getUser();
@@ -918,6 +991,7 @@ export default function AdminTools() {
       setManualThemesInput("");
       setTeachingPsaHighlight("");
       setTeachingAnnouncerName("");
+      setTeachingTeacherName("");
     } catch (error) {
       const message =
         error instanceof Error && /could not be read|notreadableerror|permission/i.test(error.message)
@@ -928,6 +1002,98 @@ export default function AdminTools() {
       toast.error(message);
     } finally {
       setIsImportingTeachingSchedule(false);
+    }
+  };
+
+  const handleSyncTeachingScheduleFromSheet = async () => {
+    const syncCampusId = teachingSheetSourceCampusId;
+    if (!syncCampusId) {
+      toast.error("Network Wide campus is not available yet. Refresh and try again.");
+      return;
+    }
+
+    const sheetId = extractGoogleSheetId(teachingSheetUrl) || teachingSheetSource?.google_sheet_id;
+    if (!sheetId && !teachingSheetUrl.trim()) {
+      toast.error("Paste the Google Sheet URL that contains Teacher and Book columns.");
+      return;
+    }
+
+    setIsSyncingTeachingSheet(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("You need to be signed in to sync the teaching schedule.");
+      }
+
+      const { data, error } = await supabase.functions.invoke("teaching-schedule-sheets-sync", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: {
+          campusId: syncCampusId,
+          ministryType: teachingMinistry,
+          sheetUrl: teachingSheetUrl.trim() || teachingSheetSource?.google_sheet_url,
+          sheetId,
+        },
+      });
+
+      let messageFromHttp: string | null = null;
+      let codeFromHttp: string | null = null;
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const payload = await error.context.json();
+          if (typeof payload?.error === "string" && payload.error.trim()) {
+            messageFromHttp = payload.error.trim();
+          }
+          if (typeof payload?.code === "string" && payload.code.trim()) {
+            codeFromHttp = payload.code.trim();
+          }
+        } catch {
+          // Keep the generic invoke error message.
+        }
+      }
+
+      if (error && !messageFromHttp) {
+        throw error;
+      }
+      if (messageFromHttp) {
+        throw Object.assign(new Error(messageFromHttp), { code: codeFromHttp });
+      }
+      if (data?.error) {
+        throw Object.assign(new Error(String(data.error)), { code: data.code || null });
+      }
+
+      await invalidateTeachingQueries();
+      toast.success("Teaching schedule synced from Google Sheets.", {
+        description:
+          data?.campusSummary ||
+          `${data?.rowCount || 0} week${data?.rowCount === 1 ? "" : "s"} applied across ${
+            data?.campusesUpdated || "all"
+          } campus${data?.campusesUpdated === 1 ? "" : "es"}.`,
+      });
+      setTeachingWeek(null);
+      setManualThemesInput("");
+      setTeachingPsaHighlight("");
+      setTeachingAnnouncerName("");
+      setTeachingTeacherName("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to sync Google Sheet";
+      const code = (error as { code?: string } | null)?.code || "";
+      const needsGoogleReconnect =
+        /reconnect|not connected|sheets access|scope|permission|403|google_not_connected|sheets_permission/i.test(
+          `${message} ${code}`
+        ) && !/office|excel|save as google sheets/i.test(`${message} ${code}`);
+      toast.error(message, {
+        description: needsGoogleReconnect
+          ? "Open Settings → Planning Center, click Reconnect Google, approve Calendar + Sheets access, then sync again."
+          : /office|excel|save as google sheets/i.test(`${message} ${code}`)
+            ? "In Google Drive open the file → File → Save as Google Sheets, then paste that new URL."
+            : undefined,
+      });
+    } finally {
+      setIsSyncingTeachingSheet(false);
     }
   };
 
@@ -954,6 +1120,7 @@ export default function AdminTools() {
     const parsedThemes = parseThemes(manualThemesInput);
     const trimmedPsa = teachingPsaHighlight.trim();
     const trimmedAnnouncer = teachingAnnouncerName.trim();
+    const trimmedTeacher = teachingTeacherName.trim();
 
     try {
       if (teachingWeek) {
@@ -964,6 +1131,7 @@ export default function AdminTools() {
             chapter: parsedChapter,
             chapter_reference: `${teachingBook.trim() || teachingWeek.book} ${parsedChapter}`,
             themes_manual: parsedThemes,
+            teacher_name: trimmedTeacher || null,
           })
           .eq("id", teachingWeek.id);
         if (error) throw error;
@@ -992,6 +1160,7 @@ export default function AdminTools() {
             translation: "ESV",
             chapter_reference: `${teachingBook.trim() || "John"} ${parsedChapter}`,
             themes_manual: parsedThemes,
+            teacher_name: trimmedTeacher || null,
           })
           .select("*")
           .single();
@@ -1787,7 +1956,7 @@ export default function AdminTools() {
             Teaching Schedule Manager
           </CardTitle>
           <CardDescription>
-            Import dated chapter schedules and manage each teaching week for a campus and ministry.
+            Sync Teacher and Book info from the Google Sheet, or fall back to a CSV import. Service Flow uses the teacher name for lesson placeholders.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -1806,6 +1975,9 @@ export default function AdminTools() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Used for manual week edits and CSV fallback. Google Sheet sync always runs network-wide.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Ministry</Label>
@@ -1826,9 +1998,49 @@ export default function AdminTools() {
 
           <div className="rounded-md border border-border p-4 space-y-3">
             <div className="space-y-1">
-              <p className="text-sm font-medium">Import Schedule</p>
+              <p className="text-sm font-medium">Google Sheet Sync</p>
               <p className="text-xs text-muted-foreground">
-                Upload a CSV with dated rows. The importer can read teaching columns, announcer columns, or both from the same file. The selected weekend date below is not used for CSV import.
+                Paste the ECC Weekend Service Rundown Google Sheet URL. Sync is always network-wide: it reads <span className="font-medium">ECC Overview</span> and writes each campus column into that campus automatically.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+              <div className="space-y-2">
+                <Label htmlFor="teaching-sheet-url">Google Sheet URL</Label>
+                <Input
+                  id="teaching-sheet-url"
+                  value={teachingSheetUrl}
+                  onChange={(event) => setTeachingSheetUrl(event.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/..."
+                />
+                {teachingSheetSource?.last_synced_at ? (
+                  <p className="text-xs text-muted-foreground">
+                    Last synced {new Date(teachingSheetSource.last_synced_at).toLocaleString()}
+                    {teachingSheetSource.last_sync_row_count
+                      ? ` • ${teachingSheetSource.last_sync_row_count} week${teachingSheetSource.last_sync_row_count === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={handleSyncTeachingScheduleFromSheet}
+                  disabled={isSyncingTeachingSheet || !teachingCampusId}
+                  className="w-full md:w-auto"
+                >
+                  {isSyncingTeachingSheet ? "Syncing..." : "Sync from Google Sheet"}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Expected layout: `Weekend Dates`, `Teaching Topic`, then campus columns (`Murfreesboro`, `Cannon County`, `Shelbyville`, `Tullahoma`, `Boro North`). Year rows like `2026` scope dates so past years are not mixed in.
+            </p>
+          </div>
+
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Import Schedule (CSV fallback)</p>
+              <p className="text-xs text-muted-foreground">
+                Optional backup if the sheet is unavailable. Prefer Google Sheet sync above.
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-[1fr_160px_auto]">
@@ -1873,7 +2085,7 @@ export default function AdminTools() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Supported headers: `date`, `weekend_date`, `service_date`, `weekend`, `teaching_date`, `week_of`, `weekend_of`, `book`, `chapter`, `reference`, `passage`, `themes`, `psa_nonprofit_highlight`, `psa`, `announcer`, `announcer_name`, `announcement`, `announcement_name`. Duplicate weekend dates in the CSV are rejected.
+              Supported headers: `date`, `weekend_date`, `service_date`, `weekend`, `teaching_date`, `week_of`, `weekend_of`, `book`, `chapter`, `reference`, `passage`, `teacher`, `teacher_name`, `speaker`, `themes`, `psa_nonprofit_highlight`, `psa`, `announcer`, `announcer_name`, `announcement`, `announcement_name`. Duplicate weekend dates in the CSV are rejected.
             </p>
           </div>
 
@@ -1946,7 +2158,7 @@ export default function AdminTools() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 border-t border-border pt-4">
+                  <div className="grid gap-4 md:grid-cols-2 border-t border-border pt-4">
                   <div className="space-y-2">
                     <Label>Book</Label>
                     <Input
@@ -1962,6 +2174,14 @@ export default function AdminTools() {
                       min={1}
                       value={teachingChapter}
                       onChange={(event) => setTeachingChapter(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Teacher / Speaker</Label>
+                    <Input
+                      value={teachingTeacherName}
+                      onChange={(event) => setTeachingTeacherName(event.target.value)}
+                      placeholder="Speaker giving the lesson"
                     />
                   </div>
                   <div className="space-y-2 md:col-span-2">

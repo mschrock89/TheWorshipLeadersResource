@@ -78,7 +78,14 @@ serve(async (req) => {
       `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
       `&redirect_uri=${encodeURIComponent(CALLBACK_URL)}` +
       `&response_type=code` +
-      `&scope=${encodeURIComponent("https://www.googleapis.com/auth/calendar.events")}` +
+      `&scope=${encodeURIComponent(
+        [
+          "https://www.googleapis.com/auth/calendar.events",
+          "https://www.googleapis.com/auth/spreadsheets.readonly",
+          // Needed to inspect/convert uploaded Excel files into native Google Sheets.
+          "https://www.googleapis.com/auth/drive",
+        ].join(" ")
+      )}` +
       `&state=${encodeURIComponent(user.id)}` +
       `&access_type=offline` +
       `&prompt=consent`

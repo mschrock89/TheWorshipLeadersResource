@@ -147,6 +147,12 @@ verify_jwt = false
 import_map = "./functions/google-calendar-disconnect/deno.json"
 entrypoint = "./functions/google-calendar-disconnect/index.ts"
 
+[functions.teaching-schedule-sheets-sync]
+enabled = true
+verify_jwt = false
+import_map = "./functions/teaching-schedule-sheets-sync/deno.json"
+entrypoint = "./functions/teaching-schedule-sheets-sync/index.ts"
+
 [functions.bible-chapter]
 enabled = true
 verify_jwt = true
