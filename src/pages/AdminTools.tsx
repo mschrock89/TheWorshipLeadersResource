@@ -601,6 +601,11 @@ export default function AdminTools() {
   };
   const [configs, setConfigs] = useState<CampusServiceConfig[]>([]);
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Redirect non-admins
   useEffect(() => {
     if (!authLoading && !isAdmin) {
