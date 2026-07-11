@@ -632,16 +632,16 @@ html.service-flow-export-mode .service-flow-print-pair {
 html.service-flow-export-mode .service-flow-print-pair {
   width: fit-content !important;
   max-width: 100% !important;
-  margin: 0.05in auto 0 !important;
+  margin: 0 auto !important;
   grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
   justify-content: center !important;
-  gap: 0.12in !important;
+  gap: 0.1in !important;
   align-items: start !important;
 }
 
 @media print {
   @page {
-    margin: 0.08in;
+    margin: 0.06in;
     size: letter landscape;
   }
 
@@ -687,35 +687,68 @@ html.service-flow-export-mode .service-flow-print-pair {
   .service-flow-print-pair {
     width: fit-content !important;
     max-width: 100% !important;
-    margin: 0.05in auto 0 !important;
+    margin: 0 auto !important;
     grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
     justify-content: center !important;
-    gap: 0.12in !important;
+    gap: 0.1in !important;
     align-items: start !important;
   }
 
-  /* Compress half-sheet print cards vertically without shrinking type */
-  .service-flow-print-render article {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+  /* Ultra-dense half-sheet print: single page, keep type readable */
+  .service-flow-print-render,
+  .service-flow-print-render * {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .service-flow-half-sheet-card {
+    max-width: 5.35in !important;
+  }
+
+  .service-flow-half-sheet-body {
+    padding: 0.03in 0.05in !important;
+  }
+
+  .service-flow-half-sheet-section + .service-flow-half-sheet-section {
+    margin-top: 0.02in !important;
+  }
+
+  .service-flow-half-sheet-section-label {
+    margin: 0.02in 0 !important;
+    padding: 0 !important;
+  }
+
+  .service-flow-half-sheet-items {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+  }
+
+  .service-flow-half-sheet-item {
+    margin: 0 !important;
+    min-height: 0 !important;
+    line-height: 1 !important;
+  }
+
+  .service-flow-half-sheet-item + .service-flow-half-sheet-item {
+    margin-top: -1px !important;
   }
 
   .service-flow-print-render .service-flow-card-header {
-    padding-top: 0.04in !important;
-    padding-bottom: 0.04in !important;
+    padding: 0.03in 0.06in !important;
   }
 
   .service-flow-print-render > section > div:last-child {
-    padding-top: 0.04in !important;
-    padding-bottom: 0.04in !important;
+    padding-top: 0.02in !important;
+    padding-bottom: 0.02in !important;
   }
 
   .service-flow-print-render section + section {
-    margin-top: 0.04in !important;
+    margin-top: 0 !important;
   }
 
   .service-flow-print-render article + article {
-    margin-top: 0.012in !important;
+    margin-top: 0 !important;
   }
 
   /* Reset body and html for print - compact for single page */

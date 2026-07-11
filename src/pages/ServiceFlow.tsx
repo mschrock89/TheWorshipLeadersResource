@@ -68,14 +68,12 @@ export default function ServiceFlow() {
 
   const printWithExportMode = () => {
     const printableNode = document.querySelector(".service-flow-print-render");
-    if (!printableNode) {
+    if (!printableNode || !(printableNode instanceof HTMLElement)) {
       window.print();
       return;
     }
 
     // Print from the live page so Tailwind + print CSS are already loaded.
-    // The previous iframe clone often printed before stylesheets finished loading,
-    // which produced an unstyled Times New Roman dump across multiple pages.
     const html = document.documentElement;
     const previousTitle = document.title;
     let cleanedUp = false;
@@ -83,6 +81,9 @@ export default function ServiceFlow() {
     const cleanup = () => {
       if (cleanedUp) return;
       cleanedUp = true;
+      printableNode.style.removeProperty("transform");
+      printableNode.style.removeProperty("transform-origin");
+      printableNode.style.removeProperty("width");
       html.classList.remove(EXPORT_MODE_CLASS);
       document.title = previousTitle;
       window.removeEventListener("afterprint", cleanup);
@@ -93,6 +94,17 @@ export default function ServiceFlow() {
     window.addEventListener("afterprint", cleanup);
 
     window.setTimeout(() => {
+      // Landscape letter usable height; scale only if content would overflow.
+      const pageHeightPx = (8.5 - 0.12) * 96;
+      printableNode.style.transform = "none";
+      printableNode.style.transformOrigin = "top center";
+      const contentHeight = printableNode.getBoundingClientRect().height;
+      if (contentHeight > pageHeightPx) {
+        const scale = Math.max(0.72, pageHeightPx / contentHeight);
+        printableNode.style.width = `${100 / scale}%`;
+        printableNode.style.transform = `scale(${scale})`;
+      }
+
       window.print();
       // Fallback if afterprint does not fire in this browser.
       window.setTimeout(cleanup, 1500);
