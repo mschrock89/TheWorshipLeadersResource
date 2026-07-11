@@ -81,9 +81,6 @@ export default function ServiceFlow() {
     const cleanup = () => {
       if (cleanedUp) return;
       cleanedUp = true;
-      printableNode.style.removeProperty("transform");
-      printableNode.style.removeProperty("transform-origin");
-      printableNode.style.removeProperty("width");
       html.classList.remove(EXPORT_MODE_CLASS);
       document.title = previousTitle;
       window.removeEventListener("afterprint", cleanup);
@@ -94,17 +91,6 @@ export default function ServiceFlow() {
     window.addEventListener("afterprint", cleanup);
 
     window.setTimeout(() => {
-      // Landscape letter usable height; scale only if content would overflow.
-      const pageHeightPx = (8.5 - 0.12) * 96;
-      printableNode.style.transform = "none";
-      printableNode.style.transformOrigin = "top center";
-      const contentHeight = printableNode.getBoundingClientRect().height;
-      if (contentHeight > pageHeightPx) {
-        const scale = Math.max(0.72, pageHeightPx / contentHeight);
-        printableNode.style.width = `${100 / scale}%`;
-        printableNode.style.transform = `scale(${scale})`;
-      }
-
       window.print();
       // Fallback if afterprint does not fire in this browser.
       window.setTimeout(cleanup, 1500);

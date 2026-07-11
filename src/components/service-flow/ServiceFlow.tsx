@@ -162,7 +162,7 @@ export function ServiceFlow({
         <header
           className={cn(
             "service-flow-card-header border-b-2 border-slate-200 bg-slate-100 px-5 py-5 sm:px-7 sm:py-6 print:border-black/30 print:bg-slate-100",
-            printFitHalfSheet && "print:px-2 print:py-0.5",
+            printFitHalfSheet && "print:px-2.5 print:py-1.5",
           )}
         >
           <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:flex-row print:items-center print:gap-2")}>
@@ -170,7 +170,7 @@ export function ServiceFlow({
               <p className={cn("text-xs font-bold uppercase tracking-[0.24em] text-primary print:text-black", printFitHalfSheet && "print:hidden")}>
                 Service Flow
               </p>
-              <h2 className={cn("text-2xl font-bold tracking-tight text-slate-950 sm:text-[1.75rem] print:text-black", printFitHalfSheet && "print:text-[17px] print:leading-tight")}>
+              <h2 className={cn("text-2xl font-bold tracking-tight text-slate-950 sm:text-[1.75rem] print:text-black", printFitHalfSheet && "print:text-[18px] print:leading-tight")}>
                 {service.title}
               </h2>
               <p className={cn("text-[15px] font-medium text-slate-600 print:text-black/80", printFitHalfSheet && "print:text-[11px] print:leading-tight")}>
@@ -265,7 +265,7 @@ export function ServiceFlow({
                         className={cn(
                           "rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-base shadow-sm print:rounded-xl print:border-[1.5px] print:border-black/30 print:bg-white print:shadow-none",
                           compactMode ? "px-3.5 py-3" : "px-4 py-4",
-                          printFitHalfSheet && "service-flow-half-sheet-item print:rounded-none print:border print:border-black/25 print:px-1 print:py-0",
+                          printFitHalfSheet && "service-flow-half-sheet-item print:rounded-md print:border print:border-black/25 print:px-2 print:py-1",
                           isSong && "border-primary/25 bg-white",
                           isHighlightedItem && "border-primary/50 ring-2 ring-primary/20 print:border-black/35",
                         )}
@@ -275,37 +275,37 @@ export function ServiceFlow({
                             <div
                               className={cn(
                                 "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 print:border-[1.5px] print:border-black/30 print:bg-white print:text-black/80",
-                                printFitHalfSheet && "print:mt-0 print:h-3.5 print:w-3.5 print:rounded-sm print:border",
+                                printFitHalfSheet && "print:mt-0 print:h-5 print:w-5 print:rounded print:border",
                                 isSong && "border-primary/30 bg-primary/10 text-primary print:border-black/35 print:text-black",
                               )}
                             >
-                              <Icon className={cn("h-[18px] w-[18px]", printFitHalfSheet && "print:h-2.5 print:w-2.5")} />
+                              <Icon className={cn("h-[18px] w-[18px]", printFitHalfSheet && "print:h-3 print:w-3")} />
                             </div>
                           ) : null}
 
                           <div className="min-w-0 flex-1">
                             {printFitHalfSheet ? (
                               <div className="print:flex print:items-center print:gap-1">
-                                <p className="print:min-w-0 print:shrink print:truncate print:text-[12px] print:font-semibold print:leading-none print:text-black">
+                                <p className="print:min-w-0 print:shrink print:truncate print:text-[13px] print:font-semibold print:leading-tight print:text-black">
                                   {item.title}
                                 </p>
                                 {songMeta ? (
-                                  <p className="print:shrink-0 print:whitespace-nowrap print:text-[9.5px] print:leading-none print:text-black/75">
+                                  <p className="print:shrink-0 print:whitespace-nowrap print:text-[10px] print:leading-tight print:text-black/75">
                                     {songMeta}
                                   </p>
                                 ) : null}
                                 {!isSong && item.leader ? (
-                                  <p className="print:shrink-0 print:text-[9.5px] print:leading-none print:text-black/80">
+                                  <p className="print:shrink-0 print:text-[10px] print:leading-tight print:text-black/80">
                                     {item.leader}
                                   </p>
                                 ) : null}
-                                <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-0.5">
+                                <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-1">
                                   {item.clockTime ? (
-                                    <div className="print:rounded-sm print:border print:border-black/30 print:px-1 print:py-0 print:text-[10px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
+                                    <div className="print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
                                       {item.clockTime}
                                     </div>
                                   ) : null}
-                                  <div className="print:rounded-sm print:border print:border-black/30 print:px-1 print:py-0 print:text-[10px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
+                                  <div className="print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
                                     {item.duration}
                                   </div>
                                 </div>

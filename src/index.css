@@ -630,18 +630,20 @@ html.service-flow-export-mode .service-flow-print-pair {
 }
 
 html.service-flow-export-mode .service-flow-print-pair {
-  width: fit-content !important;
+  width: 100% !important;
   max-width: 100% !important;
-  margin: 0 auto !important;
-  grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
-  justify-content: center !important;
-  gap: 0.1in !important;
-  align-items: start !important;
+  margin: 0 !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+  gap: 0.18in !important;
+  align-items: stretch !important;
+  min-height: 7.9in !important;
+  height: 7.9in !important;
 }
 
 @media print {
   @page {
-    margin: 0.06in;
+    margin: 0.25in;
     size: letter landscape;
   }
 
@@ -672,7 +674,7 @@ html.service-flow-export-mode .service-flow-print-pair {
   .service-flow-print-render {
     margin: 0 !important;
     padding: 0 !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
@@ -685,16 +687,18 @@ html.service-flow-export-mode .service-flow-print-pair {
   }
 
   .service-flow-print-pair {
-    width: fit-content !important;
+    width: 100% !important;
     max-width: 100% !important;
-    margin: 0 auto !important;
-    grid-template-columns: repeat(2, minmax(0, 5.35in)) !important;
-    justify-content: center !important;
-    gap: 0.1in !important;
-    align-items: start !important;
+    margin: 0 !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    justify-content: stretch !important;
+    gap: 0.18in !important;
+    align-items: stretch !important;
+    min-height: 7.9in !important;
+    height: 7.9in !important;
   }
 
-  /* Ultra-dense half-sheet print: single page, keep type readable */
+  /* Fill the landscape page vertically without overflowing to page 2 */
   .service-flow-print-render,
   .service-flow-print-render * {
     break-inside: auto !important;
@@ -702,45 +706,79 @@ html.service-flow-export-mode .service-flow-print-pair {
   }
 
   .service-flow-half-sheet-card {
-    max-width: 5.35in !important;
+    height: 100% !important;
+    max-width: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .service-flow-half-sheet-card > div {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
   }
 
   .service-flow-half-sheet-body {
-    padding: 0.03in 0.05in !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    gap: 0.08in !important;
+    padding: 0.1in 0.12in !important;
+    min-height: 0 !important;
+  }
+
+  .service-flow-half-sheet-section {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    gap: 0.06in !important;
+    min-height: 0 !important;
   }
 
   .service-flow-half-sheet-section + .service-flow-half-sheet-section {
-    margin-top: 0.02in !important;
+    margin-top: 0 !important;
   }
 
   .service-flow-half-sheet-section-label {
-    margin: 0.02in 0 !important;
-    padding: 0 !important;
+    margin: 0 !important;
+    padding: 0.04in 0 !important;
+    flex: 0 0 auto !important;
   }
 
   .service-flow-half-sheet-items {
+    flex: 1 1 auto !important;
     display: flex !important;
     flex-direction: column !important;
-    gap: 0 !important;
+    justify-content: space-evenly !important;
+    gap: 0.05in !important;
+    min-height: 0 !important;
   }
 
   .service-flow-half-sheet-item {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    align-items: center !important;
     margin: 0 !important;
-    min-height: 0 !important;
-    line-height: 1 !important;
+    min-height: 0.38in !important;
+    padding: 0.06in 0.08in !important;
+    line-height: 1.15 !important;
   }
 
   .service-flow-half-sheet-item + .service-flow-half-sheet-item {
-    margin-top: -1px !important;
+    margin-top: 0 !important;
   }
 
   .service-flow-print-render .service-flow-card-header {
-    padding: 0.03in 0.06in !important;
+    flex: 0 0 auto !important;
+    padding: 0.1in 0.12in !important;
   }
 
   .service-flow-print-render > section > div:last-child {
-    padding-top: 0.02in !important;
-    padding-bottom: 0.02in !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
   }
 
   .service-flow-print-render section + section {
