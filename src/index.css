@@ -623,6 +623,12 @@ html.service-flow-export-mode .service-flow-print-render {
   overflow: visible !important;
 }
 
+html.service-flow-export-mode .service-flow-print-render,
+html.service-flow-export-mode .service-flow-print-pair {
+  display: grid !important;
+  visibility: visible !important;
+}
+
 html.service-flow-export-mode .service-flow-print-pair {
   width: fit-content !important;
   max-width: 100% !important;
@@ -669,6 +675,12 @@ html.service-flow-export-mode .service-flow-print-pair {
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
+  }
+
+  .service-flow-print-render,
+  .service-flow-print-pair {
+    display: grid !important;
+    visibility: visible !important;
   }
 
   .service-flow-print-pair {

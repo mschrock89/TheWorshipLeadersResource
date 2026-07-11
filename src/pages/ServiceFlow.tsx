@@ -73,78 +73,30 @@ export default function ServiceFlow() {
       return;
     }
 
-    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map((node) => node.outerHTML)
-      .join("\n");
+    // Print from the live page so Tailwind + print CSS are already loaded.
+    // The previous iframe clone often printed before stylesheets finished loading,
+    // which produced an unstyled Times New Roman dump across multiple pages.
+    const html = document.documentElement;
+    const previousTitle = document.title;
+    let cleanedUp = false;
 
-    const printMarkup = printableNode.outerHTML;
-    const existingFrame = document.getElementById("service-flow-print-frame");
-    if (existingFrame) {
-      existingFrame.remove();
-    }
-
-    const printFrame = document.createElement("iframe");
-    printFrame.id = "service-flow-print-frame";
-    printFrame.setAttribute("aria-hidden", "true");
-    printFrame.style.position = "fixed";
-    printFrame.style.right = "0";
-    printFrame.style.bottom = "0";
-    printFrame.style.width = "0";
-    printFrame.style.height = "0";
-    printFrame.style.border = "0";
-    printFrame.style.visibility = "hidden";
-    document.body.appendChild(printFrame);
-
-    const frameDocument = printFrame.contentDocument;
-    const frameWindow = printFrame.contentWindow;
-    if (!frameDocument || !frameWindow) {
-      printFrame.remove();
-      window.print();
-      return;
-    }
-
-    frameDocument.open();
-    frameDocument.write(`
-      <!DOCTYPE html>
-      <html class="${EXPORT_MODE_CLASS}">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Service Flow Print</title>
-          ${styles}
-          <style>
-            html.${EXPORT_MODE_CLASS} body {
-              margin: 0;
-              background: white;
-            }
-
-            html.${EXPORT_MODE_CLASS} .service-flow-print-render {
-              display: grid !important;
-            }
-          </style>
-        </head>
-        <body class="${EXPORT_MODE_CLASS}">
-          ${printMarkup}
-        </body>
-      </html>
-    `);
-    frameDocument.close();
-
-    const runPrint = () => {
-      frameWindow.focus();
-      frameWindow.print();
-      window.setTimeout(() => {
-        printFrame.remove();
-      }, 1000);
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      html.classList.remove(EXPORT_MODE_CLASS);
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", cleanup);
     };
 
-    if (frameDocument.readyState === "complete") {
-      window.setTimeout(runPrint, 150);
-    } else {
-      printFrame.addEventListener("load", () => {
-        window.setTimeout(runPrint, 150);
-      }, { once: true });
-    }
+    document.title = "Service Flow Print";
+    html.classList.add(EXPORT_MODE_CLASS);
+    window.addEventListener("afterprint", cleanup);
+
+    window.setTimeout(() => {
+      window.print();
+      // Fallback if afterprint does not fire in this browser.
+      window.setTimeout(cleanup, 1500);
+    }, 50);
   };
 
   const handlePrint = () => {
