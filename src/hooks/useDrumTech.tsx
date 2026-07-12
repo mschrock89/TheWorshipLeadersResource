@@ -439,14 +439,28 @@ export function useDrumTechAccess(campusId?: string | null) {
         return { viewCampusIds: [], editCampusIds: [] };
       }
 
-      const { data, error } = await supabase
-        .from("user_campus_ministry_positions")
-        .select("campus_id, ministry_type, position")
-        .eq("user_id", user.id);
+      const [{ data: positionData, error: positionError }, { data: roleData, error: roleError }] =
+        await Promise.all([
+          supabase
+            .from("user_campus_ministry_positions")
+            .select("campus_id, ministry_type, position")
+            .eq("user_id", user.id),
+          supabase.from("user_roles").select("role, admin_campus_id").eq("user_id", user.id),
+        ]);
 
-      if (error) throw error;
+      if (positionError) throw positionError;
+      if (roleError) throw roleError;
 
-      const rows = data || [];
+      const roles = (roleData || []).map((row) => row.role);
+      const isGlobalAdmin = roles.includes("admin");
+      const isCampusAdmin = roles.includes("campus_admin");
+      const isWorshipPastor =
+        roles.includes("campus_worship_pastor") || roles.includes("student_worship_pastor");
+      // Matches can_manage_drum_kits / can_view_drum_kits RLS role grants.
+      const canManageByRole = isGlobalAdmin || isCampusAdmin;
+      const canViewByRole = canManageByRole || isWorshipPastor;
+
+      const rows = positionData || [];
       const normalizedRows = rows.map((row) => ({
         campus_id: row.campus_id,
         ministry_type: String(row.ministry_type || "").trim().toLowerCase(),
@@ -458,15 +472,41 @@ export function useDrumTechAccess(campusId?: string | null) {
           (row.position === "drums" || row.position === "drum_tech"),
       );
 
+      const viewCampusIds = new Set(relevantRows.map((row) => row.campus_id));
+      const editCampusIds = new Set(
+        relevantRows.filter((row) => row.position === "drum_tech").map((row) => row.campus_id),
+      );
+
+      const { data: campuses, error: campusesError } = await supabase
+        .from("campuses")
+        .select("id, name");
+
+      if (campusesError) throw campusesError;
+
+      const networkWideIds = new Set(
+        (campuses || [])
+          .filter((campus) => campus.name.trim().toLowerCase() === "network wide")
+          .map((campus) => campus.id),
+      );
+
+      if (canViewByRole) {
+        (campuses || []).forEach((campus) => {
+          if (networkWideIds.has(campus.id)) return;
+          viewCampusIds.add(campus.id);
+          if (canManageByRole) {
+            editCampusIds.add(campus.id);
+          }
+        });
+      }
+
+      networkWideIds.forEach((id) => {
+        viewCampusIds.delete(id);
+        editCampusIds.delete(id);
+      });
+
       return {
-        viewCampusIds: Array.from(new Set(relevantRows.map((row) => row.campus_id))),
-        editCampusIds: Array.from(
-          new Set(
-            relevantRows
-              .filter((row) => row.position === "drum_tech")
-              .map((row) => row.campus_id),
-          ),
-        ),
+        viewCampusIds: Array.from(viewCampusIds),
+        editCampusIds: Array.from(editCampusIds),
       };
     },
     enabled: !!user?.id,
