@@ -69,9 +69,13 @@ function ChatContent() {
 
   const { markAsRead, setViewingChat, getUnreadForCampusMinistry } = useUnreadMessages();
   const { lastReadAt } = useLastReadAt(selectedCampusId, selectedMinistryType);
-  const { height: keyboardHeight, isOpen: isKeyboardOpen, visualHeight, translateY } = useKeyboardOffset();
+  const { height: keyboardHeight, isOpen: isKeyboardOpen, visualHeight, offsetTop, translateY } = useKeyboardOffset();
   const { data: userProfile } = useProfile(user?.id);
   const prevKeyboardOpenRef = useRef(false);
+  const [keyboardLayout, setKeyboardLayout] = useState<{ top: number; height: number } | null>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
+  // Pin as soon as the field is focused — don't wait for visualViewport to catch up.
+  const keyboardActive = isKeyboardOpen || composerFocused;
   
   // Get user's ministries for the selected campus
   const { data: userMinistries, isLoading: ministriesLoading } = useUserMinistriesForCampus(
@@ -214,32 +218,39 @@ function ChatContent() {
     }
   }, [selectedCampusId, selectedMinistryType, isLoading, markAsRead, hasScrolledToLastRead]);
 
-  // Check if scroll container is at bottom
-  const isScrolledToBottom = useCallback((threshold = 30): boolean => {
-    const scrollElement = document.querySelector('[data-pull-to-refresh-container]');
-    if (!scrollElement) return false;
-    const { scrollTop, scrollHeight, clientHeight } = scrollElement;
-    return scrollHeight - scrollTop - clientHeight <= threshold;
-  }, []);
+  // Hard-pin to the absolute bottom of the latest message. Used whenever we
+  // intend to stay glued to newest content (send, keyboard, layout resize).
+  const pinToLatestMessage = useCallback((behavior: ScrollBehavior = "auto") => {
+    const run = () => {
+      const scrollElement = document.querySelector(
+        "[data-pull-to-refresh-container]",
+      ) as HTMLDivElement | null;
+      if (!scrollElement) return;
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    pullToRefreshRef.current?.scrollToBottom(behavior);
-  }, []);
+      if (behavior === "smooth") {
+        scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: "smooth" });
+      } else {
+        // Direct assignment is more reliable than scrollTo("auto") on iOS.
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
 
-  const ensureLastMessageFullyVisible = useCallback((behavior: ScrollBehavior) => {
-    const scrollElement = document.querySelector('[data-pull-to-refresh-container]') as HTMLDivElement | null;
-    const lastMessageElement = lastMessageRef.current;
+      lastMessageRef.current?.scrollIntoView({
+        behavior,
+        block: "end",
+        inline: "nearest",
+      });
 
-    if (!scrollElement || !lastMessageElement) return;
+      if (behavior !== "smooth") {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
 
-    const bottomPadding = 16;
-    const messageBottom = lastMessageElement.offsetTop + lastMessageElement.offsetHeight;
-    const targetTop = Math.max(0, messageBottom - scrollElement.clientHeight + bottomPadding);
+      isAtBottomRef.current = true;
+      setShowScrollButton(false);
+      setNewMessageCount(0);
+    };
 
-    scrollElement.scrollTo({
-      top: targetTop,
-      behavior,
-    });
+    run();
+    requestAnimationFrame(run);
   }, []);
 
   const scrollToLastRead = useCallback(() => {
@@ -252,7 +263,7 @@ function ChatContent() {
     }, 50);
   }, [firstUnreadIndex]);
 
-  // Scroll to bottom on initial load
+  // Scroll to bottom on initial load and whenever new messages arrive while pinned.
   useLayoutEffect(() => {
     if (isLoading) return;
     if (messages.length === 0) return;
@@ -261,24 +272,17 @@ function ChatContent() {
     const retryTimers: number[] = [];
 
     if (isFirstScroll) {
-      const attemptScroll = () => {
-        scrollToBottom("auto");
-        ensureLastMessageFullyVisible("auto");
-      };
-
       const scheduleRetries = () => {
         requestAnimationFrame(() => {
-          attemptScroll();
-          retryTimers.push(window.setTimeout(() => {
-            if (!isScrolledToBottom()) attemptScroll();
-          }, 50));
-          retryTimers.push(window.setTimeout(() => {
-            if (!isScrolledToBottom()) attemptScroll();
-          }, 150));
-          retryTimers.push(window.setTimeout(() => {
-            attemptScroll();
-            setHasScrolledToLastRead(true);
-          }, 300));
+          pinToLatestMessage("auto");
+          retryTimers.push(window.setTimeout(() => pinToLatestMessage("auto"), 50));
+          retryTimers.push(window.setTimeout(() => pinToLatestMessage("auto"), 150));
+          retryTimers.push(
+            window.setTimeout(() => {
+              pinToLatestMessage("auto");
+              setHasScrolledToLastRead(true);
+            }, 300),
+          );
         });
       };
 
@@ -286,14 +290,34 @@ function ChatContent() {
       hasInitiallyScrolled.current = true;
 
       return () => {
-        retryTimers.forEach(timer => window.clearTimeout(timer));
+        retryTimers.forEach((timer) => window.clearTimeout(timer));
       };
     }
 
     if (isAtBottomRef.current) {
-      scrollToBottom("smooth");
+      pinToLatestMessage("auto");
     }
-  }, [messages, isLoading, scrollToBottom, isScrolledToBottom, ensureLastMessageFullyVisible]);
+  }, [messages, isLoading, pinToLatestMessage]);
+
+  // Keep glued to the latest message when images/media expand the thread.
+  useEffect(() => {
+    const scrollElement = document.querySelector(
+      "[data-pull-to-refresh-container]",
+    ) as HTMLDivElement | null;
+    if (!scrollElement || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      if (isAtBottomRef.current) {
+        pinToLatestMessage("auto");
+      }
+    });
+
+    observer.observe(scrollElement);
+    const content = scrollElement.firstElementChild;
+    if (content) observer.observe(content);
+
+    return () => observer.disconnect();
+  }, [pinToLatestMessage, selectedCampusId, selectedMinistryType]);
 
   // Track scroll position
   const handleScrollChange = useCallback((isAtBottom: boolean) => {
@@ -347,24 +371,92 @@ function ChatContent() {
   // Send optimistically appends the message; jump to it on the next frame.
   const handleSendMessage = useCallback((content: string, attachments?: string[]) => {
     void sendMessage(content, attachments);
-    requestAnimationFrame(() => scrollToBottom("smooth"));
-  }, [sendMessage, scrollToBottom]);
+    requestAnimationFrame(() => pinToLatestMessage("auto"));
+  }, [sendMessage, pinToLatestMessage]);
 
-  // When the keyboard opens, keep the latest messages visible if we were near bottom.
-  useEffect(() => {
-    if (isKeyboardOpen && !prevKeyboardOpenRef.current && isAtBottomRef.current) {
-      requestAnimationFrame(() => {
-        scrollToBottom("auto");
-        ensureLastMessageFullyVisible("auto");
-      });
+  const handleComposerFocusChange = useCallback((focused: boolean) => {
+    setComposerFocused(focused);
+    if (focused) {
+      isAtBottomRef.current = true;
+      window.scrollTo(0, 0);
     }
-    prevKeyboardOpenRef.current = isKeyboardOpen;
-  }, [isKeyboardOpen, scrollToBottom, ensureLastMessageFullyVisible]);
+  }, []);
 
-  const closedChatHeight = 'calc(100dvh - (56px + env(safe-area-inset-top, 0px)))';
-  const chatHeightStyle = isKeyboardOpen && visualHeight > 0
-    ? `calc(${visualHeight}px - 56px - env(safe-area-inset-top, 0px))`
-    : closedChatHeight;
+  // When the keyboard / focus activates, keep the latest message flush to the bottom.
+  useEffect(() => {
+    if (keyboardActive && !prevKeyboardOpenRef.current) {
+      isAtBottomRef.current = true;
+      requestAnimationFrame(() => pinToLatestMessage("auto"));
+    }
+    prevKeyboardOpenRef.current = keyboardActive;
+  }, [keyboardActive, pinToLatestMessage]);
+
+  // Re-pin after keyboard shell top/bottom settle (height changes mid-open).
+  useEffect(() => {
+    if (!keyboardActive || !keyboardLayout || !isAtBottomRef.current) return;
+    pinToLatestMessage("auto");
+    const timer = window.setTimeout(() => pinToLatestMessage("auto"), 50);
+    return () => window.clearTimeout(timer);
+  }, [keyboardActive, keyboardLayout, pinToLatestMessage]);
+
+  // Pin the chat shell to the visible visual viewport while focused / keyboard
+  // open. Use top+height (not bottom) — iOS fixed `bottom` overshoots and leaves
+  // the black gap above the keyboard. Never subtract the header from visualHeight
+  // again; measure the visible band under the header instead.
+  useLayoutEffect(() => {
+    const updateKeyboardLayout = () => {
+      const viewport = window.visualViewport;
+      if (!keyboardActive || !viewport) {
+        setKeyboardLayout(null);
+        return;
+      }
+
+      const visualTop = viewport.offsetTop;
+      const visualBottom = viewport.offsetTop + viewport.height;
+      const header = document.querySelector("header");
+      const headerBottom = header?.getBoundingClientRect().bottom ?? visualTop;
+      const top = Math.round(Math.max(visualTop, headerBottom));
+      const height = Math.round(Math.max(0, visualBottom - top));
+
+      setKeyboardLayout((prev) =>
+        prev && prev.top === top && prev.height === height ? prev : { top, height }
+      );
+    };
+
+    updateKeyboardLayout();
+
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", updateKeyboardLayout);
+    viewport?.addEventListener("scroll", updateKeyboardLayout);
+    window.addEventListener("resize", updateKeyboardLayout);
+
+    let rafId = 0;
+    let frames = 0;
+    let cancelled = false;
+    if (composerFocused) {
+      const tick = () => {
+        if (cancelled) return;
+        updateKeyboardLayout();
+        if (isAtBottomRef.current) pinToLatestMessage("auto");
+        frames += 1;
+        if (frames < 45) {
+          rafId = requestAnimationFrame(tick);
+        }
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      cancelled = true;
+      viewport?.removeEventListener("resize", updateKeyboardLayout);
+      viewport?.removeEventListener("scroll", updateKeyboardLayout);
+      window.removeEventListener("resize", updateKeyboardLayout);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
+
+  const closedChatHeight = "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
+  const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {
     return (
@@ -423,13 +515,30 @@ function ChatContent() {
   };
 
   return (
-    <div 
-      className="flex flex-col bg-black overflow-hidden max-w-full"
-      style={{
-        height: chatHeightStyle,
-        transform: translateY > 0 ? `translateY(${translateY}px)` : undefined,
-      }}
-    >
+    <>
+      {/* Keep document flow height while the shell is fixed over the keyboard. */}
+      {isKeyboardPinned && <div style={{ height: closedChatHeight }} aria-hidden />}
+      <div
+        className="flex flex-col bg-black overflow-hidden max-w-full"
+        style={
+          isKeyboardPinned
+            ? {
+                position: "fixed",
+                left: 0,
+                right: 0,
+                top: keyboardLayout.top,
+                height: keyboardLayout.height,
+                zIndex: 45,
+              }
+            : {
+                height: closedChatHeight,
+                transform:
+                  !keyboardActive && translateY > 0
+                    ? `translateY(${translateY}px)`
+                    : undefined,
+              }
+        }
+      >
       {/* Chat Header with Ministry Tabs */}
       <ChatHeader
         campuses={availableCampuses}
@@ -528,7 +637,7 @@ function ChatContent() {
         {/* Scroll to bottom — sits in the message pane so it never overlaps the composer */}
         {showScrollButton && messages.length > 0 && (
           <button
-            onClick={() => pullToRefreshRef.current?.scrollToBottom()}
+            onClick={() => pinToLatestMessage("smooth")}
             className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg hover:bg-zinc-700 transition-colors px-3 py-2 z-10"
           >
             {newMessageCount > 0 && (
@@ -542,15 +651,16 @@ function ChatContent() {
       </div>
 
       {/* Typing + composer — typing sits above input, outside the scroll pane */}
-      <div className="flex-shrink-0 relative">
-        {keyboardHeight === 0 && (
+      <div className="flex-shrink-0 relative z-10">
+        {!keyboardActive && (
           <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-[#1C1C1E] to-transparent pointer-events-none" />
         )}
         <TypingIndicator typingUsers={typingUsers} />
-        <div className={`bg-[#1C1C1E] ${keyboardHeight > 0 ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
+        <div className={`bg-[#1C1C1E] ${keyboardActive ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
           <MessageInput
             onSendMessage={handleSendMessage}
             onTyping={setTyping}
+            onFocusChange={handleComposerFocusChange}
             campusName={getChatDisplayName()}
             campusId={selectedCampusId}
             ministryType={selectedMinistryType}
@@ -558,6 +668,7 @@ function ChatContent() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

@@ -45,7 +45,9 @@ export function useKeyboardOffset(): KeyboardOffsetState {
     }
 
     const keyboardOffset = window.innerHeight - viewport.height;
-    const isOpen = isIOSDevice && keyboardOffset > 100;
+    // Lower threshold so pinning starts as soon as the keyboard begins opening
+    // (waiting for >100px left the composer hidden until the first keypress).
+    const isOpen = isIOSDevice && keyboardOffset > 40;
     // Stuck-pan correction is only ever downward (see useVisualViewportOffset).
     const translateY = isIOSDevice
       ? Math.max(0, Math.round(viewport.offsetTop + viewport.height - window.innerHeight))

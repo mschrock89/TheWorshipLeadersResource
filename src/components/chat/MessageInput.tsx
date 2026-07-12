@@ -22,6 +22,7 @@ const MAX_FILES = 5;
 interface MessageInputProps {
   onSendMessage: (content: string, attachments?: string[]) => void;
   onTyping?: (isTyping: boolean) => void;
+  onFocusChange?: (focused: boolean) => void;
   campusName?: string;
   campusId?: string | null;
   ministryType?: string | null;
@@ -42,6 +43,7 @@ const formatFileSize = (bytes: number): string => {
 export function MessageInput({
   onSendMessage,
   onTyping,
+  onFocusChange,
   campusName = "the group",
   campusId,
   ministryType
@@ -67,13 +69,16 @@ export function MessageInput({
 
   const handleFocus = useCallback(() => {
     setIsKeyboardOpen(true);
-    // Avoid forced center scrolling on iOS. It creates a large blank gap
-    // above the keyboard in sticky chat composers.
-  }, []);
+    onFocusChange?.(true);
+    // Stop iOS from scrolling the focused field into a mid-screen dead zone
+    // before our chat shell has pinned to the visual viewport.
+    window.scrollTo(0, 0);
+  }, [onFocusChange]);
 
   const handleBlur = useCallback(() => {
     setIsKeyboardOpen(false);
-  }, []);
+    onFocusChange?.(false);
+  }, [onFocusChange]);
 
   const handleTypingStart = useCallback(() => {
     onTyping?.(true);
@@ -471,7 +476,7 @@ export function MessageInput({
           </Button>
         )}
 
-        {/* Hidden file inputs */}
+        {/* Hidden file inputs — tabIndex -1 avoids iOS Prev/Next accessory bar */}
         <input
           ref={fileInputRef}
           type="file"
@@ -479,6 +484,7 @@ export function MessageInput({
           accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
           onChange={handleFileSelect}
           className="hidden"
+          tabIndex={-1}
         />
         <input
           ref={cameraInputRef}
@@ -487,6 +493,7 @@ export function MessageInput({
           capture="environment"
           onChange={handleFileSelect}
           className="hidden"
+          tabIndex={-1}
         />
       </form>
     </div>
