@@ -257,7 +257,8 @@ function PostCard({
   isVoting: boolean;
 }) {
   const CategoryIcon = categoryIcon(post.category);
-  const [isConversationOpen, setIsConversationOpen] = useState(post.comment_count > 0);
+  // Start closed so mobile (and desktop) don't open nested panels by default.
+  const [isConversationOpen, setIsConversationOpen] = useState(false);
   const [commentBody, setCommentBody] = useState("");
   const hasVoted = !!post.my_poll_option_id;
   const totalPollVotes = post.poll_vote_count;
@@ -271,7 +272,7 @@ function PostCard({
   return (
     <Card className="overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(21,30,37,0.96),rgba(13,19,24,0.96))] shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
       <CardContent className="p-0">
-        <div className="border-b border-white/6 px-6 py-5">
+        <div className="border-b border-white/6 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <Avatar className="h-11 w-11 border border-white/10">
@@ -306,7 +307,7 @@ function PostCard({
           </div>
         </div>
 
-        <div className="space-y-5 px-6 py-6">
+        <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
           <div className="space-y-3">
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">{post.title}</h2>
 
@@ -326,7 +327,7 @@ function PostCard({
           </div>
 
           {post.category === "poll" && post.poll_options.length > 0 ? (
-            <div className="space-y-3 rounded-2xl border border-white/8 bg-black/20 p-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">
                   {hasVoted ? "Results" : "Cast your vote"}
@@ -348,10 +349,10 @@ function PostCard({
                       disabled={isVoting}
                       onClick={() => onVotePoll(post.id, option.id)}
                       className={cn(
-                        "relative w-full overflow-hidden rounded-xl border px-4 py-3 text-left transition-colors",
+                        "relative w-full overflow-hidden rounded-xl px-4 py-3 text-left transition-colors",
                         option.voted_by_me
-                          ? "border-primary/40 bg-primary/10"
-                          : "border-white/10 bg-white/5 hover:bg-white/8"
+                          ? "bg-primary/15 ring-1 ring-inset ring-primary/35"
+                          : "bg-white/5 hover:bg-white/8"
                       )}
                     >
                       {hasVoted ? (
@@ -379,7 +380,7 @@ function PostCard({
           ) : null}
 
           {post.youtube_video_id ? (
-            <div className="overflow-hidden rounded-2xl border border-white/8 bg-black/30">
+            <div className="overflow-hidden rounded-2xl bg-black/30">
               <div className="aspect-video">
                 <iframe
                   className="h-full w-full"
@@ -478,13 +479,23 @@ function PostCard({
               ) : null}
             </div>
             <button
-              className="inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-white/5 hover:text-foreground sm:px-3"
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-white/5 hover:text-foreground sm:px-3",
+                isConversationOpen && "bg-white/5 text-foreground"
+              )}
               onClick={() => setIsConversationOpen((current) => !current)}
+              aria-expanded={isConversationOpen}
+              aria-controls={`conversation-${post.id}`}
             >
               <MessageSquare className="h-4 w-4" />
-              Conversation
+              <span className="hidden sm:inline">Conversation</span>
               <span>{post.comment_count}</span>
-              <ChevronDown className={cn("h-4 w-4 transition-transform", isConversationOpen && "rotate-180")} />
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  isConversationOpen && "rotate-180"
+                )}
+              />
             </button>
             {isAdmin ? (
               <div className="ml-auto flex items-center gap-x-1 sm:gap-x-3">
@@ -494,7 +505,7 @@ function PostCard({
                     onClick={() => onEdit(post)}
                   >
                     <Edit3 className="h-4 w-4" />
-                    Edit
+                    <span className="hidden sm:inline">Edit</span>
                   </button>
                 ) : null}
                 <button
@@ -503,7 +514,7 @@ function PostCard({
                   disabled={isDeleting}
                 >
                   {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  Delete
+                  <span className="hidden sm:inline">Delete</span>
                 </button>
               </div>
             ) : null}
@@ -521,53 +532,68 @@ function PostCard({
             </Button>
           ) : null}
 
-          {isConversationOpen ? (
-            <div className="space-y-4 rounded-2xl border border-white/8 bg-black/20 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-foreground">Conversation</p>
-                <p className="text-xs text-muted-foreground">{post.comment_count} comment{post.comment_count === 1 ? "" : "s"}</p>
-              </div>
-
-              <div className="space-y-3">
-                {post.comments.length > 0 ? (
-                  post.comments.map((comment: FeedCommentRecord) => (
-                    <div key={comment.id} className="rounded-xl border border-white/8 bg-white/5 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-foreground">
-                          {comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member")}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{timeAgoLabel(comment.created_at)}</p>
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No conversation yet. Start it below.</p>
-                )}
-              </div>
-
-              <div className="space-y-3 rounded-xl border border-white/8 bg-white/5 p-3">
-                <Textarea
-                  value={commentBody}
-                  onChange={(event) => setCommentBody(event.target.value.slice(0, 100))}
-                  placeholder="Add to the conversation..."
-                  maxLength={100}
-                  className="min-h-[88px] resize-y rounded-xl border-white/10 bg-black/20 text-sm leading-6 placeholder:text-muted-foreground/70"
-                />
+          <div
+            id={`conversation-${post.id}`}
+            className={cn(
+              "grid transition-[grid-template-rows,margin] duration-200 ease-out",
+              isConversationOpen ? "grid-rows-[1fr]" : "-mt-5 grid-rows-[0fr]"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="space-y-4 border-t border-white/6 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">{commentBody.length}/100 characters</p>
-                  <Button
-                    size="sm"
-                    className="rounded-lg bg-gradient-primary text-primary-foreground hover:opacity-95"
-                    disabled={isSubmittingComment || !commentBody.trim()}
-                    onClick={handleCommentSubmit}
-                  >
-                    {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post"}
-                  </Button>
+                  <p className="text-sm font-medium text-foreground">Conversation</p>
+                  <p className="text-xs text-muted-foreground">
+                    {post.comment_count} comment{post.comment_count === 1 ? "" : "s"}
+                  </p>
+                </div>
+
+                <div className="max-h-72 space-y-0 overflow-y-auto overscroll-contain sm:max-h-96">
+                  {post.comments.length > 0 ? (
+                    post.comments.map((comment: FeedCommentRecord) => (
+                      <div
+                        key={comment.id}
+                        className="border-b border-white/6 py-3 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-foreground">
+                            {comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{timeAgoLabel(comment.created_at)}</p>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                          {comment.body}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="py-2 text-sm text-muted-foreground">No conversation yet. Start it below.</p>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <Textarea
+                    value={commentBody}
+                    onChange={(event) => setCommentBody(event.target.value.slice(0, 100))}
+                    placeholder="Add to the conversation..."
+                    maxLength={100}
+                    className="min-h-[72px] resize-y rounded-xl border-white/10 bg-white/5 text-sm leading-6 placeholder:text-muted-foreground/70"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">{commentBody.length}/100 characters</p>
+                    <Button
+                      size="sm"
+                      className="rounded-lg bg-gradient-primary text-primary-foreground hover:opacity-95"
+                      disabled={isSubmittingComment || !commentBody.trim()}
+                      onClick={handleCommentSubmit}
+                    >
+                      {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post"}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          ) : null}
+          </div>
         </div>
       </CardContent>
     </Card>
