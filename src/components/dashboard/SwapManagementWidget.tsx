@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeftRight, ArrowRight, Trash2, UserPlus } from "lucide-react";
 import { format } from "date-fns";
-import { parseLocalDate } from "@/lib/utils";
+import { formatDateForDB, parseLocalDate } from "@/lib/utils";
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
@@ -60,9 +60,11 @@ export function SwapManagementWidget() {
     }
   };
 
-  // Show recent swaps (last 10)
-  const recentSwaps = swapRequests?.slice(0, 10) || [];
-  const pendingCount = swapRequests?.filter((s) => s.status === "pending").length || 0;
+  // Hide requests whose date has already passed; show the most recent 10 remaining
+  const today = formatDateForDB(new Date());
+  const activeSwaps = swapRequests?.filter((s) => s.original_date >= today) || [];
+  const recentSwaps = activeSwaps.slice(0, 10);
+  const pendingCount = activeSwaps.filter((s) => s.status === "pending").length;
 
   if (isLoading) {
     return (

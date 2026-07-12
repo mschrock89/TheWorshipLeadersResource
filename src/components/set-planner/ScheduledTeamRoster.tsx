@@ -8,7 +8,7 @@ import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
-import { Mic, Guitar, ArrowRightLeft, Users, Video, Headphones, BookOpen, Church } from "lucide-react";
+import { Mic, Guitar, ArrowRightLeft, Users } from "lucide-react";
 import { normalizeSessionSetMinistryType, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 import { filterGroupTextRecipients } from "@/lib/access";
@@ -33,30 +33,6 @@ const isBandPosition = (pos: string) => {
   ];
   return bandKeywords.some(keyword => lower.includes(keyword));
 };
-
-const isVideoPosition = (pos: string) => {
-  const lower = pos.toLowerCase();
-  const videoKeywords = [
-    "camera", "director", "producer", "switcher", "graphics", "chat", "stream", "video"
-  ];
-  return videoKeywords.some(keyword => lower.includes(keyword));
-};
-
-const isProductionPosition = (pos: string) => {
-  const lower = pos.toLowerCase();
-  const productionKeywords = [
-    "foh", "monitor", "mon", "audio", "sound", "lighting", "lights", "stage",
-    "propresenter", "media", "lyrics", "broadcast"
-  ];
-  return productionKeywords.some(keyword => lower.includes(keyword));
-};
-
-const isSpeakerPosition = (pos: string) => {
-  const lower = pos.toLowerCase();
-  return lower === "teacher" || lower === "announcement" || lower === "annoucement" || lower === "closing_prayer" || lower === "closer";
-};
-
-const isPastorPosition = (pos: string) => pos.toLowerCase().startsWith("pastor_");
 
 interface RosterMember {
   id: string;
@@ -184,9 +160,6 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   // Weekend-family services should always show the full shared weekend roster.
   const rosterMinistryScope =
     normalizeWeekendWorshipMinistryType(normalizedMinistryType) === "weekend" ? "weekend_team" : normalizedMinistryType;
-  const isWeekendTeam = rosterMinistryScope === 'weekend_team';
-  const showProduction = ministryType === "production" || isWeekendTeam;
-  const showVideo = ministryType === "video" || isWeekendTeam;
   
   const { data: roster, isLoading: rosterLoading } = useTeamRosterForDate(
     targetDate,
@@ -230,7 +203,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     return Array.from(deduped.values());
   }, [roster]);
 
-  // Filter members and positions by category
+  // Set Builder only surfaces Vocalists and Band from the scheduled team
   const vocalists = rosterForDisplay.filter(member => 
     getRosterRoleValues(member).some(pos => isVocalPosition(pos))
   ).map(member => ({
@@ -248,44 +221,20 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
     ]))
   }));
 
-  const videoMembers = rosterForDisplay.filter(member => 
-    getRosterRoleValues(member).some(pos => isVideoPosition(pos))
-  ).map(member => ({
-    ...member,
-    positions: member.positions.filter(pos => isVideoPosition(pos))
-  }));
-
-  const productionMembers = rosterForDisplay.filter(member => 
-    getRosterRoleValues(member).some(pos => isProductionPosition(pos))
-  ).map(member => ({
-    ...member,
-    positions: member.positions.filter(pos => isProductionPosition(pos))
-  }));
-
-  const speakerMembers = rosterForDisplay.filter(member =>
-    getRosterRoleValues(member).some(pos => isSpeakerPosition(pos))
-  ).map(member => ({
-    ...member,
-    positions: member.positions.filter(pos => isSpeakerPosition(pos))
-  }));
-
-  const pastorMembers = rosterForDisplay.filter(member =>
-    getRosterRoleValues(member).some(pos => isPastorPosition(pos))
-  ).map(member => ({
-    ...member,
-    positions: Array.from(new Set([
-      ...member.positions.filter(pos => isPastorPosition(pos)),
-      ...(member.positionSlots || []).filter(pos => isPastorPosition(pos)),
-    ]))
-  }));
-
   const groupTextMembers = useMemo(
     () =>
-      filterGroupTextRecipients(rosterForDisplay, {
-        isAdmin,
-        roleNames,
-      }),
-    [isAdmin, roleNames, rosterForDisplay],
+      filterGroupTextRecipients(
+        rosterForDisplay.filter((member) =>
+          getRosterRoleValues(member).some(
+            (pos) => isVocalPosition(pos) || isBandPosition(pos),
+          ),
+        ),
+        {
+          isAdmin,
+          roleNames,
+        },
+      ),
+    [isAdmin, rosterForDisplay, roleNames],
   );
 
   if (isLoading) {
@@ -343,7 +292,7 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             className="text-xs"
             style={{ borderColor: scheduledTeam.teamColor, color: scheduledTeam.teamColor }}
           >
-            {(vocalists.length + bandMembers.length + speakerMembers.length + pastorMembers.length + (showVideo ? videoMembers.length : 0) + (showProduction ? productionMembers.length : 0))} members
+            {vocalists.length + bandMembers.length} members
           </Badge>
           <GroupTextButton
             phoneNumbers={groupTextMembers.map((member) => member.phone)}
@@ -362,14 +311,6 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {pastorMembers.length > 0 && (
-            <MemberSection
-              icon={Church}
-              title="Pastors"
-              members={pastorMembers}
-              teamColor={scheduledTeam.teamColor}
-            />
-          )}
           <MemberSection 
             icon={Mic} 
             title="Vocalists" 
@@ -382,28 +323,6 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
             members={bandMembers} 
             teamColor={scheduledTeam.teamColor}
           />
-          <MemberSection
-            icon={BookOpen}
-            title="Speaker"
-            members={speakerMembers}
-            teamColor={scheduledTeam.teamColor}
-          />
-          {showProduction && (
-            <MemberSection 
-              icon={Headphones} 
-              title="Production" 
-              members={productionMembers} 
-              teamColor={scheduledTeam.teamColor}
-            />
-          )}
-          {showVideo && (
-            <MemberSection 
-              icon={Video} 
-              title="Video" 
-              members={videoMembers} 
-              teamColor={scheduledTeam.teamColor}
-            />
-          )}
         </div>
       </CardContent>
     </Card>

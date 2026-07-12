@@ -23,7 +23,8 @@ import { PublishSetlistDialog } from "@/components/set-planner/PublishSetlistDia
 import { useSongAvailability, useSaveDraftSet, useExistingSet, usePublishedSetlistSongs, SongAvailability } from "@/hooks/useSetPlanner";
 import { useScheduledVocalists } from "@/hooks/useScheduledVocalists";
 import { useAddCustomServiceAssignment, useCustomServiceAssignments, useCustomServiceCampusMembers, useCustomServiceOccurrences, useRemoveCustomServiceAssignment } from "@/hooks/useCustomServices";
-import { useWeekendRundownGoodFitHighlights } from "@/hooks/useWeekendRundown";
+import { useWeekendRundownGoodFitHighlights, useScheduledVocalistRundownNotes } from "@/hooks/useWeekendRundown";
+import { VocalistRundownNotesDialog } from "@/components/set-planner/VocalistRundownNotesDialog";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
@@ -714,6 +715,23 @@ export default function SetPlanner() {
       name: vocalist.name,
     })),
   );
+  const { data: vocalistRundownNotes = [], isLoading: vocalistRundownNotesLoading } =
+    useScheduledVocalistRundownNotes(
+      effectiveCampusId || null,
+      effectiveVocalists.map((vocalist) => ({
+        userId: vocalist.userId,
+        name: vocalist.name,
+      })),
+    );
+  const vocalistNotesOpenKey = useMemo(
+    () =>
+      [
+        effectiveCampusId || "none",
+        format(selectedDate, "yyyy-MM-dd"),
+        effectiveVocalists.map((vocalist) => vocalist.userId).sort().join(","),
+      ].join(":"),
+    [effectiveCampusId, effectiveVocalists, selectedDate],
+  );
 
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -856,7 +874,7 @@ export default function SetPlanner() {
 
   return (
     <>
-      <div className="space-y-4 overflow-hidden">
+      <div className="space-y-4 overflow-x-hidden">
         {/* Breadcrumb Navigation */}
         <Breadcrumb>
           <BreadcrumbList>
@@ -1197,7 +1215,18 @@ export default function SetPlanner() {
 
         {/* Team Roster - full width */}
         {!isPrayerNightMinistry && (
-          <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+          <div className="space-y-3">
+            {(vocalistRundownNotes.length > 0 || vocalistRundownNotesLoading) && (
+              <div className="flex justify-end">
+                <VocalistRundownNotesDialog
+                  notes={vocalistRundownNotes}
+                  openKey={vocalistNotesOpenKey}
+                  isLoading={vocalistRundownNotesLoading}
+                />
+              </div>
+            )}
+            <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+          </div>
         )}
 
         {/* Custom Service Team Assignments */}
@@ -1489,8 +1518,8 @@ export default function SetPlanner() {
 
         {/* Main content: two panels */}
         <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:items-start">
-          {/* Left: Building set - sticks in view while scrolling the song list */}
-          <div className="lg:sticky lg:top-4 lg:self-start lg:h-[calc(100vh-2rem)]">
+          {/* Left: Building set - sticks in view while scrolling the song list on desktop */}
+          <div className="lg:sticky lg:top-4 lg:z-10 lg:self-start lg:max-h-[calc(100dvh-2rem)] lg:h-[calc(100dvh-2rem)]">
             <BuildingSet
               songs={buildingSongs}
               onRemoveSong={handleRemoveSong}
