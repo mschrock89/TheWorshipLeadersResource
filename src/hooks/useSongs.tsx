@@ -1314,6 +1314,40 @@ export function useUpdateSongAuthor() {
   });
 }
 
+export function useUpdateSongTitle() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ songId, title }: { songId: string; title: string }) => {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) {
+        throw new Error("Song title cannot be empty");
+      }
+
+      const { data, error } = await supabase
+        .from("songs")
+        .update({ title: trimmedTitle, updated_at: new Date().toISOString() })
+        .eq("id", songId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Song;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["songs"] });
+      queryClient.invalidateQueries({ queryKey: ["songs-with-stats"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error updating title",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useDeleteSong() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

@@ -52,6 +52,7 @@ import { useSongsWithStats, useServicePlans, useServicePlansPaged, usePlanSongs,
 import { AddSongDialog } from "@/components/songs/AddSongDialog";
 import { EditableAuthorCell } from "@/components/songs/EditableAuthorCell";
 import { EditableBpmCell } from "@/components/songs/EditableBpmCell";
+import { EditableTitleCell } from "@/components/songs/EditableTitleCell";
 import { MergeSongDialog } from "@/components/songs/MergeSongDialog";
 import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import {
@@ -828,7 +829,12 @@ export default function Songs() {
                                   )}
                                   <div className="min-w-0">
                                     <div className="flex items-center justify-between gap-2">
-                                      <p className="min-w-0 flex-1 truncate font-medium">{song.title}</p>
+                                      <EditableTitleCell
+                                        songId={song.id}
+                                        currentTitle={song.title}
+                                        canEdit={canManageSongs}
+                                        className="min-w-0 flex-1 truncate font-medium"
+                                      />
                                       {(() => {
                                         const scheduledCount = (song as any).scheduledCount ?? 0;
                                         const lastScheduledAt = (song as any).lastScheduledAt ? new Date((song as any).lastScheduledAt) : null;
@@ -949,7 +955,12 @@ export default function Songs() {
                             <TableRow key={song.id}>
                               <TableCell className="font-medium">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="min-w-0 flex-1 truncate">{song.title}</span>
+                                  <EditableTitleCell
+                                    songId={song.id}
+                                    currentTitle={song.title}
+                                    canEdit={canManageSongs}
+                                    className="min-w-0 flex-1 truncate"
+                                  />
                                   {(() => {
                                     const usage = songCampusUsage.get(song.id);
                                     const scheduledCount = (usage?.count ?? 0) + (usage?.upcomingCount ?? 0);
