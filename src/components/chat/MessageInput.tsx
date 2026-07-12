@@ -306,7 +306,7 @@ export function MessageInput({
 
   return (
     <div 
-      className="relative px-3 bg-[#1C1C1E]"
+      className="relative px-3 bg-[#191A1C]"
       style={{
         paddingTop: isKeyboardOpen ? 2 : 0,
         paddingBottom: isKeyboardOpen

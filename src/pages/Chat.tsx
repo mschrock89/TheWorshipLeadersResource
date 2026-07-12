@@ -519,7 +519,7 @@ function ChatContent() {
       {/* Keep document flow height while the shell is fixed over the keyboard. */}
       {isKeyboardPinned && <div style={{ height: closedChatHeight }} aria-hidden />}
       <div
-        className="flex flex-col bg-black overflow-hidden max-w-full"
+        className={`flex flex-col overflow-hidden max-w-full ${isKeyboardPinned ? "bg-[#191A1C]" : "bg-black"}`}
         style={
           isKeyboardPinned
             ? {
@@ -553,7 +553,7 @@ function ChatContent() {
       />
 
       {/* Messages area */}
-      <div className="relative flex-1 min-h-0 overflow-hidden">
+      <div className="relative flex-1 min-h-0 overflow-hidden bg-black">
         <PullToRefresh
           ref={pullToRefreshRef}
           onRefresh={handleLoadOlder}
@@ -653,10 +653,10 @@ function ChatContent() {
       {/* Typing + composer — typing sits above input, outside the scroll pane */}
       <div className="flex-shrink-0 relative z-10">
         {!keyboardActive && (
-          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-[#1C1C1E] to-transparent pointer-events-none" />
+          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-[#191A1C] to-transparent pointer-events-none" />
         )}
         <TypingIndicator typingUsers={typingUsers} />
-        <div className={`bg-[#1C1C1E] ${keyboardActive ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
+        <div className={`bg-[#191A1C] ${keyboardActive ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
           <MessageInput
             onSendMessage={handleSendMessage}
             onTyping={setTyping}
