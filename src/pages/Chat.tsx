@@ -544,10 +544,10 @@ function ChatContent() {
       {/* Typing + composer — typing sits above input, outside the scroll pane */}
       <div className="flex-shrink-0 relative">
         {keyboardHeight === 0 && (
-          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-[#1C1C1E] to-transparent pointer-events-none" />
         )}
         <TypingIndicator typingUsers={typingUsers} />
-        <div className={`bg-black ${keyboardHeight > 0 ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
+        <div className={`bg-[#1C1C1E] ${keyboardHeight > 0 ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
           <MessageInput
             onSendMessage={handleSendMessage}
             onTyping={setTyping}

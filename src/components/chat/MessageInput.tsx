@@ -301,7 +301,7 @@ export function MessageInput({
 
   return (
     <div 
-      className="relative px-3 bg-black"
+      className="relative px-3 bg-[#1C1C1E]"
       style={{
         paddingTop: isKeyboardOpen ? 2 : 0,
         paddingBottom: isKeyboardOpen
@@ -421,7 +421,7 @@ export function MessageInput({
         )}
 
         {/* Main input box */}
-        <div className="flex-1 min-w-0 flex items-end bg-zinc-800 rounded-2xl px-3 py-2">
+        <div className="flex-1 min-w-0 flex items-end bg-[#2C2C2E] rounded-2xl px-3 py-2">
           <textarea
             ref={inputRef}
             value={message}
