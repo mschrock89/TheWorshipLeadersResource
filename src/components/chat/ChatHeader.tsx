@@ -43,19 +43,19 @@ export function ChatHeader({
   return (
     <header className="flex-shrink-0 bg-black border-b border-zinc-800">
       {/* Campus name and dropdown */}
-      <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center justify-between px-4 py-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild disabled={!showDropdown}>
-            <div className={`flex items-center gap-3 ${showDropdown ? 'cursor-pointer' : ''}`}>
-              <Avatar className="h-10 w-10">
+            <div className={`flex items-center gap-2.5 ${showDropdown ? 'cursor-pointer' : ''}`}>
+              <Avatar className="h-8 w-8">
                 <AvatarImage src={emLogo} />
-                <AvatarFallback className="bg-zinc-700">EM</AvatarFallback>
+                <AvatarFallback className="bg-zinc-700 text-xs">EM</AvatarFallback>
               </Avatar>
-              <div className="flex items-center gap-1">
-                <h1 className="text-lg font-semibold text-white">
+              <div className="flex items-center gap-1 min-w-0">
+                <h1 className="text-base font-semibold text-white truncate">
                   {selectedCampusName || "Experience Worship"}
                 </h1>
-                {showDropdown && <ChevronDown className="h-4 w-4 text-zinc-400" />}
+                {showDropdown && <ChevronDown className="h-4 w-4 text-zinc-400 flex-shrink-0" />}
               </div>
             </div>
           </DropdownMenuTrigger>
@@ -77,7 +77,7 @@ export function ChatHeader({
 
       {/* Ministry tabs */}
       {ministries.length > 0 && onSelectMinistry && (
-        <div className="flex gap-1 px-4 pb-3 overflow-x-auto scrollbar-none">
+        <div className="flex gap-1 px-4 pb-2 overflow-x-auto scrollbar-none">
           {ministries.map((ministry) => {
             const isSelected = selectedMinistryType === ministry.value;
             const unreadCount = getUnreadCount && selectedCampusId 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { Plus, Camera, X, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -49,12 +49,14 @@ export function MessageInput({
   const [message, setMessage] = useState("");
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
+  const [mentionPosition, setMentionPosition] = useState<{ top: number; left: number } | null>(null);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -63,19 +65,16 @@ export function MessageInput({
   const { toast } = useToast();
   const isIOSDevice = useMemo(() => isIOS(), []);
 
-  // Handle iOS keyboard focus - scroll input into view
   const handleFocus = useCallback(() => {
     setIsKeyboardOpen(true);
     // Avoid forced center scrolling on iOS. It creates a large blank gap
     // above the keyboard in sticky chat composers.
   }, []);
 
-  // Handle blur - keyboard closing
   const handleBlur = useCallback(() => {
     setIsKeyboardOpen(false);
   }, []);
 
-  // Typing indicator logic
   const handleTypingStart = useCallback(() => {
     onTyping?.(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -93,6 +92,20 @@ export function MessageInput({
       pendingFilesRef.current.forEach(pf => URL.revokeObjectURL(pf.preview));
     };
   }, []);
+
+  // Anchor the mention picker just above the composer form.
+  useLayoutEffect(() => {
+    if (mentionSearch === null) {
+      setMentionPosition(null);
+      return;
+    }
+    const form = formRef.current;
+    if (!form) return;
+    setMentionPosition({
+      top: form.offsetHeight + 8,
+      left: 12,
+    });
+  }, [mentionSearch, pendingFiles.length, isUploading, message]);
 
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -210,10 +223,14 @@ export function MessageInput({
       setMentionSearch(null);
       setMentionStartIndex(null);
       
-      // Reset textarea height
       if (inputRef.current) {
         inputRef.current.style.height = 'auto';
       }
+
+      // Keep keyboard open after send (GroupMe / iMessage behavior)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
     } catch (error) {
       console.error("Failed to send message:", error);
       toast({
@@ -280,17 +297,17 @@ export function MessageInput({
 
   const isImage = (file: File) => file.type.startsWith('image/');
   const validFilesCount = pendingFiles.filter(pf => !pf.error).length;
-
-  // Prevent iOS overscroll on the input container
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    // Prevent the default iOS bounce/overscroll behavior
-    e.stopPropagation();
-  }, []);
+  const placeholder = isKeyboardOpen ? "Message…" : `Message ${campusName}`;
 
   return (
     <div 
-      className={`relative px-3 bg-black transition-all duration-200 ${isKeyboardOpen ? 'pt-0.5 pb-0' : 'pt-0 pb-2'}`}
-      style={isKeyboardOpen ? { paddingBottom: isIOSDevice ? '0px' : 'env(safe-area-inset-bottom, 0px)' } : undefined}
+      className="relative px-3 bg-black"
+      style={{
+        paddingTop: isKeyboardOpen ? 2 : 0,
+        paddingBottom: isKeyboardOpen
+          ? (isIOSDevice ? 0 : 'env(safe-area-inset-bottom, 0px)')
+          : 'max(8px, env(safe-area-inset-bottom, 0px))',
+      }}
       onWheel={(e) => e.stopPropagation()}
     >
       {/* Mention picker */}
@@ -302,7 +319,7 @@ export function MessageInput({
             setMentionSearch(null);
             setMentionStartIndex(null);
           }}
-          position={{ top: 60, left: 56 }}
+          position={mentionPosition}
           campusId={campusId}
           ministryType={ministryType}
         />
@@ -388,7 +405,7 @@ export function MessageInput({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex items-end gap-2">
         {/* Plus button - hidden when typing */}
         {!message.trim() && pendingFiles.length === 0 && (
           <Button
@@ -397,14 +414,14 @@ export function MessageInput({
             size="icon"
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             disabled={isUploading || validFilesCount >= MAX_FILES}
-            className="h-10 w-10 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0"
+            className="h-10 w-10 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0 mb-0.5"
           >
             <Plus className="h-6 w-6" />
           </Button>
         )}
 
         {/* Main input box */}
-        <div className="flex-1 min-w-0 flex items-center bg-zinc-800 rounded-lg px-3 py-2">
+        <div className="flex-1 min-w-0 flex items-end bg-zinc-800 rounded-2xl px-3 py-2">
           <textarea
             ref={inputRef}
             value={message}
@@ -412,7 +429,7 @@ export function MessageInput({
             onKeyDown={handleKeyDown}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder={`Message ${campusName}`}
+            placeholder={placeholder}
             autoComplete="off"
             autoCorrect="on"
             autoCapitalize="sentences"
@@ -432,7 +449,7 @@ export function MessageInput({
             variant="ghost"
             size="icon"
             onClick={() => cameraInputRef.current?.click()}
-            className="h-9 w-9 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0"
+            className="h-9 w-9 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0 mb-0.5"
           >
             <Camera className="h-5 w-5" />
           </Button>
@@ -444,7 +461,7 @@ export function MessageInput({
             type="submit"
             size="icon"
             disabled={isUploading}
-            className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0"
+            className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 mb-1"
           >
             {isUploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

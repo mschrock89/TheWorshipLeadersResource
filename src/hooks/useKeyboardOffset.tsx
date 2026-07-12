@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
-interface KeyboardState {
-  isOpen: boolean;
-  height: number;
-  offsetTop: number;
-}
-
 // Detect if we're on iOS
 function isIOS(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -13,36 +7,76 @@ function isIOS(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-export function useKeyboardOffset(): number {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+export interface KeyboardOffsetState {
+  /** Approximate keyboard height in px (0 when closed) */
+  height: number;
+  isOpen: boolean;
+  /** Current visualViewport height */
+  visualHeight: number;
+  offsetTop: number;
+  /** Correction to glue bottom-anchored UI to the visual viewport after iOS pan bugs */
+  translateY: number;
+}
+
+const CLOSED_STATE: KeyboardOffsetState = {
+  height: 0,
+  isOpen: false,
+  visualHeight: typeof window !== 'undefined' ? window.innerHeight : 0,
+  offsetTop: 0,
+  translateY: 0,
+};
+
+export function useKeyboardOffset(): KeyboardOffsetState {
+  const [state, setState] = useState<KeyboardOffsetState>(CLOSED_STATE);
   const isIOSDevice = useMemo(() => isIOS(), []);
   const rafId = useRef<number>(0);
 
   const updatePosition = useCallback(() => {
-    if (!isIOSDevice) return;
-    
     const viewport = window.visualViewport;
-    if (!viewport) return;
-
-    // Calculate how much the keyboard is pushing up the viewport
-    const keyboardOffset = window.innerHeight - viewport.height;
-    
-    // Only count as keyboard if it's significant (> 100px)
-    if (keyboardOffset > 100) {
-      setKeyboardHeight(keyboardOffset);
-    } else {
-      setKeyboardHeight(0);
+    if (!viewport) {
+      setState({
+        height: 0,
+        isOpen: false,
+        visualHeight: window.innerHeight,
+        offsetTop: 0,
+        translateY: 0,
+      });
+      return;
     }
+
+    const keyboardOffset = window.innerHeight - viewport.height;
+    const isOpen = isIOSDevice && keyboardOffset > 100;
+    // Stuck-pan correction is only ever downward (see useVisualViewportOffset).
+    const translateY = isIOSDevice
+      ? Math.max(0, Math.round(viewport.offsetTop + viewport.height - window.innerHeight))
+      : 0;
+
+    setState((prev) => {
+      const next: KeyboardOffsetState = {
+        height: isOpen ? keyboardOffset : 0,
+        isOpen,
+        visualHeight: viewport.height,
+        offsetTop: viewport.offsetTop,
+        translateY,
+      };
+      if (
+        prev.height === next.height &&
+        prev.isOpen === next.isOpen &&
+        prev.visualHeight === next.visualHeight &&
+        prev.offsetTop === next.offsetTop &&
+        prev.translateY === next.translateY
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, [isIOSDevice]);
 
   useEffect(() => {
-    if (!isIOSDevice) return;
-
     const viewport = window.visualViewport;
     if (!viewport) return;
 
     const handleViewportChange = () => {
-      // Use RAF to batch updates and reduce jank
       if (rafId.current) {
         cancelAnimationFrame(rafId.current);
       }
@@ -51,20 +85,21 @@ export function useKeyboardOffset(): number {
 
     viewport.addEventListener('resize', handleViewportChange);
     viewport.addEventListener('scroll', handleViewportChange);
+    window.addEventListener('resize', handleViewportChange);
 
-    // Initial check
     updatePosition();
 
     return () => {
       viewport.removeEventListener('resize', handleViewportChange);
       viewport.removeEventListener('scroll', handleViewportChange);
+      window.removeEventListener('resize', handleViewportChange);
       if (rafId.current) {
         cancelAnimationFrame(rafId.current);
       }
     };
-  }, [updatePosition, isIOSDevice]);
+  }, [updatePosition]);
 
-  return keyboardHeight;
+  return state;
 }
 
 interface VisualViewportOffset {

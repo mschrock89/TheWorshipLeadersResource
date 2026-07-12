@@ -89,7 +89,7 @@ export function TypingIndicator({ typingUsers }: { typingUsers: TypingUser[] }) 
       : `${typingUsers[0].name} and ${typingUsers.length - 1} others are typing...`;
 
   return (
-    <div className="px-4 py-1 text-xs text-zinc-400 animate-pulse">
+    <div className="px-4 py-1 text-xs text-zinc-400 animate-pulse truncate bg-black">
       {text}
     </div>
   );

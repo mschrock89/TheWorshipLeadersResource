@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Heart, Smile, Pencil, Trash2, X, Check, Paperclip } from "lucide-react";
+import { Smile, Pencil, Trash2, X, Check, Paperclip } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,6 +86,8 @@ export function MessageBubble({
   const inputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showQuickReactions, setShowQuickReactions] = useState(false);
+  const touchMovedRef = useRef(false);
 
   // Group reactions by emoji type
   const reactionGroups = (message.message_reactions ?? []).reduce((acc, r) => {
@@ -166,10 +168,23 @@ export function MessageBubble({
   }, []);
 
   const handleTouchStart = () => {
-    if (!isOwnMessage) return;
+    touchMovedRef.current = false;
     longPressTimer.current = setTimeout(() => {
-      setShowMobileMenu(true);
-    }, 500);
+      if (touchMovedRef.current) return;
+      if (isOwnMessage) {
+        setShowMobileMenu(true);
+      } else {
+        setShowQuickReactions(true);
+      }
+    }, 450);
+  };
+
+  const handleTouchMove = () => {
+    touchMovedRef.current = true;
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   const handleTouchEnd = () => {
@@ -251,17 +266,18 @@ export function MessageBubble({
     <div
       className={cn(
         "group px-4",
-        showHeader ? "pt-4" : "pt-1"
+        showHeader ? "pt-3" : "pt-0.5"
       )}
       onDoubleClick={() => onToggleReaction(message.id, "❤️")}
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
     >
       {/* Header row with avatar, name, and timestamp */}
       {showHeader && (
         <div className="flex items-center gap-3 mb-1">
-          <Avatar className="h-10 w-10 flex-shrink-0">
+          <Avatar className="h-9 w-9 flex-shrink-0">
             <AvatarImage src={message.profiles?.avatar_url || undefined} />
             <AvatarFallback className="bg-zinc-700 text-zinc-300 text-sm font-medium">
               {getInitials(message.profiles?.full_name ?? null)}
@@ -278,161 +294,167 @@ export function MessageBubble({
         </div>
       )}
 
-      {/* Message content row with emoji/reactions on left margin */}
-      <div className="flex items-center gap-2">
-        {/* Left margin: emoji picker OR reaction pills - fixed width for alignment */}
-        <div className="flex-shrink-0 w-12 flex flex-col gap-1 items-center">
-          {Object.keys(reactionGroups).length > 0 ? (
-            /* Show existing reactions as pills */
-            <div className="flex flex-col gap-1">
-              {Object.entries(reactionGroups).map(([emoji, data]) => (
-                <Popover key={emoji}>
-                  <PopoverTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition-all duration-150 active:scale-125 hover:scale-110",
-                        data.hasReacted
-                          ? "bg-blue-500/20 border border-blue-500/40"
-                          : "bg-zinc-800 hover:bg-zinc-700 border border-transparent"
-                      )}
-                    >
-                      <span className="transition-transform duration-150">{emoji}</span>
-                      <span className="text-white font-medium text-xs">{data.count}</span>
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    side="right"
-                    align="start"
-                    sideOffset={10}
-                    className="w-72 border-zinc-700/80 bg-transparent p-0 shadow-none"
-                  >
-                    <div className="relative overflow-hidden rounded-r-[28px] rounded-l-[40px] border border-zinc-700/80 bg-zinc-950/95 p-3 pl-6 text-zinc-100 shadow-2xl backdrop-blur-md">
-                      <div className="pointer-events-none absolute -left-7 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-zinc-700/60 bg-zinc-950/95" />
-                      <div className="relative space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold">{emoji} Reactions</p>
-                            <p className="text-xs text-zinc-400">
-                              {data.count} {data.count === 1 ? "person" : "people"}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className={cn(
-                              "h-8 rounded-full px-3 text-xs",
-                              data.hasReacted
-                                ? "bg-blue-500/15 text-blue-200 hover:bg-blue-500/25"
-                                : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                            )}
-                            onClick={() => onToggleReaction(message.id, emoji)}
-                          >
-                            {data.hasReacted ? "Remove" : "Add mine"}
-                          </Button>
-                        </div>
-                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                          {data.reactors
-                            .slice()
-                            .sort((a, b) => {
-                              if (a.user_id === currentUserId) return -1;
-                              if (b.user_id === currentUserId) return 1;
-                              return getDisplayName(a.profiles?.full_name).localeCompare(
-                                getDisplayName(b.profiles?.full_name)
-                              );
-                            })
-                            .map((reaction) => (
-                              <div
-                                key={reaction.id}
-                                className="flex items-center gap-3 rounded-2xl bg-zinc-900/80 px-3 py-2"
-                              >
-                                <Avatar className="h-8 w-8 flex-shrink-0">
-                                  <AvatarImage src={reaction.profiles?.avatar_url || undefined} />
-                                  <AvatarFallback className="bg-zinc-700 text-[11px] font-medium text-zinc-300">
-                                    {getInitials(reaction.profiles?.full_name ?? null)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-zinc-100">
-                                    {reaction.user_id === currentUserId
-                                      ? "You"
-                                      : getDisplayName(reaction.profiles?.full_name)}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ))}
-            </div>
-          ) : (
-            /* Show emoji picker when no reactions */
-            <Popover>
+      {/* Message + reactions aligned under the name (avatar + gap ≈ 12) */}
+      <div className="pl-12 min-w-0">
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveEdit();
+                if (e.key === "Escape") handleCancelEdit();
+              }}
+              className="flex-1 bg-zinc-800 text-white text-sm rounded-xl px-3 py-2 outline-none border border-zinc-600 focus:border-zinc-500"
+            />
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveEdit}>
+              <Check className="h-4 w-4 text-green-500" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCancelEdit}>
+              <X className="h-4 w-4 text-zinc-400" />
+            </Button>
+          </div>
+        ) : (
+          <div>
+            {message.content && !isGifUrl(message.content) && (
+              <div className="inline-block bg-zinc-800/80 rounded-2xl px-4 py-2.5">
+                <p className="text-[15px] text-zinc-100 leading-relaxed break-words">
+                  {renderContent(message.content)}
+                </p>
+              </div>
+            )}
+            {message.content && isGifUrl(message.content) && (
+              <div>{renderContent(message.content)}</div>
+            )}
+            {renderAttachments(message.attachments)}
+          </div>
+        )}
+
+        {/* Reactions sit under the liked message; add-reaction joins the row */}
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-1.5",
+            hasReactions ? "mt-1.5" : "mt-0.5"
+          )}
+        >
+          {Object.entries(reactionGroups).map(([emoji, data]) => (
+            <Popover key={emoji}>
               <PopoverTrigger asChild>
-                <button className="flex items-center justify-center h-7 w-7 rounded-full bg-zinc-800/60 hover:bg-zinc-700 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100">
-                  <Smile className="h-3.5 w-3.5 text-zinc-400" />
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition-all duration-150 active:scale-125 hover:scale-110",
+                    data.hasReacted
+                      ? "bg-blue-500/20 border border-blue-500/40"
+                      : "bg-zinc-800 hover:bg-zinc-700 border border-transparent"
+                  )}
+                >
+                  <span className="transition-transform duration-150">{emoji}</span>
+                  <span className="text-white font-medium text-xs">{data.count}</span>
                 </button>
               </PopoverTrigger>
-              <PopoverContent 
-                side="top" 
-                className="w-auto p-2 bg-zinc-900 border-zinc-700"
+              <PopoverContent
+                side="top"
+                align="start"
+                sideOffset={8}
+                className="w-72 border-zinc-700/80 bg-transparent p-0 shadow-none"
               >
-                <div className="flex gap-1">
-                  {QUICK_REACTIONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => onToggleReaction(message.id, emoji)}
-                      className="text-xl hover:scale-125 transition-transform p-1"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+                <div className="relative overflow-hidden rounded-[24px] border border-zinc-700/80 bg-zinc-950/95 p-3 text-zinc-100 shadow-2xl backdrop-blur-md">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{emoji} Reactions</p>
+                        <p className="text-xs text-zinc-400">
+                          {data.count} {data.count === 1 ? "person" : "people"}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className={cn(
+                          "h-8 rounded-full px-3 text-xs",
+                          data.hasReacted
+                            ? "bg-blue-500/15 text-blue-200 hover:bg-blue-500/25"
+                            : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                        )}
+                        onClick={() => onToggleReaction(message.id, emoji)}
+                      >
+                        {data.hasReacted ? "Remove" : "Add mine"}
+                      </Button>
+                    </div>
+                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                      {data.reactors
+                        .slice()
+                        .sort((a, b) => {
+                          if (a.user_id === currentUserId) return -1;
+                          if (b.user_id === currentUserId) return 1;
+                          return getDisplayName(a.profiles?.full_name).localeCompare(
+                            getDisplayName(b.profiles?.full_name)
+                          );
+                        })
+                        .map((reaction) => (
+                          <div
+                            key={reaction.id}
+                            className="flex items-center gap-3 rounded-2xl bg-zinc-900/80 px-3 py-2"
+                          >
+                            <Avatar className="h-8 w-8 flex-shrink-0">
+                              <AvatarImage src={reaction.profiles?.avatar_url || undefined} />
+                              <AvatarFallback className="bg-zinc-700 text-[11px] font-medium text-zinc-300">
+                                {getInitials(reaction.profiles?.full_name ?? null)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-zinc-100">
+                                {reaction.user_id === currentUserId
+                                  ? "You"
+                                  : getDisplayName(reaction.profiles?.full_name)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 </div>
               </PopoverContent>
             </Popover>
-          )}
-        </div>
+          ))}
 
-        {/* Message content column */}
-        <div className="flex-1 min-w-0">
-          {/* Message content or edit input */}
-          {isEditing ? (
-            <div className="flex items-center gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveEdit();
-                  if (e.key === "Escape") handleCancelEdit();
-                }}
-                className="flex-1 bg-zinc-800 text-white text-sm rounded-xl px-3 py-2 outline-none border border-zinc-600 focus:border-zinc-500"
-              />
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveEdit}>
-                <Check className="h-4 w-4 text-green-500" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleCancelEdit}>
-                <X className="h-4 w-4 text-zinc-400" />
-              </Button>
-            </div>
-          ) : (
-            <div>
-              {message.content && !isGifUrl(message.content) && (
-                <div className="inline-block bg-zinc-800/80 rounded-2xl px-4 py-2.5">
-                  <p className="text-[15px] text-zinc-100 leading-relaxed break-words">
-                    {renderContent(message.content)}
-                  </p>
-                </div>
-              )}
-              {message.content && isGifUrl(message.content) && (
-                <div>{renderContent(message.content)}</div>
-              )}
-              {renderAttachments(message.attachments)}
-            </div>
-          )}
+          <Popover open={showQuickReactions} onOpenChange={setShowQuickReactions}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Add reaction"
+                className={cn(
+                  "flex items-center justify-center h-7 w-7 rounded-full bg-zinc-800/60 hover:bg-zinc-700 transition-colors opacity-70 active:opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                  !hasReactions && "md:h-0 md:w-0 md:overflow-hidden md:group-hover:h-7 md:group-hover:w-7"
+                )}
+              >
+                <Smile className="h-3.5 w-3.5 text-zinc-400" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              className="w-auto p-2 bg-zinc-900 border-zinc-700"
+            >
+              <div className="flex gap-1">
+                {QUICK_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      onToggleReaction(message.id, emoji);
+                      setShowQuickReactions(false);
+                    }}
+                    className="text-xl hover:scale-125 transition-transform p-1"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

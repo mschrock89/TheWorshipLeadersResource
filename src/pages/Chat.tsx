@@ -69,8 +69,9 @@ function ChatContent() {
 
   const { markAsRead, setViewingChat, getUnreadForCampusMinistry } = useUnreadMessages();
   const { lastReadAt } = useLastReadAt(selectedCampusId, selectedMinistryType);
-  const keyboardHeight = useKeyboardOffset();
+  const { height: keyboardHeight, isOpen: isKeyboardOpen, visualHeight, translateY } = useKeyboardOffset();
   const { data: userProfile } = useProfile(user?.id);
+  const prevKeyboardOpenRef = useRef(false);
   
   // Get user's ministries for the selected campus
   const { data: userMinistries, isLoading: ministriesLoading } = useUserMinistriesForCampus(
@@ -349,6 +350,22 @@ function ChatContent() {
     requestAnimationFrame(() => scrollToBottom("smooth"));
   }, [sendMessage, scrollToBottom]);
 
+  // When the keyboard opens, keep the latest messages visible if we were near bottom.
+  useEffect(() => {
+    if (isKeyboardOpen && !prevKeyboardOpenRef.current && isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        scrollToBottom("auto");
+        ensureLastMessageFullyVisible("auto");
+      });
+    }
+    prevKeyboardOpenRef.current = isKeyboardOpen;
+  }, [isKeyboardOpen, scrollToBottom, ensureLastMessageFullyVisible]);
+
+  const closedChatHeight = 'calc(100dvh - (56px + env(safe-area-inset-top, 0px)))';
+  const chatHeightStyle = isKeyboardOpen && visualHeight > 0
+    ? `calc(${visualHeight}px - 56px - env(safe-area-inset-top, 0px))`
+    : closedChatHeight;
+
   if (authLoading || isCampusDataLoading) {
     return (
       <div className="flex h-[calc(100dvh-(56px+env(safe-area-inset-top,0px)))] items-center justify-center bg-black">
@@ -373,16 +390,22 @@ function ChatContent() {
     );
   }
 
-  // Group messages by date
+  // Group messages by date / sender / time window (GroupMe-style clustering)
+  const MESSAGE_GROUP_WINDOW_MS = 3 * 60 * 1000;
   const getDateKey = (dateString: string) => format(new Date(dateString), "yyyy-MM-dd");
 
   const shouldShowHeader = (index: number) => {
     if (index === 0) return true;
     const currentMessage = messages[index];
     const previousMessage = messages[index - 1];
+    if (currentMessage.user_id !== previousMessage.user_id) return true;
     const currentDate = getDateKey(currentMessage.created_at);
     const previousDate = getDateKey(previousMessage.created_at);
-    return currentMessage.user_id !== previousMessage.user_id || currentDate !== previousDate;
+    if (currentDate !== previousDate) return true;
+    const gap =
+      new Date(currentMessage.created_at).getTime() -
+      new Date(previousMessage.created_at).getTime();
+    return gap > MESSAGE_GROUP_WINDOW_MS;
   };
 
   const shouldShowDateSeparator = (index: number) => {
@@ -403,7 +426,8 @@ function ChatContent() {
     <div 
       className="flex flex-col bg-black overflow-hidden max-w-full"
       style={{
-        height: 'calc(100dvh - (56px + env(safe-area-inset-top, 0px)))',
+        height: chatHeightStyle,
+        transform: translateY > 0 ? `translateY(${translateY}px)` : undefined,
       }}
     >
       {/* Chat Header with Ministry Tabs */}
@@ -450,9 +474,9 @@ function ChatContent() {
               <p className="text-sm">Start the conversation!</p>
             </div>
           ) : (
-            <div className="pb-4">
+            <div className="pb-3">
               {/* Full history is always available — older pages load on pull-to-refresh */}
-              <div className="py-3 text-center text-xs text-zinc-600">
+              <div className="py-2 text-center text-xs text-zinc-600">
                 {hasOlder
                   ? "Pull down to load earlier messages"
                   : "This is the beginning of the conversation"}
@@ -483,9 +507,6 @@ function ChatContent() {
           )}
         </PullToRefresh>
         
-        {/* Typing indicator */}
-        <TypingIndicator typingUsers={typingUsers} />
-        
         {/* Floating "Jump to last read" button */}
         {firstUnreadIndex > 0 && 
          hasScrolledToLastRead && 
@@ -504,11 +525,11 @@ function ChatContent() {
           </button>
         )}
         
-        {/* Scroll to bottom button */}
+        {/* Scroll to bottom — sits in the message pane so it never overlaps the composer */}
         {showScrollButton && messages.length > 0 && (
           <button
             onClick={() => pullToRefreshRef.current?.scrollToBottom()}
-            className="absolute bottom-4 right-4 flex items-center gap-2 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg hover:bg-zinc-700 transition-colors px-3 py-2"
+            className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg hover:bg-zinc-700 transition-colors px-3 py-2 z-10"
           >
             {newMessageCount > 0 && (
               <span className="flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-bold animate-in fade-in zoom-in duration-200">
@@ -520,11 +541,12 @@ function ChatContent() {
         )}
       </div>
 
-      {/* Input area */}
-      <div className="sticky bottom-0 flex-shrink-0">
+      {/* Typing + composer — typing sits above input, outside the scroll pane */}
+      <div className="flex-shrink-0 relative">
         {keyboardHeight === 0 && (
           <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-black to-transparent pointer-events-none" />
         )}
+        <TypingIndicator typingUsers={typingUsers} />
         <div className={`bg-black ${keyboardHeight > 0 ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
           <MessageInput
             onSendMessage={handleSendMessage}
