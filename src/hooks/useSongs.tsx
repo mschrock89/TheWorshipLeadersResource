@@ -194,6 +194,8 @@ export function useSongsWithStats() {
 
       // Merge in app-native published setlist usage (draft_sets + draft_set_songs),
       // since get_songs_with_stats() only includes PCO service_plans/plan_songs.
+      // RPC already returns all-time aggregates but only recent usages rows (24 months).
+      // Preserve those aggregates; only adjust them when draft usages add new history.
       const { data: publishedDraftSongRows, error: publishedDraftSongsError } = await supabase
         .from("draft_set_songs")
         .select(`
@@ -250,6 +252,10 @@ export function useSongsWithStats() {
       };
 
       const todayStr = formatDateForDB(new Date());
+      const usageWindowStart = new Date();
+      usageWindowStart.setMonth(usageWindowStart.getMonth() - 24);
+      const usageWindowStartStr = formatDateForDB(usageWindowStart);
+
       const bySongId = new Map<string, SongWithStats>();
       songsWithStats.forEach((song) => bySongId.set(song.id, song));
 
@@ -266,41 +272,45 @@ export function useSongsWithStats() {
         const targetSong = bySongId.get(songId);
         if (!targetSong) continue;
 
-        targetSong.usages.push({
-          plan_date: ds.plan_date,
-          campus_id: ds.campus_id || null,
-          service_type_name: ministryToServiceTypeName(ds.ministry_type),
-          song_key: ((row as any).song_key as string | null) || null,
-        });
-      }
-
-      // Deduplicate merged usages to avoid double-counting if a plan exists in both sources.
-      for (const song of songsWithStats) {
-        const unique = new Map<string, SongUsageData>();
-        for (const usage of song.usages || []) {
+        const usageKey = [
+          ds.plan_date,
+          ds.campus_id || "",
+          ministryToServiceTypeName(ds.ministry_type).trim().toLowerCase(),
+          ((row as any).song_key as string | null) || "",
+        ].join("|");
+        const alreadyPresent = (targetSong.usages || []).some((usage) => {
           const key = [
             usage.plan_date || "",
             usage.campus_id || "",
             (usage.service_type_name || "").trim().toLowerCase(),
             usage.song_key || "",
           ].join("|");
-          if (!unique.has(key)) unique.set(key, usage);
+          return key === usageKey;
+        });
+        if (alreadyPresent) continue;
+
+        // Keep all-time aggregates accurate for draft history outside the usages window.
+        if (ds.plan_date < todayStr) {
+          targetSong.usage_count += 1;
+          if (!targetSong.first_used || ds.plan_date < targetSong.first_used) {
+            targetSong.first_used = ds.plan_date;
+          }
+          if (!targetSong.last_used || ds.plan_date > targetSong.last_used) {
+            targetSong.last_used = ds.plan_date;
+          }
+        } else {
+          targetSong.upcoming_uses += 1;
         }
-        song.usages = Array.from(unique.values());
-      }
 
-      // Recompute usage_count / last_used / upcoming_uses from merged usages.
-      for (const song of songsWithStats) {
-        const pastUsages = song.usages.filter((u) => u.plan_date < todayStr);
-        const upcomingUsages = song.usages.filter((u) => u.plan_date >= todayStr);
-        const sortedPastDates = pastUsages
-          .map((u) => u.plan_date)
-          .sort((a, b) => a.localeCompare(b));
-
-        song.usage_count = pastUsages.length;
-        song.upcoming_uses = upcomingUsages.length;
-        song.first_used = sortedPastDates[0] || null;
-        song.last_used = sortedPastDates.length ? sortedPastDates[sortedPastDates.length - 1] : null;
+        // Only keep recent+upcoming rows in the usages array (matches RPC window).
+        if (ds.plan_date >= usageWindowStartStr) {
+          targetSong.usages.push({
+            plan_date: ds.plan_date,
+            campus_id: ds.campus_id || null,
+            service_type_name: ministryToServiceTypeName(ds.ministry_type),
+            song_key: ((row as any).song_key as string | null) || null,
+          });
+        }
       }
 
       return songsWithStats;
@@ -370,7 +380,7 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
           .gte("plan_date", today)
           .in("status", ["draft", "pending_approval", "published"])
           .order("plan_date", { ascending: true })
-          .limit(10000);
+          .limit(500);
 
         if (error) throw error;
 
@@ -393,7 +403,7 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
       
       let query = supabase
         .from("service_plans")
-        .select("*")
+        .select("id, pco_plan_id, campus_id, service_type_name, plan_date, plan_title, synced_at, created_at")
         .order("plan_date", { ascending });
 
       // If "all" is specified, don't filter by date at all
@@ -405,9 +415,8 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
         }
       }
 
-      // Fetch all plans - override default 1000 limit
-      // We need all plans for the Plan History pagination to work correctly
-      const { data, error } = await query.limit(10000);
+      // Cap history pulls — UI consumers should prefer useServicePlansPaged.
+      const { data, error } = await query.limit(options?.all ? 2000 : 500);
       if (error) throw error;
       return data as ServicePlan[];
     },
@@ -477,10 +486,18 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
   ];
 
   // ----- Fetch PCO plans (on or before cutoff date) -----
+  // Bound how many historical rows we pull for the requested page instead of
+  // downloading the entire plan history and slicing client-side.
+  const fetchLimit = Math.max(options.pageSize * options.page, options.pageSize);
+
   let pcoQuery = supabase
     .from("service_plans")
-    .select("*", { count: "exact" })
-    .lte("plan_date", PCO_CUTOFF_DATE);
+    .select("id, pco_plan_id, campus_id, service_type_name, plan_date, plan_title, synced_at, created_at", {
+      count: "exact",
+    })
+    .lte("plan_date", PCO_CUTOFF_DATE)
+    .order("plan_date", { ascending })
+    .limit(fetchLimit);
 
   if (options.campusId) {
     pcoQuery = pcoQuery.eq("campus_id", options.campusId);
@@ -516,7 +533,9 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
       campuses(name)
     `, { count: "exact" })
     .gt("plan_date", PCO_CUTOFF_DATE)
-    .eq("status", "published");
+    .eq("status", "published")
+    .order("plan_date", { ascending })
+    .limit(fetchLimit);
 
   if (options.campusId) {
     draftQuery = draftQuery.eq("campus_id", options.campusId);
@@ -563,9 +582,16 @@ async function fetchServicePlansPaged(options: ServicePlansPagedOptions) {
   const to = from + options.pageSize;
   const paginatedPlans = allPlans.slice(from, to);
 
+  // Prefer PostgREST counts so pagination UI still knows the full history size
+  // even though each request only downloads enough rows for the current page window.
+  const estimatedTotal = Math.max(
+    (pcoResult.count ?? 0) + (draftResult.count ?? draftPlans.length),
+    allPlans.length,
+  );
+
   return {
     plans: paginatedPlans,
-    total: allPlans.length,
+    total: estimatedTotal,
   };
 }
 

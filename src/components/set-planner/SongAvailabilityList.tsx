@@ -169,7 +169,7 @@ export function SongAvailabilityList({
   ];
 
   return (
-    <div className="flex flex-col h-full min-w-0">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       {/* Search */}
       <div className="relative mb-3">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -220,7 +220,7 @@ export function SongAvailabilityList({
       </div>
 
       {/* Song list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1.5 p-1 pb-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">

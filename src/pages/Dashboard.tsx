@@ -135,8 +135,8 @@ export default function Dashboard() {
     {
       title: isStudentApp ? "Wednesday Rundown" : "Weekend Rundown",
       description: isStudentApp
-        ? "Capture post-Wednesday notes, flag what went sideways, and log future planning cues."
-        : "Capture post-service notes, flag what went sideways, and log future planning cues.",
+        ? "Capture post-Wednesday notes, flag what went sideways, and browse past rundowns."
+        : "Capture post-service notes, flag what went sideways, and browse past rundowns.",
       to: "/weekend-rundown",
       icon: ClipboardList,
       actionLabel: isStudentApp ? "Open Wednesday Rundown" : "Open Weekend Rundown",

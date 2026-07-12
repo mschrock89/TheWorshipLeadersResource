@@ -5,6 +5,7 @@ import {
   FileCheck,
   FolderOpen,
   Gamepad2,
+  History,
   LayoutDashboard,
   Link2,
   LogIn,
@@ -269,6 +270,14 @@ export default function Home() {
                       <Link to="/weekend-rundown" className="flex items-center gap-2">
                         <ClipboardList className="h-4 w-4" />
                         {isStudentApp ? "Wednesday Rundown" : "Weekend Rundown"}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && !isStudentBase && canOpenWeekendRundown && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/weekend-rundown/history" className="flex items-center gap-2">
+                        <History className="h-4 w-4" />
+                        {isStudentApp ? "Past Wednesday Rundowns" : "Past Weekend Rundowns"}
                       </Link>
                     </DropdownMenuItem>
                   )}

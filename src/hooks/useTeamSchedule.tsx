@@ -107,13 +107,19 @@ export function useTeamSchedule(
   rotationPeriod?: string,
   campusId?: string | null,
   resourceAppKeys?: readonly string[],
+  options?: {
+    startDate?: string;
+    endDate?: string;
+  },
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
   const scopedResourceAppKeys =
     resourceAppKeys && resourceAppKeys.length > 0 ? Array.from(new Set(resourceAppKeys)) : [resourceAppKey];
+  const startDate = options?.startDate;
+  const endDate = options?.endDate;
 
   return useQuery({
-    queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(",")],
+    queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(","), startDate, endDate],
     queryFn: async () => {
       let query = supabase
         .from("team_schedule")
@@ -123,6 +129,14 @@ export function useTeamSchedule(
       
       if (rotationPeriod) {
         query = query.eq("rotation_period", rotationPeriod);
+      }
+
+      if (startDate) {
+        query = query.gte("schedule_date", startDate);
+      }
+
+      if (endDate) {
+        query = query.lte("schedule_date", endDate);
       }
       
       // If campusId is provided, get campus-specific OR shared (null) entries

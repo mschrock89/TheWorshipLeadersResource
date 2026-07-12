@@ -24,7 +24,6 @@ import { useSongAvailability, useSaveDraftSet, useExistingSet, usePublishedSetli
 import { useScheduledVocalists } from "@/hooks/useScheduledVocalists";
 import { useAddCustomServiceAssignment, useCustomServiceAssignments, useCustomServiceCampusMembers, useCustomServiceOccurrences, useRemoveCustomServiceAssignment } from "@/hooks/useCustomServices";
 import { useWeekendRundownGoodFitHighlights, useScheduledVocalistRundownNotes } from "@/hooks/useWeekendRundown";
-import { VocalistRundownNotesDialog } from "@/components/set-planner/VocalistRundownNotesDialog";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole, useUserRoles } from "@/hooks/useUserRoles";
@@ -723,15 +722,6 @@ export default function SetPlanner() {
         name: vocalist.name,
       })),
     );
-  const vocalistNotesOpenKey = useMemo(
-    () =>
-      [
-        effectiveCampusId || "none",
-        format(selectedDate, "yyyy-MM-dd"),
-        effectiveVocalists.map((vocalist) => vocalist.userId).sort().join(","),
-      ].join(":"),
-    [effectiveCampusId, effectiveVocalists, selectedDate],
-  );
 
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -874,7 +864,7 @@ export default function SetPlanner() {
 
   return (
     <>
-      <div className="space-y-4 overflow-x-hidden">
+      <div className="space-y-4">
         {/* Breadcrumb Navigation */}
         <Breadcrumb>
           <BreadcrumbList>
@@ -1215,18 +1205,7 @@ export default function SetPlanner() {
 
         {/* Team Roster - full width */}
         {!isPrayerNightMinistry && (
-          <div className="space-y-3">
-            {(vocalistRundownNotes.length > 0 || vocalistRundownNotesLoading) && (
-              <div className="flex justify-end">
-                <VocalistRundownNotesDialog
-                  notes={vocalistRundownNotes}
-                  openKey={vocalistNotesOpenKey}
-                  isLoading={vocalistRundownNotesLoading}
-                />
-              </div>
-            )}
-            <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
-          </div>
+          <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
         )}
 
         {/* Custom Service Team Assignments */}
@@ -1516,10 +1495,10 @@ export default function SetPlanner() {
           referenceDate={selectedDate}
         />
 
-        {/* Main content: two panels */}
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:items-start">
-          {/* Left: Building set - sticks in view while scrolling the song list on desktop */}
-          <div className="lg:sticky lg:top-4 lg:z-10 lg:self-start lg:max-h-[calc(100dvh-2rem)] lg:h-[calc(100dvh-2rem)]">
+        {/* Main content: two panels. On desktop, lock both to the viewport height so
+            My Set stays visible while Song Library scrolls inside its own panel. */}
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:h-[calc(100dvh-5.5rem)] lg:min-h-[520px] lg:items-stretch">
+          <div className="min-h-0 lg:h-full lg:overflow-hidden">
             <BuildingSet
               songs={buildingSongs}
               onRemoveSong={handleRemoveSong}
@@ -1537,6 +1516,8 @@ export default function SetPlanner() {
               isPublished={existingSet?.status === 'published'}
               approvalStatus={approvalStatus}
               rejectionNotes={rejectionNotes}
+              vocalistRundownNotes={vocalistRundownNotes}
+              vocalistRundownNotesLoading={vocalistRundownNotesLoading}
               publishButton={
                 approvalStatus !== "pending_approval" ? (
                   <PublishSetlistDialog
@@ -1554,11 +1535,11 @@ export default function SetPlanner() {
           </div>
 
           {/* Right: Song browser */}
-          <Card className="flex flex-col min-w-0 min-h-[400px] lg:min-h-[500px]">
+          <Card className="flex flex-col min-w-0 min-h-[400px] lg:min-h-0 lg:h-full lg:overflow-hidden">
             <CardHeader className="pb-3 shrink-0">
               <CardTitle className="text-lg">Song Library</CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 min-w-0 pb-4 overflow-x-visible overflow-y-hidden">
+            <CardContent className="flex min-h-0 flex-1 flex-col min-w-0 pb-4 overflow-hidden">
               <SongAvailabilityList
                 availability={availability}
                 onAddSong={handleAddSong}

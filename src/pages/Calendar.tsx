@@ -379,6 +379,17 @@ function StandardCalendar() {
   } = useEventsForMonth(year, month);
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+  // Include adjacent-month spillover days shown in the calendar grid.
+  const scheduleRangeStart = (() => {
+    const d = new Date(year, month, 1);
+    d.setDate(d.getDate() - 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const scheduleRangeEnd = (() => {
+    const d = new Date(year, month + 1, 0);
+    d.setDate(d.getDate() + 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
   const {
     data: customServices = [],
   } = useCustomServiceOccurrences({
@@ -494,6 +505,10 @@ function StandardCalendar() {
     isStudentCampMinistryFilter
       ? ["students_hs", "students_ms", "worship"]
       : undefined,
+    {
+      startDate: scheduleRangeStart,
+      endDate: scheduleRangeEnd,
+    },
   );
   const {
     scheduledDates,

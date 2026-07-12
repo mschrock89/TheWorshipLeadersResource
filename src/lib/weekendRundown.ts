@@ -109,6 +109,46 @@ export function getWednesdayRundownTargetDate(now = new Date()) {
   return targetWednesday;
 }
 
+/** Past service dates available for catch-up rundowns, newest first. */
+export function getRundownDateOptions(isWednesdayRundown: boolean, weeksBack = 12, now = new Date()) {
+  const latest = isWednesdayRundown
+    ? getWednesdayRundownTargetDate(now)
+    : getWeekendRundownTargetSunday(now);
+
+  const options: Date[] = [];
+  for (let week = 0; week < weeksBack; week += 1) {
+    const date = new Date(latest);
+    date.setDate(latest.getDate() - week * 7);
+    date.setHours(0, 0, 0, 0);
+    options.push(date);
+  }
+  return options;
+}
+
+export function parseRundownDateParam(
+  value: string | null | undefined,
+  isWednesdayRundown: boolean,
+  now = new Date(),
+): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+  parsed.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const expectedDay = isWednesdayRundown ? 3 : 0;
+  if (parsed.getDay() !== expectedDay) return null;
+
+  const latest = isWednesdayRundown
+    ? getWednesdayRundownTargetDate(now)
+    : getWeekendRundownTargetSunday(now);
+  if (parsed > latest) return null;
+
+  return parsed;
+}
+
 export function getWeekendPlanDate(
   weekendSunday: Date,
   campus?: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null,

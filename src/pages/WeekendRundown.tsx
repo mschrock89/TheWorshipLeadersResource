@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BookOpenText, ClipboardList, MessageSquare, Music2, Sparkles } from "lucide-react";
+import { BookOpenText, ClipboardList, History, MessageSquare, Music2, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -23,14 +23,17 @@ import {
   canAccessWeekendRundown,
   canReviewWeekendSongs,
   clearWeekendRundownDraft,
+  getRundownDateOptions,
   getWednesdayRundownTargetDate,
   getWeekendRundownTargetSunday,
   loadWeekendRundownDraft,
+  parseRundownDateParam,
   saveWeekendRundownDraft,
   WEEKEND_RUNDOWN_STATUS_OPTIONS,
 } from "@/lib/weekendRundown";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { formatDateForDB } from "@/lib/utils";
 
 type SongNotesState = Record<string, string>;
 type VocalNotesState = Record<string, string>;
@@ -49,6 +52,7 @@ export default function WeekendRundown() {
   const { data: campuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const campusContext = useCampusSelectionOptional();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const roleNames = roles.map((role) => role.role);
   const isStudentApp = isCurrentStudentResourceApp();
@@ -57,12 +61,40 @@ export default function WeekendRundown() {
   const hasAccess = canAccessWeekendRundown(roleNames);
   const canReviewSongs = !isStudentApp && canReviewWeekendSongs(roleNames);
 
-  const initialWeekendDate = useMemo(
+  const rundownDateOptions = useMemo(
+    () => getRundownDateOptions(isStudentApp),
+    [isStudentApp],
+  );
+  const defaultWeekendDate = useMemo(
     () => (isStudentApp ? getWednesdayRundownTargetDate() : getWeekendRundownTargetSunday()),
     [isStudentApp],
   );
-  const [selectedWeekendDate] = useState<Date>(initialWeekendDate);
-  const weekendDateStr = format(selectedWeekendDate, "yyyy-MM-dd");
+
+  const [selectedWeekendDate, setSelectedWeekendDate] = useState<Date>(() => {
+    const fromQuery = parseRundownDateParam(searchParams.get("date"), isStudentApp);
+    return fromQuery || defaultWeekendDate;
+  });
+  const weekendDateStr = formatDateForDB(selectedWeekendDate);
+  const isCatchUpDate = weekendDateStr !== formatDateForDB(defaultWeekendDate);
+
+  useEffect(() => {
+    const fromQuery = parseRundownDateParam(searchParams.get("date"), isStudentApp);
+    if (!fromQuery) return;
+    if (formatDateForDB(fromQuery) === weekendDateStr) return;
+    setSelectedWeekendDate(fromQuery);
+  }, [isStudentApp, searchParams, weekendDateStr]);
+
+  const handleWeekendDateChange = useCallback((value: string) => {
+    const nextDate = parseRundownDateParam(value, isStudentApp) || defaultWeekendDate;
+    setSelectedWeekendDate(nextDate);
+    const nextParams = new URLSearchParams(searchParams);
+    if (formatDateForDB(nextDate) === formatDateForDB(defaultWeekendDate)) {
+      nextParams.delete("date");
+    } else {
+      nextParams.set("date", formatDateForDB(nextDate));
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [defaultWeekendDate, isStudentApp, searchParams, setSearchParams]);
 
   const accessibleCampusIds = useMemo(() => {
     if (roleNames.some((role) => role === "admin" || role === "network_worship_pastor" || role === "network_worship_leader")) {
@@ -216,14 +248,24 @@ export default function WeekendRundown() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-primary" />
-          <h1 className="font-display text-3xl font-semibold tracking-tight">{rundownName}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary" />
+            <h1 className="font-display text-3xl font-semibold tracking-tight">{rundownName}</h1>
+          </div>
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <Link to="/weekend-rundown/history">
+              <History className="h-4 w-4" />
+              Past {rundownName}s
+            </Link>
+          </Button>
         </div>
         <p className="text-muted-foreground">
           {isStudentApp
             ? "Wednesday night recap space for student ministry leadership."
             : "Sunday’s 1:45 PM recap space for worship, video, and production leadership."}
+          {" "}
+          Forgot one? Choose a past {isStudentApp ? "Wednesday" : "weekend"} below and add it.
         </p>
       </div>
 
@@ -232,6 +274,8 @@ export default function WeekendRundown() {
           <CardTitle className="flex flex-wrap items-center gap-2">
             <span>{selectedCampus?.name || "Select a campus"}</span>
             <Badge variant="outline">{format(selectedWeekendDate, "EEEE, MMM d")}</Badge>
+            {isCatchUpDate && <Badge variant="secondary">Catch-up</Badge>}
+            {existingRundown && <Badge variant="outline">Saved</Badge>}
           </CardTitle>
           <CardDescription>
             {isStudentApp
@@ -240,23 +284,51 @@ export default function WeekendRundown() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {availableCampuses.length > 1 && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {availableCampuses.length > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="weekend-rundown-campus">Campus</Label>
+                <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
+                  <SelectTrigger id="weekend-rundown-campus">
+                    <SelectValue placeholder="Select a campus" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCampuses.map((campus) => (
+                      <SelectItem key={campus.id} value={campus.id}>
+                        {campus.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="weekend-rundown-campus">Campus</Label>
-              <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
-                <SelectTrigger id="weekend-rundown-campus" className="w-full sm:max-w-xs">
-                  <SelectValue placeholder="Select a campus" />
+              <Label htmlFor="weekend-rundown-date">
+                {isStudentApp ? "Wednesday date" : "Weekend date"}
+              </Label>
+              <Select value={weekendDateStr} onValueChange={handleWeekendDateChange}>
+                <SelectTrigger id="weekend-rundown-date">
+                  <SelectValue placeholder="Select a date" />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableCampuses.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
+                  {rundownDateOptions.map((date) => {
+                    const value = formatDateForDB(date);
+                    const isCurrent = value === formatDateForDB(defaultWeekendDate);
+                    return (
+                      <SelectItem key={value} value={value}>
+                        {format(date, "EEEE, MMM d, yyyy")}
+                        {isCurrent ? " (current)" : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Pick a past {isStudentApp ? "Wednesday" : "Sunday"} if you missed submitting a rundown.
+              </p>
             </div>
-          )}
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
@@ -397,7 +469,11 @@ export default function WeekendRundown() {
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={!selectedCampus || saveWeekendRundown.isPending} className="gap-2">
               <Sparkles className="h-4 w-4" />
-              {saveWeekendRundown.isPending ? "Saving..." : `Save ${rundownName}`}
+              {saveWeekendRundown.isPending
+                ? "Saving..."
+                : existingRundown
+                  ? `Update ${rundownName}`
+                  : `Save ${rundownName}`}
             </Button>
           </div>
         </CardContent>

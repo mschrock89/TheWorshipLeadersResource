@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { parseLocalDate } from "@/lib/utils";
 
 export type TeamPosition = 
   | "vocalist"
@@ -315,14 +316,16 @@ export function useUpcomingBirthdays() {
       if (error) throw error;
       
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const upcoming = (data as { id: string; full_name: string | null; avatar_url: string | null; birthday: string }[])
         .map(profile => {
-          const bday = new Date(profile.birthday);
+          // Parse YYYY-MM-DD as local date to avoid UTC shifting the day back
+          const bday = parseLocalDate(profile.birthday);
           const thisYearBday = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
           if (thisYearBday < today) {
             thisYearBday.setFullYear(today.getFullYear() + 1);
           }
-          const daysUntil = Math.ceil((thisYearBday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const daysUntil = Math.round((thisYearBday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
           return { ...profile, daysUntil, nextDate: thisYearBday };
         })
         .filter(p => p.daysUntil <= 30)
@@ -346,15 +349,17 @@ export function useUpcomingAnniversaries() {
       if (error) throw error;
       
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const upcoming = (data as Profile[])
         .filter(profile => profile.anniversary) // Only profiles where anniversary is visible
         .map(profile => {
-          const anniv = new Date(profile.anniversary!);
+          // Parse YYYY-MM-DD as local date to avoid UTC shifting the day back
+          const anniv = parseLocalDate(profile.anniversary!);
           const thisYearAnniv = new Date(today.getFullYear(), anniv.getMonth(), anniv.getDate());
           if (thisYearAnniv < today) {
             thisYearAnniv.setFullYear(today.getFullYear() + 1);
           }
-          const daysUntil = Math.ceil((thisYearAnniv.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          const daysUntil = Math.round((thisYearAnniv.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
           const years = thisYearAnniv.getFullYear() - anniv.getFullYear();
           return { ...profile, daysUntil, nextDate: thisYearAnniv, years };
         })

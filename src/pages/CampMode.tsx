@@ -140,6 +140,12 @@ export default function CampMode() {
     undefined,
     selectedCampusId,
     activeCamp ? ["students_hs", "students_ms", "worship"] : undefined,
+    activeCamp
+      ? {
+          startDate: activeCamp.start_date,
+          endDate: activeCamp.end_date,
+        }
+      : undefined,
   );
   const campEvents = useMemo(
     () =>

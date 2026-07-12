@@ -20,6 +20,7 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
+import { Suspense } from "react";
 import { getRouterBasename } from "@/lib/constants";
 
 export type RouteDefinition = {
@@ -28,6 +29,14 @@ export type RouteDefinition = {
 };
 
 const queryClient = new QueryClient();
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center bg-background">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
 
 // Register service worker for push notifications
 if ("serviceWorker" in navigator) {
@@ -73,14 +82,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PublicPage({ children }: { children: ReactNode }) {
-  return <AnimatedPage>{children}</AnimatedPage>;
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <AnimatedPage>{children}</AnimatedPage>
+    </Suspense>
+  );
 }
 
 function ProtectedPage({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
       <ProtectedLayout>
-        <AnimatedPage>{children}</AnimatedPage>
+        <Suspense fallback={<RouteFallback />}>
+          <AnimatedPage>{children}</AnimatedPage>
+        </Suspense>
       </ProtectedLayout>
     </ProtectedRoute>
   );

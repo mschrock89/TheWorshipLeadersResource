@@ -46,11 +46,14 @@ export const PullToRefresh = forwardRef<PullToRefreshRef, PullToRefreshProps>(
 
     useImperativeHandle(ref, () => ({
       scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
-        if (containerRef.current) {
+        if (!containerRef.current) return;
+        if (behavior === "smooth") {
           containerRef.current.scrollTo({
             top: containerRef.current.scrollHeight,
-            behavior,
+            behavior: "smooth",
           });
+        } else {
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
         }
       },
     }));

@@ -458,45 +458,55 @@ export function useNotifications() {
     }
   }, [fetchNotifications, readIdsLoaded]);
 
-  // Subscribe to realtime changes for all notification sources
+  // Subscribe to realtime changes for all notification sources.
+  // Debounce refetches so bursts of org-wide writes don't stampede the client.
   useEffect(() => {
     if (!user || !readIdsLoaded) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        void fetchNotifications();
+      }, 1500);
+    };
 
     const channel = supabase
       .channel("notifications-all-changes")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "draft_sets" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "events" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "manual_team_schedule_notifications" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "admin_ping_recipients" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "admin_pings" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "swap_requests" },
-        () => fetchNotifications()
+        scheduleRefresh
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [user, readIdsLoaded, fetchNotifications]);

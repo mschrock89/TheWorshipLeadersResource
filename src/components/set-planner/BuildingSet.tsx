@@ -7,7 +7,9 @@ import { AvailabilityBadge } from "./AvailabilityBadge";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { KeySelector } from "./KeySelector";
 import { MultiVocalistSelector } from "./MultiVocalistSelector";
+import { VocalistRundownNotesPanel } from "./VocalistRundownNotesPanel";
 import { ScheduledVocalist } from "@/hooks/useScheduledVocalists";
+import { VocalistRundownNote } from "@/hooks/useWeekendRundown";
 import { GripVertical, X, Save, Music2, AlertTriangle, Check, Pencil, Clock, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -42,6 +44,8 @@ interface BuildingSetProps {
   isPublished?: boolean;
   approvalStatus?: ApprovalStatus;
   rejectionNotes?: string | null;
+  vocalistRundownNotes?: VocalistRundownNote[];
+  vocalistRundownNotesLoading?: boolean;
 }
 
 export function BuildingSet({
@@ -62,11 +66,14 @@ export function BuildingSet({
   isPublished,
   approvalStatus = "draft",
   rejectionNotes,
+  vocalistRundownNotes = [],
+  vocalistRundownNotesLoading = false,
 }: BuildingSetProps) {
   const isMobile = useIsMobile();
   const [isEditing, setIsEditing] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const prevIsSavingRef = useRef(isSaving);
+  const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Show "Saved!" confirmation when save completes
   useEffect(() => {
@@ -86,6 +93,14 @@ export function BuildingSet({
   useEffect(() => {
     onEditingChange?.(isEditing);
   }, [isEditing, onEditingChange]);
+
+  // Grow notes field to fit all content so nothing is clipped
+  useEffect(() => {
+    const textarea = notesTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 72)}px`;
+  }, [notes]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     if (isPublished && !isEditing) return;
@@ -145,9 +160,9 @@ export function BuildingSet({
   };
 
   return (
-    <Card className="flex flex-col h-full">
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-3">
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardHeader className="shrink-0 space-y-0 p-4 pb-2">
+        <div className="flex flex-col gap-2">
           {/* Top row: Title and status */}
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -220,8 +235,8 @@ export function BuildingSet({
 
         {/* Rejection notes banner */}
         {approvalStatus === "rejected" && rejectionNotes && (
-          <div className="flex items-start gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm mt-2">
-            <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-2 text-sm text-destructive">
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p className="font-medium">Revision requested</p>
               <p className="text-xs opacity-80">{rejectionNotes}</p>
@@ -230,8 +245,8 @@ export function BuildingSet({
         )}
 
         {hasConflicts && conflictingSongs.length > 0 && (
-          <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-600 text-sm mt-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 p-2 text-sm text-amber-600">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p className="font-medium">Rule violations detected</p>
               <p className="text-xs opacity-80">
@@ -243,8 +258,8 @@ export function BuildingSet({
         )}
 
         {isReadOnly && (
-          <div className="flex items-start gap-2 p-2 rounded-md border bg-muted/60 text-sm mt-2">
-            <Pencil className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+          <div className="mt-2 flex items-start gap-2 rounded-md border bg-muted/60 p-2 text-sm">
+            <Pencil className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <div>
               <p className="font-medium">Published set locked</p>
               <p className="text-xs text-muted-foreground">
@@ -255,118 +270,131 @@ export function BuildingSet({
         )}
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col gap-3 overflow-hidden">
-        <ScrollArea className="flex-1">
-          {songs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Music2 className="h-12 w-12 mb-3 opacity-30" />
-              <p className="text-sm">No songs added yet</p>
-              <p className="text-xs">Click + on songs to add them to your set</p>
-            </div>
-          ) : (
-            <div className="space-y-2 p-1 pb-2">
-              {songs.map((item, index) => (
-                <div
-                  key={item.song.id}
-                  draggable={!isReadOnly}
-                  onDragStart={e => handleDragStart(e, index)}
-                  onDragOver={handleDragOver}
-                  onDrop={e => handleDrop(e, index)}
-                  className={cn(
-                    'grid items-center gap-1.5 p-2 rounded-lg border bg-card',
-                    // Grid layout: grip | number | title | controls
-                    isMobile 
-                      ? 'grid-cols-[16px_24px_1fr_auto]' 
-                      : 'grid-cols-[16px_24px_1fr_auto]',
-                    item.status === 'too-recent' && 'border-amber-500/30 bg-amber-500/5',
-                    isReadOnly ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'
-                  )}
-                >
-                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                  
-                  <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-medium flex items-center justify-center">
-                    {index + 1}
-                  </span>
-
-                  {/* Song title - takes remaining space, truncates */}
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-medium text-sm truncate">{item.song.title}</p>
-                      {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
-                      {(item.isNewSong || item.isGloballyNew) && (
-                        <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
-                          NEW
-                        </Badge>
-                      )}
-                    </div>
-                    {/* Hide author on mobile to save space */}
-                    {!isMobile && item.song.author && (
-                      <p className="text-xs text-muted-foreground truncate">{item.song.author}</p>
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-3 pt-0">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-1.5 pb-1">
+            {songs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                <Music2 className="mb-2 h-10 w-10 opacity-30" />
+                <p className="text-sm">No songs added yet</p>
+                <p className="text-xs">Click + on songs to add them to your set</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {songs.map((item, index) => (
+                  <div
+                    key={item.song.id}
+                    draggable={!isReadOnly}
+                    onDragStart={e => handleDragStart(e, index)}
+                    onDragOver={handleDragOver}
+                    onDrop={e => handleDrop(e, index)}
+                    className={cn(
+                      'grid items-center gap-1.5 rounded-lg border bg-card p-1.5',
+                      // Grid layout: grip | number | title | controls
+                      isMobile 
+                        ? 'grid-cols-[16px_24px_1fr_auto]' 
+                        : 'grid-cols-[16px_24px_1fr_auto]',
+                      item.status === 'too-recent' && 'border-amber-500/30 bg-amber-500/5',
+                      isReadOnly ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'
                     )}
-                    <Input
-                      value={item.youtubeUrl || ""}
-                      onChange={(event) => onYoutubeLinkChange(item.song.id, event.target.value)}
-                      onClick={(event) => event.stopPropagation()}
-                      placeholder="Add YouTube link (optional)"
-                      className="h-8 text-xs"
-                      disabled={isReadOnly}
-                    />
-                  </div>
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                    
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                      {index + 1}
+                    </span>
 
-                  {/* Controls - auto width */}
-                  <div className="flex items-center gap-1">
-                    <KeySelector
-                      value={item.selectedKey || null}
-                      onChange={(key) => onKeyChange(item.song.id, key)}
-                      suggestedKey={item.suggestedKey}
-                      compact
-                      disabled={isReadOnly}
-                    />
-
-                    <MultiVocalistSelector
-                      value={item.selectedVocalistIds || (item.selectedVocalistId ? [item.selectedVocalistId] : [])}
-                      onChange={(vocalistIds) => onVocalistChange(item.song.id, vocalistIds)}
-                      vocalists={vocalists}
-                      disabled={isReadOnly}
-                    />
-
-                    {item.status === 'too-recent' && (
-                      <AvailabilityBadge
-                        status={item.status}
-                        weeksUntilAvailable={item.weeksUntilAvailable}
-                        compact
+                    {/* Song title - takes remaining space, truncates */}
+                    <div className="min-w-0 space-y-1">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-sm font-medium leading-tight">{item.song.title}</p>
+                          {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
+                          {(item.isNewSong || item.isGloballyNew) && (
+                            <Badge className="h-4 shrink-0 bg-ecc-teal px-1.5 py-0 text-[10px] text-white">
+                              NEW
+                            </Badge>
+                          )}
+                        </div>
+                        {/* Hide author on mobile to save space */}
+                        {!isMobile && item.song.author && (
+                          <p className="truncate text-xs leading-tight text-muted-foreground">{item.song.author}</p>
+                        )}
+                      </div>
+                      <Input
+                        value={item.youtubeUrl || ""}
+                        onChange={(event) => onYoutubeLinkChange(item.song.id, event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        placeholder="Add YouTube link (optional)"
+                        className="h-7 text-xs"
+                        disabled={isReadOnly}
                       />
-                    )}
+                    </div>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        "shrink-0 text-muted-foreground hover:text-destructive",
-                        isMobile ? "h-6 w-6" : "h-7 w-7"
+                    {/* Controls - auto width */}
+                    <div className="flex items-center gap-1">
+                      <KeySelector
+                        value={item.selectedKey || null}
+                        onChange={(key) => onKeyChange(item.song.id, key)}
+                        suggestedKey={item.suggestedKey}
+                        compact
+                        disabled={isReadOnly}
+                      />
+
+                      <MultiVocalistSelector
+                        value={item.selectedVocalistIds || (item.selectedVocalistId ? [item.selectedVocalistId] : [])}
+                        onChange={(vocalistIds) => onVocalistChange(item.song.id, vocalistIds)}
+                        vocalists={vocalists}
+                        disabled={isReadOnly}
+                      />
+
+                      {item.status === 'too-recent' && (
+                        <AvailabilityBadge
+                          status={item.status}
+                          weeksUntilAvailable={item.weeksUntilAvailable}
+                          compact
+                        />
                       )}
-                      onClick={() => onRemoveSong(item.song.id)}
-                      disabled={isReadOnly}
-                    >
-                      <X className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
 
-        {/* Notes */}
-        <div>
-          <Textarea
-            placeholder="Add notes about this set (optional)..."
-            value={notes}
-            onChange={e => onNotesChange(e.target.value)}
-            className="resize-none h-20 text-sm"
-            disabled={isReadOnly}
-          />
-        </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "shrink-0 text-muted-foreground hover:text-destructive",
+                          isMobile ? "h-6 w-6" : "h-7 w-7"
+                        )}
+                        onClick={() => onRemoveSong(item.song.id)}
+                        disabled={isReadOnly}
+                      >
+                        <X className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-lg border bg-card p-1.5">
+              <p className="mb-1 px-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Set notes
+              </p>
+              <Textarea
+                ref={notesTextareaRef}
+                placeholder="Add notes about this set (optional)..."
+                value={notes}
+                onChange={e => onNotesChange(e.target.value)}
+                rows={1}
+                className="min-h-[4.5rem] resize-none overflow-hidden border-0 bg-transparent p-1.5 text-sm shadow-none focus-visible:ring-0"
+                disabled={isReadOnly}
+              />
+            </div>
+
+            <VocalistRundownNotesPanel
+              notes={vocalistRundownNotes}
+              isLoading={vocalistRundownNotesLoading}
+            />
+          </div>
+        </ScrollArea>
       </CardContent>
     </Card>
   );

@@ -139,6 +139,7 @@ async function fetchFeedPosts(
   userId: string | undefined,
   campusId?: string | null,
   campInstanceId?: string | null,
+  limit = 40,
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
 
@@ -163,7 +164,8 @@ async function fetchFeedPosts(
         full_name
       )
     `)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(limit);
 
   if (campInstanceId) {
     postQuery = postQuery.eq("camp_instance_id", campInstanceId);
