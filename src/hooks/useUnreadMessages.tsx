@@ -74,20 +74,23 @@ export function useUnreadMessages(campInstanceId?: string | null) {
         countPromises.push((async () => {
           const lastReadAt = readStatusMap[`${campusId}:${ministryType}`];
 
+          // Match Chat page + RPC: no read cursor means no unread backlog.
+          // Counting all history here is what inflated badges to "99+".
+          if (!lastReadAt) {
+            return { campusId, ministryType, count: 0 };
+          }
+
           let query = supabase
             .from("chat_messages")
             .select("id", { count: "exact", head: true })
             .eq("campus_id", campusId)
             .eq("ministry_type", ministryType)
-            .neq("user_id", user.id);
+            .neq("user_id", user.id)
+            .gt("created_at", lastReadAt);
 
           query = campInstanceId
             ? query.eq("camp_instance_id", campInstanceId)
             : query.eq("resource_app_key", resourceAppKey).is("camp_instance_id", null);
-
-          if (lastReadAt) {
-            query = query.gt("created_at", lastReadAt);
-          }
 
           const { count } = await query;
           return { campusId, ministryType, count: count || 0 };
