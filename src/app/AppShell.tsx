@@ -21,7 +21,6 @@ import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
-import { useIosBottomShift } from "@/hooks/useIosBottomShift";
 
 export type RouteDefinition = {
   path: string;
@@ -110,7 +109,6 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 function AppFrame({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
-  useIosBottomShift();
 
   return (
     <div className="app-frame">

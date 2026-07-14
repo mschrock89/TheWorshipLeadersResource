@@ -3,18 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --ios-bottom-shift: 0px;
   --app-bottom-nav-bar-height: 3.5rem;
-  --app-bottom-safe-height: min(20px, env(safe-area-inset-bottom, 20px));
+  /* Cap at home-indicator size so a bad env() value can't inflate the bar. */
+  --app-bottom-safe-height: min(34px, env(safe-area-inset-bottom, 0px));
   --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height) + var(--ios-bottom-shift)
+    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height)
   );
 }
 
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
-    padding-bottom: min(20px, env(safe-area-inset-bottom, 20px));
+    padding-bottom: min(34px, env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -39,6 +39,10 @@
   padding-bottom: var(--app-bottom-nav-height);
 }
 
+/*
+ * Standard iOS tab bar: fixed to the visible bottom, icon row + home-indicator
+ * padding. No translateY / screen-height math — that was pushing icons off-screen.
+ */
 .app-bottom-nav {
   position: fixed;
   left: 0;
@@ -46,9 +50,9 @@
   bottom: 0;
   z-index: 50;
   box-sizing: border-box;
+  border-top: 1px solid hsl(var(--border));
   background-color: hsl(var(--card));
   padding-bottom: var(--app-bottom-safe-height);
-  transform: translate3d(0, var(--ios-bottom-shift, 0px), 0);
 }
 
 /* ECC Brand Style Guide - Version 3.1
