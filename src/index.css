@@ -55,6 +55,23 @@
   padding-bottom: var(--app-bottom-safe-height);
 }
 
+/*
+ * Cold-start skirt: on iOS standalone launch WebKit can briefly report a
+ * layout viewport shorter than the screen, floating the bar above the
+ * physical bottom over a black band. Paint card color below the bar so
+ * that band never shows; offscreen (invisible) once the viewport settles.
+ */
+.app-bottom-nav::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background-color: hsl(var(--card));
+  pointer-events: none;
+}
+
 /* ECC Brand Style Guide - Version 3.1
    The Experience Community Church
    Primary: ECC Blue #35B0E5 | Dark Blue #27749D | Window Teal #008DB3

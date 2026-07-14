@@ -22,6 +22,14 @@ import { useActiveCampMode } from "@/hooks/useCampMode";
 
 export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
 
+type NavItem = {
+  to: string;
+  icon: typeof MessageCircle;
+  label: string;
+  badge?: number;
+  tourId?: string;
+};
+
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
@@ -33,7 +41,7 @@ export function BottomNav() {
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
   const isStudentBase = isStudentBaseRole(roles.map((r) => r.role));
   const { data: activeCamp } = useActiveCampMode();
-  const campNavItem = isStudentApp && activeCamp
+  const campNavItem: NavItem[] = isStudentApp && activeCamp
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
 
@@ -41,7 +49,7 @@ export function BottomNav() {
     return null;
   }
 
-  const navItems = user
+  const navItems: NavItem[] = user
     ? isAuditionCandidate
       ? [
           { to: "/bible", icon: BookOpen, label: "Bible" },
