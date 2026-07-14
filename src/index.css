@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
+  --app-height: 100dvh;
   --app-bottom-nav-content-height: 3.5rem;
-  --app-bottom-gap: 0px;
   --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-content-height) + max(env(safe-area-inset-bottom, 0px), var(--app-bottom-gap))
+    var(--app-bottom-nav-content-height) + env(safe-area-inset-bottom, 0px)
   );
 }
 
@@ -18,16 +18,22 @@
 }
 
 /*
- * Full-screen shell. Bottom nav is fixed to bottom:0, then JS may set a
- * negative bottom (--app-bottom-gap) so the bar fills the iOS dead band
- * (the yellow-box gap under the icons).
+ * Full-screen flex shell. Bottom nav sits in normal flow at the bottom of the
+ * frame (not position:fixed) so it can't float above an iOS dead band.
+ * --app-height is synced from JS on iOS standalone cold starts.
+ *
+ * html/body use the nav card color so any leftover iOS letterbox under the
+ * shell matches the bar instead of showing as a black gap.
  */
 .app-frame {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: calc(-1 * var(--app-bottom-gap, 0px));
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  height: var(--app-height, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -39,18 +45,13 @@
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-}
-
-.app-frame-content--with-nav {
-  padding-bottom: var(--app-bottom-nav-height);
+  background: hsl(var(--background));
 }
 
 .app-bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   z-index: 50;
+  flex-shrink: 0;
   box-sizing: border-box;
   background-color: hsl(var(--card));
   padding-bottom: constant(safe-area-inset-bottom);
@@ -145,15 +146,19 @@
   html {
     min-width: 320px;
     height: 100%;
-    background: hsl(var(--background));
+    height: -webkit-fill-available;
+    background: hsl(var(--card));
     color-scheme: dark;
     text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    background: hsl(var(--card));
     min-width: 320px;
     height: 100%;
+    min-height: 100%;
+    min-height: -webkit-fill-available;
     margin: 0;
     overflow: hidden;
     font-feature-settings: "cv11", "ss01";
@@ -161,6 +166,8 @@
 
   #root {
     height: 100%;
+    min-height: 100%;
+    min-height: -webkit-fill-available;
     isolation: isolate;
   }
 
