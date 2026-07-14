@@ -18,8 +18,29 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useLayoutEffect, useRef } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return (
+    standaloneNavigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true
+  );
+}
+
+/** Tallest reliable height for the app shell on iOS (layout viewport can run short). */
+function getAppFrameHeight(): number {
+  const visualBottom = window.visualViewport
+    ? window.visualViewport.offsetTop + window.visualViewport.height
+    : window.innerHeight;
+  const candidates = [window.innerHeight, visualBottom, document.documentElement?.clientHeight || 0];
+  if (isStandaloneDisplay() && typeof window.screen?.height === "number") {
+    candidates.push(window.screen.height);
+  }
+  return Math.max(...candidates);
+}
 
 export type RouteDefinition = {
   path: string;
@@ -106,8 +127,63 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 }
 
 function AppFrame({ children }: { children: React.ReactNode }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+
+    let cancelled = false;
+    let rafId = 0;
+    const timeouts: number[] = [];
+
+    const sync = () => {
+      if (cancelled) return;
+      const height = Math.round(getAppFrameHeight());
+      el.style.height = `${height}px`;
+      el.style.top = "0px";
+      el.style.bottom = "auto";
+    };
+
+    const schedule = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(sync);
+    };
+
+    sync();
+    let frames = 0;
+    const tick = () => {
+      if (cancelled) return;
+      sync();
+      if (++frames < 60) rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    for (const ms of [0, 50, 100, 250, 500, 1000, 2000]) {
+      timeouts.push(window.setTimeout(sync, ms));
+    }
+
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("pageshow", schedule);
+    window.addEventListener("orientationchange", schedule);
+
+    return () => {
+      cancelled = true;
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      if (rafId) cancelAnimationFrame(rafId);
+      timeouts.forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
+
   return (
-    <div className="app-frame">
+    <div ref={frameRef} className="app-frame">
       <div className="app-frame-content">{children}</div>
       <BottomNav />
     </div>
