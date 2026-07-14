@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav, BOTTOM_NAV_HIDDEN_ROUTES } from "@/components/layout/BottomNav";
+import { cn } from "@/lib/cn";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
@@ -111,7 +112,9 @@ function AppFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-frame">
-      <div className="app-frame-content">{children}</div>
+      <div className={cn("app-frame-content", !hideNav && "app-frame-content--with-nav")}>
+        {children}
+      </div>
       {!hideNav && <BottomNav />}
     </div>
   );

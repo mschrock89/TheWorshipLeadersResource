@@ -3,23 +3,25 @@
 @tailwind utilities;
 
 :root {
+  /* Cap home-indicator inset — iOS PWAs can report an oversized safe-area and
+     stretch the tab bar into a huge empty block under the icons. */
+  --app-safe-area-bottom: min(34px, env(safe-area-inset-bottom, 0px));
   --app-bottom-nav-content-height: 3.5rem;
   --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-content-height) + env(safe-area-inset-bottom, 0px)
+    var(--app-bottom-nav-content-height) + var(--app-safe-area-bottom)
   );
 }
 
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--app-safe-area-bottom);
   }
 }
 
 /*
- * Full-screen flex shell pinned with inset:0 (no JS height). Bottom nav is in
- * normal flow so icons stay fully visible; html/body use the nav card color so
- * any iOS letterbox under the shell matches the bar.
+ * Full-screen shell. Bottom nav is fixed with a capped safe-area so the bar
+ * stays a normal tab height (icons + home indicator), not a tall empty slab.
  */
 .app-frame {
   position: fixed;
@@ -38,14 +40,19 @@
   background: hsl(var(--background));
 }
 
+.app-frame-content--with-nav {
+  padding-bottom: var(--app-bottom-nav-height);
+}
+
 .app-bottom-nav {
-  position: relative;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 50;
-  flex-shrink: 0;
   box-sizing: border-box;
   background-color: hsl(var(--card));
-  padding-bottom: constant(safe-area-inset-bottom);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--app-safe-area-bottom);
 }
 
 /* ECC Brand Style Guide - Version 3.1
@@ -136,19 +143,15 @@
   html {
     min-width: 320px;
     height: 100%;
-    height: -webkit-fill-available;
-    background: hsl(var(--card));
+    background: hsl(var(--background));
     color-scheme: dark;
     text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply text-foreground antialiased;
-    background: hsl(var(--card));
+    @apply bg-background text-foreground antialiased;
     min-width: 320px;
     height: 100%;
-    min-height: 100%;
-    min-height: -webkit-fill-available;
     margin: 0;
     overflow: hidden;
     font-feature-settings: "cv11", "ss01";
@@ -156,8 +159,6 @@
 
   #root {
     height: 100%;
-    min-height: 100%;
-    min-height: -webkit-fill-available;
     isolation: isolate;
   }
 
