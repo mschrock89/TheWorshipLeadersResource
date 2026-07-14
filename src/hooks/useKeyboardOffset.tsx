@@ -7,6 +7,17 @@ function isIOS(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+function hasEditableFocus(): boolean {
+  if (typeof document === "undefined") return false;
+  const activeElement = document.activeElement;
+  return (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement ||
+    activeElement instanceof HTMLElement && activeElement.isContentEditable
+  );
+}
+
 export interface KeyboardOffsetState {
   /** Approximate keyboard height in px (0 when closed) */
   height: number;
@@ -121,6 +132,7 @@ export function useVisualViewportOffset(): VisualViewportOffset {
   });
   const isIOSDevice = useMemo(() => isIOS(), []);
   const rafId = useRef<number>(0);
+  const hadKeyboardOpen = useRef(false);
 
   const updatePosition = useCallback(() => {
     if (!isIOSDevice) return;
@@ -129,15 +141,29 @@ export function useVisualViewportOffset(): VisualViewportOffset {
     if (!viewport) return;
 
     const keyboardOffset = window.innerHeight - viewport.height;
+    // Browser chrome and an early visualViewport measurement can also make the
+    // visual viewport look shorter during startup. Only classify that as a
+    // keyboard when an editable control actually owns focus.
+    const isKeyboardOpen = keyboardOffset > 100 && hasEditableFocus();
+    if (isKeyboardOpen) {
+      hadKeyboardOpen.current = true;
+    }
+
     // The stuck-pan bug always leaves fixed elements too high, so the
     // correction is only ever downward. iOS can report a slightly short
-    // visual viewport with the keyboard closed (e.g. home indicator
-    // accounting) — never lift the nav for that.
-    const translateY = Math.max(
-      0,
-      Math.round(viewport.offsetTop + viewport.height - window.innerHeight)
-    );
-    const isKeyboardOpen = keyboardOffset > 100;
+    // visual viewport with the keyboard closed (e.g. browser chrome or home
+    // indicator accounting). A correction is valid only after this mounted
+    // hook has observed a real keyboard-open state.
+    const translateY = !isKeyboardOpen && hadKeyboardOpen.current
+      ? Math.max(
+          0,
+          Math.round(viewport.offsetTop + viewport.height - window.innerHeight),
+        )
+      : 0;
+
+    if (!isKeyboardOpen && translateY === 0) {
+      hadKeyboardOpen.current = false;
+    }
 
     setState((prev) =>
       prev.translateY === translateY && prev.isKeyboardOpen === isKeyboardOpen

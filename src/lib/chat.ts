@@ -1,4 +1,4 @@
-import type { ResourceAppKey } from "@/lib/constants";
+import type { ResourceAppKey } from "@/lib/resourceApps";
 import { isStudentResourceAppKey } from "@/lib/resourceApp";
 
 export const WORSHIP_CHAT_MINISTRY_TYPES = [

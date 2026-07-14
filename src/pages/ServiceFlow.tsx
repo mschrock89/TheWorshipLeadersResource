@@ -2,7 +2,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import {
   Tooltip,
   TooltipContent,

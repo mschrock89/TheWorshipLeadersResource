@@ -43,7 +43,7 @@ import { ServiceFlowItem } from "./ServiceFlowItem";
 import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewData } from "./ServiceFlow";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 

@@ -440,7 +440,7 @@ export function useSaveDraftSet() {
 
       // Before saving, check for existing published sets to copy vocalist assignments
       // This preserves vocalist assignments when the user hasn't explicitly set them
-      let existingVocalistMap = new Map<string, string[]>();
+      const existingVocalistMap = new Map<string, string[]>();
       
       if ((effectiveCampusId || networkWide) && draftSet.plan_date && draftSet.ministry_type) {
         // Find any published set for the same date/campus/ministry

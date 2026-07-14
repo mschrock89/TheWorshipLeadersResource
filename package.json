@@ -18,7 +18,10 @@
     "preview:charts": "vite preview --config vite.charts.config.ts",
     "data:export": "node scripts/export-from-supabase.mjs",
     "data:import": "node scripts/import-to-supabase.mjs",
-    "data:import-file": "node scripts/import-from-json.mjs"
+    "data:import-file": "node scripts/import-from-json.mjs",
+    "test:profiles:create": "node scripts/test-profile-matrix.mjs create",
+    "test:profiles:verify": "node scripts/test-profile-matrix.mjs verify",
+    "test:profiles:cleanup": "node scripts/test-profile-matrix.mjs cleanup"
   },
   "dependencies": {
     "@giphy/js-fetch-api": "^5.7.0",

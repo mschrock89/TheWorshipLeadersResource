@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { useUpdateSongBpm } from "@/hooks/useSongs";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { Loader2 } from "lucide-react";
 
 interface EditableBpmCellProps {

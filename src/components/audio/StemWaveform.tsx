@@ -17,9 +17,10 @@ export function StemWaveform({ stemType, color, onSeek }: StemWaveformProps) {
 
   // Pre-compute peak data from the AudioBuffer
   const peakDataRef = useRef<Float32Array | null>(null);
+  const audioBuffer = audioBuffers.current[stemType];
 
   const computePeaks = useCallback(() => {
-    const buffer = audioBuffers.current[stemType];
+    const buffer = audioBuffer;
     if (!buffer) return;
 
     const channelData = buffer.getChannelData(0);
@@ -36,12 +37,12 @@ export function StemWaveform({ stemType, color, onSeek }: StemWaveformProps) {
       peaks[i] = max;
     }
     peakDataRef.current = peaks;
-  }, [stemType, audioBuffers]);
+  }, [audioBuffer]);
 
   // Re-compute peaks when buffer changes
   useEffect(() => {
     computePeaks();
-  }, [computePeaks, audioBuffers.current[stemType]]);
+  }, [computePeaks]);
 
   // Draw on every currentTime change
   useEffect(() => {

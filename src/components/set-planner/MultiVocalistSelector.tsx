@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Mic2, UserCircle2, ArrowRightLeft, Users } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,

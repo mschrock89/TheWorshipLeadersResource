@@ -54,7 +54,7 @@ export function AddItemDialog({
   const handleAdd = () => {
     let finalTitle = title;
     let songId = null;
-    let songKey = selectedKey;
+    const songKey = selectedKey;
 
     if (itemType === "song" && selectedSongId) {
       const song = songs?.find((s) => s.id === selectedSongId);

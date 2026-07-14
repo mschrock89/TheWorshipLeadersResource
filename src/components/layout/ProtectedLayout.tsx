@@ -1,6 +1,5 @@
-import { ReactNode, useState, useEffect, useMemo, useCallback } from "react";
+import { lazy, ReactNode, Suspense, useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { MainHeader } from "./MainHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useProfile } from "@/hooks/useProfiles";
@@ -8,6 +7,9 @@ import { CampusSelectionProvider } from "./CampusSelectionContext";
 import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 
 const CAMPUS_STORAGE_KEY = "em-selected-campus";
+const MainHeader = lazy(() =>
+  import("./MainHeader").then((module) => ({ default: module.MainHeader })),
+);
 
 interface ProtectedLayoutProps {
   children: ReactNode;
@@ -111,7 +113,9 @@ export function ProtectedLayout({
   return (
     <CampusSelectionProvider value={campusSelectionValue}>
       <div className="min-h-screen bg-background">
-        <MainHeader />
+        <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
+          <MainHeader />
+        </Suspense>
         <main className={isOnChatPage ? "" : `container px-4 py-6 ${hasActivePlayer ? "pb-36" : "pb-24"}`}>{children}</main>
       </div>
     </CampusSelectionProvider>

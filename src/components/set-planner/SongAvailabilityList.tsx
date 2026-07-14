@@ -7,7 +7,7 @@ import { AvailabilityBadge } from "./AvailabilityBadge";
 import { SongAvailability } from "@/hooks/useSetPlanner";
 import { Search, Plus, Music2, Clock, ArrowUp, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type SortDirection = 'recent-first' | 'oldest-first';
@@ -31,6 +31,7 @@ interface SongAvailabilityListProps {
 }
 
 type FilterType = 'all' | 'available' | 'new-songs' | 'deep-cuts';
+const SONG_BATCH_SIZE = 100;
 
 export function SongAvailabilityList({
   availability,
@@ -50,6 +51,7 @@ export function SongAvailabilityList({
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortDirection, setSortDirection] = useState<SortDirection>('recent-first');
+  const [visibleCount, setVisibleCount] = useState(SONG_BATCH_SIZE);
   const isMobile = useIsMobile();
 
   const getSunday = (date: Date): Date => {
@@ -139,6 +141,11 @@ export function SongAvailabilityList({
     });
   }, [availability, search, filter, sortDirection, publishedSetlistSongIds, overridesEnabled, unrestrictedScheduling, getWeeksSinceScheduled]);
 
+  const visibleSongs = useMemo(
+    () => filteredSongs.slice(0, visibleCount),
+    [filteredSongs, visibleCount],
+  );
+
   // Helper to calculate weeks since last played and get theme-aligned colors
   const getWeeksInfo = (lastUsedDate: string | null, isNewSong: boolean) => {
     if (!lastUsedDate) return { weeks: null, color: 'text-muted-foreground', bg: 'bg-muted/60', formattedDate: null };
@@ -176,7 +183,10 @@ export function SongAvailabilityList({
         <Input
           placeholder="Search songs..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => {
+            setSearch(e.target.value);
+            setVisibleCount(SONG_BATCH_SIZE);
+          }}
           className="pl-9"
         />
       </div>
@@ -188,7 +198,10 @@ export function SongAvailabilityList({
             key={key}
             variant={filter === key ? 'secondary' : 'ghost'}
             size="sm"
-            onClick={() => setFilter(key)}
+            onClick={() => {
+              setFilter(key);
+              setVisibleCount(SONG_BATCH_SIZE);
+            }}
             className="text-xs"
           >
             {label}
@@ -197,12 +210,16 @@ export function SongAvailabilityList({
       </div>
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          Showing <span className="font-medium text-foreground">{filteredSongs.length}</span> songs
+          Showing <span className="font-medium text-foreground">{Math.min(visibleCount, filteredSongs.length)}</span>
+          {filteredSongs.length > visibleCount ? ` of ${filteredSongs.length}` : ""} songs
         </span>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setSortDirection(prev => prev === 'recent-first' ? 'oldest-first' : 'recent-first')}
+          onClick={() => {
+            setSortDirection(prev => prev === 'recent-first' ? 'oldest-first' : 'recent-first');
+            setVisibleCount(SONG_BATCH_SIZE);
+          }}
           className="text-xs gap-1.5 h-7 px-2"
         >
           {sortDirection === 'recent-first' ? (
@@ -232,7 +249,8 @@ export function SongAvailabilityList({
               <p className="text-sm">No songs match your filters</p>
             </div>
           ) : (
-            filteredSongs.map(item => {
+            <>
+            {visibleSongs.map(item => {
               const isAdded = addedSongIds.has(item.song.id);
               const isScheduledOnActiveSet = publishedSetlistSongIds.has(item.song.id);
               const isTooRecentLocked = item.status === 'too-recent';
@@ -351,7 +369,18 @@ export function SongAvailabilityList({
                   </div>
                 </div>
               );
-            })
+            })}
+            {visibleSongs.length < filteredSongs.length ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 w-full"
+                onClick={() => setVisibleCount((current) => current + SONG_BATCH_SIZE)}
+              >
+                Show {Math.min(SONG_BATCH_SIZE, filteredSongs.length - visibleSongs.length)} more songs
+              </Button>
+            ) : null}
+            </>
           )}
         </div>
       </ScrollArea>

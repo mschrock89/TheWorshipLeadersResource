@@ -1,6 +1,6 @@
 import { Music4, Video, Megaphone, Mic2, Circle, UserRound } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 export type ServiceItem = {
   id: string;

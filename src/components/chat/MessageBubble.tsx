@@ -23,7 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { format } from "date-fns";
 import type { ChatMessage } from "@/hooks/useChatMessages";
 

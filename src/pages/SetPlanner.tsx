@@ -32,7 +32,7 @@ import { Database } from "@/integrations/supabase/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, addDays, subDays, nextWednesday, subMonths, addMonths } from "date-fns";
 import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -344,15 +344,17 @@ export default function SetPlanner() {
         setNotes('');
         setLastSavedSetId(null);
         setIsEditingPublishedSet(false);
+        setLoadedForSetScope(selectedSetScopeKey);
       }
-      setLoadedForSetScope(selectedSetScopeKey);
       return;
     }
     
     // Force reload if the selected set scope changed OR if we haven't loaded this set yet
+    // An existing draft is allowed to contain zero songs. Treating an empty
+    // draft as "not loaded" creates a render loop because each pass installs a
+    // fresh empty array and immediately schedules another pass.
     const needsReload = loadedForSetScope !== selectedSetScopeKey ||
-                        lastSavedSetId !== existingSet.id || 
-                        buildingSongs.length === 0;
+                        lastSavedSetId !== existingSet.id;
     
     if (!needsReload) {
       return;
@@ -410,7 +412,7 @@ export default function SetPlanner() {
     setLastSavedSetId(existingSet.id);
     setIsEditingPublishedSet(false);
     setLoadedForSetScope(selectedSetScopeKey);
-  }, [existingSet, existingSetLoading, availability, selectedSetScopeKey]);
+  }, [existingSet, existingSetLoading, availability, lastSavedSetId, loadedForSetScope, selectedSetScopeKey]);
 
   // Redirect volunteers away from this page
   const isVolunteer = userRole === "volunteer" || userRole === "member";
@@ -819,8 +821,10 @@ export default function SetPlanner() {
 
   useEffect(() => {
     if (!selectedCustomService) {
-      setCustomServiceMemberId("");
-      setCustomServiceRoles(["vocalist"]);
+      setCustomServiceMemberId((current) => (current ? "" : current));
+      setCustomServiceRoles((current) =>
+        current.length === 1 && current[0] === "vocalist" ? current : ["vocalist"],
+      );
       return;
     }
     if (customServiceCampusMembers.length > 0) {
@@ -893,7 +897,7 @@ export default function SetPlanner() {
         </Breadcrumb>
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <ListMusic className="h-6 w-6" />
@@ -999,7 +1003,7 @@ export default function SetPlanner() {
             </div>
 
             {/* Rules reminder */}
-            <div className="mt-3 text-xs text-muted-foreground flex gap-4">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>• Standard songs: 5 week minimum, 8 weeks recommended</span>
               <span>• New songs (&lt;3 uses): 4 week wait</span>
             </div>
@@ -1099,7 +1103,7 @@ export default function SetPlanner() {
                   </div>
                 ) : null}
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button asChild variant="outline" size="sm" className="gap-2">
                     <Link
                       to={buildBibleHref(
@@ -1140,8 +1144,9 @@ export default function SetPlanner() {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button
+                className="sm:w-auto"
                 onClick={handleSuggestSongs}
                 disabled={isTeachingLoading || isSuggestingSongs || !teachingWeek}
               >
@@ -1149,6 +1154,7 @@ export default function SetPlanner() {
               </Button>
               <Button
                 variant="outline"
+                className="sm:w-auto"
                 onClick={() => navigate("/admin-tools")}
               >
                 Manage Teaching Schedule
@@ -1535,7 +1541,7 @@ export default function SetPlanner() {
           </div>
 
           {/* Right: Song browser */}
-          <Card className="flex flex-col min-w-0 min-h-[400px] lg:min-h-0 lg:h-full lg:overflow-hidden">
+          <Card className="flex h-[70dvh] min-h-[400px] min-w-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
             <CardHeader className="pb-3 shrink-0">
               <CardTitle className="text-lg">Song Library</CardTitle>
             </CardHeader>

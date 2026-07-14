@@ -117,9 +117,12 @@ function ChatContent() {
   const isCampusDataLoading = isLeader ? allCampusesLoading : campusesLoading;
 
   // Admins see all campuses, others see only their assigned campuses
-  const availableCampuses = isLeader && allCampuses 
-    ? allCampuses.map(c => ({ campus_id: c.id, campuses: c }))
-    : userCampuses || [];
+  const availableCampuses = useMemo(
+    () => isLeader && allCampuses
+      ? allCampuses.map(c => ({ campus_id: c.id, campuses: c }))
+      : userCampuses || [],
+    [allCampuses, isLeader, userCampuses],
+  );
 
   const selectedCampus = useMemo(
     () => availableCampuses.find(uc => uc.campus_id === selectedCampusId),

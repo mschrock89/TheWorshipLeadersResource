@@ -23,7 +23,7 @@ const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "aif", "aiff", "ogg", "m4a", "fl
 function normalize(str: string): string {
   return str
     .toLowerCase()
-    .replace(/[_\-\.]/g, " ")  // treat separators as spaces
+    .replace(/[-_.]/g, " ")  // treat separators as spaces
     .replace(/\s+/g, " ")
     .trim();
 }

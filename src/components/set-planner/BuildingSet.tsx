@@ -12,7 +12,7 @@ import { ScheduledVocalist } from "@/hooks/useScheduledVocalists";
 import { VocalistRundownNote } from "@/hooks/useWeekendRundown";
 import { GripVertical, X, Save, Music2, AlertTriangle, Check, Pencil, Clock, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 

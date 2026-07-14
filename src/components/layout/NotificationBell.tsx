@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications, Notification } from "@/hooks/useNotifications";
 import { useToggleEventRsvp } from "@/hooks/useEvents";
-import { cn } from "@/lib/utils";
-import { parseLocalDate } from "@/lib/utils";
+import { cn } from "@/lib/cn";
+import { parseLocalDate } from "@/lib/dateUtils";
 import { formatDistanceToNow } from "date-fns";
 
 function NotificationIcon({ type }: { type: Notification["type"] }) {

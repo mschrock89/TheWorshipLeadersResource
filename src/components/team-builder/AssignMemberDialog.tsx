@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { Search, Users, AlertTriangle, Minus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import {
@@ -110,8 +110,10 @@ export function AssignMemberDialog({
     return `${formatted.slice(0, 3).join(", ")} +${formatted.length - 3} more`;
   };
 
-  const normalizePositionValue = (value: string) =>
-    value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalizePositionValue = useCallback(
+    (value: string) => value.trim().toLowerCase().replace(/[\s-]+/g, "_"),
+    [],
+  );
 
   const normalizeGenderValue = (value: string | null | undefined): "male" | "female" | null => {
     const normalized = String(value || "").trim().toLowerCase();
@@ -119,7 +121,7 @@ export function AssignMemberDialog({
   };
 
   // Check if a member's positions match the slot
-  const matchesPosition = (positions: string[], slotType: string): boolean => {
+  const matchesPosition = useCallback((positions: string[], slotType: string): boolean => {
     return positions.some(p => {
       const pLower = normalizePositionValue(p);
       // Vocalist slots
@@ -168,7 +170,7 @@ export function AssignMemberDialog({
       }
       return false;
     });
-  };
+  }, [normalizePositionValue]);
 
   // Filter and sort members
   const relevantMembers = useMemo(() => {
@@ -219,7 +221,7 @@ export function AssignMemberDialog({
         if (a.conflictDates.length > 0 && b.conflictDates.length === 0) return 1;
         return a.full_name.localeCompare(b.full_name);
       });
-  }, [members, search, slot, effectiveMinistryFilter, requiredGender, blackoutConflictDatesByMember]);
+  }, [members, search, slot, effectiveMinistryFilter, requiredGender, blackoutConflictDatesByMember, matchesPosition]);
 
   const eligibleMemberCount = relevantMembers.length;
 

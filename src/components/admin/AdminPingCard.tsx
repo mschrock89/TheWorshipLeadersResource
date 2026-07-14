@@ -18,7 +18,7 @@ import { useActiveCampMode } from "@/hooks/useCampMode";
 import { supabase } from "@/integrations/supabase/client";
 import { SET_PLANNER_MINISTRY_OPTIONS, STUDENT_RESOURCE_APP_KEYS, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { toast } from "sonner";
 
 type RecipientPreview = {

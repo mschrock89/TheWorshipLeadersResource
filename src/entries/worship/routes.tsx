@@ -24,6 +24,7 @@ const LifeGroups = lazy(() => import("@/pages/LifeGroups"));
 const Approvals = lazy(() => import("@/pages/Approvals"));
 const AdminTools = lazy(() => import("@/pages/AdminTools"));
 const PermissionsAdmin = lazy(() => import("@/pages/PermissionsAdmin"));
+const PushNotificationsAdmin = lazy(() => import("@/pages/PushNotificationsAdmin"));
 const Resources = lazy(() => import("@/pages/Resources"));
 const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
 const DrumTech = lazy(() => import("@/pages/DrumTech"));
@@ -74,6 +75,7 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/approvals", Approvals),
   route("/admin-tools", AdminTools),
   route("/permissions", PermissionsAdmin),
+  route("/push-notifications", PushNotificationsAdmin),
   route("/resources", Resources),
   route("/feed", Feed),
   route("/drum-tech", DrumTech),

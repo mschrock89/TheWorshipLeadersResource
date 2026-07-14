@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { StemType, STEM_LABELS, STEM_COLORS, STEM_ROUTING, STEM_IS_STEREO, Stem } from "@/hooks/useSetlistStems";
 import { useStemPlayer } from "@/hooks/useStemPlayer";
 import { StemWaveform } from "./StemWaveform";

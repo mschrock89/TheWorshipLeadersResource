@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Star, Heart, Zap, Diamond, Coffee, Mic, Guitar, Calendar, Volume2, Video, BookOpen, Palette, Church } from "lucide-react";
 import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTeamBuilder";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 import { BreakRequestDialog } from "./BreakRequestDialog";

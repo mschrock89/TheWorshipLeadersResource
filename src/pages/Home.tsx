@@ -5,13 +5,11 @@ import {
   FileCheck,
   FolderOpen,
   Gamepad2,
-  History,
   LayoutDashboard,
   Link2,
   LogIn,
   LogOut,
   Music,
-  Newspaper,
   Settings,
   Users,
   Wrench,
@@ -35,16 +33,15 @@ import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprov
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
-import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import {
   getResourceAppForLocation,
   STUDENT_RESOURCE_APP_KEYS,
   type ResourceAppKey,
-} from "@/lib/constants";
+} from "@/lib/resourceApps";
 import { isStudentResourceAppKey } from "@/lib/resourceApp";
 import worshipImage from "@/assets/worship-night.jpg";
 import emLogo from "@/assets/em-logo-transparent-new.png";
-import studentHomeImage from "@/assets/experience-students-home.png";
+import studentHomeImage from "@/assets/experience-students-home.jpg";
 
 type HomePageConfig = {
   eyebrow?: string;
@@ -117,7 +114,6 @@ export default function Home() {
   const roleNames = roles.map((role) => role.role);
   const isAuditionCandidate = isAuditionCandidateRole(roleNames);
   const isStudentBase = isStudentBaseRole(roleNames);
-  const canOpenWeekendRundown = canAccessWeekendRundown(roleNames);
 
   const getInitials = () => {
     if (profile?.full_name) {
@@ -221,12 +217,6 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem asChild>
-                    <Link to="/feed" className="flex items-center gap-2">
-                      <Newspaper className="h-4 w-4" />
-                      THE FEED
-                    </Link>
-                  </DropdownMenuItem>
                   {isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/bible" className="flex items-center gap-2">
@@ -262,22 +252,6 @@ export default function Home() {
                       <Link to="/drum-tech" className="flex items-center gap-2">
                         <Wrench className="h-4 w-4" />
                         Drum Tech
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {!isAuditionCandidate && !isStudentBase && canOpenWeekendRundown && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/weekend-rundown" className="flex items-center gap-2">
-                        <ClipboardList className="h-4 w-4" />
-                        {isStudentApp ? "Wednesday Rundown" : "Weekend Rundown"}
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {!isAuditionCandidate && !isStudentBase && canOpenWeekendRundown && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/weekend-rundown/history" className="flex items-center gap-2">
-                        <History className="h-4 w-4" />
-                        {isStudentApp ? "Past Wednesday Rundowns" : "Past Weekend Rundowns"}
                       </Link>
                     </DropdownMenuItem>
                   )}

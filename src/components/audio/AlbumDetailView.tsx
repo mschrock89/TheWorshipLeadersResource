@@ -18,7 +18,7 @@ import { EditAlbumDialog } from "./EditAlbumDialog";
 import { AudioUploadDialog } from "./AudioUploadDialog";
 import { BulkAudioUploadDialog } from "./BulkAudioUploadDialog";
 import { LinkTrackToSongDialog } from "./LinkTrackToSongDialog";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 interface AlbumDetailViewProps {
   album: AlbumWithTracks | null;

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Layers, Plus, Trash2, ChevronDown, ChevronUp, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +55,8 @@ function StemDAWInner({ session, playlistId, canManage, onUploadClick, setlistSo
   const updateMix = useUpdateStemMix();
   const updateMarkers = useUpdateStemSongMarkers();
   const globalPlayer = useAudioPlayerSafe();
+  const globalPlayerIsPlaying = globalPlayer?.isPlaying;
+  const pauseGlobalPlayer = globalPlayer?.pause;
 
   const stemsMap = Object.fromEntries(session.stems.map((s) => [s.stem_type, s])) as Partial<Record<StemType, Stem>>;
 
@@ -73,18 +75,18 @@ function StemDAWInner({ session, playlistId, canManage, onUploadClick, setlistSo
     }));
 
     loadStems(tracks);
-  }, [session.id, session.stems.length]);
+  }, [session.stems, loadStems]);
 
   // Pause global player when DAW starts playing
   const { isPlaying } = useStemPlayer();
   useEffect(() => {
-    if (isPlaying && globalPlayer?.isPlaying) {
-      globalPlayer.pause();
+    if (isPlaying && globalPlayerIsPlaying) {
+      pauseGlobalPlayer?.();
     }
-  }, [isPlaying]);
+  }, [isPlaying, globalPlayerIsPlaying, pauseGlobalPlayer]);
 
   // Cleanup on unmount
-  useEffect(() => () => stop(), []);
+  useEffect(() => () => stop(), [stop]);
 
   const handleDeleteStem = useCallback(
     (stem: Stem) => {

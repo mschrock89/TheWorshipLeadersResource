@@ -61,7 +61,7 @@ import {
   useUpdateFeedPost,
   useVoteFeedPoll,
 } from "@/hooks/useFeed";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 type FeedTab = "all" | FeedCategory;
 type ComposerMode = "post" | "poll";

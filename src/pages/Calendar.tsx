@@ -1029,9 +1029,12 @@ function StandardCalendar() {
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
   const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
   const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
-  const selectedDayScheduleEntries = selectedDate
-    ? getBaseScheduleEntriesForDate(formatDateForStorage(selectedDate))
-    : [];
+  const selectedDayScheduleEntries = useMemo(
+    () => selectedDate
+      ? getBaseScheduleEntriesForDate(formatDateForStorage(selectedDate))
+      : [],
+    [getBaseScheduleEntriesForDate, selectedDate],
+  );
   const headerFlowCampusId = campusFilter !== "network-wide" ? campusFilter : undefined;
   const { data: headerPlansWithSongs = [] } = useSongsForDate(
     selectedDateStr,

@@ -35,9 +35,9 @@ function extractTitleFromFilename(filename: string): string {
     // Remove file extension
     .replace(/\.(mp3|m4a|wav|flac|aac|ogg)$/i, "")
     // Remove track number prefixes like "01 - ", "1. ", "01_", "(1)", "[01]"
-    .replace(/^[\[\(]?\d{1,3}[\]\)]?[\s.\-_]+/, "")
+    .replace(/^(?:\[\d{1,3}\]|\(\d{1,3}\)|\d{1,3})[\s._-]+/, "")
     // Remove common suffixes like "(Official Audio)", "[Radio Edit]", etc.
-    .replace(/[\[\(](official|radio|edit|remix|live|acoustic|version|audio|video|lyrics?)[\]\)]/gi, "")
+    .replace(/(?:\[(official|radio|edit|remix|live|acoustic|version|audio|video|lyrics?)\]|\((official|radio|edit|remix|live|acoustic|version|audio|video|lyrics?)\))/gi, "")
     // Clean up extra whitespace
     .trim();
 }

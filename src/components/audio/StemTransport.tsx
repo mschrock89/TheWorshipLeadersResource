@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Play, Pause, Square, SkipBack, Pencil, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useStemPlayer } from "@/hooks/useStemPlayer";
 import { StemSongMarker } from "@/hooks/useSetlistStems";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";

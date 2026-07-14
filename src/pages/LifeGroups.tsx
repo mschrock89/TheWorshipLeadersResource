@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import {
@@ -20,7 +20,6 @@ import {
   UsersRound,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { LifeGroupImportDialog } from "@/components/life-groups/LifeGroupImportDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +54,13 @@ import {
 } from "@/hooks/useLifeGroups";
 import { Profile, useProfiles } from "@/hooks/useProfiles";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
+
+const LifeGroupImportDialog = lazy(() =>
+  import("@/components/life-groups/LifeGroupImportDialog").then((module) => ({
+    default: module.LifeGroupImportDialog,
+  })),
+);
 
 const LIFE_GROUP_GRADE_OPTIONS: Record<string, LifeGroupGrade[]> = {
   students_ms: [8],
@@ -931,15 +936,19 @@ export default function LifeGroups() {
         meetingLocations={meetingLocations}
         gradeOptions={gradeOptions}
       />
-      <LifeGroupImportDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        campusId={selectedCampusId === "all" ? null : selectedCampusId}
-        profiles={campusFilteredProfiles}
-        existingGroups={groups}
-        meetingLocations={meetingLocations}
-        gradeOptions={gradeOptions}
-      />
+      {importDialogOpen ? (
+        <Suspense fallback={null}>
+          <LifeGroupImportDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
+            campusId={selectedCampusId === "all" ? null : selectedCampusId}
+            profiles={campusFilteredProfiles}
+            existingGroups={groups}
+            meetingLocations={meetingLocations}
+            gradeOptions={gradeOptions}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

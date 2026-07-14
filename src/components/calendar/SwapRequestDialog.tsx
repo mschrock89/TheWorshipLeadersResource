@@ -106,12 +106,14 @@ export function SwapRequestDialog({
   );
   
   // Use the correct members list based on request mode
-  const positionMembers =
-    requestMode === "fill_in"
+  const positionMembers = useMemo(
+    () => requestMode === "fill_in"
       ? coverPositionMembers
       : swapDate
         ? swapPositionMembers
-        : [];
+        : [],
+    [coverPositionMembers, requestMode, swapDate, swapPositionMembers],
+  );
   const loadingMembers = requestMode === "fill_in" ? loadingCoverMembers : loadingSwapMembers;
   const sortedPositionMembers = useMemo(() => {
     const deduped = (positionMembers || [])

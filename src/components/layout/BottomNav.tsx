@@ -17,7 +17,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useVisualViewportOffset } from "@/hooks/useKeyboardOffset";

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompleteOnboarding, useOnboardingStatus } from "@/hooks/useProfiles";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
@@ -35,6 +35,10 @@ export function AppOnboardingTour() {
     return null;
   }
 
+  return <AppOnboardingTourContent />;
+}
+
+function AppOnboardingTourContent() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

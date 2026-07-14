@@ -1,5 +1,3 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
@@ -20,8 +18,8 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { Suspense } from "react";
-import { getRouterBasename } from "@/lib/constants";
+import { lazy, Suspense } from "react";
+import { getRouterBasename } from "@/lib/resourceApps";
 
 export type RouteDefinition = {
   path: string;
@@ -29,6 +27,8 @@ export type RouteDefinition = {
 };
 
 const queryClient = new QueryClient();
+const Toaster = lazy(() => import("@/components/ui/toaster").then((module) => ({ default: module.Toaster })));
+const Sonner = lazy(() => import("@/components/ui/sonner").then((module) => ({ default: module.Toaster })));
 
 function RouteFallback() {
   return (
@@ -204,9 +204,14 @@ export function AppShell({
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter basename={getRouterBasename()}>
+        <Suspense fallback={null}>
+          <Toaster />
+          <Sonner />
+        </Suspense>
+        <BrowserRouter
+          basename={getRouterBasename()}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <AuthProvider>
             <AttendanceTrackingProvider>
               <AudioPlayerProvider>

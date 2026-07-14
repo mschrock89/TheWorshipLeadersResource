@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,7 +72,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 export default function Songs() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -156,7 +156,10 @@ export default function Songs() {
   
   // Determine if user is restricted to their campus only (volunteers/members)
   const isVolunteer = userRole === "volunteer" || userRole === "member";
-  const userCampusIds = userCampuses?.map(uc => uc.campus_id) || [];
+  const userCampusIds = useMemo(
+    () => userCampuses?.map(uc => uc.campus_id) || [],
+    [userCampuses],
+  );
   const normalizeServiceType = (value: string) =>
     value.trim().toLowerCase().replace(/\s+/g, " ");
   const weekendServiceTypeNames = useMemo(() => {
@@ -168,9 +171,9 @@ export default function Songs() {
     });
     return names;
   }, [campuses]);
-  const isWeekendServiceType = (serviceTypeName: string) => {
+  const isWeekendServiceType = useCallback((serviceTypeName: string) => {
     return weekendServiceTypeNames.has(normalizeServiceType(serviceTypeName));
-  };
+  }, [weekendServiceTypeNames]);
   
   // Ministry options with their service type patterns
   const ministryOptions = [
@@ -238,7 +241,7 @@ export default function Songs() {
   const selectedMinistryConfig = ministryOptions.find(m => m.id === selectedMinistry);
 
   // Helper to check if a plan matches the selected ministry
-  const planMatchesMinistry = (plan: { service_type_name: string; campus_id: string | null }) => {
+  const planMatchesMinistry = useCallback((plan: { service_type_name: string; campus_id: string | null }) => {
     // Always exclude Practice Songs plans
     if (plan.service_type_name.toLowerCase().includes('practice song')) {
       return false;
@@ -259,7 +262,7 @@ export default function Songs() {
     return selectedMinistryConfig.serviceTypePatterns?.some(
       pattern => plan.service_type_name.includes(pattern)
     ) ?? false;
-  };
+  }, [isWeekendServiceType, selectedMinistry, selectedMinistryConfig]);
 
   // Filter plans by campus AND ministry
   const filteredUpcomingPlans = useMemo(() => {
@@ -268,14 +271,14 @@ export default function Songs() {
       const matchesMinistry = planMatchesMinistry(p);
       return matchesCampus && matchesMinistry;
     });
-  }, [upcomingPlans, selectedCampusId, selectedMinistry, selectedMinistryConfig]);
+  }, [upcomingPlans, selectedCampusId, planMatchesMinistry]);
 
   const historyPlans = historyPlansResponse?.plans ?? [];
   const historyTotal = historyPlansResponse?.total ?? 0;
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / PLANS_PER_PAGE));
   
   // Helper to check if a usage matches the selected filters
-  const usageMatchesFilters = (usage: { campus_id: string | null; service_type_name: string }) => {
+  const usageMatchesFilters = useCallback((usage: { campus_id: string | null; service_type_name: string }) => {
     const matchesCampus = selectedCampusId === "all" || usage.campus_id === selectedCampusId;
 
     if (selectedMinistry === "all") return matchesCampus;
@@ -292,7 +295,7 @@ export default function Songs() {
       pattern => usage.service_type_name.includes(pattern)
     ) ?? false;
     return matchesCampus && matchesMinistry;
-  };
+  }, [isWeekendServiceType, selectedCampusId, selectedMinistry, selectedMinistryConfig]);
 
   // Calculate campus-filtered stats and per-song filtered counts
   const { campusFilteredStats, songCampusUsage, regularRotationSongs, deepCutsSongs, newSongsList, adventSongsList, mostUsedTop10 } = useMemo(() => {
@@ -407,7 +410,7 @@ export default function Songs() {
       adventSongsList: adventSongs,
       mostUsedTop10: top10,
     };
-  }, [songs, selectedCampusId, selectedMinistry, selectedMinistryConfig, isAdventSeason]);
+  }, [songs, usageMatchesFilters]);
 
   // Get songs and info for current list view
   const getListViewInfo = () => {

@@ -1,6 +1,6 @@
 import { Play, Pause, Music } from "lucide-react";
 import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { haptic } from "@/lib/haptics";
 
 export function HeaderMiniPlayer() {

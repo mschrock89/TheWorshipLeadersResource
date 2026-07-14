@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -77,7 +77,7 @@ export function useCapabilities() {
     },
   });
 
-  const caps = query.data ?? new Set<string>();
+  const caps = useMemo(() => query.data ?? new Set<string>(), [query.data]);
 
   const can = useCallback(
     (capability: CapabilityKey | string) => capabilitySetAllows(caps, capability),

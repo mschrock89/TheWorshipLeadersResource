@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useUpdateSongAuthor } from "@/hooks/useSongs";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 interface EditableAuthorCellProps {
   songId: string;

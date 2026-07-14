@@ -57,7 +57,7 @@ function CampAttachmentCard({ attachment }: { attachment: CampAttachment }) {
     return () => {
       cancelled = true;
     };
-  }, [attachment.file_path, attachment.mime_type]);
+  }, [attachment]);
 
   const handleOpen = async () => {
     setIsResolving(true);

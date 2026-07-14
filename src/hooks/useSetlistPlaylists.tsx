@@ -146,7 +146,7 @@ export function useMySetlistPlaylists() {
 
       // Fetch reference tracks for all playlists
       const playlistIds = (data || []).map((p) => p.id);
-      let referenceTracksMap = new Map<string, ReferenceTrackRow[]>();
+      const referenceTracksMap = new Map<string, ReferenceTrackRow[]>();
 
       if (playlistIds.length > 0) {
         const { data: refTracks, error: refError } = await supabase
@@ -168,7 +168,7 @@ export function useMySetlistPlaylists() {
 
       // Fetch markers for all reference tracks
       const allRefTrackIds = Array.from(referenceTracksMap.values()).flat().map(rt => rt.id);
-      let markersMap = new Map<string, ReferenceTrackMarkerRow[]>();
+      const markersMap = new Map<string, ReferenceTrackMarkerRow[]>();
 
       if (allRefTrackIds.length > 0) {
         const { data: markers, error: markersError } = await supabase

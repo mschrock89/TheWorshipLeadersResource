@@ -299,7 +299,6 @@ export default function Profile() {
     // userCampuses is refetched with a new array reference on every render while its
     // query data is undefined (e.g. loading/erroring), so depend on the derived id
     // string instead — otherwise this effect never stabilizes and loops forever.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userCampusIdsKey]);
 
   useEffect(() => {

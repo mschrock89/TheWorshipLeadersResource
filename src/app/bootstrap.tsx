@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import "@/index.css";
-import { getResourceAppForLocation } from "@/lib/constants";
+import { getResourceAppForLocation } from "@/lib/resourceApps";
 
 const DEV_SW_RESET_KEY = "dev-sw-reset-v1";
 const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;

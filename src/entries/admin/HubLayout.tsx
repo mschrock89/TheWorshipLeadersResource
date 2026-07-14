@@ -66,9 +66,9 @@ export function HubLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex items-center gap-6">
-            <span className="text-sm font-bold tracking-wide">My Church Resource</span>
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3 sm:gap-4">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-6">
+            <span className="hidden text-sm font-bold tracking-wide sm:inline">My Church Resource</span>
             <nav className="flex items-center gap-1">
               <HubNavLink to="/" label="Dashboard" />
               <HubNavLink to="/directory" label="Directory" />
@@ -77,13 +77,14 @@ export function HubLayout({ children }: { children: ReactNode }) {
           <Button
             variant="ghost"
             size="sm"
+            aria-label="Sign out"
             onClick={async () => {
               await signOut();
               navigate("/auth");
             }}
           >
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign out
+            <LogOut className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>
       </header>

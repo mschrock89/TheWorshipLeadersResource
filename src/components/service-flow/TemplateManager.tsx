@@ -46,7 +46,7 @@ import {
 import { AddItemDialog } from "./AddItemDialog";
 import { EditItemDialog } from "./EditItemDialog";
 import { formatDuration } from "./DurationInput";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 export function TemplateManager() {
   const { user } = useAuth();

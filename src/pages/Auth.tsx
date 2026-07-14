@@ -18,8 +18,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { getAppUrl } from "@/lib/constants";
-import { Loader2, Music, MailCheck, ArrowLeft } from "lucide-react";
+import { getAppUrl, getResourceAppForLocation } from "@/lib/resourceApps";
+import { Loader2, Music, MailCheck, ArrowLeft, LockKeyhole } from "lucide-react";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -32,12 +32,28 @@ const signupSchema = z.object({
   email: z.string().email("Please enter a valid email"),
 });
 
+const recoverySchema = z
+  .object({
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmation: z.string(),
+  })
+  .refine(({ password, confirmation }) => password === confirmation, {
+    message: "Passwords do not match",
+    path: ["confirmation"],
+  });
+
 export default function Auth() {
   const { user, isLoading: authLoading, signIn, signUp } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isRecoverySession, setIsRecoverySession] = useState(() =>
+    new URLSearchParams(window.location.hash.substring(1)).get("type") === "recovery",
+  );
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
+  const app = getResourceAppForLocation();
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -53,6 +69,12 @@ export default function Auth() {
 
   // Handle magic link / invite token from URL
   useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecoverySession(true);
+      }
+    });
+
     const handleAuthCallback = async () => {
       // Check if there's an access_token or error in the URL hash (magic link flow)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -62,6 +84,7 @@ export default function Auth() {
       const error = hashParams.get('error');
       const errorDescription = hashParams.get('error_description');
       const mode = searchParams.get("mode");
+      const callbackType = hashParams.get("type");
 
       if (error) {
         toast({
@@ -88,10 +111,15 @@ export default function Auth() {
             variant: "destructive",
           });
         } else {
+          if (callbackType === "recovery") {
+            setIsRecoverySession(true);
+          }
           toast({
-            title: "Email confirmed",
+            title: callbackType === "recovery" ? "Choose a new password" : "Email confirmed",
             description:
-              mode === "confirm-signup"
+              callbackType === "recovery"
+                ? "Your reset link was verified. Enter a new password to finish."
+                : mode === "confirm-signup"
                 ? "Your email is confirmed and you're signed in. Add a password from your profile whenever you're ready."
                 : "You've been signed in successfully.",
           });
@@ -103,11 +131,41 @@ export default function Auth() {
     };
 
     handleAuthCallback();
+    return () => authListener.subscription.unsubscribe();
   }, [toast]);
 
-  if (user && !authLoading) {
+  if (user && !authLoading && !isRecoverySession) {
     return <Navigate to="/" replace />;
   }
+
+  const handleRecoverySubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const validation = recoverySchema.safeParse({
+      password: recoveryPassword,
+      confirmation: recoveryConfirmation,
+    });
+
+    if (!validation.success) {
+      toast({
+        title: "Validation error",
+        description: validation.error.errors[0].message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsResetting(true);
+    const { error } = await supabase.auth.updateUser({ password: recoveryPassword });
+    setIsResetting(false);
+
+    if (error) {
+      toast({ title: "Password update failed", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setIsRecoverySession(false);
+    toast({ title: "Password updated", description: "Your new password is ready to use." });
+  };
 
   const handleResetPassword = async () => {
     const emailToUse = (resetEmail || loginEmail).trim();
@@ -255,6 +313,52 @@ export default function Auth() {
     );
   }
 
+  if (isRecoverySession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-warm px-4 py-8">
+        <Card className="w-full max-w-md shadow-worship">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-primary shadow-worship">
+              <LockKeyhole className="h-7 w-7 text-primary-foreground" />
+            </div>
+            <CardTitle>Choose a new password</CardTitle>
+            <CardDescription>Use at least 8 characters for your {app.shortName} account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleRecoverySubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="recovery-password">New password</Label>
+                <Input
+                  id="recovery-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={recoveryPassword}
+                  onChange={(event) => setRecoveryPassword(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recovery-confirmation">Confirm new password</Label>
+                <Input
+                  id="recovery-confirmation"
+                  type="password"
+                  autoComplete="new-password"
+                  value={recoveryConfirmation}
+                  onChange={(event) => setRecoveryConfirmation(event.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={isResetting}>
+                {isResetting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save new password
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-warm px-4 py-8">
       <div className="w-full max-w-md">
@@ -263,8 +367,8 @@ export default function Auth() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-primary shadow-worship">
             <Music className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-foreground">Worship Resource</h1>
-          <p className="mt-2 text-muted-foreground">Manage your worship team with ease</p>
+          <h1 className="font-display text-3xl font-bold text-foreground">{app.name}</h1>
+          <p className="mt-2 text-muted-foreground">{app.description}</p>
         </div>
 
         <Card className="shadow-worship">

@@ -219,13 +219,13 @@ function StandardMySetlists() {
   
   // Sync with global context - use context value if set, otherwise use local state
   const selectedCampusId = campusContext?.selectedCampusId || localCampusId;
-  const setSelectedCampusId = (value: string) => {
+  const setSelectedCampusId = useCallback((value: string) => {
     if (campusContext) {
       campusContext.setSelectedCampusId(value);
     } else {
       setLocalCampusId(value);
     }
-  };
+  }, [campusContext]);
 
   const normalizedCampusId = useMemo(() => {
     if (selectedCampusId && selectableCampuses.some((campus) => campus.id === selectedCampusId)) {
@@ -240,7 +240,7 @@ function StandardMySetlists() {
     if (selectedCampusId !== normalizedCampusId) {
       setSelectedCampusId(normalizedCampusId);
     }
-  }, [normalizedCampusId, selectedCampusId]);
+  }, [normalizedCampusId, selectedCampusId, setSelectedCampusId]);
 
   // "__none__" means the user has no campus at all — pass no filter rather than
   // leaking that sentinel into a `campus_id.in.(__none__)` query (invalid UUID, 400).

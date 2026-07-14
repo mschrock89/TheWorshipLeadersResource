@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { getAppUrl } from "@/lib/constants";
+import { getAppUrl } from "@/lib/resourceApps";
 import { getCurrentResourceAppKey, hasStudentAppAdminRole } from "@/lib/resourceApp";
 
 interface AuthContextType {
@@ -38,15 +38,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-
-        // Fires only once Supabase verifies the one-time token from a password
-        // reset email and establishes a real session — safe to set the known
-        // default password here because clicking the link proves inbox ownership.
-        if (event === "PASSWORD_RECOVERY") {
-          supabase.auth.updateUser({ password: "123456" }).then(({ error }) => {
-            if (error) console.error("Failed to set default password after recovery:", error);
-          });
-        }
 
         // Defer role check to avoid deadlock
         if (session?.user) {

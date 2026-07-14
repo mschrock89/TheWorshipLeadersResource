@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { parseLocalDate } from "@/lib/utils";
+import { parseLocalDate } from "@/lib/dateUtils";
 
 export type TeamPosition = 
   | "vocalist"

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { MINISTRY_TYPES } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 const MINISTRY_EDIT_ORDER = [
   "weekend",

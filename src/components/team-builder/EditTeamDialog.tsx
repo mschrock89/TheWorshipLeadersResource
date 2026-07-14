@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Check } from "lucide-react";
 import { TEAM_COLOR_PRESETS, TEAM_ICON_OPTIONS } from "@/lib/teamIcons";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 export interface TeamEditorValue {
   name: string;

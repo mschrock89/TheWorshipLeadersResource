@@ -1,6 +1,10 @@
 export const ROLE_LABELS: Record<string, string> = {
+  leader: "Legacy Leader",
+  member: "Legacy Member",
   admin: "Organization Admin",
   campus_admin: "Campus Admin",
+  campus_pastor: "Campus Pastor",
+  network_worship_leader: "Network Worship Leader",
   network_worship_pastor: "Network Worship Pastor",
   campus_worship_pastor: "Campus Worship Pastor",
   network_student_pastor: "Network Student Pastor",
@@ -19,61 +23,7 @@ export const ROLE_LABELS: Record<string, string> = {
   volunteer: "Volunteer",
 };
 
-export const RESOURCE_APPS = {
-  my_church_resource: {
-    key: "my_church_resource",
-    name: "My Church Resource",
-    shortName: "MCR",
-    description: "Manage your church resource apps, ministry teams, and admin tools.",
-    host: "mychurchresource.com",
-    pathPrefix: "/admin",
-    isAdminOnly: true,
-    themeColor: "#0f172a",
-    iconPath: "/app-icon-512.png",
-    manifestPath: "/manifest.json",
-  },
-  worship: {
-    key: "worship",
-    name: "Worship Resource",
-    shortName: "Worship",
-    description: "Manage your worship team, organize schedules, track songs, and keep everyone connected.",
-    host: "worship.mychurchresource.com",
-    pathPrefix: "/",
-    isAdminOnly: false,
-    themeColor: "#000000",
-    iconPath: "/app-icon-512.png",
-    manifestPath: "/manifest.json",
-  },
-  students_hs: {
-    key: "students_hs",
-    name: "Experience Students HS",
-    shortName: "Students HS",
-    description: "The central hub for Experience Students high school ministry teams, follow-up, and connection.",
-    host: "students.mychurchresource.com",
-    pathPrefix: "/hs",
-    isAdminOnly: false,
-    themeColor: "#1d4ed8",
-    iconPath: "/students-resource-icon.png",
-    manifestPath: "/students-hs-manifest.json",
-  },
-  students_ms: {
-    key: "students_ms",
-    name: "Experience Students MS",
-    shortName: "Students MS",
-    description: "The central hub for Experience Students middle school ministry teams, follow-up, and connection.",
-    host: "students.mychurchresource.com",
-    pathPrefix: "/ms",
-    isAdminOnly: false,
-    themeColor: "#7c3aed",
-    iconPath: "/students-resource-icon.png",
-    manifestPath: "/students-ms-manifest.json",
-  },
-} as const;
-
-export type ResourceAppKey = keyof typeof RESOURCE_APPS;
-
-export const DEFAULT_RESOURCE_APP_KEY: ResourceAppKey = "worship";
-export const STUDENT_RESOURCE_APP_KEYS: ResourceAppKey[] = ["students_hs", "students_ms"];
+export * from "./resourceApps";
 export const STUDENT_TEAM_BUILDER_MINISTRY_TYPE = "students";
 export const STUDENT_TEAM_NAMES = ["Hospitality", "Hype", "Prayer", "Cafe"] as const;
 export const STUDENT_POSITION_VALUES = [
@@ -84,60 +34,11 @@ export const STUDENT_POSITION_VALUES = [
   "student_small_group_leader",
 ] as const;
 
-function normalizePathPrefix(prefix: string) {
-  if (!prefix || prefix === "/") return "/";
-  return prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-}
-
-function pathnameMatchesPrefix(pathname: string, prefix: string) {
-  const normalizedPrefix = normalizePathPrefix(prefix);
-  if (normalizedPrefix === "/") return true;
-  return pathname === normalizedPrefix || pathname.startsWith(`${normalizedPrefix}/`);
-}
-
-export function getResourceAppForLocation(
-  hostname = typeof window !== "undefined" ? window.location.hostname : "",
-  pathname = typeof window !== "undefined" ? window.location.pathname : "/"
-) {
-  const normalizedHostname = hostname.replace(/^www\./, "");
-  const apps = Object.values(RESOURCE_APPS).sort(
-    (a, b) => normalizePathPrefix(b.pathPrefix).length - normalizePathPrefix(a.pathPrefix).length
-  );
-
-  const appForHostAndPath = apps.find(
-    (app) =>
-      app.host.replace(/^www\./, "") === normalizedHostname &&
-      pathnameMatchesPrefix(pathname, app.pathPrefix)
-  );
-
-  return (
-    appForHostAndPath ??
-    apps.find((app) => app.pathPrefix !== "/" && pathnameMatchesPrefix(pathname, app.pathPrefix)) ??
-    RESOURCE_APPS[DEFAULT_RESOURCE_APP_KEY]
-  );
-}
-
-export function getRouterBasename() {
-  const prefix = normalizePathPrefix(getResourceAppForLocation().pathPrefix);
-  return prefix === "/" ? undefined : prefix;
-}
-
-export function getAppPath(path: string) {
-  const prefix = getRouterBasename();
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return prefix ? `${prefix}${normalizedPath === "/" ? "" : normalizedPath}` : normalizedPath;
-}
-
-export function getAppUrl(path: string) {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}${getAppPath(path)}`;
-}
-
 // Roles that can be combined (leadership roles)
 export const LEADERSHIP_ROLES = ['admin', 'campus_admin'] as const;
 
 // Base roles (mutually exclusive - user gets one of these)
-export const BASE_ROLES = ['network_worship_pastor', 'campus_worship_pastor', 'network_student_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'ms_leader_weekend', 'hs_leader', 'volunteer'] as const;
+export const BASE_ROLES = ['network_worship_pastor', 'network_worship_leader', 'campus_pastor', 'campus_worship_pastor', 'network_student_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor', 'speaker', 'video_director', 'production_manager', 'creative_team_lead', 'audition_candidate', 'student', 'ms_leader', 'ms_leader_weekend', 'hs_leader', 'volunteer'] as const;
 
 export const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",

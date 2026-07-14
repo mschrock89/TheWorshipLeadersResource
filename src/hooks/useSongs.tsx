@@ -1038,7 +1038,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       const profilesMap = new Map((allBasicProfiles || []).map(p => [p.id, p]));
 
       // First, fetch draft_set songs to get vocalist assignments (we'll use these to enrich PCO songs too)
-      let vocalistBySongId = new Map<string, { id: string; name: string; avatarUrl: string | null }[]>();
+      const vocalistBySongId = new Map<string, { id: string; name: string; avatarUrl: string | null }[]>();
       
       if (filteredDraftSets.length > 0) {
         const draftSetIds = filteredDraftSets.map(ds => ds.id);
@@ -1133,7 +1133,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
           const global = globalMap.get(id) ?? 0;
           if (campus > 0 || global > 0) mergedRaw.set(id, Math.max(campus, global));
         }
-        let priorUsesMap = collapsePriorUsesToCanonical(mergedRaw, alternateToCanonical);
+        const priorUsesMap = collapsePriorUsesToCanonical(mergedRaw, alternateToCanonical);
 
         // Add service plans with their songs
         for (const plan of filteredPlans) {

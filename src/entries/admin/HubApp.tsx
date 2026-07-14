@@ -1,15 +1,18 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
-import { getRouterBasename } from "@/lib/constants";
+import { getRouterBasename } from "@/lib/resourceApps";
 import Auth from "@/pages/Auth";
 import NotFound from "@/pages/NotFound";
+import { Loader2 } from "lucide-react";
 import { HubLayout } from "./HubLayout";
-import HubDashboard from "./pages/HubDashboard";
-import HubDirectory from "./pages/HubDirectory";
+
+const HubDashboard = lazy(() => import("./pages/HubDashboard"));
+const HubDirectory = lazy(() => import("./pages/HubDirectory"));
+const Toaster = lazy(() => import("@/components/ui/toaster").then((module) => ({ default: module.Toaster })));
+const Sonner = lazy(() => import("@/components/ui/sonner").then((module) => ({ default: module.Toaster })));
 
 const queryClient = new QueryClient();
 
@@ -17,9 +20,14 @@ export function HubApp() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter basename={getRouterBasename()}>
+        <Suspense fallback={null}>
+          <Toaster />
+          <Sonner />
+        </Suspense>
+        <BrowserRouter
+          basename={getRouterBasename()}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
@@ -27,7 +35,9 @@ export function HubApp() {
                 path="/"
                 element={
                   <HubLayout>
-                    <HubDashboard />
+                    <Suspense fallback={<Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />}>
+                      <HubDashboard />
+                    </Suspense>
                   </HubLayout>
                 }
               />
@@ -35,7 +45,9 @@ export function HubApp() {
                 path="/directory"
                 element={
                   <HubLayout>
-                    <HubDirectory />
+                    <Suspense fallback={<Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />}>
+                      <HubDirectory />
+                    </Suspense>
                   </HubLayout>
                 }
               />

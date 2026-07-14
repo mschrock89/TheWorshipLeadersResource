@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { haptic } from "@/lib/haptics";
 
 function formatTime(seconds: number): string {

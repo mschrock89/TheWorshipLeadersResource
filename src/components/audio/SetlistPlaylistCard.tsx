@@ -17,7 +17,7 @@ import { useAudioPlayer, Track } from "@/hooks/useAudioPlayer";
 import { SetlistPlaylistWithTracks, ReferenceTrack } from "@/hooks/useSetlistPlaylists";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { parseLocalDate } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useUserCampuses } from "@/hooks/useCampuses";

@@ -4,7 +4,7 @@ import { format, parseISO } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import {
   isBlankTeamBuilderAssignment,

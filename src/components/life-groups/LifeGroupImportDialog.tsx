@@ -29,7 +29,7 @@ import {
 import { Profile } from "@/hooks/useProfiles";
 import { ROLE_LABELS } from "@/lib/constants";
 import { ParsedLifeGroupDraft, parseLifeGroupImportFile } from "@/lib/lifeGroupImport";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 interface LifeGroupImportDialogProps {
   open: boolean;

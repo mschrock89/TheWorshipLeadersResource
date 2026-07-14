@@ -134,6 +134,69 @@ function isInvalidSubscriptionResponse(statusCode?: number, error?: string): boo
   );
 }
 
+function renderPushTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) =>
+    vars[key] != null ? String(vars[key]) : "",
+  ).replace(/\s+/g, " ").trim();
+}
+
+function readTemplateVars(metadata: Record<string, unknown> | undefined): Record<string, string> {
+  const raw = metadata?.vars;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value == null) continue;
+    out[key] = String(value);
+  }
+  return out;
+}
+
+type PushDefinition = {
+  key: string;
+  enabled: boolean;
+  content_from_db: boolean;
+  title_template: string;
+  body_template: string;
+  deep_link_url: string | null;
+};
+
+/** Infer catalog key when callers omit contextType (legacy SQL / client paths). */
+function inferDefinitionKey(payload: PushPayload): string | null {
+  if (payload.contextType) return payload.contextType;
+  if (typeof payload.metadata?.definitionKey === "string") return payload.metadata.definitionKey;
+  if (payload.tag === "test-notification" || payload.audience === "all_enabled_users") {
+    return "test-notification";
+  }
+
+  const tag = payload.tag || "";
+  if (tag.startsWith("setlist-confirm-")) return "setlist-confirmed";
+  if (tag.startsWith("setlist-manual-")) return "setlist-manual-reminder";
+  if (tag.startsWith("setlist-")) return "setlist-published";
+  if (tag.startsWith("weekend-track-")) return "weekend-track-uploaded";
+  if (tag.startsWith("schedule-reminder")) return "schedule-reminder";
+  if (tag.startsWith("video-reminder-")) return "video-schedule-reminder";
+  if (tag.startsWith("schedule-date-")) return "team-schedule-date";
+  if (tag.startsWith("swap-request-sent-")) return "swap-request-sent";
+  if (tag.startsWith("swap-request-")) return "swap-request";
+  if (tag.startsWith("swap-resolved-")) {
+    return payload.title?.toLowerCase().includes("declined") ? "swap-declined" : "swap-accepted";
+  }
+  if (tag.startsWith("swap-leads-") || tag === "swap-confirmed") return "swap-confirmed";
+  if (tag.startsWith("chat-mention-")) return "chat-mention";
+  if (tag.startsWith("chat-busy-")) return "chat-busy";
+  if (tag.startsWith("chat-activity-")) return "chat-activity";
+  if (tag.startsWith("chat-message-")) return "chat-message";
+  if (tag.startsWith("feed-post-")) return "feed-post";
+  if (tag.startsWith("event-")) return "event";
+  if (tag.startsWith("drum-tech-comment-")) return "drum-tech-comment";
+  if (tag.startsWith("break-request-")) return "break-request";
+  if (tag.startsWith("rotation-publish-")) return "rotation-publish";
+  if (tag.startsWith("rotation-break-")) return "rotation-break";
+  if (tag.startsWith("admin-ping-")) return "admin-ping";
+  if (tag.startsWith("cancellation-")) return "cancellation";
+  return null;
+}
+
 // HKDF implementation using Web Crypto
 async function hkdf(
   salt: Uint8Array,
@@ -430,6 +493,50 @@ serve(async (req) => {
         headers: authHeader ? { Authorization: authHeader } : {},
       },
     });
+
+    const definitionKey = inferDefinitionKey(payload);
+
+    if (definitionKey) {
+      const { data: definition, error: definitionError } = await supabase
+        .from("push_notification_definitions")
+        .select("key, enabled, content_from_db, title_template, body_template, deep_link_url")
+        .eq("key", definitionKey)
+        .maybeSingle();
+
+      if (definitionError) {
+        console.warn("Could not load push definition (continuing with payload):", definitionError.message);
+      } else if (definition) {
+        const def = definition as PushDefinition;
+        if (!def.enabled) {
+          console.log(`Push skipped: definition "${definitionKey}" is disabled`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              sent: 0,
+              failed: 0,
+              total: 0,
+              skipped: true,
+              reason: `Push type "${definitionKey}" is disabled`,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        if (def.content_from_db) {
+          const vars = readTemplateVars(payload.metadata);
+          const title = renderPushTemplate(def.title_template, vars);
+          const message = renderPushTemplate(def.body_template, vars);
+          if (title) payload.title = title;
+          if (message) payload.message = message;
+          if (def.deep_link_url) {
+            const url = renderPushTemplate(def.deep_link_url, vars);
+            if (url) payload.url = url;
+          }
+        }
+
+        if (!payload.contextType) payload.contextType = definitionKey;
+      }
+    }
 
     let requestUserId: string | null = null;
 

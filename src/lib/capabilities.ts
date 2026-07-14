@@ -7,7 +7,7 @@
 // Keep this in lockstep with the seed in
 // supabase/migrations/20260708120000_add_permissions_capabilities_foundation.sql.
 
-import type { ResourceAppKey } from "@/lib/constants";
+import type { ResourceAppKey } from "@/lib/resourceApps";
 
 export const CAPABILITIES = {
   ADMIN_FULL: "admin_full",

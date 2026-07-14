@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useCallback, useState, useMemo, useEffect, useRef } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useProfiles, TeamPosition, Profile } from "@/hooks/useProfiles";
 import { useProfilesWithCampuses, useCampuses } from "@/hooks/useCampuses";
@@ -133,7 +133,7 @@ export default function Team() {
   const roleFilter = searchParams.get("role") ?? "all";
   const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
 
-  const updateDirectoryParam = (key: string, value: string, fallback = "all") => {
+  const updateDirectoryParam = useCallback((key: string, value: string, fallback = "all") => {
     const nextParams = new URLSearchParams(searchParams);
     const trimmedValue = value.trim();
 
@@ -144,7 +144,7 @@ export default function Team() {
     }
 
     setSearchParams(nextParams, { replace: true });
-  };
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     hasRestoredScrollRef.current = false;
@@ -421,7 +421,7 @@ export default function Team() {
     ) {
       updateDirectoryParam("position", "all");
     }
-  }, [availablePositionValues, positionFilter]);
+  }, [availablePositionValues, positionFilter, updateDirectoryParam]);
 
   const ministryPositionGroupsByUser = useMemo(() => {
     const campusNameById = new Map(campuses.map((campus) => [campus.id, campus.name]));

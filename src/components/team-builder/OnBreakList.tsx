@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useCreateManagedBreakRequest, useDeleteManagedBreakRequest } from "@/hooks/useBreakRequests";
 import { AvailableMember, TeamMemberAssignment } from "@/hooks/useTeamBuilder";
 import { memberMatchesMinistryFilter } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 interface OnBreakListProps {
   allMembers: AvailableMember[];

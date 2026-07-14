@@ -2178,6 +2178,111 @@ export type Database = {
           },
         ]
       }
+      push_notification_definitions: {
+        Row: {
+          key: string
+          label: string
+          category: string
+          description: string | null
+          trigger_description: string | null
+          recipients_description: string | null
+          title_template: string
+          body_template: string
+          deep_link_url: string | null
+          template_variables: string[]
+          enabled: boolean
+          content_from_db: boolean
+          is_system: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          label: string
+          category: string
+          description?: string | null
+          trigger_description?: string | null
+          recipients_description?: string | null
+          title_template: string
+          body_template: string
+          deep_link_url?: string | null
+          template_variables?: string[]
+          enabled?: boolean
+          content_from_db?: boolean
+          is_system?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          label?: string
+          category?: string
+          description?: string | null
+          trigger_description?: string | null
+          recipients_description?: string | null
+          title_template?: string
+          body_template?: string
+          deep_link_url?: string | null
+          template_variables?: string[]
+          enabled?: boolean
+          content_from_db?: boolean
+          is_system?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      push_notification_logs: {
+        Row: {
+          id: string
+          title: string
+          message: string
+          url: string | null
+          tag: string | null
+          context_type: string | null
+          context_id: string | null
+          metadata: Json
+          created_by: string | null
+          created_at: string
+          canceled_at: string | null
+          canceled_by: string | null
+          cancel_reason: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          message: string
+          url?: string | null
+          tag?: string | null
+          context_type?: string | null
+          context_id?: string | null
+          metadata?: Json
+          created_by?: string | null
+          created_at?: string
+          canceled_at?: string | null
+          canceled_by?: string | null
+          cancel_reason?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          message?: string
+          url?: string | null
+          tag?: string | null
+          context_type?: string | null
+          context_id?: string | null
+          metadata?: Json
+          created_by?: string | null
+          created_at?: string
+          canceled_at?: string | null
+          canceled_by?: string | null
+          cancel_reason?: string | null
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           auth: string

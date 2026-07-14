@@ -3,7 +3,6 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { useToast } from "./use-toast";
-import { generateServiceFlowFromTemplate } from "./useServiceFlow";
 import {
   shouldPublishDirectly,
   resolveApproverUserId,
@@ -345,6 +344,7 @@ export function useSubmitForApproval() {
           .order("sequence_order", { ascending: true });
 
         try {
+          const { generateServiceFlowFromTemplate } = await import("./useServiceFlow");
           await generateServiceFlowFromTemplate({
             campusId: publishedSet.campus_id,
             ministryType: publishedSet.ministry_type,
@@ -566,6 +566,7 @@ export function useApproveSetlist() {
 
       // Generate service flow from template (or just songs if no template)
       try {
+        const { generateServiceFlowFromTemplate } = await import("./useServiceFlow");
         await generateServiceFlowFromTemplate({
           campusId: draftSet.campus_id,
           ministryType: draftSet.ministry_type,

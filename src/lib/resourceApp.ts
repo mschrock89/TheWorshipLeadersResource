@@ -1,4 +1,4 @@
-import { DEFAULT_RESOURCE_APP_KEY, getResourceAppForLocation, type ResourceAppKey } from "@/lib/constants";
+import { DEFAULT_RESOURCE_APP_KEY, getResourceAppForLocation, type ResourceAppKey } from "@/lib/resourceApps";
 
 export function getCurrentResourceAppKey(): ResourceAppKey {
   return getResourceAppForLocation().key ?? DEFAULT_RESOURCE_APP_KEY;

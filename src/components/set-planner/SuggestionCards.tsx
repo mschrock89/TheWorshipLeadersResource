@@ -66,7 +66,7 @@ export function SuggestionCards({
 
   return (
     <div className="grid gap-3 md:grid-cols-3 mb-4">
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-amber-500" />
@@ -90,7 +90,7 @@ export function SuggestionCards({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Archive className="h-4 w-4 text-purple-500" />
@@ -117,7 +117,7 @@ export function SuggestionCards({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-500" />
@@ -158,7 +158,7 @@ function SuggestionItem({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex min-w-0 items-center gap-2 text-sm">
       <Button
         variant="ghost"
         size="icon"
@@ -168,7 +168,7 @@ function SuggestionItem({
       >
         <Plus className="h-3 w-3" />
       </Button>
-      <span className="flex-1 truncate">{item.song.title}</span>
+      <span className="min-w-0 flex-1 truncate">{item.song.title}</span>
       <Badge variant="secondary" className="text-xs shrink-0">
         {badge}
       </Badge>

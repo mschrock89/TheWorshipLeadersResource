@@ -35,7 +35,7 @@ export function useServicesToCancelOnDate(date: string | null, campusId: string 
 
       // Get song counts for draft sets
       const draftSetIds = (draftSets || []).map(ds => ds.id);
-      let draftSongCounts = new Map<string, number>();
+      const draftSongCounts = new Map<string, number>();
       
       if (draftSetIds.length > 0) {
         const { data: draftSongs } = await supabase
@@ -57,7 +57,7 @@ export function useServicesToCancelOnDate(date: string | null, campusId: string 
 
       // Get song counts for service plans
       const servicePlanIds = (servicePlans || []).map(sp => sp.id);
-      let planSongCounts = new Map<string, number>();
+      const planSongCounts = new Map<string, number>();
       
       if (servicePlanIds.length > 0) {
         const { data: planSongs } = await supabase

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/hooks/useAuth";
 import {
   BIBLE_BOOKS,
@@ -99,7 +99,7 @@ export default function Bible() {
     if (lastRecordedPassageId.current === passage.id) return;
     lastRecordedPassageId.current = passage.id;
     recordRecentPassage.mutate(passage);
-  }, [passage?.id]);
+  }, [passage, recordRecentPassage]);
 
   const updatePassageParams = (reference: string) => {
     const nextParams = new URLSearchParams(searchParams);

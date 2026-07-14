@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,9 +39,12 @@ export function MentionPicker({ searchTerm, onSelect, onClose, position, campusI
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const filteredProfiles = profiles?.filter((profile) =>
-    profile.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  const filteredProfiles = useMemo(
+    () => profiles?.filter((profile) =>
+      profile.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || [],
+    [profiles, searchTerm],
+  );
 
   // Reset selected index when search changes
   useEffect(() => {

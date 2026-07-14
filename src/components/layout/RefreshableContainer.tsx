@@ -1,6 +1,6 @@
 import { useState, useRef, ReactNode, useCallback, useEffect } from "react";
 import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 import { useQueryClient } from "@tanstack/react-query";
 import { haptic } from "@/lib/haptics";
 
