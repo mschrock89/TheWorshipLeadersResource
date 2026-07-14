@@ -144,16 +144,18 @@ export default function Dashboard() {
       iconClassName: "border-fuchsia-300/25 bg-fuchsia-400/15 text-fuchsia-100",
       buttonClassName: "bg-fuchsia-300 text-slate-950 hover:bg-fuchsia-200",
     },
-    {
-      title: "Drum Tech",
-      description: "Track kit health, head lifespan, and the digital build of each campus drum setup.",
-      to: "/drum-tech",
-      icon: Wrench,
-      actionLabel: "Open Drum Tech",
-      cardClassName: "border-sky-300/30 bg-[linear-gradient(145deg,rgba(14,165,233,0.18),rgba(15,23,42,0.32))] text-white",
-      iconClassName: "border-sky-200/20 bg-sky-400/15 text-sky-100",
-      buttonClassName: "bg-sky-300 text-slate-950 hover:bg-sky-200",
-    },
+    ...(!isStudentApp
+      ? [{
+          title: "Drum Tech",
+          description: "Track kit health, head lifespan, and the digital build of each campus drum setup.",
+          to: "/drum-tech",
+          icon: Wrench,
+          actionLabel: "Open Drum Tech",
+          cardClassName: "border-sky-300/30 bg-[linear-gradient(145deg,rgba(14,165,233,0.18),rgba(15,23,42,0.32))] text-white",
+          iconClassName: "border-sky-200/20 bg-sky-400/15 text-sky-100",
+          buttonClassName: "bg-sky-300 text-slate-950 hover:bg-sky-200",
+        }]
+      : []),
     {
       title: isStudentApp ? "On Boarding" : "Auditions",
       description: isStudentApp

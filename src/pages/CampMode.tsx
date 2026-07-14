@@ -191,9 +191,9 @@ export default function CampMode() {
   }
 
   return (
-    <div className="container max-w-6xl space-y-6 py-6">
-      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.25),transparent_34%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.30)] sm:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <div className="-mx-4 -my-6 min-h-[calc(100dvh-3.5rem)] overflow-x-hidden bg-background sm:mx-0 sm:my-0 sm:min-h-0">
+      <section className="overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(124,58,237,0.25),transparent_34%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-5 py-7 sm:rounded-[28px] sm:border sm:p-8 sm:shadow-[0_24px_70px_rgba(0,0,0,0.30)]">
+        <div className="space-y-5">
           <div className="space-y-4">
             <Badge className="w-fit gap-2 rounded-full px-3 py-1">
               <Tent className="h-4 w-4" />
@@ -207,41 +207,31 @@ export default function CampMode() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[360px]">
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="flex items-center gap-3 p-4">
-                <Users className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="text-sm font-medium">Shared Apps</p>
-                  <p className="text-xs text-muted-foreground">
-                    {activeCamp.resource_app_keys.includes("students_ms") ? "MS" : ""}
-                    {activeCamp.resource_app_keys.length > 1 ? " + " : ""}
-                    {activeCamp.resource_app_keys.includes("students_hs") ? "HS" : ""}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-white/10 bg-white/5">
-              <CardContent className="flex items-center gap-3 p-4">
-                <MapPinned className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="text-sm font-medium">Campuses</p>
-                  <p className="text-xs text-muted-foreground">{availableCampuses.length || "All"} participating</p>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              <span>
+                {activeCamp.resource_app_keys.includes("students_ms") ? "MS" : ""}
+                {activeCamp.resource_app_keys.length > 1 ? " + " : ""}
+                {activeCamp.resource_app_keys.includes("students_hs") ? "HS" : ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MapPinned className="h-4 w-4 text-primary" />
+              <span>{availableCampuses.length || "All"} participating campuses</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <Tabs defaultValue="info" className="space-y-5">
-        <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-card/80 p-2">
-          <TabsTrigger value="info">Info</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="feed">Feed</TabsTrigger>
+      <Tabs defaultValue="info" className="space-y-0">
+        <TabsList className="grid h-auto w-full grid-cols-3 rounded-none border-b border-white/10 bg-card/95 p-1.5 backdrop-blur sm:mt-5 sm:w-fit sm:rounded-2xl sm:border">
+          <TabsTrigger value="info" className="rounded-xl py-2.5">Info</TabsTrigger>
+          <TabsTrigger value="schedule" className="rounded-xl py-2.5">Schedule</TabsTrigger>
+          <TabsTrigger value="feed" className="rounded-xl py-2.5">Feed</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info" className="space-y-4">
+        <TabsContent value="info" className="mt-0 space-y-4 px-4 py-5 sm:px-0">
           {sectionsLoading ? (
             <Card>
               <CardContent className="flex items-center gap-3 p-6 text-muted-foreground">
@@ -298,11 +288,11 @@ export default function CampMode() {
           ) : null}
         </TabsContent>
 
-        <TabsContent value="schedule" className="space-y-4">
+        <TabsContent value="schedule" className="mt-0">
           {availableCampuses.length > 1 ? (
-            <div className="max-w-sm">
+            <div className="border-b border-border px-4 py-4 sm:px-0">
               <Select value={selectedCampusId || ""} onValueChange={setSelectedCampusId}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full sm:max-w-sm">
                   <SelectValue placeholder="Choose campus" />
                 </SelectTrigger>
                 <SelectContent>
@@ -314,26 +304,26 @@ export default function CampMode() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+          <div className="divide-y divide-border border-b border-border bg-card/25 lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0 sm:mt-5 sm:overflow-hidden sm:rounded-2xl sm:border">
+            <section className="px-4 py-6 sm:p-6">
+              <div className="mb-5">
+                <h2 className="flex items-center gap-2 text-xl font-semibold">
                   <CalendarDays className="h-5 w-5 text-primary" />
                   Camp Calendar
-                </CardTitle>
-                <CardDescription>Events linked to this camp instance.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">Events linked to this camp.</p>
+              </div>
+              <div className="divide-y divide-border">
                 {eventsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading events...
                   </div>
                 ) : campEvents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No camp events linked yet.</p>
+                  <p className="py-4 text-sm text-muted-foreground">No camp events linked yet.</p>
                 ) : (
                   campEvents.map((event) => (
-                    <div key={event.id} className="rounded-xl border border-border p-4">
+                    <div key={event.id} className="py-4 first:pt-0 last:pb-0">
                       <p className="font-medium">{event.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {format(new Date(`${event.event_date}T00:00:00`), "EEE, MMM d")} • {timeLabel(event.start_time, event.end_time)}
@@ -344,23 +334,25 @@ export default function CampMode() {
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+            <section className="px-4 py-6 sm:p-6">
+              <div className="mb-5">
+                <h2 className="flex items-center gap-2 text-xl font-semibold">
                   <Tent className="h-5 w-5 text-primary" />
                   Service Schedule
-                </CardTitle>
-                <CardDescription>{selectedCampus?.name || "Camp"} student camp team schedule.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {selectedCampus?.name || "Camp"} student camp team schedule.
+                </p>
+              </div>
+              <div className="divide-y divide-border">
                 {campSchedule.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No student camp team schedule rows found yet.</p>
+                  <p className="py-4 text-sm text-muted-foreground">No student camp team schedule rows found yet.</p>
                 ) : (
                   campSchedule.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border border-border p-4">
+                    <div key={entry.id} className="py-4 first:pt-0 last:pb-0">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium">{entry.worship_teams?.name || "Scheduled Team"}</p>
@@ -375,12 +367,12 @@ export default function CampMode() {
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
         </TabsContent>
 
-        <TabsContent value="feed">
+        <TabsContent value="feed" className="mt-0">
           <Feed
             campInstanceId={activeCamp.id}
             heading="CAMP FEED"

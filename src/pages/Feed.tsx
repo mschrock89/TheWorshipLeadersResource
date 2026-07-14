@@ -725,6 +725,7 @@ export default function Feed({
   }, [activeTab, posts]);
 
   const isSaving = createPost.isPending || updatePost.isPending;
+  const isCampFeed = !!campInstanceId;
 
   const resetComposer = () => {
     setComposer(emptyComposerState);
@@ -836,78 +837,102 @@ export default function Feed({
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl min-w-0 space-y-8 overflow-x-hidden">
-      <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(53,176,229,0.22),transparent_32%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-6 py-7 shadow-[0_28px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-8">
-        <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(255,184,56,0.10),transparent_60%)] lg:block" />
-        <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1.25fr)_390px]">
-          <div>
-            <div className="space-y-4">
-              <h1 className="mx-auto max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text text-center font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
-                {heading}
-              </h1>
-              {!campInstanceId && selectableCampuses.length > 1 ? (
-                <div className="mx-auto flex w-full max-w-sm items-center justify-center gap-2">
-                  <MapPin className="h-4 w-4 shrink-0 text-primary" />
-                  <Select
-                    value={selectedCampusId || undefined}
-                    onValueChange={setSelectedCampusId}
-                  >
-                    <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
-                      <SelectValue placeholder="Select campus" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {selectableCampuses.map((campus) => (
-                        <SelectItem key={campus.id} value={campus.id}>
-                          {campus.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <Card className="border-white/10 bg-black/20 backdrop-blur">
-            <CardContent className="space-y-5 p-6">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">What belongs in The Feed?</p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Pastoral encouragement, set-planning insights, scriptures, polls, rehearsal wins, and trusted
-                  video resources.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
-                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
-                  <p className="text-2xl font-semibold text-foreground">{posts.length}</p>
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Posts</p>
-                </div>
-                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
-                  <p className="text-2xl font-semibold text-foreground">
-                    {posts.reduce((count, post) => count + post.like_count, 0)}
-                  </p>
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Likes</p>
-                </div>
-                <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
-                  <p className="text-2xl font-semibold text-foreground">
-                    {posts.reduce((count, post) => count + (post.comment_count ?? 0), 0)}
-                  </p>
-                  <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Comments</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+    <div
+      className={cn(
+        "w-full min-w-0 overflow-x-hidden",
+        isCampFeed ? "space-y-5" : "mx-auto max-w-6xl space-y-8",
+      )}
+    >
+      {isCampFeed ? (
+        <div className="border-b border-border px-4 py-5 sm:px-0">
+          <h1 className="font-display text-3xl font-black uppercase tracking-[0.1em] text-foreground sm:text-4xl">
+            {heading}
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Camp updates, encouragement, scripture, polls, and resources in one place.
+          </p>
         </div>
-      </section>
+      ) : (
+        <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(53,176,229,0.22),transparent_32%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-6 py-7 shadow-[0_28px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-8">
+          <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(255,184,56,0.10),transparent_60%)] lg:block" />
+          <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1.25fr)_390px]">
+            <div>
+              <div className="space-y-4">
+                <h1 className="mx-auto max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text text-center font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
+                  {heading}
+                </h1>
+                {selectableCampuses.length > 1 ? (
+                  <div className="mx-auto flex w-full max-w-sm items-center justify-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                    <Select
+                      value={selectedCampusId || undefined}
+                      onValueChange={setSelectedCampusId}
+                    >
+                      <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
+                        <SelectValue placeholder="Select campus" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectableCampuses.map((campus) => (
+                          <SelectItem key={campus.id} value={campus.id}>
+                            {campus.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 space-y-6">
+            <Card className="border-white/10 bg-black/20 backdrop-blur">
+              <CardContent className="space-y-5 p-6">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">What belongs in The Feed?</p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Pastoral encouragement, set-planning insights, scriptures, polls, rehearsal wins, and trusted
+                    video resources.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+                  <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                    <p className="text-2xl font-semibold text-foreground">{posts.length}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Posts</p>
+                  </div>
+                  <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                    <p className="text-2xl font-semibold text-foreground">
+                      {posts.reduce((count, post) => count + post.like_count, 0)}
+                    </p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Likes</p>
+                  </div>
+                  <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                    <p className="text-2xl font-semibold text-foreground">
+                      {posts.reduce((count, post) => count + (post.comment_count ?? 0), 0)}
+                    </p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Comments</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      <div
+        className={cn(
+          "min-w-0",
+          isCampFeed ? "" : "grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]",
+        )}
+      >
+        <div className={cn("min-w-0", isCampFeed ? "space-y-5" : "space-y-6")}>
           {isAdmin ? (
             <Card
               ref={composerRef}
-              className="border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]"
+              className={cn(
+                "border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]",
+                isCampFeed && "rounded-none border-x-0 shadow-none sm:rounded-2xl sm:border-x",
+              )}
             >
-              <CardContent className="space-y-5 p-6">
+              <CardContent className={cn("space-y-5", isCampFeed ? "p-4 sm:p-6" : "p-6")}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-xl font-semibold text-foreground">
@@ -1098,15 +1123,24 @@ export default function Feed({
             </Card>
           ) : null}
 
-          <Card className="border-white/10 bg-transparent shadow-none">
+          <Card className={cn("border-white/10 bg-transparent shadow-none", isCampFeed && "rounded-none border-x-0")}>
             <CardContent className="flex flex-col gap-4 px-0 pb-0 pt-0 sm:flex-row sm:items-center sm:justify-between">
-              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FeedTab)}>
-                <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 sm:w-auto">
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) => setActiveTab(value as FeedTab)}
+                className={cn("max-w-full", isCampFeed && "overflow-x-auto")}
+              >
+                <TabsList className={cn(
+                  "h-auto justify-start gap-1 border border-white/10 bg-black/20 p-1.5",
+                  isCampFeed
+                    ? "w-max min-w-full flex-nowrap rounded-none border-x-0"
+                    : "w-full flex-wrap rounded-2xl sm:w-auto",
+                )}>
                   {Object.entries(categoryLabels).map(([value, label]) => (
                     <TabsTrigger
                       key={value}
                       value={value}
-                      className="rounded-xl px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                      className="shrink-0 rounded-xl px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:px-4"
                     >
                       {label}
                     </TabsTrigger>
@@ -1114,23 +1148,31 @@ export default function Feed({
                 </TabsList>
               </Tabs>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-muted-foreground">
-                <Filter className="h-4 w-4" />
-                Showing {visiblePosts.length} post{visiblePosts.length === 1 ? "" : "s"}
-              </div>
+              {!isCampFeed ? (
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-muted-foreground">
+                  <Filter className="h-4 w-4" />
+                  Showing {visiblePosts.length} post{visiblePosts.length === 1 ? "" : "s"}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
           <div className="space-y-5">
             {showFeedLoading ? (
-              <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]">
+              <Card className={cn(
+                "border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]",
+                isCampFeed && "rounded-none border-x-0 shadow-none sm:rounded-2xl sm:border-x",
+              )}>
                 <CardContent className="flex items-center gap-3 p-6 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   Loading The Feed...
                 </CardContent>
               </Card>
             ) : visiblePosts.length === 0 ? (
-              <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]">
+              <Card className={cn(
+                "border-white/10 bg-[linear-gradient(180deg,rgba(20,28,34,0.94),rgba(14,19,24,0.94))]",
+                isCampFeed && "rounded-none border-x-0 shadow-none sm:rounded-2xl sm:border-x",
+              )}>
                 <CardContent className="space-y-3 p-6">
                   <p className="text-lg font-semibold text-foreground">No posts yet</p>
                   <p className="text-sm text-muted-foreground">
@@ -1165,47 +1207,49 @@ export default function Feed({
           </div>
         </div>
 
-        <aside className="min-w-0 space-y-5">
-          <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(18,25,31,0.94),rgba(13,18,22,0.94))]">
-            <CardContent className="space-y-4 p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Feed Permissions</p>
-              <div className="space-y-3 text-sm leading-6 text-muted-foreground">
-                <p>Everyone signed into the app can read posts for the selected campus and like what resonates.</p>
-                <p>Admins can publish, edit, and remove posts on each campus Feed to keep it helpful and clean.</p>
-                <p>Scripture can be sent into this composer directly from the Bible reader.</p>
-              </div>
-            </CardContent>
-          </Card>
+        {!isCampFeed ? (
+          <aside className="min-w-0 space-y-5">
+            <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(18,25,31,0.94),rgba(13,18,22,0.94))]">
+              <CardContent className="space-y-4 p-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Feed Permissions</p>
+                <div className="space-y-3 text-sm leading-6 text-muted-foreground">
+                  <p>Everyone signed into the app can read posts for the selected campus and like what resonates.</p>
+                  <p>Admins can publish, edit, and remove posts on each campus Feed to keep it helpful and clean.</p>
+                  <p>Scripture can be sent into this composer directly from the Bible reader.</p>
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(18,25,31,0.94),rgba(13,18,22,0.94))]">
-            <CardContent className="space-y-4 p-6">
-              <div className="flex items-center gap-2">
-                <PlayCircle className="h-4 w-4 text-accent" />
-                <p className="text-sm font-semibold text-foreground">Popular topics</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "Volunteer Care",
-                  "Prayer Moments",
-                  "Rehearsal Tips",
-                  "Scripture",
-                  "Polls",
-                  "YouTube",
-                ].map((tag) => (
-                  <span
-                    key={tag}
-                    className={cn(
-                      "rounded-full border border-white/10 px-3 py-1.5 text-sm text-muted-foreground",
-                      tag === "Scripture" && "border-primary/20 bg-primary/10 text-primary"
-                    )}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
+            <Card className="border-white/10 bg-[linear-gradient(180deg,rgba(18,25,31,0.94),rgba(13,18,22,0.94))]">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-2">
+                  <PlayCircle className="h-4 w-4 text-accent" />
+                  <p className="text-sm font-semibold text-foreground">Popular topics</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "Volunteer Care",
+                    "Prayer Moments",
+                    "Rehearsal Tips",
+                    "Scripture",
+                    "Polls",
+                    "YouTube",
+                  ].map((tag) => (
+                    <span
+                      key={tag}
+                      className={cn(
+                        "rounded-full border border-white/10 px-3 py-1.5 text-sm text-muted-foreground",
+                        tag === "Scripture" && "border-primary/20 bg-primary/10 text-primary"
+                      )}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </aside>
+        ) : null}
       </div>
     </div>
   );

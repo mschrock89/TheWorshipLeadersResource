@@ -24,7 +24,6 @@ const PermissionsAdmin = lazy(() => import("@/pages/PermissionsAdmin"));
 const PushNotificationsAdmin = lazy(() => import("@/pages/PushNotificationsAdmin"));
 const Resources = lazy(() => import("@/pages/Resources"));
 const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
-const DrumTech = lazy(() => import("@/pages/DrumTech"));
 const Bible = lazy(() => import("@/pages/Bible"));
 const Feed = lazy(() => import("@/pages/Feed"));
 const CampMode = lazy(() => import("@/pages/CampMode"));
@@ -49,8 +48,8 @@ export const publicRoutes: RouteDefinition[] = [
   route("/terms", Terms),
 ];
 
-// The Students HS/MS route list: everything the worship app has except the
-// song library, plus the student-only Camp Mode and Attendance pages.
+// The Students HS/MS route list omits worship-only tools such as the song
+// library and Drum Tech, and adds student-only Camp Mode and Attendance pages.
 export const protectedRoutes: RouteDefinition[] = [
   route("/chat", Chat),
   route("/calendar", Calendar),
@@ -78,7 +77,6 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/resources", Resources),
   route("/feed", Feed),
   route("/attendance", Attendance),
-  route("/drum-tech", DrumTech),
   route("/bible", Bible),
   route("/service-flow", ServiceFlow),
   route("/snake", Snake),
