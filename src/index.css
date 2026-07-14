@@ -3,26 +3,21 @@
 @tailwind utilities;
 
 :root {
-  /* Fixed home-indicator inset — iOS PWAs often report a bogus env() value. */
-  --app-bottom-safe-height: 20px;
+  --ios-bottom-shift: 0px;
   --app-bottom-nav-bar-height: 3.5rem;
+  --app-bottom-safe-height: min(20px, env(safe-area-inset-bottom, 20px));
   --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height)
+    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height) + var(--ios-bottom-shift)
   );
-  --ios-bottom-fill: 0px;
 }
 
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
-    padding-bottom: max(var(--app-bottom-safe-height), env(safe-area-inset-bottom, 0px));
+    padding-bottom: min(20px, env(safe-area-inset-bottom, 20px));
   }
 }
 
-/*
- * App shell: fixed full-screen flex column. Tab bar is in normal flow inside
- * the frame (not position:fixed) so iOS can't leave a floating gap under it.
- */
 .app-frame {
   position: fixed;
   inset: 0;
@@ -40,34 +35,20 @@
   background: hsl(var(--background));
 }
 
+.app-frame-content--with-nav {
+  padding-bottom: var(--app-bottom-nav-height);
+}
+
 .app-bottom-nav {
-  position: relative;
-  z-index: 50;
-  flex-shrink: 0;
-  width: 100%;
-  background-color: hsl(var(--card));
-}
-
-.app-bottom-nav-bar {
-  height: var(--app-bottom-nav-bar-height);
-}
-
-.app-bottom-nav-safe {
-  height: var(--app-bottom-safe-height);
-  background-color: hsl(var(--card));
-}
-
-/* Painted band below the layout viewport on installed iOS (not part of nav). */
-html.ios-bottom-fill::after {
-  content: "";
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: var(--ios-bottom-fill, 0px);
+  z-index: 50;
+  box-sizing: border-box;
   background-color: hsl(var(--card));
-  z-index: 40;
-  pointer-events: none;
+  padding-bottom: var(--app-bottom-safe-height);
+  transform: translate3d(0, var(--ios-bottom-shift, 0px), 0);
 }
 
 /* ECC Brand Style Guide - Version 3.1

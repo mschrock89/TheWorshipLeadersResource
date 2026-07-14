@@ -88,7 +88,7 @@ export function BottomNav() {
     <nav aria-label="Primary navigation" className="app-bottom-nav bottom-nav">
       <div
         className={cn(
-          "app-bottom-nav-bar container grid items-center gap-1 border-t border-border px-2 sm:flex sm:items-center sm:justify-around",
+          "container grid h-14 items-center gap-1 border-t border-border px-2 sm:flex sm:items-center sm:justify-around",
           navItems.length >= 7
             ? "grid-cols-7"
             : navItems.length === 6
@@ -124,7 +124,6 @@ export function BottomNav() {
           );
         })}
       </div>
-      <div className="app-bottom-nav-safe" aria-hidden />
     </nav>
   );
 }

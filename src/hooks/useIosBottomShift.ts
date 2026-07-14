@@ -13,27 +13,25 @@ function isIosStandalone(): boolean {
   );
 }
 
-/** Height of the painted strip below the layout viewport on installed iOS. */
-function measureIosBottomFill(): number {
+/** Pixels the layout viewport stops short of the painted screen bottom. */
+function measureIosBottomShift(): number {
   if (typeof window === "undefined") return 0;
   const inner = Math.round(window.innerHeight);
   const screenHeight =
     typeof window.screen?.height === "number" ? Math.round(window.screen.height) : 0;
   if (screenHeight <= inner) return 0;
-  // Ignore wild values; the home-indicator band is never this large.
   return Math.min(60, screenHeight - inner);
 }
 
 /**
- * iOS installed PWAs can paint below the layout viewport. A fixed strip (not
- * part of the tab bar) fills that band so we don't inflate nav padding.
+ * Shift the fixed tab bar down onto the physical screen bottom on installed
+ * iOS without growing the bar itself.
  */
-export function useIosBottomFill() {
+export function useIosBottomShift() {
   useLayoutEffect(() => {
     const root = document.documentElement;
     if (!isIosStandalone()) {
-      root.style.removeProperty("--ios-bottom-fill");
-      root.classList.remove("ios-bottom-fill");
+      root.style.removeProperty("--ios-bottom-shift");
       return;
     }
 
@@ -43,9 +41,7 @@ export function useIosBottomFill() {
 
     const sync = () => {
       if (cancelled) return;
-      const fill = measureIosBottomFill();
-      root.style.setProperty("--ios-bottom-fill", `${fill}px`);
-      root.classList.toggle("ios-bottom-fill", fill > 0);
+      root.style.setProperty("--ios-bottom-shift", `${measureIosBottomShift()}px`);
     };
 
     const schedule = () => {
@@ -80,8 +76,7 @@ export function useIosBottomFill() {
       window.removeEventListener("orientationchange", schedule);
       if (rafId) cancelAnimationFrame(rafId);
       timeouts.forEach((id) => window.clearTimeout(id));
-      root.style.removeProperty("--ios-bottom-fill");
-      root.classList.remove("ios-bottom-fill");
+      root.style.removeProperty("--ios-bottom-shift");
     };
   }, []);
 }
