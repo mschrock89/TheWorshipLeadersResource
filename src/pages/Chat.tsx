@@ -458,9 +458,8 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  // Bottom nav is hidden on chat; only reserve the sticky MainHeader.
-  const closedChatHeight =
-    "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
+  // Fill the app-frame content area above the (hidden) bottom nav.
+  const closedChatHeight = "100%";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {

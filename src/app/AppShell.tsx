@@ -102,17 +102,14 @@ function ProtectedPage({ children }: { children: ReactNode }) {
 }
 
 function AnimatedPage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="animate-fade-in">
-      {children}
-    </div>
-  );
+  return <div className="animate-fade-in h-full min-h-full">{children}</div>;
 }
 
-function MainContent({ children }: { children: React.ReactNode }) {
+function AppFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col">
-      <div className="flex-1">{children}</div>
+    <div className="app-frame">
+      <div className="app-frame-content">{children}</div>
+      <BottomNav />
     </div>
   );
 }
@@ -198,15 +195,14 @@ export function AppShell({
           <AuthProvider>
             <AttendanceTrackingProvider>
               <AudioPlayerProvider>
-                <MainContent>
+                <AppFrame>
                   <AppRoutes
                     publicRoutes={publicRoutes}
                     protectedRoutes={protectedRoutes}
                     notFound={notFound}
                   />
-                </MainContent>
+                </AppFrame>
                 <AudioPlayerWrapper />
-                <BottomNav />
                 <AppOnboardingTour />
               </AudioPlayerProvider>
             </AttendanceTrackingProvider>

@@ -138,8 +138,8 @@ export default function Home() {
 
   return (
     <div
-      className="relative flex flex-col overflow-hidden bg-background"
-      style={{ height: "100dvh", ...(isStudentsHome ? studentsHomeBackgroundStyle : {}) }}
+      className="relative flex h-full min-h-full flex-col overflow-hidden bg-background"
+      style={isStudentsHome ? studentsHomeBackgroundStyle : undefined}
     >
       {isStudentsHome && homeConfig.heroImage && (
         <img
