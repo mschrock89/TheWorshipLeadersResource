@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,112 @@ import { useActiveCampMode } from "@/hooks/useCampMode";
 
 export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
 
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return (
+    standaloneNavigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true
+  );
+}
+
+/**
+ * iOS can leave a visible band under position:fixed; bottom:0 (the yellow-box
+ * gap). Measure that band and shift the nav down with a negative bottom so the
+ * bar's background reaches the physical screen edge.
+ */
+function useFillBottomGap(enabled: boolean) {
+  const ref = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      document.documentElement.style.setProperty("--app-bottom-gap", "0px");
+      return;
+    }
+
+    const el = ref.current;
+    if (!el) return;
+
+    let cancelled = false;
+    let rafId = 0;
+    const timeouts: number[] = [];
+
+    const sync = () => {
+      if (cancelled) return;
+
+      // Measure from a clean bottom:0 position.
+      el.style.bottom = "0px";
+      el.style.transform = "none";
+
+      const rect = el.getBoundingClientRect();
+      const vv = window.visualViewport;
+      // getBoundingClientRect is in visual-viewport coordinates on modern iOS.
+      const viewBottom = vv ? vv.height : window.innerHeight;
+      let gap = Math.round(viewBottom - rect.bottom);
+
+      if (gap <= 0) {
+        gap = Math.round(window.innerHeight - rect.bottom);
+      }
+
+      // Installed iOS app: layout viewport can stop short of the screen.
+      if (gap <= 0 && isStandaloneDisplay() && typeof window.screen?.height === "number") {
+        gap = Math.max(0, Math.round(window.screen.height - Math.max(window.innerHeight, viewBottom)));
+      }
+
+      gap = Math.max(0, gap);
+      document.documentElement.style.setProperty("--app-bottom-gap", `${gap}px`);
+
+      if (gap > 0) {
+        el.style.bottom = `${-gap}px`;
+        // Keep icons above the home indicator while the bar fills the gap.
+        el.style.paddingBottom = `${Math.max(gap, 34)}px`;
+      } else {
+        el.style.bottom = "0px";
+        el.style.paddingBottom = "";
+      }
+    };
+
+    const schedule = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(sync);
+    };
+
+    sync();
+    let frames = 0;
+    const tick = () => {
+      if (cancelled) return;
+      sync();
+      if (++frames < 60) rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    for (const ms of [0, 50, 100, 250, 500, 1000, 2000]) {
+      timeouts.push(window.setTimeout(sync, ms));
+    }
+
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("pageshow", schedule);
+    window.addEventListener("orientationchange", schedule);
+
+    return () => {
+      cancelled = true;
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      if (rafId) cancelAnimationFrame(rafId);
+      timeouts.forEach((id) => window.clearTimeout(id));
+      document.documentElement.style.setProperty("--app-bottom-gap", "0px");
+    };
+  }, [enabled]);
+
+  return ref;
+}
+
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
@@ -37,7 +144,10 @@ export function BottomNav() {
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
 
-  if (BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname)) {
+  const hidden = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
+  const navRef = useFillBottomGap(!hidden);
+
+  if (hidden) {
     return null;
   }
 
@@ -85,7 +195,7 @@ export function BottomNav() {
   }
 
   return (
-    <nav aria-label="Primary navigation" className="app-bottom-nav bottom-nav">
+    <nav ref={navRef} aria-label="Primary navigation" className="app-bottom-nav bottom-nav">
       <div
         className={cn(
           "container grid h-14 items-center gap-1 border-t border-border px-2 sm:flex sm:items-center sm:justify-around",
