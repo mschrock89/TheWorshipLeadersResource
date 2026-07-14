@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 
 // Detect if we're on iOS
 function isIOS(): boolean {
@@ -120,17 +120,63 @@ interface VisualViewportOffset {
   isKeyboardOpen: boolean;
 }
 
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return (
+    standaloneNavigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true
+  );
+}
+
+function getLayoutViewportBottom(pinToLayoutViewportBottom: boolean): number {
+  if (
+    pinToLayoutViewportBottom &&
+    isStandaloneDisplay() &&
+    typeof window.screen?.height === "number"
+  ) {
+    // In an installed iOS app, innerHeight and visualViewport can both stop at
+    // the top of the home-indicator region even with viewport-fit=cover. The
+    // screen height is the stable full-screen boundary the home nav needs.
+    return Math.max(window.innerHeight, window.screen.height);
+  }
+
+  return window.innerHeight;
+}
+
+function getInitialVisualViewportOffset(
+  isIOSDevice: boolean,
+  pinToLayoutViewportBottom: boolean,
+): VisualViewportOffset {
+  if (!isIOSDevice || typeof window === "undefined" || !window.visualViewport) {
+    return { translateY: 0, isKeyboardOpen: false };
+  }
+
+  const viewport = window.visualViewport;
+  const visualBottom = viewport.offsetTop + viewport.height;
+
+  return {
+    translateY: pinToLayoutViewportBottom
+      ? Math.max(
+          0,
+          Math.round(getLayoutViewportBottom(pinToLayoutViewportBottom) - visualBottom),
+        )
+      : 0,
+    isKeyboardOpen: false,
+  };
+}
+
 // Keeps fixed bottom-anchored elements glued to the visual viewport on iOS.
 // Fixed elements anchor to the layout viewport; when the keyboard opens iOS
 // pans the layout viewport up and sometimes fails to pan back after the
 // keyboard closes, leaving fixed bars floating mid-screen. translateY is the
 // correction needed to place the element back at the visual viewport bottom.
 export function useVisualViewportOffset(pinToLayoutViewportBottom = false): VisualViewportOffset {
-  const [state, setState] = useState<VisualViewportOffset>({
-    translateY: 0,
-    isKeyboardOpen: false,
-  });
   const isIOSDevice = useMemo(() => isIOS(), []);
+  const [state, setState] = useState<VisualViewportOffset>(() =>
+    getInitialVisualViewportOffset(isIOSDevice, pinToLayoutViewportBottom)
+  );
   const rafId = useRef<number>(0);
   const hadKeyboardOpen = useRef(false);
 
@@ -150,12 +196,13 @@ export function useVisualViewportOffset(pinToLayoutViewportBottom = false): Visu
     }
 
     const visualBottom = viewport.offsetTop + viewport.height;
+    const layoutBottom = getLayoutViewportBottom(pinToLayoutViewportBottom);
     // Home screens do not scroll, so standalone iOS can leave their visual
     // viewport ending above the layout viewport by the home-indicator inset.
     // Move the nav through that gap. Other screens retain the existing
     // post-keyboard stuck-pan correction and are otherwise left untouched.
     const initialViewportGap = pinToLayoutViewportBottom
-      ? Math.max(0, Math.round(window.innerHeight - visualBottom))
+      ? Math.max(0, Math.round(layoutBottom - visualBottom))
       : 0;
     const keyboardRecoveryGap = hadKeyboardOpen.current
       ? Math.max(0, Math.round(visualBottom - window.innerHeight))
@@ -175,7 +222,7 @@ export function useVisualViewportOffset(pinToLayoutViewportBottom = false): Visu
     );
   }, [pinToLayoutViewportBottom, isIOSDevice]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isIOSDevice) return;
 
     const viewport = window.visualViewport;
@@ -190,12 +237,15 @@ export function useVisualViewportOffset(pinToLayoutViewportBottom = false): Visu
 
     viewport.addEventListener('resize', handleViewportChange);
     viewport.addEventListener('scroll', handleViewportChange);
+    window.addEventListener('resize', handleViewportChange);
 
     updatePosition();
+    rafId.current = requestAnimationFrame(updatePosition);
 
     return () => {
       viewport.removeEventListener('resize', handleViewportChange);
       viewport.removeEventListener('scroll', handleViewportChange);
+      window.removeEventListener('resize', handleViewportChange);
       if (rafId.current) {
         cancelAnimationFrame(rafId.current);
       }
