@@ -111,10 +111,8 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 
 function MainContent({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-shell-main flex flex-col">
-      <div className="flex-1">
-        {children}
-      </div>
+    <div className="flex min-h-[100dvh] flex-col">
+      <div className="flex-1">{children}</div>
     </div>
   );
 }
