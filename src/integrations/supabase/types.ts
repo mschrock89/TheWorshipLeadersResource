@@ -1637,6 +1637,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          ministry_type: string | null
           resource_app_key: string
           scripture_reference: string | null
           title: string
@@ -1653,6 +1654,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          ministry_type?: string | null
           resource_app_key?: string
           scripture_reference?: string | null
           title: string
@@ -1669,6 +1671,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          ministry_type?: string | null
           resource_app_key?: string
           scripture_reference?: string | null
           title?: string
