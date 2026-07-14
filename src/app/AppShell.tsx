@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav, BOTTOM_NAV_HIDDEN_ROUTES } from "@/components/layout/BottomNav";
-import { cn } from "@/lib/cn";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
@@ -106,16 +105,24 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
   return <div className="animate-fade-in h-full min-h-full">{children}</div>;
 }
 
-function AppFrame({ children }: { children: React.ReactNode }) {
+// Natural document flow with a full-height content column; the bottom nav is a
+// fixed sibling (see AppShell) that pins to the visible bottom via pb-safe.
+function MainContent({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
+  const isHome = location.pathname === "/";
 
   return (
-    <div className="app-frame">
-      <div className={cn("app-frame-content", !hideNav && "app-frame-content--with-nav")}>
+    <div className="flex flex-col" style={{ minHeight: "100dvh" }}>
+      <div
+        className="flex-1"
+        style={{
+          paddingBottom:
+            hideNav || isHome ? "0px" : "calc(80px + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
         {children}
       </div>
-      {!hideNav && <BottomNav />}
     </div>
   );
 }
@@ -201,14 +208,15 @@ export function AppShell({
           <AuthProvider>
             <AttendanceTrackingProvider>
               <AudioPlayerProvider>
-                <AppFrame>
+                <MainContent>
                   <AppRoutes
                     publicRoutes={publicRoutes}
                     protectedRoutes={protectedRoutes}
                     notFound={notFound}
                   />
-                </AppFrame>
+                </MainContent>
                 <AudioPlayerWrapper />
+                <BottomNav />
                 <AppOnboardingTour />
               </AudioPlayerProvider>
             </AttendanceTrackingProvider>

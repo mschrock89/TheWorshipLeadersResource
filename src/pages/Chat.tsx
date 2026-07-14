@@ -458,7 +458,7 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  // Fill the app-frame content area above the (hidden) bottom nav.
+  // Fill the content area above the (hidden) bottom nav.
   const closedChatHeight = "100%";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 

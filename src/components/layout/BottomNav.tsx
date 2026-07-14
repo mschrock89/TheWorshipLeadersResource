@@ -93,7 +93,10 @@ export function BottomNav() {
   }
 
   return (
-    <nav aria-label="Primary navigation" className="app-bottom-nav bottom-nav">
+    <nav
+      aria-label="Primary navigation"
+      className="bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe"
+    >
       <div
         className={cn(
           "container grid h-14 items-center gap-1 px-2 sm:flex sm:items-center sm:justify-around",

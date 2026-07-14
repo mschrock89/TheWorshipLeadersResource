@@ -2,57 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --app-bottom-nav-bar-height: 3.5rem;
-  /* Cap at home-indicator size so a bad env() value can't inflate the bar. */
-  --app-bottom-safe-height: min(34px, env(safe-area-inset-bottom, 0px));
-  --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height)
-  );
-}
-
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
-    padding-bottom: min(34px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom);
   }
-}
-
-.app-frame {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: hsl(var(--background));
-}
-
-.app-frame-content {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  background: hsl(var(--background));
-}
-
-.app-frame-content--with-nav {
-  padding-bottom: var(--app-bottom-nav-height);
-}
-
-/*
- * Standard iOS tab bar: fixed to the visible bottom, icon row + home-indicator
- * padding. No translateY / screen-height math — that was pushing icons off-screen.
- */
-.app-bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 50;
-  box-sizing: border-box;
-  border-top: 1px solid hsl(var(--border));
-  background-color: hsl(var(--card));
-  padding-bottom: var(--app-bottom-safe-height);
 }
 
 /* ECC Brand Style Guide - Version 3.1
@@ -142,17 +96,7 @@
 
   html {
     min-width: 320px;
-    height: 100%;
-    min-height: 100%;
-    min-height: 100dvh;
-    /*
-     * Card color, not --background: the root background is what iOS paints into
-     * the bottom safe-area / any gap below the fixed nav. Matching the nav's card
-     * color makes that band read as part of the tab bar instead of a blank strip.
-     * The app itself is covered opaquely by .app-frame (--background), so this
-     * only shows through in the home-indicator region.
-     */
-    background: hsl(var(--card));
+    background: hsl(var(--background));
     color-scheme: dark;
     text-rendering: optimizeLegibility;
   }
@@ -160,17 +104,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     min-width: 320px;
-    height: 100%;
-    min-height: 100%;
-    min-height: 100dvh;
     margin: 0;
-    overflow: hidden;
     font-feature-settings: "cv11", "ss01";
-  }
-
-  #root {
-    height: 100%;
-    isolation: isolate;
   }
 
   ::selection {
