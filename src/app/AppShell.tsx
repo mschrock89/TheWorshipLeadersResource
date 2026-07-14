@@ -18,7 +18,7 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense, useLayoutEffect, useRef } from "react";
+import { lazy, Suspense } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
 
 export type RouteDefinition = {
@@ -106,59 +106,8 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 }
 
 function AppFrame({ children }: { children: React.ReactNode }) {
-  const frameRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-
-    let cancelled = false;
-    let rafId = 0;
-
-    // Match the visible viewport exactly — never screen.height (clips the nav)
-    // and never a short layout viewport (leaves a gap under the nav).
-    const sync = () => {
-      if (cancelled) return;
-      const vv = window.visualViewport;
-      if (vv) {
-        el.style.top = `${Math.round(vv.offsetTop)}px`;
-        el.style.height = `${Math.round(vv.height)}px`;
-        el.style.bottom = "auto";
-      } else {
-        el.style.top = "0px";
-        el.style.height = `${window.innerHeight}px`;
-        el.style.bottom = "auto";
-      }
-    };
-
-    const schedule = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(sync);
-    };
-
-    sync();
-    schedule();
-
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", schedule);
-    viewport?.addEventListener("scroll", schedule);
-    window.addEventListener("resize", schedule);
-    window.addEventListener("pageshow", schedule);
-    window.addEventListener("orientationchange", schedule);
-
-    return () => {
-      cancelled = true;
-      viewport?.removeEventListener("resize", schedule);
-      viewport?.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("pageshow", schedule);
-      window.removeEventListener("orientationchange", schedule);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, []);
-
   return (
-    <div ref={frameRef} className="app-frame">
+    <div className="app-frame">
       <div className="app-frame-content">{children}</div>
       <BottomNav />
     </div>
