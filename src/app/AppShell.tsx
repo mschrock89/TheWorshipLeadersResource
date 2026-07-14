@@ -21,27 +21,6 @@ import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense, useLayoutEffect, useRef } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
 
-function isStandaloneDisplay(): boolean {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
-  return (
-    standaloneNavigator.standalone === true ||
-    window.matchMedia?.("(display-mode: standalone)").matches === true
-  );
-}
-
-/** Tallest reliable height for the app shell on iOS (layout viewport can run short). */
-function getAppFrameHeight(): number {
-  const visualBottom = window.visualViewport
-    ? window.visualViewport.offsetTop + window.visualViewport.height
-    : window.innerHeight;
-  const candidates = [window.innerHeight, visualBottom, document.documentElement?.clientHeight || 0];
-  if (isStandaloneDisplay() && typeof window.screen?.height === "number") {
-    candidates.push(window.screen.height);
-  }
-  return Math.max(...candidates);
-}
-
 export type RouteDefinition = {
   path: string;
   component: ComponentType;
@@ -135,14 +114,21 @@ function AppFrame({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
     let rafId = 0;
-    const timeouts: number[] = [];
 
+    // Match the visible viewport exactly — never screen.height (clips the nav)
+    // and never a short layout viewport (leaves a gap under the nav).
     const sync = () => {
       if (cancelled) return;
-      const height = Math.round(getAppFrameHeight());
-      el.style.height = `${height}px`;
-      el.style.top = "0px";
-      el.style.bottom = "auto";
+      const vv = window.visualViewport;
+      if (vv) {
+        el.style.top = `${Math.round(vv.offsetTop)}px`;
+        el.style.height = `${Math.round(vv.height)}px`;
+        el.style.bottom = "auto";
+      } else {
+        el.style.top = "0px";
+        el.style.height = `${window.innerHeight}px`;
+        el.style.bottom = "auto";
+      }
     };
 
     const schedule = () => {
@@ -151,17 +137,7 @@ function AppFrame({ children }: { children: React.ReactNode }) {
     };
 
     sync();
-    let frames = 0;
-    const tick = () => {
-      if (cancelled) return;
-      sync();
-      if (++frames < 60) rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-
-    for (const ms of [0, 50, 100, 250, 500, 1000, 2000]) {
-      timeouts.push(window.setTimeout(sync, ms));
-    }
+    schedule();
 
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", schedule);
@@ -178,7 +154,6 @@ function AppFrame({ children }: { children: React.ReactNode }) {
       window.removeEventListener("pageshow", schedule);
       window.removeEventListener("orientationchange", schedule);
       if (rafId) cancelAnimationFrame(rafId);
-      timeouts.forEach((id) => window.clearTimeout(id));
     };
   }, []);
 
