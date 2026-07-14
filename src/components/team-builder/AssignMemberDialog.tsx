@@ -164,7 +164,7 @@ export function AssignMemberDialog({
       if (STUDENT_POSITION_VALUES.includes(slotType as typeof STUDENT_POSITION_VALUES[number])) {
         return pLower === slotType;
       }
-      // Pastors slots (Student Camp: pastor_mc, pastor_prayer, pastor_speaker)
+      // Pastors slots (Student Camp: pastor_mc, pastor_prayer, pastor_speaker, pastor_game_master)
       if (slotType.startsWith("pastor_")) {
         return pLower === slotType;
       }

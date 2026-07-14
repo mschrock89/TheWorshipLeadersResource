@@ -102,6 +102,7 @@ export const POSITION_LABELS: Record<string, string> = {
   pastor_mc: "M/C",
   pastor_prayer: "Prayer",
   pastor_speaker: "Speaker",
+  pastor_game_master: "Game Master",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -169,6 +170,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   pastor_mc: "M/C",
   pastor_prayer: "Prayer",
   pastor_speaker: "Speaker",
+  pastor_game_master: "Game Master",
   switcher_2: "Switcher 2",
   switcher_3: "Switcher 3",
   switcher_4: "Switcher 4",
@@ -183,7 +185,7 @@ export const POSITION_CATEGORIES = {
   video: ["tri_pod_camera", "hand_held_camera", "director", "graphics", "switcher", "other"],
   creative: ["photo_team", "art_team"],
   students: [...STUDENT_POSITION_VALUES],
-  pastors: ["pastor_mc", "pastor_prayer", "pastor_speaker"],
+  pastors: ["pastor_mc", "pastor_prayer", "pastor_speaker", "pastor_game_master"],
 };
 
 // Team Builder position slots - these map to position_slot column in team_members table
@@ -256,6 +258,7 @@ export const POSITION_SLOTS: {
   { slot: "pastor_mc", label: "M/C", category: "Pastors", position: "pastor_mc" },
   { slot: "pastor_prayer", label: "Prayer", category: "Pastors", position: "pastor_prayer" },
   { slot: "pastor_speaker", label: "Speaker", category: "Pastors", position: "pastor_speaker" },
+  { slot: "pastor_game_master", label: "Game Master", category: "Pastors", position: "pastor_game_master" },
 ];
 
 // Video positions (and their slot variants). Video teams differ between Saturday

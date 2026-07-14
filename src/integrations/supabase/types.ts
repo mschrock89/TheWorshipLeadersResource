@@ -4149,6 +4149,7 @@ export type Database = {
         | "pastor_mc"
         | "pastor_prayer"
         | "pastor_speaker"
+        | "pastor_game_master"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4353,6 +4354,7 @@ export const Constants = {
         "pastor_mc",
         "pastor_prayer",
         "pastor_speaker",
+        "pastor_game_master",
       ],
     },
   },
