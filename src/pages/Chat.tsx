@@ -105,6 +105,11 @@ function ChatContent() {
   const [newMessageCount, setNewMessageCount] = useState(0);
   const hasInitiallyScrolled = useRef(false);
   const isAtBottomRef = useRef(true);
+  // True while the user is actively touching/scrolling the thread. Auto-pin must
+  // stand down during this window — on iOS the Safari toolbar toggles as you drag
+  // up to read history, which resizes the container and would otherwise snap the
+  // user back to the newest message.
+  const interactingRef = useRef(false);
   const newestMessageIdRef = useRef<string | null>(null);
   const [hasScrolledToLastRead, setHasScrolledToLastRead] = useState(false);
   const [hasClickedJumpToLastRead, setHasClickedJumpToLastRead] = useState(false);
@@ -302,24 +307,65 @@ function ChatContent() {
     }
   }, [messages, isLoading, pinToLatestMessage]);
 
-  // Keep glued to the latest message when images/media expand the thread.
+  // Keep glued to the latest message when images/media expand the thread — but
+  // only when the user is genuinely parked at the bottom and not mid-gesture.
   useEffect(() => {
     const scrollElement = document.querySelector(
       "[data-pull-to-refresh-container]",
     ) as HTMLDivElement | null;
-    if (!scrollElement || typeof ResizeObserver === "undefined") return;
+    if (!scrollElement) return;
 
-    const observer = new ResizeObserver(() => {
-      if (isAtBottomRef.current) {
-        pinToLatestMessage("auto");
-      }
-    });
+    // Track active touch/scroll so a toolbar-driven resize during a drag can't
+    // trigger an auto-pin. Hold the flag briefly past touchend to cover momentum.
+    let releaseTimer = 0;
+    const beginInteract = () => {
+      window.clearTimeout(releaseTimer);
+      interactingRef.current = true;
+    };
+    const endInteract = () => {
+      window.clearTimeout(releaseTimer);
+      releaseTimer = window.setTimeout(() => {
+        interactingRef.current = false;
+      }, 350);
+    };
+    const onWheel = () => {
+      beginInteract();
+      endInteract();
+    };
 
-    observer.observe(scrollElement);
-    const content = scrollElement.firstElementChild;
-    if (content) observer.observe(content);
+    scrollElement.addEventListener("touchstart", beginInteract, { passive: true });
+    scrollElement.addEventListener("touchmove", beginInteract, { passive: true });
+    scrollElement.addEventListener("touchend", endInteract, { passive: true });
+    scrollElement.addEventListener("touchcancel", endInteract, { passive: true });
+    scrollElement.addEventListener("wheel", onWheel, { passive: true });
 
-    return () => observer.disconnect();
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        if (interactingRef.current || !isAtBottomRef.current) return;
+        // Re-verify against the live DOM; a stale "at bottom" ref must not win.
+        const atBottom =
+          scrollElement.scrollHeight -
+            scrollElement.scrollTop -
+            scrollElement.clientHeight <
+          30;
+        if (atBottom) pinToLatestMessage("auto");
+      });
+
+      observer.observe(scrollElement);
+      const content = scrollElement.firstElementChild;
+      if (content) observer.observe(content);
+    }
+
+    return () => {
+      scrollElement.removeEventListener("touchstart", beginInteract);
+      scrollElement.removeEventListener("touchmove", beginInteract);
+      scrollElement.removeEventListener("touchend", endInteract);
+      scrollElement.removeEventListener("touchcancel", endInteract);
+      scrollElement.removeEventListener("wheel", onWheel);
+      window.clearTimeout(releaseTimer);
+      observer?.disconnect();
+    };
   }, [pinToLatestMessage, selectedCampusId, selectedMinistryType]);
 
   // Track scroll position
@@ -458,8 +504,10 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  // Fill the content area above the (hidden) bottom nav.
-  const closedChatHeight = "100%";
+  // Compute our own viewport height (minus the 56px header) instead of relying
+  // on a definite-height ancestor: the app scrolls naturally, so height:100%
+  // would collapse and hide the composer. Keyboard-open state is handled below.
+  const closedChatHeight = "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {

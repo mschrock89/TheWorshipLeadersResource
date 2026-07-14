@@ -112,14 +112,14 @@ export function ProtectedLayout({
 
   return (
     <CampusSelectionProvider value={campusSelectionValue}>
-      <div className={`bg-background ${isOnChatPage ? "flex h-full min-h-0 flex-col" : "min-h-full"}`}>
+      <div className="min-h-full bg-background">
         <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
           <MainHeader />
         </Suspense>
         <main
           className={
             isOnChatPage
-              ? "min-h-0 flex-1"
+              ? ""
               : `container px-4 py-5 sm:px-6 sm:py-7 ${hasActivePlayer ? "pb-20" : "pb-5"}`
           }
         >
