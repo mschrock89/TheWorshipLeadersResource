@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { formatDateForDB } from "@/lib/utils";
+import { isNetworkWideMinistryType } from "@/lib/constants";
 
 export interface Song {
   id: string;
@@ -939,6 +940,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       } else {
         effectiveMinistryTypes = userMinistryTypes;
       }
+      const includesNetworkWideMinistry = effectiveMinistryTypes.some(isNetworkWideMinistryType);
 
       // Determine which campus IDs to filter by
       // If a specific campusId is passed and user has access, use only that campus
@@ -965,7 +967,11 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
           .eq("plan_date", date!);
 
         if (filterCampusIds.length > 0) {
-          query = query.in("campus_id", filterCampusIds);
+          query = includesNetworkWideMinistry
+            ? query.or(`campus_id.in.(${filterCampusIds.join(",")}),campus_id.is.null`)
+            : query.in("campus_id", filterCampusIds);
+        } else if (includesNetworkWideMinistry) {
+          query = query.is("campus_id", null);
         }
 
         const { data: plans, error: plansError } = await query;
@@ -1012,7 +1018,11 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         .order("published_at", { ascending: false });
 
       if (filterCampusIds.length > 0) {
-        draftQuery = draftQuery.in("campus_id", filterCampusIds);
+        draftQuery = includesNetworkWideMinistry
+          ? draftQuery.or(`campus_id.in.(${filterCampusIds.join(",")}),campus_id.is.null`)
+          : draftQuery.in("campus_id", filterCampusIds);
+      } else if (includesNetworkWideMinistry) {
+        draftQuery = draftQuery.is("campus_id", null);
       }
 
       const { data: draftSets, error: draftError } = await draftQuery;
@@ -1030,7 +1040,14 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       });
 
       // Collect all songs from both sources
-      const result: { id: string; service_type_name: string; plan_title: string | null; campus_id: string | null; songs: any[] }[] = [];
+      const result: {
+        id: string;
+        draft_set_id: string | null;
+        service_type_name: string;
+        plan_title: string | null;
+        campus_id: string | null;
+        songs: any[];
+      }[] = [];
 
       // Fetch all basic profiles upfront using SECURITY DEFINER function
       // This allows all users (including volunteers) to see vocalist names
@@ -1139,6 +1156,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         for (const plan of filteredPlans) {
           result.push({
             ...plan,
+            draft_set_id: null,
             songs: (planSongs || [])
               .filter(ps => ps.plan_id === plan.id)
               .map(ps => {
@@ -1203,6 +1221,7 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
             const priorUsesMap = collapsePriorUsesToCanonical(dsMergedRaw, dsAlternateToCanonical);
             result.push({
               id: ds.id,
+              draft_set_id: ds.id,
               service_type_name: ministryLabels[ds.ministry_type] || ds.ministry_type,
               plan_title: null,
               campus_id: ds.campus_id,

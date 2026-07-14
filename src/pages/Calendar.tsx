@@ -1041,8 +1041,13 @@ function StandardCalendar() {
     headerFlowCampusId,
     ministryFilter,
   );
+  const headerDraftSetIds = headerPlansWithSongs
+    .filter((plan) => (plan.songs || []).length > 0)
+    .map((plan) => plan.draft_set_id)
+    .filter((id): id is string => Boolean(id));
+  const headerDraftSetId = headerDraftSetIds.length === 1 ? headerDraftSetIds[0] : null;
   const headerServiceFlowLink = selectedDateStr
-    ? `/service-flow?date=${selectedDateStr}${headerFlowCampusId ? `&campus=${headerFlowCampusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}`
+    ? `/service-flow?date=${selectedDateStr}${headerFlowCampusId ? `&campus=${headerFlowCampusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${headerDraftSetId ? `&draftSetId=${headerDraftSetId}` : ""}`
     : null;
   const showHeaderServiceFlowButton = useMemo(() => {
     if (!selectedDateStr || isCrossCampusReadOnly || selectedDayServices.length > 0) {
@@ -4002,7 +4007,12 @@ function SongsPreview({
   } = useSongsForDate(dateStr, campusId, ministryFilter);
 
   // Build service flow link with query params
-  const serviceFlowLink = `/service-flow?date=${dateStr}${campusId ? `&campus=${campusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}`;
+  const draftSetIds = plansWithSongs
+    .filter((plan) => (plan.songs || []).length > 0)
+    .map((plan) => plan.draft_set_id)
+    .filter((id): id is string => Boolean(id));
+  const draftSetId = draftSetIds.length === 1 ? draftSetIds[0] : null;
+  const serviceFlowLink = `/service-flow?date=${dateStr}${campusId ? `&campus=${campusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${draftSetId ? `&draftSetId=${draftSetId}` : ""}`;
   if (isLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">

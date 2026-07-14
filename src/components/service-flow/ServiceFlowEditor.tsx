@@ -19,9 +19,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useCampuses } from "@/hooks/useCampuses";
+import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
-import { MINISTRY_TYPES, isKidsCampSetMinistryType } from "@/lib/constants";
+import { MINISTRY_TYPES, isKidsCampSetMinistryType, isNetworkWideMinistryType } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
@@ -211,6 +211,7 @@ export function ServiceFlowEditor({
   const { toast } = useToast();
   const { selectedCampusId, setSelectedCampusId } = useCampusSelection();
   const { data: campuses, isLoading: campusesLoading } = useCampuses();
+  const { data: networkWideCampus, isLoading: networkWideCampusLoading } = useNetworkWideCampus();
 
   // Parse initial date from string
   const parsedInitialDate = initialDate ? new Date(initialDate + 'T00:00:00') : new Date();
@@ -219,6 +220,7 @@ export function ServiceFlowEditor({
   // Default to "weekend" if initialMinistryType is "weekend_team" (consolidated filter, not a real ministry)
   const effectiveInitialMinistry = initialMinistryType === "weekend_team" ? "weekend" : initialMinistryType;
   const [ministryType, setMinistryType] = useState(effectiveInitialMinistry || "weekend");
+  const [campusOverrideId, setCampusOverrideId] = useState<string | null>(initialCampusId || null);
   const [resolvedDraftSetId, setResolvedDraftSetId] = useState<string | null>(initialDraftSetId || null);
   const [resolvedCustomServiceId, setResolvedCustomServiceId] = useState<string | null>(initialCustomServiceId || null);
   const [boundServiceFlowId, setBoundServiceFlowId] = useState<string | null>(null);
@@ -227,8 +229,6 @@ export function ServiceFlowEditor({
   const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
-  const hasAttemptedLiveTemplateSync = useRef(false);
-  const hasAttemptedStaleTemplateSync = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedVocalists = useRef(false);
   const hasInvalidatedOnLive = useRef(false);
@@ -244,9 +244,18 @@ export function ServiceFlowEditor({
   }, [initialCampusId, selectedCampusId, setSelectedCampusId]);
 
   // Set campus from URL if provided
-  const effectiveCampusId = initialCampusId || selectedCampusId;
+  const serviceFlowCampuses = useMemo(
+    () => networkWideCampus ? [networkWideCampus, ...(campuses || [])] : campuses || [],
+    [campuses, networkWideCampus],
+  );
+  const effectiveCampusId = isNetworkWideMinistryType(ministryType)
+    ? networkWideCampus?.id || null
+    : campusOverrideId || selectedCampusId;
   const handleCampusChange = (value: string) => {
-    setSelectedCampusId(value);
+    setCampusOverrideId(value);
+    if (value !== networkWideCampus?.id) {
+      setSelectedCampusId(value);
+    }
   };
 
   const { data: campusTemplates = [] } = useServiceFlowTemplates(effectiveCampusId || null, null);
@@ -470,8 +479,6 @@ export function ServiceFlowEditor({
   // Reset live-scoped state when the selected service context changes.
   useEffect(() => {
     hasAttemptedAutoGenerate.current = false;
-    hasAttemptedLiveTemplateSync.current = false;
-    hasAttemptedStaleTemplateSync.current = false;
     hasAttemptedEmptyBackfill.current = false;
     hasSyncedVocalists.current = false;
     hasInvalidatedOnLive.current = false;
@@ -626,151 +633,6 @@ export function ServiceFlowEditor({
 
   const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || directCustomServiceFlow?.id || null;
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(activeServiceFlowId);
-
-  // When opened via LIVE and a flow already exists, run one sync pass to ensure
-  // the flow matches the selected template context (fixes stale template carryover).
-  useEffect(() => {
-    const syncExistingLiveFlowToTemplate = async () => {
-      if (!cameFromLive) return;
-      if (!user?.id || !effectiveCampusId) return;
-      if (!serviceFlow?.id) return;
-      if (hasAttemptedLiveTemplateSync.current) return;
-      if (itemsLoading) return;
-
-      const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId;
-      // Kids Camp combined flows may have no draft_set_id — they fetch songs from both
-      // sessions internally inside generateServiceFlowFromTemplate.
-      const isKidsCampFlow = isKidsCampSetMinistryType(ministryType) || ministryType === "kids_camp";
-      if (!draftSetId && !isKidsCampFlow) return;
-
-      hasAttemptedLiveTemplateSync.current = true;
-
-      try {
-        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
-
-        await generateServiceFlowFromTemplate({
-          campusId: effectiveCampusId,
-          ministryType,
-          serviceDate: serviceDateStr,
-          draftSetId,
-          customServiceId: effectiveCustomServiceId || null,
-          createdBy: user.id,
-          forceTemplateResync: true,
-          songs,
-        });
-
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow-items", serviceFlow.id],
-          }),
-        ]);
-      } catch {
-        // Keep the page usable even if sync fails; generation/toast paths already handle errors.
-      }
-    };
-
-    syncExistingLiveFlowToTemplate();
-  }, [
-    cameFromLive,
-    user?.id,
-    effectiveCampusId,
-    serviceFlow?.id,
-    serviceFlow?.draft_set_id,
-    itemsLoading,
-    resolvedDraftSetId,
-    ministryType,
-    serviceDateStr,
-    queryClient,
-    effectiveCustomServiceId,
-    loadDraftSongsWithVocalists,
-  ]);
-
-  // Detect when the service flow template was updated after the flow was last generated
-  // and automatically regenerate. This covers the case where a user edits the template
-  // and then opens the service flow editor without going through Live mode.
-  useEffect(() => {
-    const syncStaleTemplateFlow = async () => {
-      if (!serviceFlow?.id) return;
-      if (!user?.id || !effectiveCampusId) return;
-      if (hasAttemptedLiveTemplateSync.current) return; // Live sync handles this path
-      if (hasAttemptedStaleTemplateSync.current) return;
-      if (itemsLoading) return;
-      if (!serviceFlow.created_from_template_id) return;
-
-      // Find the matching template for the current campus/ministry
-      const relevantMinistry =
-        isKidsCampSetMinistryType(ministryType) ? "kids_camp" : ministryType;
-      const matchingTemplate = (campusTemplates || []).find(
-        (t) => t.ministry_type === relevantMinistry
-      );
-      if (!matchingTemplate) return;
-
-      const templateUpdatedAt = matchingTemplate.updated_at
-        ? new Date(matchingTemplate.updated_at).getTime()
-        : null;
-      const flowUpdatedAt = serviceFlow.updated_at
-        ? new Date(serviceFlow.updated_at).getTime()
-        : null;
-
-      const templateIsNewer =
-        templateUpdatedAt !== null &&
-        flowUpdatedAt !== null &&
-        templateUpdatedAt > flowUpdatedAt;
-      const templateIdMismatch =
-        serviceFlow.created_from_template_id !== matchingTemplate.id;
-
-      if (!templateIsNewer && !templateIdMismatch) return;
-
-      hasAttemptedStaleTemplateSync.current = true;
-
-      try {
-        const draftSetId = serviceFlow.draft_set_id || resolvedDraftSetId || null;
-        const songs = draftSetId ? await loadDraftSongsWithVocalists(draftSetId) : [];
-
-        await generateServiceFlowFromTemplate({
-          campusId: effectiveCampusId,
-          ministryType,
-          serviceDate: serviceDateStr,
-          draftSetId,
-          customServiceId: effectiveCustomServiceId || null,
-          createdBy: user.id,
-          forceTemplateResync: true,
-          songs,
-        });
-
-        await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["service-flow-items", serviceFlow.id],
-          }),
-        ]);
-      } catch {
-        // Keep the page usable even if sync fails.
-      }
-    };
-
-    syncStaleTemplateFlow();
-  }, [
-    serviceFlow?.id,
-    serviceFlow?.created_from_template_id,
-    serviceFlow?.updated_at,
-    serviceFlow?.draft_set_id,
-    effectiveCustomServiceId,
-    user?.id,
-    effectiveCampusId,
-    ministryType,
-    serviceDateStr,
-    campusTemplates,
-    itemsLoading,
-    queryClient,
-    resolvedDraftSetId,
-    loadDraftSongsWithVocalists,
-  ]);
 
   // If a flow already exists but is empty, backfill it from the linked setlist/template.
   useEffect(() => {
@@ -987,9 +849,7 @@ export function ServiceFlowEditor({
         songs,
       });
 
-      // Let the automatic syncs run again on the refreshed data.
-      hasAttemptedLiveTemplateSync.current = false;
-      hasAttemptedStaleTemplateSync.current = false;
+      // Allow empty-flow backfill to run again on the refreshed data.
       hasAttemptedEmptyBackfill.current = false;
 
       await queryClient.invalidateQueries({ queryKey: ["service-flow"] });
@@ -1046,7 +906,7 @@ export function ServiceFlowEditor({
       .sort()[0];
     if (overrideTime) return overrideTime;
 
-    const campus = campuses?.find((campus) => campus.id === effectiveCampusId);
+    const campus = serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId);
     const defaultTime = getDefaultCampusServiceTimes(campus, selectedDate, ministryType)
       .map(normalizeClockSource)
       .filter((time): time is string => Boolean(time))
@@ -1054,7 +914,7 @@ export function ServiceFlowEditor({
 
     return defaultTime || null;
   }, [
-    campuses,
+    serviceFlowCampuses,
     customServiceStartTime,
     effectiveCampusId,
     ministryType,
@@ -1305,10 +1165,10 @@ export function ServiceFlowEditor({
     setDraggedItem(null);
   };
 
-  const isLoading = campusesLoading || flowLoading || itemsLoading || isAutoGenerating;
+  const isLoading = campusesLoading || networkWideCampusLoading || flowLoading || itemsLoading || isAutoGenerating;
 
   const servicePreview = useMemo<ServiceFlowPreviewData>(() => {
-    const campusName = campuses?.find((campus) => campus.id === effectiveCampusId)?.name;
+    const campusName = serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId)?.name;
     const ministryLabel =
       availableMinistryOptions.find((option) => option.value === ministryType)?.label ||
       MINISTRY_TYPES.find((option) => option.value === ministryType)?.label ||
@@ -1404,7 +1264,7 @@ export function ServiceFlowEditor({
       sections: sections.filter((section) => section.items.length > 0),
     };
   }, [
-    campuses,
+    serviceFlowCampuses,
     effectiveCampusId,
     availableMinistryOptions,
     clockTimesByItemId,
@@ -1424,7 +1284,7 @@ export function ServiceFlowEditor({
             <SelectValue placeholder="Select Campus" />
           </SelectTrigger>
           <SelectContent>
-            {campuses?.map((campus) => (
+            {serviceFlowCampuses.map((campus) => (
               <SelectItem key={campus.id} value={campus.id}>
                 {campus.name}
               </SelectItem>

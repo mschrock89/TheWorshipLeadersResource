@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { isKidsCampSetMinistryType } from "@/lib/constants";
+import { isKidsCampSetMinistryType, isNetworkWideMinistryType } from "@/lib/constants";
 
 const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
 const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
@@ -668,7 +668,7 @@ async function getSongDurationsFromMarkers(
 
 // Helper to generate service flow from template when setlist is published
 export async function generateServiceFlowFromTemplate(params: {
-  campusId: string;
+  campusId: string | null;
   ministryType: string;
   serviceDate: string;
   draftSetId?: string | null;
@@ -683,6 +683,20 @@ export async function generateServiceFlowFromTemplate(params: {
     vocalistIds?: string[];
   }>;
 }) {
+  let serviceFlowCampusId = params.campusId;
+  if (isNetworkWideMinistryType(params.ministryType)) {
+    const { data: networkWideCampus, error: networkWideCampusError } = await supabase
+      .from("campuses")
+      .select("id")
+      .eq("is_network_wide", true)
+      .maybeSingle();
+    if (networkWideCampusError) throw networkWideCampusError;
+    serviceFlowCampusId = networkWideCampus?.id || serviceFlowCampusId;
+  }
+  if (!serviceFlowCampusId) {
+    throw new Error("A campus is required to generate a service flow.");
+  }
+
   const resolveTemplateForCandidate = async (campusId: string, candidateMinistry: string) => {
     const { data: candidateTemplates, error: templateError } = await supabase
       .from("service_flow_templates")
@@ -756,7 +770,7 @@ export async function generateServiceFlowFromTemplate(params: {
   let resolvedMinistryType = params.ministryType;
 
   for (const candidate of templateMinistryCandidates) {
-    const candidateTemplate = await resolveTemplateForCandidate(params.campusId, candidate);
+    const candidateTemplate = await resolveTemplateForCandidate(serviceFlowCampusId, candidate);
 
     if (candidateTemplate) {
       template = candidateTemplate;
@@ -800,7 +814,7 @@ export async function generateServiceFlowFromTemplate(params: {
     const { data: sessionSets } = await supabase
       .from("draft_sets")
       .select("id, ministry_type, custom_service_id, published_at")
-      .eq("campus_id", params.campusId)
+      .eq("campus_id", serviceFlowCampusId)
       .eq("plan_date", params.serviceDate)
       .eq("status", "published")
       .in("ministry_type", ["kids_camp_morning", "kids_camp_afternoon"])
@@ -860,7 +874,7 @@ export async function generateServiceFlowFromTemplate(params: {
 
   // Get song durations from reference track markers
   const markerDurations = await getSongDurationsFromMarkers(
-    params.campusId,
+    serviceFlowCampusId,
     resolvedMinistryType,
     params.serviceDate,
     params.draftSetId
@@ -1148,7 +1162,7 @@ export async function generateServiceFlowFromTemplate(params: {
       const scopedFlow = await supabase
         .from("service_flows")
         .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
-        .eq("campus_id", params.campusId)
+        .eq("campus_id", serviceFlowCampusId)
         .eq("ministry_type", resolvedMinistryType)
         .eq("service_date", params.serviceDate)
         .eq("custom_service_id", resolvedCustomServiceId)
@@ -1176,7 +1190,7 @@ export async function generateServiceFlowFromTemplate(params: {
     const scopedBase = supabase
       .from("service_flows")
       .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
-      .eq("campus_id", params.campusId)
+      .eq("campus_id", serviceFlowCampusId)
       .eq("ministry_type", resolvedMinistryType)
       .eq("service_date", params.serviceDate)
       .order("updated_at", { ascending: false })
@@ -1194,7 +1208,7 @@ export async function generateServiceFlowFromTemplate(params: {
         const scopedFallback = await supabase
           .from("service_flows")
           .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
-          .eq("campus_id", params.campusId)
+          .eq("campus_id", serviceFlowCampusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
           .order("updated_at", { ascending: false })
@@ -1214,7 +1228,7 @@ export async function generateServiceFlowFromTemplate(params: {
         const scopedFallback = await supabase
           .from("service_flows")
           .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
-          .eq("campus_id", params.campusId)
+          .eq("campus_id", serviceFlowCampusId)
           .eq("ministry_type", resolvedMinistryType)
           .eq("service_date", params.serviceDate)
           .order("updated_at", { ascending: false })
@@ -1237,13 +1251,6 @@ export async function generateServiceFlowFromTemplate(params: {
       created_from_template_id?: string | null;
       updated_at?: string | null;
     };
-
-    const templateUpdatedAt = template?.updated_at ? new Date(template.updated_at).getTime() : null;
-    const flowUpdatedAt = existingFlowMeta.updated_at ? new Date(existingFlowMeta.updated_at).getTime() : null;
-    const templateWasUpdatedAfterFlow =
-      templateUpdatedAt !== null &&
-      flowUpdatedAt !== null &&
-      templateUpdatedAt > flowUpdatedAt;
 
     const updatePayloadWithCustom = {
       draft_set_id: params.draftSetId || null,
@@ -1276,31 +1283,10 @@ export async function generateServiceFlowFromTemplate(params: {
       .eq("service_flow_id", existingFlow.id)
       .order("sequence_order", { ascending: true });
 
-    const hasLegacyPlaceholderRows = (existingItems || []).some((item: any) =>
-      item.item_type !== "song" &&
-      /^song\s*\d+\b/i.test((item.title || "").trim())
-    );
-
-    // For Kids Camp combined flows, resync if the number of songs in the flow no longer
-    // matches the combined morning+afternoon session song count (e.g. second session was
-    // just published after the first was already stored).
-    const existingFlowSongCount = (existingItems || []).filter((i: any) => i.item_type === "song").length;
-    const kidsCampSongsChanged =
-      isKidsCampCombinedFlow &&
-      effectiveSongs.length > 0 &&
-      existingFlowSongCount !== effectiveSongs.length;
-
-    const requiresTemplateResync =
-      !!template &&
-      (
-        params.forceTemplateResync === true ||
-        kidsCampSongsChanged ||
-        (existingFlowMeta.created_from_template_id || null) !== (template.id || null) ||
-        (existingFlowMeta.ministry_type || null) !== resolvedMinistryType ||
-        (existingFlowMeta.custom_service_id || null) !== (resolvedCustomServiceId || null) ||
-        templateWasUpdatedAfterFlow ||
-        hasLegacyPlaceholderRows
-      );
+    // A saved flow is date-specific working data. Never replace its items merely because
+    // the template, ministry metadata, or linked set changed. Rebuilding is destructive
+    // and must only happen through an explicit caller such as the Rebuild button.
+    const requiresTemplateResync = !!template && params.forceTemplateResync === true;
 
     if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
       const updates: Promise<any>[] = [];
@@ -1377,7 +1363,7 @@ export async function generateServiceFlowFromTemplate(params: {
 
   // Create new service flow
   const flowInsertWithCustom = {
-    campus_id: params.campusId,
+    campus_id: serviceFlowCampusId,
     ministry_type: resolvedMinistryType,
     service_date: params.serviceDate,
     draft_set_id: params.draftSetId || null,
@@ -1400,7 +1386,7 @@ export async function generateServiceFlowFromTemplate(params: {
     const { data: fallbackFlow, error: fallbackError } = await supabase
       .from("service_flows")
       .insert({
-        campus_id: params.campusId,
+        campus_id: serviceFlowCampusId,
         ministry_type: resolvedMinistryType,
         service_date: params.serviceDate,
         draft_set_id: params.draftSetId || null,

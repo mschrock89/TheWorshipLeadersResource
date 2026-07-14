@@ -31,8 +31,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
+import { isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
 import {
   useServiceFlowTemplates,
   useServiceFlowTemplateItems,
@@ -51,6 +51,7 @@ import { cn } from "@/lib/cn";
 export function TemplateManager() {
   const { user } = useAuth();
   const { data: campuses, isLoading: campusesLoading } = useCampuses();
+  const { data: networkWideCampus, isLoading: networkWideCampusLoading } = useNetworkWideCampus();
   const { toast } = useToast();
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
@@ -69,6 +70,15 @@ export function TemplateManager() {
   // Drag and drop state
   const [localItems, setLocalItems] = useState<ServiceFlowTemplateItem[]>([]);
   const [draggedItem, setDraggedItem] = useState<ServiceFlowTemplateItem | null>(null);
+  const serviceFlowCampuses = networkWideCampus
+    ? [networkWideCampus, ...(campuses || [])]
+    : campuses || [];
+
+  useEffect(() => {
+    if (networkWideCampus?.id && isNetworkWideMinistryType(ministryType)) {
+      setSelectedCampusId(networkWideCampus.id);
+    }
+  }, [ministryType, networkWideCampus?.id]);
 
   const { data: templates = [], isLoading: templatesLoading } = useServiceFlowTemplates(
     selectedCampusId,
@@ -249,7 +259,7 @@ export function TemplateManager() {
     await new Promise(resolve => setTimeout(resolve, 500));
     setIsSaving(false);
     
-    const campusName = campuses?.find(c => c.id === selectedCampusId)?.name || "Selected campus";
+    const campusName = serviceFlowCampuses.find(c => c.id === selectedCampusId)?.name || "Selected campus";
     const ministryLabel = MINISTRY_TYPES.find(m => m.value === ministryType)?.label || ministryType;
     
     toast({
@@ -282,7 +292,7 @@ export function TemplateManager() {
     }
   };
 
-  const isLoading = campusesLoading || templatesLoading || itemsLoading;
+  const isLoading = campusesLoading || networkWideCampusLoading || templatesLoading || itemsLoading;
 
   return (
     <div className="space-y-6">
@@ -293,7 +303,7 @@ export function TemplateManager() {
             <SelectValue placeholder="Select Campus" />
           </SelectTrigger>
           <SelectContent>
-            {campuses?.map((campus) => (
+            {serviceFlowCampuses.map((campus) => (
               <SelectItem key={campus.id} value={campus.id}>
                 {campus.name}
               </SelectItem>
@@ -473,7 +483,7 @@ export function TemplateManager() {
               <Input
                 value={templateName}
                 onChange={(e) => setTemplateName(e.target.value)}
-                placeholder={`e.g., ${campuses?.find((c) => c.id === selectedCampusId)?.name} Weekend Template`}
+                placeholder={`e.g., ${serviceFlowCampuses.find((c) => c.id === selectedCampusId)?.name} Weekend Template`}
               />
             </div>
           </div>
