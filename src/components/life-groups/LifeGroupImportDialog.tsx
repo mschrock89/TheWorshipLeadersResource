@@ -286,7 +286,7 @@ export function LifeGroupImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="top-[max(env(safe-area-inset-top),0.75rem)] z-[60] flex max-h-[calc(100dvh-5.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:top-[50%] sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-5xl sm:translate-y-[-50%]">
+      <DialogContent className="z-[60] flex max-h-[calc(100dvh-5.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-5xl">
         <DialogHeader className="shrink-0 px-4 pb-3 pt-5 pr-10 sm:px-6 sm:pt-6">
           <DialogTitle>Import Life Groups</DialogTitle>
           <DialogDescription>

@@ -293,7 +293,7 @@ export function GroupTextButton({
         {label}
       </Button>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="top-[max(env(safe-area-inset-top),0.75rem)] flex h-[78svh] max-h-[78svh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] translate-y-0 flex-col gap-2 overflow-hidden p-3 sm:top-[50%] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-2xl sm:translate-y-[-50%] sm:gap-4 sm:p-6">
+        <DialogContent className="flex h-[78svh] max-h-[78svh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] flex-col gap-2 overflow-hidden p-3 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-2xl sm:gap-4 sm:p-6">
           <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>Compose Group Text</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">

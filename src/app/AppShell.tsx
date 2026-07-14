@@ -109,25 +109,13 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Wrapper component to conditionally apply padding based on route
 function MainContent({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const isChat = location.pathname === '/chat';
-  const isHome = location.pathname === '/';
-
   return (
     <div
       className="flex flex-col"
       style={{ minHeight: '100dvh' }}
     >
-      <div
-        className="flex-1"
-        style={{
-          paddingBottom: isChat || isHome
-            ? '0px'
-            : 'calc(80px + env(safe-area-inset-bottom, 0px))'
-        }}
-      >
+      <div className="flex-1">
         {children}
       </div>
     </div>

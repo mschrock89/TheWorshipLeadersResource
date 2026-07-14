@@ -94,9 +94,30 @@
     @apply border-border;
   }
 
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    background: hsl(var(--background));
+    color-scheme: dark;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
+    min-width: 320px;
+    min-height: 100dvh;
+    overflow-x: hidden;
     font-feature-settings: "cv11", "ss01";
+  }
+
+  #root {
+    min-height: 100dvh;
+    isolation: isolate;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--foreground));
   }
 }
 
