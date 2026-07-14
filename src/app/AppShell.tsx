@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav, BOTTOM_NAV_HIDDEN_ROUTES } from "@/components/layout/BottomNav";
-import { cn } from "@/lib/cn";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
@@ -21,6 +20,7 @@ import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+import { useIosBottomFill } from "@/hooks/useIosBottomFill";
 
 export type RouteDefinition = {
   path: string;
@@ -109,12 +109,11 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 function AppFrame({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
+  useIosBottomFill();
 
   return (
     <div className="app-frame">
-      <div className={cn("app-frame-content", !hideNav && "app-frame-content--with-nav")}>
-        {children}
-      </div>
+      <div className="app-frame-content">{children}</div>
       {!hideNav && <BottomNav />}
     </div>
   );

@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  /* Cap home-indicator inset — iOS PWAs can report an oversized safe-area and
-     stretch the tab bar into a huge empty block under the icons. */
-  --app-safe-area-bottom: min(34px, env(safe-area-inset-bottom, 0px));
-  --app-bottom-nav-content-height: 3.5rem;
+  /* Fixed home-indicator inset — iOS PWAs often report a bogus env() value. */
+  --app-bottom-safe-height: 20px;
+  --app-bottom-nav-bar-height: 3.5rem;
   --app-bottom-nav-height: calc(
-    var(--app-bottom-nav-content-height) + var(--app-safe-area-bottom)
+    var(--app-bottom-nav-bar-height) + var(--app-bottom-safe-height)
   );
+  --ios-bottom-fill: 0px;
 }
 
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
-    padding-bottom: var(--app-safe-area-bottom);
+    padding-bottom: max(var(--app-bottom-safe-height), env(safe-area-inset-bottom, 0px));
   }
 }
 
 /*
- * Full-screen shell. Bottom nav is fixed with a capped safe-area so the bar
- * stays a normal tab height (icons + home indicator), not a tall empty slab.
+ * App shell: fixed full-screen flex column. Tab bar is in normal flow inside
+ * the frame (not position:fixed) so iOS can't leave a floating gap under it.
  */
 .app-frame {
   position: fixed;
@@ -40,19 +40,34 @@
   background: hsl(var(--background));
 }
 
-.app-frame-content--with-nav {
-  padding-bottom: var(--app-bottom-nav-height);
+.app-bottom-nav {
+  position: relative;
+  z-index: 50;
+  flex-shrink: 0;
+  width: 100%;
+  background-color: hsl(var(--card));
 }
 
-.app-bottom-nav {
+.app-bottom-nav-bar {
+  height: var(--app-bottom-nav-bar-height);
+}
+
+.app-bottom-nav-safe {
+  height: var(--app-bottom-safe-height);
+  background-color: hsl(var(--card));
+}
+
+/* Painted band below the layout viewport on installed iOS (not part of nav). */
+html.ios-bottom-fill::after {
+  content: "";
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 50;
-  box-sizing: border-box;
+  height: var(--ios-bottom-fill, 0px);
   background-color: hsl(var(--card));
-  padding-bottom: var(--app-safe-area-bottom);
+  z-index: 40;
+  pointer-events: none;
 }
 
 /* ECC Brand Style Guide - Version 3.1
@@ -143,6 +158,8 @@
   html {
     min-width: 320px;
     height: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
     background: hsl(var(--background));
     color-scheme: dark;
     text-rendering: optimizeLegibility;
@@ -152,6 +169,8 @@
     @apply bg-background text-foreground antialiased;
     min-width: 320px;
     height: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
     margin: 0;
     overflow: hidden;
     font-feature-settings: "cv11", "ss01";
