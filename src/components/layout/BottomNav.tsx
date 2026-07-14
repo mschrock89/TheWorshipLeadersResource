@@ -25,14 +25,15 @@ import { useVisualViewportOffset } from "@/hooks/useKeyboardOffset";
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
-  const { translateY, isKeyboardOpen } = useVisualViewportOffset();
+  const isStudentApp = isCurrentStudentResourceApp();
+  const isStudentHome = isStudentApp && location.pathname === "/";
+  const { translateY, isKeyboardOpen } = useVisualViewportOffset(isStudentHome);
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
   const { data: pendingApprovalCount = 0 } = usePendingApprovalCount();
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((r) => r.role));
   const isStudentBase = isStudentBaseRole(roles.map((r) => r.role));
-  const isStudentApp = isCurrentStudentResourceApp();
   const { data: activeCamp } = useActiveCampMode();
   const campNavItem = isStudentApp && activeCamp
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
