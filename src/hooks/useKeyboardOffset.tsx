@@ -130,52 +130,55 @@ function isStandaloneDisplay(): boolean {
   );
 }
 
-function getLayoutViewportBottom(pinToLayoutViewportBottom: boolean): number {
+/**
+ * Distance the fixed bottom edge sits above the true visible bottom on iOS.
+ *
+ * Two failure modes show up as a black gap under the nav:
+ * 1. visualViewport extends below the layout viewport
+ * 2. standalone PWAs report innerHeight short of screen.height (home indicator)
+ *
+ * Padding with safe-area cannot fill that gap — it only grows the bar upward.
+ * Positive translateY shifts the bar down onto the physical bottom.
+ */
+function getBottomPinGap(pinToPhysicalBottom: boolean): number {
+  const viewport = window.visualViewport;
+  const visualBottom = viewport
+    ? viewport.offsetTop + viewport.height
+    : window.innerHeight;
+  const visualGap = Math.max(0, Math.round(visualBottom - window.innerHeight));
+
   if (
-    pinToLayoutViewportBottom &&
+    pinToPhysicalBottom &&
     isStandaloneDisplay() &&
     typeof window.screen?.height === "number"
   ) {
-    // In an installed iOS app, innerHeight and visualViewport can both stop at
-    // the top of the home-indicator region even with viewport-fit=cover. The
-    // screen height is the stable full-screen boundary the home nav needs.
-    return Math.max(window.innerHeight, window.screen.height);
+    const layoutBottom = Math.max(window.innerHeight, visualBottom);
+    const screenGap = Math.max(0, Math.round(window.screen.height - layoutBottom));
+    return Math.max(visualGap, screenGap);
   }
 
-  return window.innerHeight;
+  return visualGap;
 }
 
 function getInitialVisualViewportOffset(
   isIOSDevice: boolean,
-  pinToLayoutViewportBottom: boolean,
+  pinToPhysicalBottom: boolean,
 ): VisualViewportOffset {
-  if (!isIOSDevice || typeof window === "undefined" || !window.visualViewport) {
+  if (!isIOSDevice || typeof window === "undefined") {
     return { translateY: 0, isKeyboardOpen: false };
   }
 
-  const viewport = window.visualViewport;
-  const visualBottom = viewport.offsetTop + viewport.height;
-
   return {
-    translateY: pinToLayoutViewportBottom
-      ? Math.max(
-          0,
-          Math.round(getLayoutViewportBottom(pinToLayoutViewportBottom) - visualBottom),
-        )
-      : 0,
+    translateY: pinToPhysicalBottom ? getBottomPinGap(true) : 0,
     isKeyboardOpen: false,
   };
 }
 
-// Keeps fixed bottom-anchored elements glued to the visual viewport on iOS.
-// Fixed elements anchor to the layout viewport; when the keyboard opens iOS
-// pans the layout viewport up and sometimes fails to pan back after the
-// keyboard closes, leaving fixed bars floating mid-screen. translateY is the
-// correction needed to place the element back at the visual viewport bottom.
-export function useVisualViewportOffset(pinToLayoutViewportBottom = false): VisualViewportOffset {
+// Keeps fixed bottom-anchored elements glued to the visible bottom on iOS.
+export function useVisualViewportOffset(pinToPhysicalBottom = false): VisualViewportOffset {
   const isIOSDevice = useMemo(() => isIOS(), []);
   const [state, setState] = useState<VisualViewportOffset>(() =>
-    getInitialVisualViewportOffset(isIOSDevice, pinToLayoutViewportBottom)
+    getInitialVisualViewportOffset(isIOSDevice, pinToPhysicalBottom)
   );
   const rafId = useRef<number>(0);
   const hadKeyboardOpen = useRef(false);
@@ -195,21 +198,12 @@ export function useVisualViewportOffset(pinToLayoutViewportBottom = false): Visu
       hadKeyboardOpen.current = true;
     }
 
-    const visualBottom = viewport.offsetTop + viewport.height;
-    const layoutBottom = getLayoutViewportBottom(pinToLayoutViewportBottom);
-    // Home screens do not scroll, so standalone iOS can leave their visual
-    // viewport ending above the layout viewport by the home-indicator inset.
-    // Move the nav through that gap. Other screens retain the existing
-    // post-keyboard stuck-pan correction and are otherwise left untouched.
-    const initialViewportGap = pinToLayoutViewportBottom
-      ? Math.max(0, Math.round(layoutBottom - visualBottom))
-      : 0;
-    const keyboardRecoveryGap = hadKeyboardOpen.current
-      ? Math.max(0, Math.round(visualBottom - window.innerHeight))
-      : 0;
-    const translateY = !isKeyboardOpen
-      ? Math.max(initialViewportGap, keyboardRecoveryGap)
-      : 0;
+    // Non-chat screens pin immediately. Other callers only correct after a
+    // real keyboard-open cycle (stuck-pan recovery).
+    const translateY =
+      !isKeyboardOpen && (pinToPhysicalBottom || hadKeyboardOpen.current)
+        ? getBottomPinGap(pinToPhysicalBottom)
+        : 0;
 
     if (!isKeyboardOpen && translateY === 0) {
       hadKeyboardOpen.current = false;
@@ -220,7 +214,7 @@ export function useVisualViewportOffset(pinToLayoutViewportBottom = false): Visu
         ? prev
         : { translateY, isKeyboardOpen }
     );
-  }, [pinToLayoutViewportBottom, isIOSDevice]);
+  }, [pinToPhysicalBottom, isIOSDevice]);
 
   useLayoutEffect(() => {
     if (!isIOSDevice) return;

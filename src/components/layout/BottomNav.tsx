@@ -26,6 +26,7 @@ export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
+  // Chat manages its own viewport/keyboard layout; pin the nav on every other screen.
   const isOnChatPage = location.pathname === "/chat";
   const { translateY, isKeyboardOpen } = useVisualViewportOffset(!isOnChatPage);
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -83,9 +84,15 @@ export function BottomNav() {
     return null;
   }
 
-  const navViewportOffset =
+  // Shift the bar into the iOS home-indicator gap, and mirror that distance as
+  // bottom padding so icons stay above the gesture area while the background
+  // paints to the physical screen edge.
+  const navViewportStyle =
     !isOnChatPage && !isKeyboardOpen && translateY > 0
-      ? { transform: `translateY(${translateY}px)` }
+      ? {
+          transform: `translateY(${translateY}px)`,
+          paddingBottom: `max(${translateY}px, env(safe-area-inset-bottom, 0px))`,
+        }
       : undefined;
 
   return (
@@ -95,7 +102,7 @@ export function BottomNav() {
         "app-bottom-nav bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md",
         isKeyboardOpen && "invisible"
       )}
-      style={navViewportOffset}
+      style={navViewportStyle}
     >
       <div
         className={cn(
