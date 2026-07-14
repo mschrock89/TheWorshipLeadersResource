@@ -20,7 +20,7 @@ import { cn } from "@/lib/cn";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 
-const HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
+export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
 
 export function BottomNav() {
   const location = useLocation();
@@ -37,7 +37,7 @@ export function BottomNav() {
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
 
-  if (HIDDEN_ROUTES.has(location.pathname)) {
+  if (BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname)) {
     return null;
   }
 
@@ -85,7 +85,7 @@ export function BottomNav() {
   }
 
   return (
-    <nav aria-label="Primary navigation" className="app-bottom-nav bottom-nav bg-card">
+    <nav aria-label="Primary navigation" className="app-bottom-nav bottom-nav">
       <div
         className={cn(
           "container grid h-14 items-center gap-1 border-t border-border px-2 sm:flex sm:items-center sm:justify-around",

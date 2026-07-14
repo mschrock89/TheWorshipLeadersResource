@@ -3,7 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
-import { BottomNav } from "@/components/layout/BottomNav";
+import { BottomNav, BOTTOM_NAV_HIDDEN_ROUTES } from "@/components/layout/BottomNav";
+import { cn } from "@/lib/cn";
 import { ProtectedLayout } from "@/components/layout/ProtectedLayout";
 import { AppOnboardingTour } from "@/components/onboarding/AppOnboardingTour";
 import { AudioPlayerProvider, useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
@@ -106,9 +107,14 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 }
 
 function AppFrame({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
+
   return (
     <div className="app-frame">
-      <div className="app-frame-content">{children}</div>
+      <div className={cn("app-frame-content", !hideNav && "app-frame-content--with-nav")}>
+        {children}
+      </div>
       <BottomNav />
     </div>
   );
