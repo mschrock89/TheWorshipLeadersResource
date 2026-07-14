@@ -458,8 +458,10 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  // Fill the content area above the (hidden) bottom nav.
-  const closedChatHeight = "100%";
+  // Compute our own viewport height (minus the 56px header) instead of relying
+  // on a definite-height ancestor: the app scrolls naturally, so height:100%
+  // would collapse and hide the composer. Keyboard-open state is handled below.
+  const closedChatHeight = "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {
