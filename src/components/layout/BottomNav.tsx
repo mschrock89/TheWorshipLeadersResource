@@ -26,7 +26,8 @@ export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
-  const { isKeyboardOpen } = useVisualViewportOffset();
+  const isOnChatPage = location.pathname === "/chat";
+  const { translateY, isKeyboardOpen } = useVisualViewportOffset(!isOnChatPage);
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
@@ -82,6 +83,11 @@ export function BottomNav() {
     return null;
   }
 
+  const navViewportOffset =
+    !isOnChatPage && !isKeyboardOpen && translateY > 0
+      ? { transform: `translateY(${translateY}px)` }
+      : undefined;
+
   return (
     <nav
       aria-label="Primary navigation"
@@ -89,6 +95,7 @@ export function BottomNav() {
         "app-bottom-nav bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md",
         isKeyboardOpen && "invisible"
       )}
+      style={navViewportOffset}
     >
       <div
         className={cn(

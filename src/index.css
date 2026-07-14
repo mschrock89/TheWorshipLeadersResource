@@ -24,7 +24,6 @@
 .app-bottom-nav {
   min-height: var(--app-bottom-nav-height);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  transform: none;
 }
 
 /* ECC Brand Style Guide - Version 3.1
