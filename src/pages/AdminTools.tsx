@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useNetworkWideCampus, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
 import { useCreateCustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,11 @@ import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, 
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
+import {
+  AdminToolCard as Card,
+  AdminToolCardContent as CardContent,
+  AdminToolCardHeader as CardHeader,
+} from "@/components/admin/AdminToolCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
@@ -560,6 +565,7 @@ export default function AdminTools() {
   })();
   
   const [isEditing, setIsEditing] = useState(false);
+  const [isLeadershipOpen, setIsLeadershipOpen] = useState(false);
   const [isResettingPasswords, setIsResettingPasswords] = useState(false);
   const [resetResults, setResetResults] = useState<{ successCount: number; skippedCount: number; failCount: number } | null>(null);
   const [customServiceName, setCustomServiceName] = useState("");
@@ -1481,7 +1487,7 @@ export default function AdminTools() {
 
   if (authLoading) {
     return (
-      <div className="container max-w-4xl py-8">
+      <div className="mx-auto w-full max-w-6xl py-2 sm:py-8">
         <Skeleton className="h-8 w-48 mb-8" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -1491,7 +1497,7 @@ export default function AdminTools() {
   if (!isAdmin) return null;
 
   return (
-    <div className="container max-w-4xl py-8">
+    <div className="mx-auto w-full max-w-6xl py-0 sm:py-4">
       {/* Header */}
       <div className="mb-8">
         <Button
@@ -1510,7 +1516,7 @@ export default function AdminTools() {
       </div>
 
       {/* Permissions link */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
@@ -1526,7 +1532,7 @@ export default function AdminTools() {
       </Card>
 
       {/* Push Notifications link */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
@@ -1542,74 +1548,82 @@ export default function AdminTools() {
       </Card>
 
       {/* Leadership Section */}
-      <Card className="mb-6">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xl font-semibold flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            Leadership
+      <Collapsible open={isLeadershipOpen} onOpenChange={setIsLeadershipOpen} asChild>
+        <Card>
+          <CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-5">
+            <Shield className="h-5 w-5 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xl font-semibold leading-none">Leadership</span>
+              <span className="mt-1.5 block text-sm font-normal text-muted-foreground">
+                Organization leaders and their roles
+              </span>
+            </span>
             {consolidatedUsers.length > 0 && (
-              <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-xs">
+              <Badge variant="secondary" className="h-6 min-w-6 justify-center px-1.5 text-xs">
                 {consolidatedUsers.length}
               </Badge>
             )}
-          </CardTitle>
-          <CardDescription>
-            Organization leaders and their roles
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {leadershipLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : consolidatedUsers.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground py-4">
-              No leadership roles assigned yet.
-            </p>
-          ) : (
-            <div className="space-y-0.5">
-              {consolidatedUsers.map((user) => (
-                <Link
-                  key={user.id}
-                  to={`/team/${user.id}`}
-                  className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
-                >
-                  <Avatar className="h-9 w-9">
-                    <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || "User"} />
-                    <AvatarFallback className="bg-primary/10 text-xs text-primary">
-                      {getInitials(user.full_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{user.full_name || "Unknown"}</p>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {user.roles.map((role) => (
-                        <Badge
-                          key={role}
-                          variant={getRoleBadgeVariant(role)}
-                          className="h-4 px-1.5 text-[10px] font-medium"
-                        >
-                          {getRoleBadgeLabel(role)}
-                        </Badge>
-                      ))}
-                      {user.campuses.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          · {user.campuses.join(", ")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <ChevronDown
+              aria-hidden="true"
+              className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${isLeadershipOpen ? "rotate-180" : ""}`}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="border-t border-border pt-4 sm:pt-5">
+              {leadershipLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : consolidatedUsers.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  No leadership roles assigned yet.
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {consolidatedUsers.map((user) => (
+                    <Link
+                      key={user.id}
+                      to={`/team/${user.id}`}
+                      className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
+                    >
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || "User"} />
+                        <AvatarFallback className="bg-primary/10 text-xs text-primary">
+                          {getInitials(user.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{user.full_name || "Unknown"}</p>
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {user.roles.map((role) => (
+                            <Badge
+                              key={role}
+                              variant={getRoleBadgeVariant(role)}
+                              className="h-4 px-1.5 text-[10px] font-medium"
+                            >
+                              {getRoleBadgeLabel(role)}
+                            </Badge>
+                          ))}
+                          {user.campuses.length > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              · {user.campuses.join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Master Password Reset Section */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-destructive" />
@@ -1689,7 +1703,7 @@ export default function AdminTools() {
 
       <CampModeAdminCard />
 
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
@@ -1807,7 +1821,7 @@ export default function AdminTools() {
       </Card>
 
       {/* Custom Services Builder */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />
@@ -1965,7 +1979,7 @@ export default function AdminTools() {
       </Card>
 
       {/* Teaching Schedule Manager */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />

@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, Megaphone, Search, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardDescription, CardTitle } from "@/components/ui/card";
+import {
+  AdminToolCard as Card,
+  AdminToolCardContent as CardContent,
+  AdminToolCardHeader as CardHeader,
+} from "@/components/admin/AdminToolCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -233,7 +238,7 @@ export function AdminPingCard() {
   };
 
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-xl font-semibold">
           <Megaphone className="h-5 w-5 text-primary" />

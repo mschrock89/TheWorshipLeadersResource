@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ExternalLink, FileUp, Loader2, MapPinned, Paperclip, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardDescription, CardTitle } from "@/components/ui/card";
+import {
+  AdminToolCard as Card,
+  AdminToolCardContent as CardContent,
+  AdminToolCardHeader as CardHeader,
+} from "@/components/admin/AdminToolCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -231,7 +236,7 @@ export function CampModeAdminCard() {
   };
 
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
