@@ -125,7 +125,7 @@ interface VisualViewportOffset {
 // pans the layout viewport up and sometimes fails to pan back after the
 // keyboard closes, leaving fixed bars floating mid-screen. translateY is the
 // correction needed to place the element back at the visual viewport bottom.
-export function useVisualViewportOffset(correctInitialViewportGap = false): VisualViewportOffset {
+export function useVisualViewportOffset(pinToLayoutViewportBottom = false): VisualViewportOffset {
   const [state, setState] = useState<VisualViewportOffset>({
     translateY: 0,
     isKeyboardOpen: false,
@@ -149,18 +149,19 @@ export function useVisualViewportOffset(correctInitialViewportGap = false): Visu
       hadKeyboardOpen.current = true;
     }
 
-    // The stuck-pan bug always leaves fixed elements too high, so the
-    // correction is only ever downward. iOS can report a slightly short
-    // visual viewport with the keyboard closed (e.g. browser chrome or home
-    // indicator accounting). Most screens correct only after this mounted hook
-    // has observed a real keyboard-open state. Student home screens opt in at
-    // startup because standalone iOS can initially expose a taller visual
-    // viewport than its layout viewport, otherwise leaving the nav floating.
-    const translateY = !isKeyboardOpen && (correctInitialViewportGap || hadKeyboardOpen.current)
-      ? Math.max(
-          0,
-          Math.round(viewport.offsetTop + viewport.height - window.innerHeight),
-        )
+    const visualBottom = viewport.offsetTop + viewport.height;
+    // Home screens do not scroll, so standalone iOS can leave their visual
+    // viewport ending above the layout viewport by the home-indicator inset.
+    // Move the nav through that gap. Other screens retain the existing
+    // post-keyboard stuck-pan correction and are otherwise left untouched.
+    const initialViewportGap = pinToLayoutViewportBottom
+      ? Math.max(0, Math.round(window.innerHeight - visualBottom))
+      : 0;
+    const keyboardRecoveryGap = hadKeyboardOpen.current
+      ? Math.max(0, Math.round(visualBottom - window.innerHeight))
+      : 0;
+    const translateY = !isKeyboardOpen
+      ? Math.max(initialViewportGap, keyboardRecoveryGap)
       : 0;
 
     if (!isKeyboardOpen && translateY === 0) {
@@ -172,7 +173,7 @@ export function useVisualViewportOffset(correctInitialViewportGap = false): Visu
         ? prev
         : { translateY, isKeyboardOpen }
     );
-  }, [correctInitialViewportGap, isIOSDevice]);
+  }, [pinToLayoutViewportBottom, isIOSDevice]);
 
   useEffect(() => {
     if (!isIOSDevice) return;

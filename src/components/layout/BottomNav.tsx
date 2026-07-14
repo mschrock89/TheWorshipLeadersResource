@@ -26,8 +26,8 @@ export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
-  const isStudentHome = isStudentApp && location.pathname === "/";
-  const { translateY, isKeyboardOpen } = useVisualViewportOffset(isStudentHome);
+  const isHome = location.pathname === "/";
+  const { translateY, isKeyboardOpen } = useVisualViewportOffset(isHome);
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
