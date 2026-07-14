@@ -110,15 +110,13 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 function MainContent({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
-  const isHome = location.pathname === "/";
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100dvh" }}>
       <div
         className="flex-1"
         style={{
-          paddingBottom:
-            hideNav || isHome ? "0px" : "calc(80px + env(safe-area-inset-bottom, 0px))",
+          paddingBottom: hideNav ? "0px" : "calc(80px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         {children}

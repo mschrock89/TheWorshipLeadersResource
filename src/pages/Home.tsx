@@ -138,7 +138,7 @@ export default function Home() {
 
   return (
     <div
-      className="relative flex h-full min-h-full flex-col overflow-hidden bg-background"
+      className="relative flex min-h-full flex-col bg-background"
       style={isStudentsHome ? studentsHomeBackgroundStyle : undefined}
     >
       {isStudentsHome && homeConfig.heroImage && (
