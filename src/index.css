@@ -17,14 +17,16 @@
 }
 
 /*
- * One stable bottom edge for every routed screen. The nav itself owns the
- * iOS home-indicator inset, so its background reaches the physical bottom
- * while the controls remain above the system gesture area.
+ * Bottom nav owns the home-indicator region via a solid safe-area strip.
+ * Do not put backdrop-filter on that strip — iOS often leaves it unpainted.
  */
 .app-bottom-nav {
   min-height: var(--app-bottom-nav-height);
-  padding-bottom: constant(safe-area-inset-bottom);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-bottom-nav-safe {
+  height: constant(safe-area-inset-bottom);
+  height: env(safe-area-inset-bottom, 0px);
 }
 
 /* ECC Brand Style Guide - Version 3.1

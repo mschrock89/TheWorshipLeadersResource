@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,13 +22,49 @@ import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useVisualViewportOffset } from "@/hooks/useKeyboardOffset";
 
+const HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
+
+function isIOS(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const standaloneNavigator = navigator as Navigator & { standalone?: boolean };
+  return (
+    standaloneNavigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true
+  );
+}
+
+/** Extra pixels the layout viewport sits above the physical/visual bottom. */
+function measureBottomPinGap(): number {
+  if (typeof window === "undefined") return 0;
+
+  const viewport = window.visualViewport;
+  const visualBottom = viewport
+    ? viewport.offsetTop + viewport.height
+    : window.innerHeight;
+  const visualGap = Math.max(0, Math.round(visualBottom - window.innerHeight));
+
+  if (isStandaloneDisplay() && typeof window.screen?.height === "number") {
+    const layoutBottom = Math.max(window.innerHeight, visualBottom);
+    const screenGap = Math.max(0, Math.round(window.screen.height - layoutBottom));
+    return Math.max(visualGap, screenGap);
+  }
+
+  return visualGap;
+}
+
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
-  // Chat manages its own viewport/keyboard layout; pin the nav on every other screen.
-  const isOnChatPage = location.pathname === "/chat";
-  const { translateY, isKeyboardOpen } = useVisualViewportOffset(!isOnChatPage);
+  const { isKeyboardOpen } = useVisualViewportOffset();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
@@ -39,6 +75,44 @@ export function BottomNav() {
   const campNavItem = isStudentApp && activeCamp
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
+  const isIOSDevice = useMemo(() => isIOS(), []);
+  const [pinGap, setPinGap] = useState(0);
+  const rafId = useRef(0);
+
+  useLayoutEffect(() => {
+    if (!isIOSDevice) return;
+
+    const update = () => {
+      setPinGap((prev) => {
+        const next = measureBottomPinGap();
+        return prev === next ? prev : next;
+      });
+    };
+
+    const schedule = () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(update);
+    };
+
+    update();
+    schedule();
+
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+    };
+  }, [isIOSDevice]);
+
+  if (HIDDEN_ROUTES.has(location.pathname)) {
+    return null;
+  }
 
   // Show different nav items based on auth state
   const navItems = user
@@ -84,64 +158,68 @@ export function BottomNav() {
     return null;
   }
 
-  // Shift the bar into the iOS home-indicator gap, and mirror that distance as
-  // bottom padding so icons stay above the gesture area while the background
-  // paints to the physical screen edge.
-  const navViewportStyle =
-    !isOnChatPage && !isKeyboardOpen && translateY > 0
-      ? {
-          transform: `translateY(${translateY}px)`,
-          paddingBottom: `max(${translateY}px, env(safe-area-inset-bottom, 0px))`,
-        }
-      : undefined;
-
   return (
     <nav
       aria-label="Primary navigation"
       className={cn(
-        "app-bottom-nav bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md",
+        "app-bottom-nav bottom-nav fixed inset-x-0 z-50",
         isKeyboardOpen && "invisible"
       )}
-      style={navViewportStyle}
+      style={{
+        // Negative bottom extends into the home-indicator gap when the layout
+        // viewport stops short of the physical screen.
+        bottom: pinGap > 0 ? -pinGap : 0,
+      }}
     >
-      <div
-        className={cn(
-          "container grid h-14 items-center gap-1 px-2 sm:flex sm:items-center sm:justify-around",
-          navItems.length >= 7
-            ? "grid-cols-7"
-            : navItems.length === 6
-              ? "grid-cols-6"
-              : navItems.length === 5
-                ? "grid-cols-5"
-                : "grid-cols-4"
-        )}
-      >
-        {navItems.map(({ to, icon: Icon, label, badge, tourId }) => {
-          const isActive = location.pathname === to;
-          
-          return (
-            <Link key={to} to={to} className="flex-1" data-tour={tourId}>
-              <Button
-                variant={isActive ? "secondary" : "ghost"}
-                className="w-full gap-2 relative"
-              >
-                <div className="relative">
-                  <Icon className="h-5 w-5" />
-                  {badge !== undefined && badge > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="absolute -top-2 -right-2 h-4 min-w-4 px-1 text-[10px] flex items-center justify-center animate-pulse"
-                    >
-                      {badge > 99 ? "99+" : badge}
-                    </Badge>
-                  )}
-                </div>
-                <span className="hidden sm:inline">{label}</span>
-              </Button>
-            </Link>
-          );
-        })}
+      {/*
+        Keep blur on the icon row only. iOS often fails to paint backdrop-filter
+        through safe-area padding, which reads as a floating bar with a black gap.
+      */}
+      <div className="border-t border-border bg-card/95 backdrop-blur-md">
+        <div
+          className={cn(
+            "container grid h-14 items-center gap-1 px-2 sm:flex sm:items-center sm:justify-around",
+            navItems.length >= 7
+              ? "grid-cols-7"
+              : navItems.length === 6
+                ? "grid-cols-6"
+                : navItems.length === 5
+                  ? "grid-cols-5"
+                  : "grid-cols-4"
+          )}
+        >
+          {navItems.map(({ to, icon: Icon, label, badge, tourId }) => {
+            const isActive = location.pathname === to;
+
+            return (
+              <Link key={to} to={to} className="flex-1" data-tour={tourId}>
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full gap-2 relative"
+                >
+                  <div className="relative">
+                    <Icon className="h-5 w-5" />
+                    {badge !== undefined && badge > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-2 -right-2 h-4 min-w-4 px-1 text-[10px] flex items-center justify-center animate-pulse"
+                      >
+                        {badge > 99 ? "99+" : badge}
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="hidden sm:inline">{label}</span>
+                </Button>
+              </Link>
+            );
+          })}
+        </div>
       </div>
+      <div
+        className="app-bottom-nav-safe bg-card"
+        style={pinGap > 0 ? { height: pinGap } : undefined}
+        aria-hidden
+      />
     </nav>
   );
 }
