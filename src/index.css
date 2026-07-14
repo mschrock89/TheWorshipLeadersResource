@@ -2,11 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --app-bottom-nav-content-height: 3.5rem;
+  --app-bottom-nav-height: calc(
+    var(--app-bottom-nav-content-height) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
 /* Safe area insets for mobile */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
+}
+
+/*
+ * One stable bottom edge for every routed screen. The nav itself owns the
+ * iOS home-indicator inset, so its background reaches the physical bottom
+ * while the controls remain above the system gesture area.
+ */
+.app-bottom-nav {
+  min-height: var(--app-bottom-nav-height);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transform: none;
 }
 
 /* ECC Brand Style Guide - Version 3.1

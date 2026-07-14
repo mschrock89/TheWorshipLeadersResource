@@ -458,12 +458,16 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  const closedChatHeight = "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
+  const closedChatHeight =
+    "calc(100dvh - (56px + env(safe-area-inset-top, 0px)) - var(--app-bottom-nav-height))";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {
     return (
-      <div className="flex h-[calc(100dvh-(56px+env(safe-area-inset-top,0px)))] items-center justify-center bg-black">
+      <div
+        className="flex items-center justify-center bg-black"
+        style={{ height: closedChatHeight }}
+      >
         <Loader2 className="h-8 w-8 animate-spin text-white" />
       </div>
     );
@@ -476,7 +480,10 @@ function ChatContent() {
   // User has no campuses assigned (and is not an admin)
   if (!isLeader && (!userCampuses || userCampuses.length === 0)) {
     return (
-      <div className="flex flex-col bg-black overflow-hidden h-[calc(100dvh-(56px+env(safe-area-inset-top,0px)))] max-w-full">
+      <div
+        className="flex max-w-full flex-col overflow-hidden bg-black"
+        style={{ height: closedChatHeight }}
+      >
         <div className="flex flex-col items-center justify-center flex-1 text-zinc-500 px-4 text-center">
           <p className="text-lg font-medium">No campus assigned</p>
           <p className="text-sm">Contact a leader to be assigned to a campus to join the chat.</p>

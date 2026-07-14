@@ -26,8 +26,7 @@ export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
-  const isHome = location.pathname === "/";
-  const { translateY, isKeyboardOpen } = useVisualViewportOffset(isHome);
+  const { isKeyboardOpen } = useVisualViewportOffset();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
   const { data: isApprover = false } = useIsApprover();
@@ -38,12 +37,6 @@ export function BottomNav() {
   const campNavItem = isStudentApp && activeCamp
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
-
-  const hiddenRoutes = new Set(["/chat", "/privacy", "/terms"]);
-
-  if (hiddenRoutes.has(location.pathname)) {
-    return null;
-  }
 
   // Show different nav items based on auth state
   const navItems = user
@@ -91,16 +84,11 @@ export function BottomNav() {
 
   return (
     <nav
+      aria-label="Primary navigation"
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe",
+        "app-bottom-nav bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur-md",
         isKeyboardOpen && "invisible"
       )}
-      style={{
-        transform:
-          !isKeyboardOpen && translateY !== 0
-            ? `translateY(${translateY}px)`
-            : undefined,
-      }}
     >
       <div
         className={cn(
