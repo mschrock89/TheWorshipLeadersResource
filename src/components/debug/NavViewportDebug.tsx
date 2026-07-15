@@ -10,12 +10,15 @@ type Metrics = {
   t: number;
   innerH: number;
   screenH: number;
-  availH: number;
   vvH: number;
   vvTop: number;
-  clientH: number;
   ty: number; // current translateY formula (visual-viewport based)
   gap: number; // candidate correction vs the physical screen bottom
+  navTop: number; // nav getBoundingClientRect top (includes transform)
+  navBot: number; // nav getBoundingClientRect bottom
+  padB: number; // nav padding-bottom (= safe-area-inset-bottom)
+  overIn: number; // navBot - innerHeight (how far past the layout viewport)
+  overScr: number; // navBot - screenH (how far past the physical screen)
   resizes: number;
 };
 
@@ -25,22 +28,28 @@ function read(startedAt: number): Metrics {
   const vv = typeof window !== "undefined" ? window.visualViewport : null;
   const innerH = Math.round(window.innerHeight);
   const screenH = Math.round(window.screen?.height ?? 0);
-  const availH = Math.round(window.screen?.availHeight ?? 0);
   const vvH = vv ? Math.round(vv.height) : innerH;
   const vvTop = vv ? Math.round(vv.offsetTop) : 0;
-  const clientH = Math.round(document.documentElement.clientHeight);
   const ty = Math.max(0, Math.round(vvTop + vvH - innerH));
   const gap = Math.max(0, Math.round(screenH - (vvTop + vvH)));
+  const nav = document.querySelector<HTMLElement>(".bottom-nav");
+  const rect = nav?.getBoundingClientRect();
+  const navTop = rect ? Math.round(rect.top) : -1;
+  const navBot = rect ? Math.round(rect.bottom) : -1;
+  const padB = nav ? Math.round(parseFloat(getComputedStyle(nav).paddingBottom) || 0) : -1;
   return {
     t: Math.round(performance.now() - startedAt),
     innerH,
     screenH,
-    availH,
     vvH,
     vvTop,
-    clientH,
     ty,
     gap,
+    navTop,
+    navBot,
+    padB,
+    overIn: navBot >= 0 ? navBot - innerH : 0,
+    overScr: navBot >= 0 ? navBot - screenH : 0,
     resizes: resizeCount,
   };
 }
@@ -109,7 +118,7 @@ export function NavViewportDebug() {
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
   const line = (label: string, m: Metrics) =>
-    `${label} inH${m.innerH} scrH${m.screenH} avH${m.availH} vvH${m.vvH} vvTop${m.vvTop} clH${m.clientH} | ty${m.ty} gap${m.gap} (${m.t}ms r${m.resizes})`;
+    `${label} inH${m.innerH} scrH${m.screenH} vvH${m.vvH} | navTop${m.navTop} navBot${m.navBot} padB${m.padB} overIn${m.overIn} overScr${m.overScr} | ty${m.ty} gap${m.gap} (${m.t}ms r${m.resizes})`;
 
   return (
     <div
