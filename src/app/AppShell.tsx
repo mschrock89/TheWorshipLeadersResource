@@ -19,8 +19,46 @@ import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { NavViewportDebug } from "@/components/debug/NavViewportDebug";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+
+/**
+ * iOS standalone cold-launch reports a viewport ~62px shorter than the screen
+ * on the first route and only expands to full once a navigation makes it
+ * recompute — leaving the fixed nav above the real bottom over a dark band
+ * (verified on-device: innerHeight/visualViewport 894→956 after navigating).
+ * Re-assert the viewport <meta> a few times over the first second: toggling
+ * viewport-fit forces the same recompute a navigation triggers, so the viewport
+ * fills the screen without the user having to navigate. Standalone-only, and
+ * finished long before any chat/keyboard interaction so it can't affect them.
+ */
+function useStandaloneViewportFit() {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (!standalone) return;
+
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    const cover = meta.getAttribute("content") || "";
+    if (!cover.includes("viewport-fit=cover")) return;
+    const relaxed = cover.replace("viewport-fit=cover", "viewport-fit=auto");
+
+    const reassert = () => {
+      meta.setAttribute("content", relaxed);
+      requestAnimationFrame(() => meta.setAttribute("content", cover));
+    };
+
+    const timers = [50, 200, 500, 900, 1400].map((d) => window.setTimeout(reassert, d));
+    window.addEventListener("pageshow", reassert);
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener("pageshow", reassert);
+    };
+  }, []);
+}
 
 export type RouteDefinition = {
   path: string;
@@ -198,6 +236,8 @@ export function AppShell({
   protectedRoutes: RouteDefinition[];
   notFound: ComponentType;
 }) {
+  useStandaloneViewportFit();
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
