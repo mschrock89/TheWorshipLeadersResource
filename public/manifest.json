@@ -4,8 +4,8 @@
   "description": "Manage your worship team, track birthdays and anniversaries, and keep everyone connected.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1c1f21",
-  "theme_color": "#1c1f21",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait-primary",
   "icons": [
     {

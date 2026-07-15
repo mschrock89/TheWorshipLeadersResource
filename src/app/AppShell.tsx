@@ -18,72 +18,8 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
-
-/**
- * iOS standalone PWAs paint the first frame with a layout viewport shorter than
- * the screen, so the `fixed bottom-0` nav floats above the true bottom over a
- * dark band (the native manifest background). The viewport height corrects itself
- * within a second or two, but the fixed nav is not re-laid-out against the new
- * height until *something* forces a reflow — which on the home screen doesn't
- * happen until the user navigates (that's why going to another page snaps the nav
- * down). Fixed elements anchor to iOS's layout viewport, and that viewport only
- * re-syncs on a REAL scroll or a navigation — a composited transform or a passive
- * reflow won't move it. So mimic the scroll: briefly make the document scrollable,
- * commit a real scroll, then restore. Run it a few times over the first ~1.5s (the
- * viewport can take a few hundred ms to settle) and again on bfcache restore, then
- * stop so nothing here touches scrolling during normal use. Guarded to only fire at
- * scroll-top with no input focused. Standalone-only; a no-op on Safari/desktop.
- */
-function useStandaloneColdStartSettle() {
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const isStandalone =
-      window.matchMedia?.("(display-mode: standalone)").matches === true ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (!isStandalone) return;
-
-    let stopped = false;
-    let running = false;
-    const settle = () => {
-      if (stopped || running) return;
-      // Don't disturb a user who is already scrolling or typing.
-      if (window.scrollY > 0) return;
-      const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
-      // Fixed elements anchor to iOS's layout viewport, which stays short after a
-      // standalone cold launch until a REAL scroll (or a navigation) syncs it. A
-      // composited transform or a passive reflow won't do it. So make the document
-      // genuinely scrollable, commit a real scroll, then restore.
-      running = true;
-      const html = document.documentElement;
-      const prevMinHeight = html.style.minHeight;
-      html.style.minHeight = `${window.innerHeight + 400}px`;
-      window.scrollTo(0, 60);
-      window.setTimeout(() => {
-        window.scrollTo(0, 0);
-        html.style.minHeight = prevMinHeight;
-        running = false;
-      }, 40);
-    };
-
-    const timers = [120, 450, 900, 1500].map((delay) => window.setTimeout(settle, delay));
-    window.addEventListener("pageshow", settle);
-
-    const stopTimer = window.setTimeout(() => {
-      stopped = true;
-      window.removeEventListener("pageshow", settle);
-    }, 4000);
-
-    return () => {
-      stopped = true;
-      timers.forEach((id) => window.clearTimeout(id));
-      window.clearTimeout(stopTimer);
-      window.removeEventListener("pageshow", settle);
-    };
-  }, []);
-}
 
 export type RouteDefinition = {
   path: string;
@@ -261,8 +197,6 @@ export function AppShell({
   protectedRoutes: RouteDefinition[];
   notFound: ComponentType;
 }) {
-  useStandaloneColdStartSettle();
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
