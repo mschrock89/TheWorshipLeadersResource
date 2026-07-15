@@ -112,27 +112,14 @@ export function ProtectedLayout({
 
   return (
     <CampusSelectionProvider value={campusSelectionValue}>
-      {/*
-       * Chat gets its own fixed, viewport-filling frame so only the message list
-       * scrolls — the document itself never scrolls, which is what kept dragging
-       * the composer off screen. Scoped to chat (where the bottom nav is hidden),
-       * so it can't reintroduce the fixed-frame nav gap on other routes. This also
-       * restores the definite-height ancestor the chat shell's height:100% needs.
-       */}
-      <div
-        className={
-          isOnChatPage
-            ? "fixed inset-0 flex flex-col overflow-hidden bg-background"
-            : "min-h-full bg-background"
-        }
-      >
+      <div className="min-h-full bg-background">
         <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
           <MainHeader />
         </Suspense>
         <main
           className={
             isOnChatPage
-              ? "min-h-0 flex-1"
+              ? ""
               : `container px-4 py-5 sm:px-6 sm:py-7 ${hasActivePlayer ? "pb-20" : "pb-5"}`
           }
         >
