@@ -1350,8 +1350,8 @@ function StandardCalendar() {
 
 
   return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
-      <div data-tour="calendar-page" className="min-h-screen bg-background p-3 md:p-6 overflow-x-hidden">
-        <div className="mx-auto max-w-4xl w-full">
+      <div data-tour="calendar-page" className="min-h-screen bg-background overflow-x-hidden">
+        <div className="mx-auto max-w-6xl w-full">
           {/* Breadcrumb Navigation - hidden on mobile for space */}
           <Breadcrumb className="mb-3 hidden md:block">
             <BreadcrumbList>
