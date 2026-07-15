@@ -3,9 +3,8 @@ import { useAuth } from "@/hooks/useAuth";
 
 // TEMPORARY diagnostic overlay for the iOS standalone cold-start nav-position
 // bug. Prints the raw viewport measurements so we can compute the exact
-// correction instead of guessing. Visible only to the owner account or when
-// `?navdebug=1` has been set (persisted in localStorage). Remove once solved.
-const OWNER_EMAILS = ["hey@smseyewear.com"];
+// correction instead of guessing. Visible only to admins (or when `?navdebug=1`
+// has been set, persisted in localStorage). Remove once solved.
 
 type Metrics = {
   t: number;
@@ -47,7 +46,7 @@ function read(startedAt: number): Metrics {
 }
 
 export function NavViewportDebug() {
-  const { user } = useAuth();
+  const { isAdmin, isLeader } = useAuth();
   const [initial, setInitial] = useState<Metrics | null>(null);
   const [live, setLive] = useState<Metrics | null>(null);
   const startedAt = useRef(0);
@@ -69,8 +68,7 @@ export function NavViewportDebug() {
   } catch {
     /* ignore */
   }
-  const isOwner = !!user?.email && OWNER_EMAILS.includes(user.email.toLowerCase());
-  const enabled = isOwner || flagged;
+  const enabled = isAdmin || isLeader || flagged;
 
   useEffect(() => {
     if (!enabled) return;
