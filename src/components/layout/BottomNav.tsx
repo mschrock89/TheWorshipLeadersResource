@@ -19,6 +19,7 @@ import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprov
 import { cn } from "@/lib/cn";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
+import { useKeyboardOffset } from "@/hooks/useKeyboardOffset";
 
 export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
 
@@ -33,6 +34,12 @@ type NavItem = {
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
+  // Glue the fixed nav to the visual-viewport bottom. On iOS the layout viewport
+  // (which `fixed bottom-0` anchors to) can sit above the real screen bottom —
+  // most visibly on a standalone cold launch — leaving a dark band under the bar.
+  // translateY is the downward-only correction; the nav hides while the keyboard
+  // is up. This is the mechanism that worked before it was gated/removed.
+  const { translateY, isOpen: isKeyboardOpen } = useKeyboardOffset();
   const isStudentApp = isCurrentStudentResourceApp();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
@@ -95,7 +102,14 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary navigation"
-      className="bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe"
+      className={cn(
+        "bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-md pb-safe",
+        isKeyboardOpen && "invisible",
+      )}
+      style={{
+        transform:
+          !isKeyboardOpen && translateY !== 0 ? `translateY(${translateY}px)` : undefined,
+      }}
     >
       <div
         className={cn(
