@@ -28,12 +28,13 @@ import { getRouterBasename } from "@/lib/resourceApps";
  * within a second or two, but the fixed nav is not re-laid-out against the new
  * height until *something* forces a reflow — which on the home screen doesn't
  * happen until the user navigates (that's why going to another page snaps the nav
- * down). So force the nav to re-place itself: toggle a throwaway transform + read
- * a layout metric, which makes WebKit re-anchor the fixed element to the current
- * (now-correct) viewport bottom. Do it on the viewport `resize`/`orientationchange`
- * events (the exact moment iOS commits the corrected height) and on a short timer
- * fallback, only for the first few seconds after cold start so it can never
- * interfere with the chat keyboard later. Standalone-only; a no-op on Safari/desktop.
+ * down). Fixed elements anchor to iOS's layout viewport, and that viewport only
+ * re-syncs on a REAL scroll or a navigation — a composited transform or a passive
+ * reflow won't move it. So mimic the scroll: briefly make the document scrollable,
+ * commit a real scroll, then restore. Run it a few times over the first ~1.5s (the
+ * viewport can take a few hundred ms to settle) and again on bfcache restore, then
+ * stop so nothing here touches scrolling during normal use. Guarded to only fire at
+ * scroll-top with no input focused. Standalone-only; a no-op on Safari/desktop.
  */
 function useStandaloneColdStartSettle() {
   useEffect(() => {
@@ -44,39 +45,42 @@ function useStandaloneColdStartSettle() {
     if (!isStandalone) return;
 
     let stopped = false;
-    const replaceNav = () => {
-      if (stopped) return;
-      const nav = document.querySelector<HTMLElement>(".bottom-nav");
-      if (!nav) return;
-      // A sub-pixel transform + forced reflow re-anchors the fixed nav to the
-      // current viewport bottom without any visible movement.
-      nav.style.transform = "translateY(0.01px)";
-      void nav.offsetHeight;
-      nav.style.transform = "";
+    let running = false;
+    const settle = () => {
+      if (stopped || running) return;
+      // Don't disturb a user who is already scrolling or typing.
+      if (window.scrollY > 0) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // Fixed elements anchor to iOS's layout viewport, which stays short after a
+      // standalone cold launch until a REAL scroll (or a navigation) syncs it. A
+      // composited transform or a passive reflow won't do it. So make the document
+      // genuinely scrollable, commit a real scroll, then restore.
+      running = true;
+      const html = document.documentElement;
+      const prevMinHeight = html.style.minHeight;
+      html.style.minHeight = `${window.innerHeight + 400}px`;
+      window.scrollTo(0, 60);
+      window.setTimeout(() => {
+        window.scrollTo(0, 0);
+        html.style.minHeight = prevMinHeight;
+        running = false;
+      }, 40);
     };
 
-    const timers = [80, 200, 400, 700, 1100, 1600].map((delay) =>
-      window.setTimeout(replaceNav, delay),
-    );
-    window.addEventListener("resize", replaceNav);
-    window.addEventListener("orientationchange", replaceNav);
-    window.addEventListener("pageshow", replaceNav);
+    const timers = [120, 450, 900, 1500].map((delay) => window.setTimeout(settle, delay));
+    window.addEventListener("pageshow", settle);
 
-    // The viewport has always settled well within a few seconds; stop listening
-    // after that so nothing here touches the nav during normal use.
     const stopTimer = window.setTimeout(() => {
       stopped = true;
-      window.removeEventListener("resize", replaceNav);
-      window.removeEventListener("orientationchange", replaceNav);
+      window.removeEventListener("pageshow", settle);
     }, 4000);
 
     return () => {
       stopped = true;
       timers.forEach((id) => window.clearTimeout(id));
       window.clearTimeout(stopTimer);
-      window.removeEventListener("resize", replaceNav);
-      window.removeEventListener("orientationchange", replaceNav);
-      window.removeEventListener("pageshow", replaceNav);
+      window.removeEventListener("pageshow", settle);
     };
   }, []);
 }
