@@ -110,13 +110,18 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
 function MainContent({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const hideNav = BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname);
+  // Home fills the viewport itself (its own hero/flex layout) and hides nothing
+  // behind the fixed nav, so it must not reserve the nav's bottom band — doing so
+  // leaves a dead strip above the tab bar.
+  const isHome = location.pathname === "/";
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100dvh" }}>
       <div
         className="flex-1"
         style={{
-          paddingBottom: hideNav ? "0px" : "calc(80px + env(safe-area-inset-bottom, 0px))",
+          paddingBottom:
+            hideNav || isHome ? "0px" : "calc(80px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         {children}

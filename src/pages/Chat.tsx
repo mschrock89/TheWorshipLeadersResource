@@ -504,10 +504,10 @@ function ChatContent() {
     };
   }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
 
-  // Compute our own viewport height (minus the 56px header) instead of relying
-  // on a definite-height ancestor: the app scrolls naturally, so height:100%
-  // would collapse and hide the composer. Keyboard-open state is handled below.
-  const closedChatHeight = "calc(100dvh - (56px + env(safe-area-inset-top, 0px)))";
+  // ProtectedLayout now gives the chat route a fixed, viewport-filling frame, so
+  // the shell can simply fill it. Because that frame never document-scrolls, the
+  // composer stays pinned to the bottom. Keyboard-open state is handled below.
+  const closedChatHeight = "100%";
   const isKeyboardPinned = keyboardActive && keyboardLayout != null && keyboardLayout.height > 0;
 
   if (authLoading || isCampusDataLoading) {
