@@ -19,8 +19,38 @@ import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { NavViewportDebug } from "@/components/debug/NavViewportDebug";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+/**
+ * iOS standalone cold-launch reports a viewport ~62px short and only expands to
+ * the full screen once a navigation re-lays-out the page (verified on-device:
+ * innerHeight 894→956, one resize fires, and the nav then sits flush). Meta/
+ * scroll nudges don't trigger it. So mimic navigation's DOM teardown: once, if
+ * we launched into the short viewport, bump a key that remounts the routed page.
+ * Fires at most once and only in the short-viewport standalone case, so it never
+ * touches desktop, Safari, or a correctly-sized launch — and it's done long
+ * before any chat/keyboard use.
+ */
+function useStandaloneViewportRemount(): number {
+  const [key, setKey] = useState(0);
+  useEffect(() => {
+    if (typeof window === "undefined" || !isStandaloneDisplay()) return;
+    const screenH = window.screen?.height ?? 0;
+    if (!screenH || window.innerHeight >= screenH - 4) return; // already full-size
+    const t = window.setTimeout(() => setKey((k) => k + 1), 350);
+    return () => window.clearTimeout(t);
+  }, []);
+  return key;
+}
 
 /**
  * iOS standalone cold-launch reports a viewport ~62px shorter than the screen
@@ -153,10 +183,12 @@ function MainContent({ children }: { children: React.ReactNode }) {
   // behind the fixed nav, so it must not reserve the nav's bottom band — doing so
   // leaves a dead strip above the tab bar.
   const isHome = location.pathname === "/";
+  const remountKey = useStandaloneViewportRemount();
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100dvh" }}>
       <div
+        key={remountKey}
         className="flex-1"
         style={{
           paddingBottom:
