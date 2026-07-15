@@ -1435,7 +1435,7 @@ function StandardCalendar() {
             <div className="grid gap-0.5 sm:gap-1 grid-cols-7">
               {calendarDays.map((day, index) => {
               if (day === null) {
-                return <div key={`empty-${index}`} className="aspect-square" />;
+                return <div key={`empty-${index}`} className="aspect-square md:aspect-auto md:h-24 lg:h-28" />;
               }
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
@@ -1488,7 +1488,7 @@ function StandardCalendar() {
                 !isSelected(day) &&
                 !showTeamHighlight &&
                 !showCustomAssignmentHighlight;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square md:aspect-auto md:h-24 lg:h-28 flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
