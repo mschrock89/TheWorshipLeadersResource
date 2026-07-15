@@ -1,6 +1,6 @@
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { BottomNav, BOTTOM_NAV_HIDDEN_ROUTES } from "@/components/layout/BottomNav";
@@ -18,8 +18,43 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+
+/**
+ * iOS standalone cold-launch renders the webview ~62px shorter than the screen
+ * and only expands to full once a real route change re-lays-out the page
+ * (verified on-device: innerHeight 894→956, and it stays expanded afterward).
+ * No meta/scroll/remount nudge triggers it. So do automatically what fixes it by
+ * hand: on a short-viewport cold launch, bounce to another route and straight
+ * back. Fires once, standalone-only, and never on an already-full launch.
+ */
+function ViewportKickNav() {
+  const navigate = useNavigate();
+  const fired = useRef(false);
+
+  useEffect(() => {
+    if (fired.current || typeof window === "undefined") return;
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (!standalone) return;
+    const screenH = window.screen?.height ?? 0;
+    if (!screenH || window.innerHeight >= screenH - 4) return; // already full-size
+    fired.current = true;
+
+    const here = window.location.pathname + window.location.search;
+    const start = window.setTimeout(() => {
+      navigate("/privacy", { replace: true });
+      // Give the destination a moment to lay out (that DOM change is what makes
+      // iOS expand the viewport), then return to where we launched.
+      window.setTimeout(() => navigate(here, { replace: true }), 80);
+    }, 250);
+    return () => window.clearTimeout(start);
+  }, [navigate]);
+
+  return null;
+}
 
 export type RouteDefinition = {
   path: string;
@@ -211,6 +246,7 @@ export function AppShell({
           <AuthProvider>
             <AttendanceTrackingProvider>
               <AudioPlayerProvider>
+                <ViewportKickNav />
                 <MainContent>
                   <AppRoutes
                     publicRoutes={publicRoutes}
