@@ -277,9 +277,9 @@ export function MessageBubble({
       {/* Header row with avatar, name, and timestamp */}
       {showHeader && (
         <div className="flex items-center gap-3 mb-1">
-          <Avatar className="h-9 w-9 flex-shrink-0">
+          <Avatar className="h-7 w-7 flex-shrink-0">
             <AvatarImage src={message.profiles?.avatar_url || undefined} />
-            <AvatarFallback className="bg-zinc-700 text-zinc-300 text-sm font-medium">
+            <AvatarFallback className="bg-zinc-700 text-zinc-300 text-xs font-medium">
               {getInitials(message.profiles?.full_name ?? null)}
             </AvatarFallback>
           </Avatar>
@@ -294,8 +294,8 @@ export function MessageBubble({
         </div>
       )}
 
-      {/* Message + reactions aligned under the name (avatar + gap ≈ 12) */}
-      <div className="pl-12 min-w-0">
+      {/* Message + reactions aligned under the name (avatar + gap ≈ 10) */}
+      <div className="pl-10 min-w-0">
         {isEditing ? (
           <div className="flex items-center gap-2">
             <input
@@ -320,7 +320,7 @@ export function MessageBubble({
           <div>
             {message.content && !isGifUrl(message.content) && (
               <div className="inline-block bg-zinc-800/80 rounded-2xl px-4 py-2.5">
-                <p className="text-[15px] text-zinc-100 leading-relaxed break-words">
+                <p className="text-sm text-zinc-100 leading-relaxed break-words">
                   {renderContent(message.content)}
                 </p>
               </div>
