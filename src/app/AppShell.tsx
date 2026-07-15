@@ -16,6 +16,7 @@ import {
 } from "@/lib/access";
 import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
+import { NavViewportDebug } from "@/components/debug/NavViewportDebug";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense } from "react";
@@ -220,6 +221,7 @@ export function AppShell({
                 </MainContent>
                 <AudioPlayerWrapper />
                 <BottomNav />
+                <NavViewportDebug />
                 <AppOnboardingTour />
               </AudioPlayerProvider>
             </AttendanceTrackingProvider>
