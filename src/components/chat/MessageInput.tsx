@@ -66,6 +66,12 @@ export function MessageInput({
   const { user } = useAuth();
   const { toast } = useToast();
   const isIOSDevice = useMemo(() => isIOS(), []);
+  // Refs so a native `beforeinput` listener (attached once) always sees the
+  // latest send handler / mention state, and so we can dedupe against keydown.
+  const doSendRef = useRef<() => void>(() => {});
+  const mentionActiveRef = useRef(false);
+  const keydownHandledRef = useRef(false);
+  mentionActiveRef.current = mentionSearch !== null;
 
   const handleFocus = useCallback(() => {
     setIsKeyboardOpen(true);
@@ -254,12 +260,42 @@ export function MessageInput({
     doSend();
   };
 
+  doSendRef.current = doSend;
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && mentionSearch === null) {
       e.preventDefault();
+      // Mark so the beforeinput listener below doesn't also fire (hardware
+      // keyboards deliver both); cleared on the next tick.
+      keydownHandledRef.current = true;
+      setTimeout(() => {
+        keydownHandledRef.current = false;
+      }, 0);
       doSend();
     }
   };
+
+  // iOS software keyboards fire `beforeinput` (often without a matching
+  // `keydown`) for the return key, so the blue "Send" key never reached
+  // handleKeyDown — the user had to tap the on-screen button. Treat a line-break
+  // insert as send so the keyboard key sends directly. Shift+Enter on a hardware
+  // keyboard still inserts a newline (handleKeyDown cancels the break first).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const onBeforeInput = (e: Event) => {
+      if (
+        (e as InputEvent).inputType === "insertLineBreak" &&
+        !mentionActiveRef.current &&
+        !keydownHandledRef.current
+      ) {
+        e.preventDefault();
+        doSendRef.current();
+      }
+    };
+    el.addEventListener("beforeinput", onBeforeInput);
+    return () => el.removeEventListener("beforeinput", onBeforeInput);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -466,6 +502,10 @@ export function MessageInput({
             type="submit"
             size="icon"
             disabled={isUploading}
+            // Keep focus on the textarea so tapping Send never blurs the field —
+            // a blur flips isKeyboardOpen and swaps the composer's bottom padding,
+            // which is what made the bar snap down after sending.
+            onMouseDown={(e) => e.preventDefault()}
             className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 mb-1"
           >
             {isUploading ? (
