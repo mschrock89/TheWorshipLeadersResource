@@ -34,15 +34,12 @@ type NavItem = {
 export function BottomNav() {
   const location = useLocation();
   const { user } = useAuth();
-  // Glue the fixed nav to the real screen bottom. On iOS the layout viewport
-  // (which `fixed bottom-0` anchors to) can sit above the physical bottom,
-  // leaving a dark band under the bar. Two corrections, whichever is larger:
-  // translateY handles the keyboard stuck-pan; bottomGap handles the standalone
-  // cold-start case, where the layout viewport is short and never fires a resize
-  // — measured against the stable screen.height so it needs no settle. The nav
-  // hides while the keyboard is up.
-  const { translateY, bottomGap, isOpen: isKeyboardOpen } = useKeyboardOffset();
-  const navPin = Math.max(translateY, bottomGap);
+  // Glue the fixed nav to the visual-viewport bottom for the keyboard stuck-pan
+  // case; the nav hides while the keyboard is up. (The standalone cold-start
+  // shortfall is a viewport-size problem, not a nav-position one — pushing the
+  // bar into the unrendered region just clips it — so it's handled elsewhere.)
+  const { translateY, isOpen: isKeyboardOpen } = useKeyboardOffset();
+  const navPin = translateY;
   const isStudentApp = isCurrentStudentResourceApp();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { totalUnread } = useUnreadMessages();
