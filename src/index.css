@@ -96,15 +96,7 @@
 
   html {
     min-width: 320px;
-    /*
-     * Card color, not --background: the root is what iOS paints into any band it
-     * exposes below the fixed bottom nav on standalone cold launch (WebKit reports
-     * a short layout viewport for the first paint, before it settles). Matching
-     * the nav's card color makes that band read as part of the tab bar instead of
-     * a dark strip. body stays --background, so the app surface is unchanged; this
-     * only shows through in the cold-start gap / home-indicator region.
-     */
-    background: hsl(var(--card));
+    background: hsl(var(--background));
     color-scheme: dark;
     text-rendering: optimizeLegibility;
   }
