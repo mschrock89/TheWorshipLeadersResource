@@ -18,8 +18,55 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+
+/**
+ * iOS standalone PWAs paint the first frame with a layout viewport shorter than
+ * the screen, so the `fixed bottom-0` nav floats above the true bottom over a
+ * dark band (the native manifest background). Nothing on the page can cover that
+ * band — it's below the rendered viewport — and it only clears once a reflow
+ * settles the viewport, which normally doesn't happen on the home screen until
+ * the user navigates. Reproduce that settle automatically on cold start: briefly
+ * make the document scrollable and nudge it, which forces WebKit to reconcile the
+ * viewport and re-place the fixed nav at the real screen bottom. Runs a handful of
+ * times over the first ~1.2s (the viewport can take a few hundred ms to settle)
+ * and again on bfcache restore. Standalone-only so it never touches Safari/desktop.
+ */
+function useStandaloneColdStartSettle() {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isStandalone =
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (!isStandalone) return;
+
+    const settle = () => {
+      // Only nudge when parked at the top and not typing, so we never yank a
+      // user who is mid-scroll or has the keyboard open.
+      if (window.scrollY > 0) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+
+      const el = document.documentElement;
+      const prevMinHeight = el.style.minHeight;
+      el.style.minHeight = `${window.innerHeight + 1}px`;
+      window.scrollTo(0, 1);
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        el.style.minHeight = prevMinHeight;
+      });
+    };
+
+    const timers = [50, 150, 350, 700, 1200].map((delay) => window.setTimeout(settle, delay));
+    window.addEventListener("pageshow", settle);
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener("pageshow", settle);
+    };
+  }, []);
+}
 
 export type RouteDefinition = {
   path: string;
@@ -197,6 +244,8 @@ export function AppShell({
   protectedRoutes: RouteDefinition[];
   notFound: ComponentType;
 }) {
+  useStandaloneColdStartSettle();
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
