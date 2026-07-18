@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveEffectiveTeamSchedulesForCampuses } from "../_shared/effectiveTeamSchedules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,20 +82,25 @@ serve(async (req: Request): Promise<Response> => {
     // positions scheduled in THAT app, and is delivered only to that app's
     // subscriptions via metadata.resourceAppKey.
     const notifications: Record<string, AppNotification> = {};
-    // Users on the authoritative roster we could not attribute to a specific
-    // team/app (safety net) — they still get a generic reminder.
-    const fallbacks: Array<{ userId: string; dayWord: "today" | "tomorrow" }> = [];
     const scheduledTeamIds = new Set<string>();
 
     for (const { dateStr, dayWord } of targetDates) {
       // Which teams are scheduled on this date (for the message detail + early-exit).
-      const { data: schedules, error: scheduleError } = await supabase
-        .from("team_schedule")
-        .select(`team_id, ministry_type, campus_id, resource_app_key, worship_teams!inner(name)`)
-        .eq("schedule_date", dateStr);
+      const [scheduleResult, campusResult] = await Promise.all([
+        supabase
+          .from("team_schedule")
+          .select(
+            `team_id, ministry_type, time_of_day, campus_id, resource_app_key, created_at, worship_teams!inner(name)`,
+          )
+          .eq("schedule_date", dateStr),
+        supabase.from("campuses").select("id"),
+      ]);
 
-      if (scheduleError) {
-        console.error(`Error fetching schedules for ${dateStr}:`, scheduleError);
+      const { data: schedules, error: scheduleError } = scheduleResult;
+      const { data: campuses, error: campusError } = campusResult;
+
+      if (scheduleError || campusError) {
+        console.error(`Error fetching schedules for ${dateStr}:`, { scheduleError, campusError });
         throw new Error("Failed to fetch schedules");
       }
 
@@ -103,36 +109,26 @@ serve(async (req: Request): Promise<Response> => {
         continue;
       }
 
-      // Authoritative recipient set (all campuses, all ministries) for this date.
-      const { data: rosterRows, error: rosterError } = await supabase.rpc(
-        "get_roster_notifiable_user_ids",
-        { p_schedule_date: dateStr, p_campus_id: null, p_ministry_type: null },
+      // Shared rows are defaults. Resolve them once per campus so a campus-specific
+      // schedule suppresses the legacy shared row, matching Team Builder.
+      const effectiveSchedules = resolveEffectiveTeamSchedulesForCampuses(
+        schedules,
+        (campuses || []).map((campus) => campus.id),
       );
 
-      if (rosterError) {
-        console.error(`Error resolving roster recipients for ${dateStr}:`, rosterError);
-        throw new Error("Failed to resolve roster recipients");
-      }
-
-      const recipientUserIds = Array.from(
-        new Set((rosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
-      );
-
-      if (recipientUserIds.length === 0) {
-        console.log(`No roster members to notify for ${dateStr}`);
+      if (effectiveSchedules.length === 0) {
+        console.log(`No effective schedules for ${dateStr}`);
         continue;
       }
 
-      console.log(`Found ${recipientUserIds.length} roster members for ${dateStr}`);
-
-      const attributedUsers = new Set<string>();
+      const recipientUserIds = new Set<string>();
 
       // Attribute team/position detail per schedule row using the SAME authoritative
       // RPC that decided who to notify (rotation period, ministry type, date overrides,
       // and swaps) — a raw team_members join here previously listed every team a person
       // is a member of anywhere, even ones from a past/inactive rotation (e.g. "Team 1 &
       // Team 3" when only Team 1 was actually theirs today).
-      for (const schedule of schedules) {
+      for (const schedule of effectiveSchedules) {
         if (!schedule.team_id) continue;
         scheduledTeamIds.add(schedule.team_id);
 
@@ -174,7 +170,7 @@ serve(async (req: Request): Promise<Response> => {
         const appKey = schedule.resource_app_key || "worship";
 
         for (const userId of teamUserIds) {
-          attributedUsers.add(userId);
+          recipientUserIds.add(userId);
           const key = `${userId}|${appKey}|${dateStr}`;
           const entry = (notifications[key] ??= {
             userId,
@@ -195,11 +191,7 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      for (const userId of recipientUserIds) {
-        if (!attributedUsers.has(userId)) {
-          fallbacks.push({ userId, dayWord });
-        }
-      }
+      console.log(`Found ${recipientUserIds.size} roster members for ${dateStr}`);
     }
 
     let totalSent = 0;
@@ -252,27 +244,13 @@ serve(async (req: Request): Promise<Response> => {
       }, entry.userId);
     }
 
-    for (const fallback of fallbacks) {
-      await sendPush({
-        title: fallback.dayWord === "today"
-          ? "🎵 You're Serving Today!"
-          : "🎵 You're Serving Tomorrow!",
-        message: `You're scheduled to serve ${fallback.dayWord}. See you at church!`,
-        url: "/calendar",
-        tag: "schedule-reminder",
-        userIds: [fallback.userId],
-        contextType: "schedule-reminder",
-        metadata: { resourceAppKey: "worship" },
-      }, fallback.userId);
-    }
-
     console.log(`Schedule reminder complete: ${totalSent} sent, ${totalFailed} failed`);
 
     return new Response(
       JSON.stringify({
         success: true,
         scheduledTeams: scheduledTeamIds.size,
-        recipients: Object.keys(notifications).length + fallbacks.length,
+        recipients: Object.keys(notifications).length,
         pushSent: totalSent,
         pushFailed: totalFailed,
       }),
