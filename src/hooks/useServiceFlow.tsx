@@ -68,6 +68,7 @@ export function useServiceFlow(
 ) {
   return useQuery({
     queryKey: ["service-flow", campusId, ministryType, serviceDate, draftSetId || null, customServiceId || null],
+    staleTime: 30_000,
     queryFn: async () => {
       if (!campusId || !serviceDate) return null;
 
@@ -202,62 +203,54 @@ export function useServiceFlow(
 export function useServiceFlowItems(serviceFlowId: string | null) {
   return useQuery({
     queryKey: ["service-flow-items", serviceFlowId],
+    staleTime: 30_000,
     queryFn: async () => {
       if (!serviceFlowId) return [];
       
+      // One round-trip: items + song + primary vocalist + co-vocalists.
       const { data, error } = await supabase
         .from("service_flow_items")
         .select(`
           *,
           song:songs(id, title, author, bpm),
-          vocalist:profiles!service_flow_items_vocalist_id_fkey(id, full_name, avatar_url)
+          vocalist:profiles!service_flow_items_vocalist_id_fkey(id, full_name, avatar_url),
+          service_flow_item_vocalists(
+            vocalist:profiles(id, full_name, avatar_url)
+          )
         `)
         .eq("service_flow_id", serviceFlowId)
         .order("sequence_order", { ascending: true });
       
       if (error) throw error;
-      const items = (data || []) as ServiceFlowItem[];
 
-      const itemIds = items.map((i) => i.id);
-      if (itemIds.length === 0) return items;
+      return ((data || []) as any[]).map((row) => {
+        const linked: Array<{ id: string; full_name: string | null; avatar_url: string | null }> = [];
+        for (const junction of row.service_flow_item_vocalists || []) {
+          const vocalist = junction?.vocalist;
+          if (!vocalist?.id) continue;
+          if (!linked.some((entry) => entry.id === vocalist.id)) {
+            linked.push({
+              id: vocalist.id,
+              full_name: vocalist.full_name,
+              avatar_url: vocalist.avatar_url,
+            });
+          }
+        }
 
-      const { data: flowItemVocalists, error: flowItemVocalistsError } = await supabase
-        .from("service_flow_item_vocalists")
-        .select(`
-          service_flow_item_id,
-          vocalist:profiles(id, full_name, avatar_url)
-        `)
-        .in("service_flow_item_id", itemIds);
-
-      if (flowItemVocalistsError) throw flowItemVocalistsError;
-
-      const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
-      for (const row of (flowItemVocalists || []) as any[]) {
-        const vocalist = row.vocalist;
-        if (!vocalist || !row.service_flow_item_id) continue;
-        const existing = byItemId.get(row.service_flow_item_id) || [];
-        existing.push({
-          id: vocalist.id,
-          full_name: vocalist.full_name,
-          avatar_url: vocalist.avatar_url,
-        });
-        byItemId.set(row.service_flow_item_id, existing);
-      }
-
-      return items.map((item) => {
-        const linked = byItemId.get(item.id) || [];
         // Always include legacy single vocalist_id as fallback/first vocalist.
-        if (item.vocalist && !linked.some((v) => v.id === item.vocalist!.id)) {
+        if (row.vocalist && !linked.some((v) => v.id === row.vocalist.id)) {
           linked.unshift({
-            id: item.vocalist.id,
-            full_name: item.vocalist.full_name,
-            avatar_url: item.vocalist.avatar_url,
+            id: row.vocalist.id,
+            full_name: row.vocalist.full_name,
+            avatar_url: row.vocalist.avatar_url,
           });
         }
+
+        const { service_flow_item_vocalists: _junction, ...item } = row;
         return {
           ...item,
           vocalists: linked,
-        };
+        } as ServiceFlowItem;
       });
     },
     enabled: !!serviceFlowId,
@@ -1042,6 +1035,27 @@ export async function generateServiceFlowFromTemplate(params: {
       .order("sequence_order", { ascending: true });
     if (flowItemsError || !flowSongItems || flowSongItems.length === 0) return;
 
+    const flowItemIds = flowSongItems.map((item: any) => item.id as string);
+    const { data: existingFlowVocalists } = await supabase
+      .from("service_flow_item_vocalists")
+      .select("service_flow_item_id, vocalist_id")
+      .in("service_flow_item_id", flowItemIds.length > 0 ? flowItemIds : ["00000000-0000-0000-0000-000000000000"]);
+
+    const existingVocalistMap = new Map<string, string[]>();
+    for (const row of existingFlowVocalists || []) {
+      const existing = existingVocalistMap.get(row.service_flow_item_id) || [];
+      existing.push(row.vocalist_id);
+      existingVocalistMap.set(row.service_flow_item_id, existing);
+    }
+
+    const sameVocalistIds = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return false;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((id, index) => id === sortedB[index]);
+    };
+
+    const writeTasks: Promise<unknown>[] = [];
     const count = Math.min(draftSongs.length, flowSongItems.length);
     for (let i = 0; i < count; i++) {
       const draftSong: any = draftSongs[i];
@@ -1052,24 +1066,41 @@ export async function generateServiceFlowFromTemplate(params: {
         ? Array.from(new Set(vocalistIdsRaw))
         : (draftSong.vocalist_id ? [draftSong.vocalist_id as string] : []);
       const primaryVocalistId = vocalistIds[0] || null;
+      const currentVocalistIds = existingVocalistMap.get(flowItem.id) || (
+        flowItem.vocalist_id ? [flowItem.vocalist_id as string] : []
+      );
 
       if ((flowItem.vocalist_id ?? null) !== primaryVocalistId) {
-        await supabase
-          .from("service_flow_items")
-          .update({ vocalist_id: primaryVocalistId })
-          .eq("id", flowItem.id);
+        writeTasks.push(
+          supabase
+            .from("service_flow_items")
+            .update({ vocalist_id: primaryVocalistId })
+            .eq("id", flowItem.id)
+        );
       }
 
-      await supabase
-        .from("service_flow_item_vocalists")
-        .delete()
-        .eq("service_flow_item_id", flowItem.id);
-
-      if (vocalistIds.length > 0) {
-        await supabase
-          .from("service_flow_item_vocalists")
-          .insert(vocalistIds.map((vocalist_id) => ({ service_flow_item_id: flowItem.id, vocalist_id })));
+      if (sameVocalistIds(vocalistIds, currentVocalistIds)) {
+        continue;
       }
+
+      writeTasks.push(
+        (async () => {
+          await supabase
+            .from("service_flow_item_vocalists")
+            .delete()
+            .eq("service_flow_item_id", flowItem.id);
+
+          if (vocalistIds.length === 0) return;
+
+          await supabase
+            .from("service_flow_item_vocalists")
+            .insert(vocalistIds.map((vocalist_id) => ({ service_flow_item_id: flowItem.id, vocalist_id })));
+        })()
+      );
+    }
+
+    if (writeTasks.length > 0) {
+      await Promise.all(writeTasks);
     }
   };
 

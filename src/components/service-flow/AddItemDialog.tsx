@@ -48,8 +48,8 @@ export function AddItemDialog({
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const { data: songs } = useSongs();
-  const { data: songKeys } = useSongKeys();
+  const { data: songs } = useSongs({ enabled: open });
+  const { data: songKeys } = useSongKeys({ enabled: open });
 
   const handleAdd = () => {
     let finalTitle = title;

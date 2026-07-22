@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { GripVertical, X, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
@@ -9,15 +9,15 @@ import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceF
 
 interface ServiceFlowItemProps {
   item: ServiceFlowItemType;
-  onUpdate: (updates: Partial<ServiceFlowItemType>) => void;
-  onDelete: () => void;
+  onUpdate: (itemId: string, updates: Partial<ServiceFlowItemType>) => void;
+  onDelete: (itemId: string) => void;
   displayTitle?: string;
   clockTime?: string | null;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
 }
 
-export function ServiceFlowItem({
+export const ServiceFlowItem = memo(function ServiceFlowItem({
   item,
   onUpdate,
   onDelete,
@@ -41,7 +41,7 @@ export function ServiceFlowItem({
       return;
     }
     if (trimmed !== (item.title || "")) {
-      onUpdate({ title: trimmed });
+      onUpdate(item.id, { title: trimmed });
     }
     setIsEditingTitle(false);
   };
@@ -110,7 +110,7 @@ export function ServiceFlowItem({
           variant="ghost"
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
-          onClick={onDelete}
+          onClick={() => onDelete(item.id)}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -133,7 +133,7 @@ export function ServiceFlowItem({
         </div>
         <DurationInput
           value={item.duration_seconds}
-          onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
+          onChange={(seconds) => onUpdate(item.id, { duration_seconds: seconds })}
         />
         {clockTime ? (
           <span className="w-[4.75rem] shrink-0 text-center text-xs font-medium tabular-nums text-muted-foreground">
@@ -164,12 +164,11 @@ export function ServiceFlowItem({
             </span>
           )}
         </div>
-        {/* Attachment count placeholder - future feature */}
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6 text-muted-foreground hover:text-destructive"
-          onClick={onDelete}
+          onClick={() => onDelete(item.id)}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -192,7 +191,7 @@ export function ServiceFlowItem({
       </div>
       <DurationInput
         value={item.duration_seconds}
-        onChange={(seconds) => onUpdate({ duration_seconds: seconds })}
+        onChange={(seconds) => onUpdate(item.id, { duration_seconds: seconds })}
       />
       {clockTime ? (
         <span className="w-[4.75rem] shrink-0 text-center text-xs font-medium tabular-nums text-muted-foreground">
@@ -230,10 +229,10 @@ export function ServiceFlowItem({
         variant="ghost"
         size="icon"
         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-        onClick={onDelete}
+        onClick={() => onDelete(item.id)}
       >
         <X className="h-3.5 w-3.5" />
       </Button>
     </div>
   );
-}
+});
