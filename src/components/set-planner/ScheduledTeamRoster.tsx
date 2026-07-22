@@ -16,7 +16,7 @@ import { filterGroupTextRecipients } from "@/lib/access";
 interface ScheduledTeamRosterProps {
   targetDate: Date;
   ministryType?: string;
-  campusId?: string;
+  campusId?: string | null;
 }
 
 // Match position names (case-insensitive, supports various formats)

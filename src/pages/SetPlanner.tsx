@@ -34,10 +34,12 @@ import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, ad
 import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, FileText } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
+
+const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
 const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) => {
   if (option.value === "kids_camp") {
@@ -54,6 +56,10 @@ const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((optio
   }
   return [option];
 });
+
+const NETWORK_WIDE_SET_BUILDER_MINISTRY_OPTIONS = SET_BUILDER_MINISTRY_OPTIONS.filter((option) =>
+  isNetworkWideMinistryType(option.value),
+);
 
 function customServiceMatchesSelectedMinistry(serviceMinistryType: string, selectedMinistry: string) {
   if (isSessionSetMinistryType(selectedMinistry)) {
@@ -236,30 +242,56 @@ export default function SetPlanner() {
     }
   };
 
-  const effectiveCampusId = selectedCampusId || availableCampuses[0]?.id || '';
-  const currentCampus = availableCampuses.find(c => c.id === effectiveCampusId);
+  const isNetworkWideCampus = selectedCampusId === NETWORK_WIDE_CAMPUS_ID;
+  const physicalCampusId =
+    !isNetworkWideCampus && selectedCampusId
+      ? selectedCampusId
+      : !isNetworkWideCampus
+        ? availableCampuses[0]?.id || ""
+        : "";
+  // UI select value: preserve Network Wide sentinel; otherwise fall back to first physical campus
+  const effectiveCampusId = isNetworkWideCampus
+    ? NETWORK_WIDE_CAMPUS_ID
+    : physicalCampusId;
+  const isNetworkWideMinistry = isNetworkWideMinistryType(selectedMinistry);
+  // DB queries/saves for network-wide scope use campus_id IS NULL
+  const queryCampusId =
+    isNetworkWideCampus || isNetworkWideMinistry ? null : physicalCampusId || null;
+  const currentCampus = availableCampuses.find((c) => c.id === physicalCampusId);
+  const ministryOptions = isNetworkWideCampus
+    ? NETWORK_WIDE_SET_BUILDER_MINISTRY_OPTIONS
+    : SET_BUILDER_MINISTRY_OPTIONS;
+  const showCampusSelector =
+    availableCampuses.length > 1 || hasNetworkAccess || isAdmin || isNetworkWideCampus;
+
+  // Network Wide campus only plans Student Camp session sets
+  useEffect(() => {
+    if (isNetworkWideCampus && !isNetworkWideMinistryType(selectedMinistry)) {
+      setSelectedMinistry("student_camp_morning");
+    }
+  }, [isNetworkWideCampus, selectedMinistry]);
 
   // Check if current campus uses weekend grouping (has both Saturday and Sunday services)
   const isWeekendCampus = currentCampus?.has_saturday_service && currentCampus?.has_sunday_service;
 
   const { availability, isLoading } = useSongAvailability(
-    effectiveCampusId,
+    queryCampusId,
     selectedMinistry,
     selectedDate
   );
 
   // Get scheduled vocalists for the date and campus
-  const { data: scheduledVocalists = [] } = useScheduledVocalists(selectedDate, selectedMinistry, effectiveCampusId);
+  const { data: scheduledVocalists = [] } = useScheduledVocalists(selectedDate, selectedMinistry, queryCampusId);
 
   // Get songs from published setlists for this campus/ministry (to filter from suggestions)
-  const { data: publishedSetlistSongIds = new Set<string>() } = usePublishedSetlistSongs(effectiveCampusId, selectedMinistry);
+  const { data: publishedSetlistSongIds = new Set<string>() } = usePublishedSetlistSongs(queryCampusId, selectedMinistry);
 
   // Fetch existing set for this date/campus/ministry
   const planDateStr = format(selectedDate, 'yyyy-MM-dd');
   const rangeStart = format(subMonths(selectedDate, 1), "yyyy-MM-dd");
   const rangeEnd = format(addMonths(selectedDate, 3), "yyyy-MM-dd");
   const { data: customServiceOccurrences = [] } = useCustomServiceOccurrences({
-    campusId: effectiveCampusId || undefined,
+    campusId: isNetworkWideCampus ? NETWORK_WIDE_CAMPUS_ID : physicalCampusId || undefined,
     startDate: rangeStart,
     endDate: rangeEnd,
   });
@@ -268,7 +300,7 @@ export default function SetPlanner() {
     return customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey)?.id || null;
   }, [selectedCustomServiceKey, customServiceOccurrences]);
   const { data: existingSet, isLoading: existingSetLoading } = useExistingSet(
-    effectiveCampusId,
+    queryCampusId,
     selectedMinistry,
     planDateStr,
     selectedCustomServiceIdForQuery
@@ -319,12 +351,12 @@ export default function SetPlanner() {
 
   const selectedSetScopeKey = useMemo(
     () => [
-      effectiveCampusId || "none",
+      queryCampusId || (isNetworkWideCampus || isNetworkWideMinistry ? "network-wide" : "none"),
       selectedMinistry,
       planDateStr,
       selectedCustomServiceIdForQuery || "none",
     ].join("|"),
-    [effectiveCampusId, selectedMinistry, planDateStr, selectedCustomServiceIdForQuery],
+    [queryCampusId, isNetworkWideCampus, isNetworkWideMinistry, selectedMinistry, planDateStr, selectedCustomServiceIdForQuery],
   );
 
   // Track the full set scope to prevent Morning/Afternoon variants from sharing local songs.
@@ -542,7 +574,7 @@ export default function SetPlanner() {
   };
 
   const handleSave = async () => {
-    if (!user || !effectiveCampusId) return;
+    if (!user || (!queryCampusId && !isNetworkWideMinistry && !isNetworkWideCampus)) return;
 
     if (
       existingSet?.status === "published" &&
@@ -557,10 +589,10 @@ export default function SetPlanner() {
       draftSet: {
         // Prefer updating the set we found for this campus/ministry/date
         id: existingSet?.id || lastSavedSetId || undefined,
-        campus_id: effectiveCampusId,
+        campus_id: queryCampusId,
         plan_date: format(selectedDate, 'yyyy-MM-dd'),
         ministry_type: selectedMinistry,
-        custom_service_id: selectedCustomService?.id || null,
+        custom_service_id: selectedCustomServiceIdForQuery,
         created_by: user.id,
         status: existingSet?.status || 'draft', // Preserve published status
         notes: notes || null,
@@ -584,7 +616,7 @@ export default function SetPlanner() {
   const handlePublished = () => {
     const existingSetQueryKey = [
       "existing-set",
-      effectiveCampusId,
+      isNetworkWideMinistry || isNetworkWideCampus ? "network-wide" : queryCampusId,
       selectedMinistry,
       planDateStr,
       selectedCustomServiceIdForQuery || null,
@@ -650,7 +682,7 @@ export default function SetPlanner() {
   );
 
   const { data: customServiceCampusMembers = [] } = useCustomServiceCampusMembers(
-    selectedCustomService?.campus_id || effectiveCampusId || undefined,
+    selectedCustomService?.campus_id || physicalCampusId || undefined,
     baseSelectedMinistry,
   );
 
@@ -710,7 +742,7 @@ export default function SetPlanner() {
   const canOverrideScheduledSongs = isAdmin && !!selectedCustomService;
   const { data: goodFitHighlights = {} } = useWeekendRundownGoodFitHighlights(
     user?.id,
-    effectiveCampusId || null,
+    physicalCampusId || null,
     effectiveVocalists.map((vocalist) => ({
       userId: vocalist.userId,
       name: vocalist.name,
@@ -718,7 +750,7 @@ export default function SetPlanner() {
   );
   const { data: vocalistRundownNotes = [], isLoading: vocalistRundownNotesLoading } =
     useScheduledVocalistRundownNotes(
-      effectiveCampusId || null,
+      physicalCampusId || null,
       effectiveVocalists.map((vocalist) => ({
         userId: vocalist.userId,
         name: vocalist.name,
@@ -728,7 +760,14 @@ export default function SetPlanner() {
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
   useEffect(() => {
-    if (!effectiveCampusId) return;
+    // Teaching sheets are campus-scoped; skip for Network Wide / Student Camp.
+    if (!physicalCampusId || isNetworkWideCampus || isNetworkWideMinistry) {
+      setTeachingWeek(null);
+      setTeachingSummary("");
+      setSuggestedThemes([]);
+      setIsTeachingLoading(false);
+      return;
+    }
     let cancelled = false;
 
     const loadTeachingWeek = async () => {
@@ -737,7 +776,7 @@ export default function SetPlanner() {
         const { data: existing, error: findError } = await (supabase as any)
           .from("teaching_weeks")
           .select("*")
-          .eq("campus_id", effectiveCampusId)
+          .eq("campus_id", physicalCampusId)
           .eq("ministry_type", baseSelectedMinistry)
           .eq("weekend_date", teachingDateStr)
           .order("updated_at", { ascending: false })
@@ -752,7 +791,7 @@ export default function SetPlanner() {
           const { data: announcement } = await (supabase as any)
             .from("teaching_week_announcements")
             .select("psa_highlight, announcer_name")
-            .eq("campus_id", effectiveCampusId)
+            .eq("campus_id", physicalCampusId)
             .eq("ministry_type", baseSelectedMinistry)
             .eq("weekend_date", teachingDateStr)
             .maybeSingle();
@@ -779,7 +818,7 @@ export default function SetPlanner() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveCampusId, baseSelectedMinistry, teachingDateStr]);
+  }, [physicalCampusId, isNetworkWideCampus, isNetworkWideMinistry, baseSelectedMinistry, teachingDateStr]);
 
   const handleSuggestSongs = async () => {
     if (!teachingWeek) return;
@@ -947,7 +986,7 @@ export default function SetPlanner() {
               </div>
 
               {/* Campus selector */}
-              {availableCampuses.length > 1 && (
+              {showCampusSelector && (
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Campus</label>
                   <Select value={effectiveCampusId} onValueChange={setSelectedCampusId}>
@@ -955,6 +994,9 @@ export default function SetPlanner() {
                       <SelectValue placeholder="Select campus" />
                     </SelectTrigger>
                     <SelectContent>
+                      {(hasNetworkAccess || isAdmin || isNetworkWideCampus) && (
+                        <SelectItem value={NETWORK_WIDE_CAMPUS_ID}>Network Wide</SelectItem>
+                      )}
                       {availableCampuses.map(campus => (
                         <SelectItem key={campus.id} value={campus.id}>
                           {campus.name}
@@ -973,7 +1015,7 @@ export default function SetPlanner() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {SET_BUILDER_MINISTRY_OPTIONS.map(opt => (
+                    {ministryOptions.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>
@@ -1211,7 +1253,7 @@ export default function SetPlanner() {
 
         {/* Team Roster - full width */}
         {!isPrayerNightMinistry && (
-          <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={effectiveCampusId} />
+          <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={queryCampusId} />
         )}
 
         {/* Custom Service Team Assignments */}
@@ -1531,7 +1573,7 @@ export default function SetPlanner() {
                     songs={buildingSongs}
                     targetDate={selectedDate}
                     ministryType={selectedMinistry}
-                    campusId={effectiveCampusId}
+                    campusId={queryCampusId}
                     customServiceId={selectedCustomService?.id || undefined}
                     onPublished={handlePublished}
                   />

@@ -312,7 +312,7 @@ export function useTeamRosterForDate(
   date: Date | null,
   teamId?: string,
   ministryType?: string,
-  campusId?: string,
+  campusId?: string | null,
   rotationPeriodName?: string | null,
 ) {
   const { user } = useAuth();
