@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -332,11 +332,13 @@ function StandardCalendar() {
     canManageTeam,
     user
   } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
   const [isCoverOpen, setIsCoverOpen] = useState(false);
+  const hasHydratedFromUrl = useRef(false);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -353,6 +355,38 @@ function StandardCalendar() {
   const [ministryFilter, setMinistryFilter] = useState<string>(
     () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
   );
+
+  // Restore date/campus/ministry when returning from Service Flow (?date=...).
+  useEffect(() => {
+    if (hasHydratedFromUrl.current) return;
+    const dateParam = searchParams.get("date");
+    const campusParam = searchParams.get("campus");
+    const ministryParam = searchParams.get("ministry");
+    if (!dateParam && !campusParam && !ministryParam) return;
+
+    hasHydratedFromUrl.current = true;
+
+    if (dateParam) {
+      const parsed = parseLocalDate(dateParam);
+      if (!Number.isNaN(parsed.getTime())) {
+        setCurrentDate(parsed);
+        setSelectedDate(parsed);
+      }
+    }
+    if (campusParam) {
+      setCampusFilter(campusParam);
+    }
+    if (ministryParam) {
+      setMinistryFilter(ministryParam);
+    }
+
+    // Clear one-shot restore params so refresh doesn't keep re-selecting.
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("date");
+    nextParams.delete("campus");
+    nextParams.delete("ministry");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setCampusFilter, setSearchParams]);
   // Student Camp is a Network Wide ministry (its schedule lives at campus_id IS NULL and
   // is shared across every campus/app), so it must stay visible in the network-wide view.
   const isStudentCampMinistryFilter =
