@@ -1201,6 +1201,27 @@ html.service-flow-export-mode .service-flow-print-pair {
 }
 
 /* Inline Service Flow preview on Calendar — compact, mobile-safe */
+/* Calendar inline print: hide the rest of the page, show only the print sheets. */
+html.calendar-service-flow-printing body * {
+  visibility: hidden !important;
+}
+
+html.calendar-service-flow-printing .service-flow-print-render,
+html.calendar-service-flow-printing .service-flow-print-render * {
+  visibility: visible !important;
+}
+
+html.calendar-service-flow-printing .service-flow-print-render {
+  display: grid !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0.04in !important;
+  background: white !important;
+}
+
 .calendar-service-flow-preview {
   width: 100%;
   max-width: 100%;

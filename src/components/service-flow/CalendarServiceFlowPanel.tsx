@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { ExternalLink, Plus } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
@@ -21,7 +20,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { ServiceFlowItem } from "./ServiceFlowItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
-import { buildServiceFlowHref } from "./buildServiceFlowPreview";
+import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
+import { ServiceFlow as ServiceFlowPreview } from "./ServiceFlow";
+
+const EXPORT_MODE_CLASS = "service-flow-export-mode";
+const CALENDAR_PRINTING_CLASS = "calendar-service-flow-printing";
 
 export type CalendarServiceFlowPanelProps = {
   date: string;
@@ -39,6 +42,10 @@ export type CalendarServiceFlowPanelProps = {
 function normalizeMinistryType(ministryType?: string | null) {
   if (!ministryType) return "weekend";
   return ministryType === "weekend_team" ? "weekend" : ministryType;
+}
+
+function clearPrintMode() {
+  document.documentElement.classList.remove(EXPORT_MODE_CLASS, CALENDAR_PRINTING_CLASS);
 }
 
 async function loadDraftSongsWithVocalists(draftSetId: string) {
@@ -104,6 +111,7 @@ export function CalendarServiceFlowPanel({
   ministryType,
   draftSetId = null,
   customServiceId = null,
+  campusName = null,
   label = null,
   readOnly = false,
   className,
@@ -200,12 +208,16 @@ export function CalendarServiceFlowPanel({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [printMounted, setPrintMounted] = useState(false);
   const hasAttemptedGenerate = useRef(false);
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
   const localItemsRef = useRef<ServiceFlowItemType[]>([]);
   const dragFrameRef = useRef<number | null>(null);
   const pendingDragIndexRef = useRef<number | null>(null);
+  const printPairRef = useRef<HTMLDivElement | null>(null);
+  const printCloneRef = useRef<HTMLElement | null>(null);
+  const printReadyResolveRef = useRef<(() => void) | null>(null);
 
   const contextKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${customServiceId || ""}`;
 
@@ -220,6 +232,7 @@ export function CalendarServiceFlowPanel({
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
+    setPrintMounted(false);
   }, [contextKey]);
 
   useEffect(() => {
@@ -233,6 +246,12 @@ export function CalendarServiceFlowPanel({
   useEffect(() => {
     draggedItemRef.current = draggedItem;
   }, [draggedItem]);
+
+  useEffect(() => {
+    return () => {
+      clearPrintMode();
+    };
+  }, []);
 
   const generateFromTemplate = useCallback(async () => {
     if (!user?.id || !flowCampusId || !date || readOnly) return null;
@@ -430,6 +449,95 @@ export function CalendarServiceFlowPanel({
     [localItems],
   );
 
+  const servicePreview = useMemo(
+    () =>
+      buildServiceFlowPreview({
+        items: localItems,
+        serviceDate: date,
+        campusName,
+        ministryType: effectiveMinistryType,
+        title: ministryLabel,
+      }),
+    [campusName, date, effectiveMinistryType, localItems, ministryLabel],
+  );
+
+  useEffect(() => {
+    if (!printMounted || !printReadyResolveRef.current) return;
+    const resolve = printReadyResolveRef.current;
+    printReadyResolveRef.current = null;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  }, [printMounted]);
+
+  useLayoutEffect(() => {
+    const pair = printPairRef.current;
+    if (!printMounted || !pair) {
+      printCloneRef.current = null;
+      return;
+    }
+
+    const source = pair.firstElementChild;
+    if (!(source instanceof HTMLElement)) return;
+
+    if (printCloneRef.current?.isConnected) {
+      printCloneRef.current.remove();
+    }
+
+    const clone = source.cloneNode(true) as HTMLElement;
+    clone.setAttribute("aria-hidden", "true");
+    clone.setAttribute("data-print-clone", "true");
+    pair.appendChild(clone);
+    printCloneRef.current = clone;
+
+    return () => {
+      printCloneRef.current?.remove();
+      printCloneRef.current = null;
+    };
+  }, [printMounted, servicePreview]);
+
+  const handlePrint = useCallback(async () => {
+    if (localItems.length === 0) return;
+
+    await new Promise<void>((resolve) => {
+      if (printMounted) {
+        resolve();
+        return;
+      }
+      printReadyResolveRef.current = resolve;
+      setPrintMounted(true);
+    });
+
+    const printableNode = printPairRef.current;
+    if (!printableNode) {
+      setPrintMounted(false);
+      window.print();
+      return;
+    }
+
+    const html = document.documentElement;
+    const previousTitle = document.title;
+    let cleanedUp = false;
+
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      clearPrintMode();
+      document.title = previousTitle;
+      setPrintMounted(false);
+      window.removeEventListener("afterprint", cleanup);
+    };
+
+    document.title = `${ministryLabel} Service Flow`;
+    html.classList.add(EXPORT_MODE_CLASS, CALENDAR_PRINTING_CLASS);
+    window.addEventListener("afterprint", cleanup);
+
+    window.setTimeout(() => {
+      window.print();
+      window.setTimeout(cleanup, 1500);
+    }, 50);
+  }, [localItems.length, ministryLabel, printMounted]);
+
   // Show the editor as soon as we have items — don't block on background refetch/draft lookup.
   const isInitialLoading =
     (networkWideCampusLoading && isNetworkWide) ||
@@ -437,16 +545,10 @@ export function CalendarServiceFlowPanel({
     (itemsLoading && localItems.length === 0 && !!activeFlowId) ||
     (isGenerating && localItems.length === 0);
 
-  const fullPageHref = buildServiceFlowHref({
-    date,
-    campusId: flowCampusId,
-    ministryType: effectiveMinistryType,
-    draftSetId: resolvedDraftSetId || serviceFlow?.draft_set_id || null,
-    customServiceId,
-  });
-
   const showEmpty =
     !isInitialLoading && (!activeFlowId || localItems.length === 0 || itemsError);
+
+  const canPrint = !isInitialLoading && !showEmpty && localItems.length > 0;
 
   return (
     <section
@@ -467,15 +569,15 @@ export function CalendarServiceFlowPanel({
           </h3>
         </div>
         <Button
-          asChild
+          type="button"
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+          onClick={() => void handlePrint()}
+          disabled={!canPrint}
         >
-          <Link to={fullPageHref}>
-            <ExternalLink className="h-3.5 w-3.5" />
-            Full page
-          </Link>
+          <Printer className="h-3.5 w-3.5" />
+          Print
         </Button>
       </div>
 
@@ -511,9 +613,6 @@ export function CalendarServiceFlowPanel({
                 }}
               >
                 Generate from Template
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link to={fullPageHref}>Open full page</Link>
               </Button>
             </div>
           ) : null}
@@ -568,6 +667,20 @@ export function CalendarServiceFlowPanel({
           ) : null}
         </>
       )}
+
+      {printMounted && localItems.length > 0 ? (
+        <div
+          ref={printPairRef}
+          className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]"
+        >
+          <ServiceFlowPreview
+            service={servicePreview}
+            compactMode
+            showProgressBar={false}
+            printFitHalfSheet
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -97,19 +97,20 @@ export function useServiceFlow(
         if (byDraftSet) {
           // For custom-service contexts, guard against legacy/mismatched draft-set links
           // (e.g. Prayer Night custom service accidentally linked to a weekend flow).
+          // Also reject cross-session matches (Morning draft set must not return an Evening flow).
+          const byDraftSetCustomServiceId =
+            (byDraftSet as { custom_service_id?: string | null }).custom_service_id ?? null;
+          const byDraftSetMinistryType =
+            (byDraftSet as { ministry_type?: string | null }).ministry_type ?? null;
+          const ministryMatches =
+            !byDraftSetMinistryType || byDraftSetMinistryType === ministryType;
+
           if (customServiceId) {
-            const byDraftSetCustomServiceId =
-              (byDraftSet as { custom_service_id?: string | null }).custom_service_id ?? null;
-            const byDraftSetMinistryType =
-              (byDraftSet as { ministry_type?: string | null }).ministry_type ?? null;
-
             const customServiceMatches = byDraftSetCustomServiceId === customServiceId;
-            const ministryMatches = byDraftSetMinistryType === ministryType;
-
             if (customServiceMatches && ministryMatches) {
               return byDraftSet;
             }
-          } else {
+          } else if (ministryMatches) {
             return byDraftSet;
           }
         }
