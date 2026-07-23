@@ -269,6 +269,16 @@ html.service-flow-export-mode .print-header {
   display: none !important;
 }
 
+/* Keep an escape hatch visible even if export-mode CSS gets stuck. */
+html.service-flow-export-mode .service-flow-back-row {
+  display: flex !important;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: hsl(var(--background));
+  padding: 0.5rem 0;
+}
+
 html.service-flow-export-mode main,
 html.service-flow-export-mode .service-flow-page {
   padding: 0.02in !important;

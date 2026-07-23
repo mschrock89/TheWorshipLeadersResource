@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ import {
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
 
+function clearServiceFlowExportMode() {
+  document.documentElement.classList.remove(EXPORT_MODE_CLASS);
+}
+
 export default function ServiceFlow() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -29,6 +33,17 @@ export default function ServiceFlow() {
   const initialMinistry = searchParams.get("ministry") || undefined;
   const initialDraftSetId = searchParams.get("draftSetId") || undefined;
   const initialCustomServiceId = searchParams.get("customServiceId") || undefined;
+
+  // Print/export can leave this class stuck if afterprint never fires, which hides the
+  // screen header (including Back). Always clear it when entering or leaving the page.
+  useEffect(() => {
+    clearServiceFlowExportMode();
+    const editor = editorRef.current;
+    return () => {
+      clearServiceFlowExportMode();
+      editor?.releasePrint();
+    };
+  }, []);
 
   // Format date for print header
   const formatPrintDate = () => {
@@ -63,12 +78,29 @@ export default function ServiceFlow() {
   };
 
   const handleBack = () => {
-    // Navigate back to calendar with the same date if available
-    if (initialDate) {
-      navigate(`/calendar?date=${initialDate}`);
-    } else {
+    clearServiceFlowExportMode();
+    editorRef.current?.releasePrint();
+
+    // Prefer history back so Calendar keeps its selected day / scroll position.
+    const referrerIsSameOrigin = (() => {
+      if (!document.referrer) return false;
+      try {
+        return new URL(document.referrer).origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    })();
+
+    if (referrerIsSameOrigin || window.history.length > 1) {
       navigate(-1);
+      return;
     }
+
+    const params = new URLSearchParams();
+    if (initialDate) params.set("date", initialDate);
+    if (initialCampus) params.set("campus", initialCampus);
+    if (initialMinistry) params.set("ministry", initialMinistry);
+    navigate(params.size > 0 ? `/calendar?${params.toString()}` : "/calendar");
   };
 
   const printWithExportMode = async () => {
@@ -89,7 +121,7 @@ export default function ServiceFlow() {
     const cleanup = () => {
       if (cleanedUp) return;
       cleanedUp = true;
-      html.classList.remove(EXPORT_MODE_CLASS);
+      clearServiceFlowExportMode();
       document.title = previousTitle;
       editorRef.current?.releasePrint();
       window.removeEventListener("afterprint", cleanup);
@@ -127,17 +159,29 @@ export default function ServiceFlow() {
         </div>
       </div>
 
+      {/* Back stays outside .screen-header so it remains usable if export-mode CSS sticks. */}
+      <div className="service-flow-back-row flex items-center gap-2 print:hidden">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleBack}
+          aria-label="Back to calendar"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <button
+          type="button"
+          onClick={handleBack}
+          className="text-sm font-medium text-muted-foreground hover:text-foreground"
+        >
+          Back
+        </button>
+      </div>
+
       {/* Screen-only header - hidden on print */}
       <div className="screen-header flex flex-col gap-4 print:hidden sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBack}
-            className="mt-1 shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold">Service Flow</h1>
             <p className="text-muted-foreground">
