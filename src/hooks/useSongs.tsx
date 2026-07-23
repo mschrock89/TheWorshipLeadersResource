@@ -3,7 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { formatDateForDB } from "@/lib/utils";
-import { isNetworkWideMinistryType } from "@/lib/constants";
+import {
+  getSessionSetVariants,
+  isNetworkWideMinistryType,
+  isSessionSetMinistryType,
+} from "@/lib/constants";
 
 export interface Song {
   id: string;
@@ -893,9 +897,13 @@ export async function getGlobalPriorUseCountsByDate(
   return countsByDate;
 }
 
-export function useSongsForDate(date: string | null, campusId?: string, ministryFilter?: string) {
+export function useSongsForDate(
+  date: string | null,
+  campusId?: string | null,
+  ministryFilter?: string,
+) {
   return useQuery({
-    queryKey: ["songs-for-date", date, campusId, ministryFilter],
+    queryKey: ["songs-for-date", date, campusId === null ? "network-wide" : campusId, ministryFilter],
     enabled: !!date,
     queryFn: async () => {
       // First get the user's assigned campuses and ministry types
@@ -926,15 +934,24 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       const userCampusIds = (campusResult.data || []).map(uc => uc.campus_id);
       const userMinistryTypes = profileResult.data?.ministry_types || ['weekend'];
       const userRoles = (rolesResult.data || []).map((row) => row.role);
-      const canViewCrossCampusCalendarSets = userRoles.includes("admin") || userRoles.includes("campus_admin");
+      const canViewCrossCampusCalendarSets =
+        userRoles.includes("admin") ||
+        userRoles.includes("campus_admin") ||
+        userRoles.includes("network_worship_pastor") ||
+        userRoles.includes("network_student_pastor") ||
+        userRoles.includes("network_worship_leader");
       
       // If ministryFilter is specified (and not "all"), use only that ministry type
       // Otherwise, use the user's profile ministry types
       // Special handling for "weekend_team" - expands to weekend, production, video
+      // Session-set ministries (Student Camp / Kids Camp) expand to morning/afternoon/evening
+      // variants so Team Builder base filters still find Set Builder published sets.
       let effectiveMinistryTypes: string[];
       if (ministryFilter && ministryFilter !== "all") {
         if (ministryFilter === "weekend_team") {
           effectiveMinistryTypes = ["weekend", "production", "video"];
+        } else if (isSessionSetMinistryType(ministryFilter)) {
+          effectiveMinistryTypes = getSessionSetVariants(ministryFilter);
         } else {
           effectiveMinistryTypes = [ministryFilter];
         }
@@ -943,11 +960,15 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
       }
       const includesNetworkWideMinistry = effectiveMinistryTypes.some(isNetworkWideMinistryType);
 
-      // Determine which campus IDs to filter by
-      // If a specific campusId is passed and user has access, use only that campus
-      // Otherwise, use all user campuses
-      let filterCampusIds: string[] = [];
-      if (campusId && userCampusIds.includes(campusId)) {
+      // Determine which campus IDs to filter by.
+      // campusId === null means Network Wide only (campus_id IS NULL).
+      // campusId undefined means all of the user's campuses (+ network-wide when needed).
+      let filterCampusIds: string[] | null = [];
+      let networkWideOnly = false;
+      if (campusId === null) {
+        networkWideOnly = true;
+        filterCampusIds = null;
+      } else if (campusId && userCampusIds.includes(campusId)) {
         filterCampusIds = [campusId];
       } else if (campusId && !userCampusIds.includes(campusId)) {
         if (!canViewCrossCampusCalendarSets) {
@@ -967,7 +988,9 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
           .select("id, service_type_name, plan_title, campus_id")
           .eq("plan_date", date!);
 
-        if (filterCampusIds.length > 0) {
+        if (networkWideOnly) {
+          query = query.is("campus_id", null);
+        } else if (filterCampusIds && filterCampusIds.length > 0) {
           query = includesNetworkWideMinistry
             ? query.or(`campus_id.in.(${filterCampusIds.join(",")}),campus_id.is.null`)
             : query.in("campus_id", filterCampusIds);
@@ -1018,7 +1041,9 @@ export function useSongsForDate(date: string | null, campusId?: string, ministry
         .eq("status", "published")
         .order("published_at", { ascending: false });
 
-      if (filterCampusIds.length > 0) {
+      if (networkWideOnly) {
+        draftQuery = draftQuery.is("campus_id", null);
+      } else if (filterCampusIds && filterCampusIds.length > 0) {
         draftQuery = includesNetworkWideMinistry
           ? draftQuery.or(`campus_id.in.(${filterCampusIds.join(",")}),campus_id.is.null`)
           : draftQuery.in("campus_id", filterCampusIds);

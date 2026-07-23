@@ -108,8 +108,9 @@ export function useScheduledTeamForDate(
         .eq("schedule_date", dateStr);
 
       if (campusId === null) {
-        // Network-wide schedule rows (e.g. Student Camp) live at campus_id IS NULL.
-        query = query.is("campus_id", null);
+        // Network-wide ministries (Student Camp) prefer campus_id IS NULL rows, but older
+        // Team Builder schedules may still be campus-scoped. Fetch both and let
+        // resolveScheduledTeamEntry prefer the shared (null) row.
       } else if (campusId) {
         // Get campus-specific entry first, fall back to shared (null) entry
         query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);

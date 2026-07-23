@@ -165,7 +165,14 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
   const filteredPendingApprovals = useMemo(() => {
     return pendingApprovals.filter((approval) => {
       if (!approval.draft_set?.plan_date || approval.draft_set.plan_date < today) return false;
-      if (selectedCampusId !== "all" && approval.draft_set.campus_id !== selectedCampusId) return false;
+      // Keep Network Wide (campus_id IS NULL) Student Camp sets visible under a campus filter.
+      if (
+        selectedCampusId !== "all" &&
+        approval.draft_set.campus_id != null &&
+        approval.draft_set.campus_id !== selectedCampusId
+      ) {
+        return false;
+      }
       if (
         isStudentApp &&
         !isStudentFlowExemptMinistryType(approval.draft_set.ministry_type) &&

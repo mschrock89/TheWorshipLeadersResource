@@ -36,11 +36,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { getSessionSetVariants, isSessionSetMinistryType, MINISTRY_TYPES } from "@/lib/constants";
+
+const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
 interface DraftSetWithDetails {
   id: string;
-  campus_id: string;
+  campus_id: string | null;
   ministry_type: string;
   plan_date: string;
   status: string;
@@ -48,7 +50,7 @@ interface DraftSetWithDetails {
   created_at: string;
   updated_at: string;
   notes: string | null;
-  campus?: { name: string };
+  campus?: { name: string } | null;
   song_count: number;
 }
 
@@ -132,10 +134,22 @@ export default function ManageSets() {
 
   // Filter sets based on selected filters
   const filteredSets = useMemo(() => {
-    return sets.filter(set => {
-      if (campusFilter !== "all" && set.campus_id !== campusFilter) return false;
+    const ministryValues =
+      ministryFilter !== "all" && isSessionSetMinistryType(ministryFilter)
+        ? getSessionSetVariants(ministryFilter)
+        : ministryFilter !== "all"
+          ? [ministryFilter]
+          : null;
+
+    return sets.filter((set) => {
+      if (campusFilter === NETWORK_WIDE_CAMPUS_ID) {
+        if (set.campus_id != null) return false;
+      } else if (campusFilter !== "all") {
+        // Physical campus view still includes Network Wide (null campus) Student Camp sets.
+        if (set.campus_id !== campusFilter && set.campus_id != null) return false;
+      }
       if (statusFilter !== "all" && set.status !== statusFilter) return false;
-      if (ministryFilter !== "all" && set.ministry_type !== ministryFilter) return false;
+      if (ministryValues && !ministryValues.includes(set.ministry_type)) return false;
       return true;
     });
   }, [sets, campusFilter, statusFilter, ministryFilter]);
@@ -252,6 +266,7 @@ export default function ManageSets() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Campuses</SelectItem>
+                  <SelectItem value={NETWORK_WIDE_CAMPUS_ID}>Network Wide</SelectItem>
                   {campuses.map(c => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
@@ -387,7 +402,9 @@ export default function ManageSets() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium text-sm">
-                                {set.campus?.name || "Unknown Campus"}
+                                {set.campus_id == null
+                                  ? "Network Wide"
+                                  : set.campus?.name || "Unknown Campus"}
                               </span>
                               <Badge variant="secondary" className="text-xs">
                                 {getMinistryLabel(set.ministry_type)}

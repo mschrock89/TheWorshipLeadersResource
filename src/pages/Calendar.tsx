@@ -28,6 +28,7 @@ import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
 import {
   normalizeWeekendWorshipMinistryType,
   POSITION_SLOTS,
+  isNetworkWideMinistryType,
   isSessionSetMinistryType,
   normalizeSessionSetMinistryType,
 } from "@/lib/constants";
@@ -1035,7 +1036,7 @@ function StandardCalendar() {
       : [],
     [getBaseScheduleEntriesForDate, selectedDate],
   );
-  const headerFlowCampusId = campusFilter !== "network-wide" ? campusFilter : undefined;
+  const headerFlowCampusId = campusFilter !== "network-wide" ? campusFilter : null;
   const { data: headerPlansWithSongs = [] } = useSongsForDate(
     selectedDateStr,
     headerFlowCampusId,
@@ -1800,7 +1801,8 @@ function StandardCalendar() {
                     })}
                   </div>
                 ) : (() => {
-                  const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : undefined;
+                  // Network Wide view uses campus_id IS NULL for Student Camp sets/schedules.
+                  const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
 
                   // Multi-session services (e.g. Student Camp Morning/Evening) run more than
                   // one worship set + roster on the same day. When such a ministry is the
@@ -2405,7 +2407,7 @@ function SetlistPushButton({
   rotationPeriodName,
 }: {
   date: Date;
-  campusId?: string;
+  campusId?: string | null;
   ministryType?: string;
   customServiceId?: string | null;
   serviceLabel?: string;
@@ -2433,9 +2435,13 @@ function SetlistPushButton({
           rotationPeriodName: rotationPeriodName ?? null,
         }
       : null;
-  const shouldCheckSet = Boolean(campusId && (isAdmin || canManageTeam));
+  const isNetworkWideSet =
+    campusId == null || isNetworkWideMinistryType(lookupMinistryType);
+  const shouldCheckSet = Boolean(
+    (isAdmin || canManageTeam) && (campusId || isNetworkWideSet),
+  );
   const { data: existingSet, isLoading } = useExistingSet(
-    shouldCheckSet ? campusId || null : null,
+    shouldCheckSet ? (isNetworkWideSet ? null : campusId || null) : null,
     lookupMinistryType,
     dateStr,
     customServiceId,
@@ -3060,7 +3066,7 @@ function BandRoster({
   date: Date;
   teamId?: string;
   showAudioVideo?: boolean;
-  campusId?: string;
+  campusId?: string | null;
   ministryFilter?: string;
   scheduledEntries?: TeamScheduleEntry[];
   scheduledMinistries?: string[];
@@ -3082,10 +3088,13 @@ function BandRoster({
   const dateStr = date
     ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
     : null;
+  const isNetworkWideRosterCampus = campusId === null;
 
   // Step 1: fetch the active rotation period — identical to My Setlists.
+  // Network Wide Student Camp schedules don't own a campus period row; rely on
+  // the schedule entry's rotation_period / passed props instead.
   const { data: bandRosterActivePeriodName } = useQuery({
-    queryKey: ["band-roster-active-rotation-period", campusId, resourceAppKey],
+    queryKey: ["band-roster-active-rotation-period", campusId === null ? "network-wide" : campusId, resourceAppKey],
     enabled: !!campusId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -3103,8 +3112,16 @@ function BandRoster({
   // Step 2: query team_schedule for both weekend dates — exactly as My Setlists does.
   // Wait until the active period name is resolved (undefined = still loading).
   const { data: directScheduleEntries = [] } = useQuery({
-    queryKey: ["band-roster-schedule", dateStr, campusId, resourceAppKey, bandRosterActivePeriodName],
-    enabled: !!dateStr && !!campusId && bandRosterActivePeriodName !== undefined,
+    queryKey: [
+      "band-roster-schedule",
+      dateStr,
+      campusId === null ? "network-wide" : campusId,
+      resourceAppKey,
+      bandRosterActivePeriodName,
+    ],
+    enabled:
+      !!dateStr &&
+      (isNetworkWideRosterCampus || (!!campusId && bandRosterActivePeriodName !== undefined)),
     queryFn: async () => {
       const datesToCheck = [dateStr!];
       const dayOfWeek = date.getDay();
@@ -3116,12 +3133,19 @@ function BandRoster({
         );
       }
 
-      const { data, error } = await supabase
+      let scheduleQuery = supabase
         .from("team_schedule")
         .select("id, team_id, campus_id, ministry_type, schedule_date, rotation_period, time_of_day, created_at")
         .eq("resource_app_key", resourceAppKey)
-        .in("schedule_date", datesToCheck)
-        .or(`campus_id.eq.${campusId},campus_id.is.null`);
+        .in("schedule_date", datesToCheck);
+
+      // Network Wide prefers shared rows but still accepts older campus-scoped
+      // Student Camp Team Builder schedules for the same date.
+      if (!isNetworkWideRosterCampus) {
+        scheduleQuery = scheduleQuery.or(`campus_id.eq.${campusId},campus_id.is.null`);
+      }
+
+      const { data, error } = await scheduleQuery;
 
       if (error) throw error;
       if (!data || data.length === 0) return [];
@@ -3995,7 +4019,7 @@ function SongsPreview({
   hideServiceFlowButton = false,
 }: {
   date: Date;
-  campusId?: string;
+  campusId?: string | null;
   ministryFilter?: string;
   readOnly?: boolean;
   hideServiceFlowButton?: boolean;
@@ -4012,7 +4036,9 @@ function SongsPreview({
     .map((plan) => plan.draft_set_id)
     .filter((id): id is string => Boolean(id));
   const draftSetId = draftSetIds.length === 1 ? draftSetIds[0] : null;
-  const serviceFlowLink = `/service-flow?date=${dateStr}${campusId ? `&campus=${campusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${draftSetId ? `&draftSetId=${draftSetId}` : ""}`;
+  const serviceFlowCampusParam =
+    campusId && campusId !== "network-wide" ? `&campus=${campusId}` : "";
+  const serviceFlowLink = `/service-flow?date=${dateStr}${serviceFlowCampusParam}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${draftSetId ? `&draftSetId=${draftSetId}` : ""}`;
   if (isLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">
