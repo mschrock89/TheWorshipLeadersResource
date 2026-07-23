@@ -18,7 +18,7 @@ import { MiniPlayer } from "@/components/audio/MiniPlayer";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
 
 export type RouteDefinition = {
@@ -114,6 +114,12 @@ function MainContent({ children }: { children: React.ReactNode }) {
   // behind the fixed nav, so it must not reserve the nav's bottom band — doing so
   // leaves a dead strip above the tab bar.
   const isHome = location.pathname === "/";
+
+  // Service Flow print/export can leave a documentElement class that blanks the UI
+  // if afterprint never fires. Clear it on every route change.
+  useLayoutEffect(() => {
+    document.documentElement.classList.remove("service-flow-export-mode");
+  }, [location.pathname]);
 
   // Home uses the LARGE viewport (100vh) instead of the dynamic one (100dvh):
   // on an iOS standalone cold launch the dynamic viewport comes up ~62px short

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,14 +34,12 @@ export default function ServiceFlow() {
   const initialDraftSetId = searchParams.get("draftSetId") || undefined;
   const initialCustomServiceId = searchParams.get("customServiceId") || undefined;
 
-  // Print/export can leave this class stuck if afterprint never fires, which hides the
-  // screen header (including Back). Always clear it when entering or leaving the page.
-  useEffect(() => {
+  // Print/export CSS can stick if afterprint never fires and blanks the editor.
+  // Clear before paint on enter/leave so the full page is never stuck empty.
+  useLayoutEffect(() => {
     clearServiceFlowExportMode();
-    const editor = editorRef.current;
     return () => {
       clearServiceFlowExportMode();
-      editor?.releasePrint();
     };
   }, []);
 
@@ -81,26 +79,13 @@ export default function ServiceFlow() {
     clearServiceFlowExportMode();
     editorRef.current?.releasePrint();
 
-    // Prefer history back so Calendar keeps its selected day / scroll position.
-    const referrerIsSameOrigin = (() => {
-      if (!document.referrer) return false;
-      try {
-        return new URL(document.referrer).origin === window.location.origin;
-      } catch {
-        return false;
-      }
-    })();
-
-    if (referrerIsSameOrigin || window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
+    // Always go to Calendar explicitly — history back can bounce oddly in the PWA
+    // and leave export-mode CSS stuck on a blank Service Flow screen.
     const params = new URLSearchParams();
     if (initialDate) params.set("date", initialDate);
     if (initialCampus) params.set("campus", initialCampus);
     if (initialMinistry) params.set("ministry", initialMinistry);
-    navigate(params.size > 0 ? `/calendar?${params.toString()}` : "/calendar");
+    navigate(params.toString() ? `/calendar?${params.toString()}` : "/calendar");
   };
 
   const printWithExportMode = async () => {
