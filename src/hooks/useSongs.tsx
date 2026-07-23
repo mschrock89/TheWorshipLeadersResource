@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { formatDateForDB } from "@/lib/utils";
 import {
+  getMinistrySession,
   getSessionSetVariants,
   isNetworkWideMinistryType,
   isSessionSetMinistryType,
@@ -944,14 +945,19 @@ export function useSongsForDate(
       // If ministryFilter is specified (and not "all"), use only that ministry type
       // Otherwise, use the user's profile ministry types
       // Special handling for "weekend_team" - expands to weekend, production, video
-      // Session-set ministries (Student Camp / Kids Camp) expand to morning/afternoon/evening
-      // variants so Team Builder base filters still find Set Builder published sets.
+      // Session-set BASE filters (e.g. student_camp) expand to morning/afternoon/evening
+      // so Team Builder still finds Set Builder published sets. Specific session filters
+      // (e.g. student_camp_morning) must stay exact — otherwise Calendar Morning shows
+      // the Evening setlist when Morning has nothing published.
       let effectiveMinistryTypes: string[];
       if (ministryFilter && ministryFilter !== "all") {
         if (ministryFilter === "weekend_team") {
           effectiveMinistryTypes = ["weekend", "production", "video"];
         } else if (isSessionSetMinistryType(ministryFilter)) {
-          effectiveMinistryTypes = getSessionSetVariants(ministryFilter);
+          const { sessionLabel } = getMinistrySession(ministryFilter);
+          effectiveMinistryTypes = sessionLabel
+            ? [ministryFilter]
+            : getSessionSetVariants(ministryFilter);
         } else {
           effectiveMinistryTypes = [ministryFilter];
         }
