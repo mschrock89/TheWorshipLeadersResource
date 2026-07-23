@@ -1,7 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { isKidsCampSetMinistryType, isNetworkWideMinistryType } from "@/lib/constants";
+import {
+  isKidsCampSetMinistryType,
+  isNetworkWideMinistryType,
+  isSessionSetMinistryType,
+  normalizeSessionSetMinistryType,
+} from "@/lib/constants";
 
 const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
 const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
@@ -749,14 +754,23 @@ export async function generateServiceFlowFromTemplate(params: {
   // Resolve template ministry:
   // - Specialty custom services should use their own templates only.
   //   If missing, we'll still generate a flow from songs without applying weekend templates.
+  // - Session variants (student_camp_morning) fall back to the base template (student_camp).
+  const sessionBaseMinistry = isSessionSetMinistryType(params.ministryType)
+    ? normalizeSessionSetMinistryType(params.ministryType)
+    : null;
   const templateMinistryCandidates = Array.from(
     new Set(
-      isPrayerNightService
-        ? ["prayer_night"]
-        : isKidsCampService
-          ? ["kids_camp"]
-        : [params.ministryType]
-    )
+      [
+        ...(isPrayerNightService
+          ? ["prayer_night"]
+          : isKidsCampService
+            ? ["kids_camp"]
+            : [params.ministryType]),
+        ...(sessionBaseMinistry && sessionBaseMinistry !== params.ministryType
+          ? [sessionBaseMinistry]
+          : []),
+      ].filter(Boolean) as string[],
+    ),
   );
 
   let template: any = null;
@@ -767,12 +781,20 @@ export async function generateServiceFlowFromTemplate(params: {
 
     if (candidateTemplate) {
       template = candidateTemplate;
-      resolvedMinistryType =
-        isKidsCampService && resolvedCustomServiceId
-          ? "kids_camp"
-          : (candidate === "kids_camp" && params.ministryType !== "kids_camp" && isKidsCampSetMinistryType(params.ministryType))
-            ? params.ministryType
-            : candidate;
+      if (isKidsCampService && resolvedCustomServiceId) {
+        resolvedMinistryType = "kids_camp";
+      } else if (
+        candidate === "kids_camp" &&
+        params.ministryType !== "kids_camp" &&
+        isKidsCampSetMinistryType(params.ministryType)
+      ) {
+        resolvedMinistryType = params.ministryType;
+      } else if (sessionBaseMinistry && candidate === sessionBaseMinistry) {
+        // Keep the session variant on the generated flow even when using the base template.
+        resolvedMinistryType = params.ministryType;
+      } else {
+        resolvedMinistryType = candidate;
+      }
       break;
     }
   }
