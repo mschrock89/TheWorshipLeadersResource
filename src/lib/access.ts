@@ -1,3 +1,5 @@
+import { POSITION_SLOTS } from "@/lib/constants";
+
 export const AUDITION_CANDIDATE_ROLE = "audition_candidate";
 export const STUDENT_BASE_ROLE = "student";
 export const STUDENT_BASE_ROLES = new Set([
@@ -153,6 +155,12 @@ export function filterGroupTextRecipients<T extends { ministryTypes?: string[] |
 // each other. Leaders (canManageTeam) always see the full roster.
 export type RosterVisibilityScope = "all" | "worship" | "support";
 
+export type RosterVisibilityAssignment = {
+  ministryTypes?: string[] | null;
+  position?: string | null;
+  positionSlot?: string | null;
+};
+
 const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
   "weekend",
   "weekend_team",
@@ -160,23 +168,92 @@ const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
   "speaker",
 ]);
 const ROSTER_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
+  POSITION_SLOTS.flatMap((slot) => [
+    [slot.slot.toLowerCase(), slot.category],
+    [slot.position.toLowerCase(), slot.category],
+  ]),
+);
+
+const getRosterScopeFromFlags = (hasSupport: boolean, hasWorship: boolean) => {
+  if (hasSupport && !hasWorship) return "support" as const;
+  if (hasWorship && !hasSupport) return "worship" as const;
+  return "all" as const;
+};
+
+const getAssignmentRosterFlags = (assignments: RosterVisibilityAssignment[]) => {
+  let hasSupport = false;
+  let hasWorship = false;
+
+  for (const assignment of assignments) {
+    const positionValues = [assignment.positionSlot, assignment.position]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim().toLowerCase());
+    const positionCategories = positionValues
+      .map((value) => ROSTER_POSITION_CATEGORY_BY_VALUE.get(value))
+      .filter((category): category is string => Boolean(category));
+
+    // Team Builder's exact role is the strongest signal. This keeps a production
+    // volunteer classified correctly even when an older row is still tagged as
+    // "weekend", which is common after moving someone between roster sections.
+    if (
+      positionCategories.some((category) => category === "Production" || category === "Video") ||
+      hasSupportPosition(positionValues)
+    ) {
+      hasSupport = true;
+      continue;
+    }
+    if (positionCategories.some((category) =>
+      category === "Band" ||
+      category === "Vocalists" ||
+      category === "Speaker" ||
+      category === "Pastors"
+    )) {
+      hasWorship = true;
+      continue;
+    }
+
+    const ministryTypes = assignment.ministryTypes || [];
+    if (ministryTypes.some((type) => ROSTER_SUPPORT_MINISTRY_TYPES.has(type))) {
+      hasSupport = true;
+    }
+    if (ministryTypes.some((type) => ROSTER_WORSHIP_MINISTRY_ALIASES.has(type))) {
+      hasWorship = true;
+    }
+  }
+
+  return { hasSupport, hasWorship };
+};
 
 export function getRosterVisibilityScope(params: {
   canManageTeam: boolean;
   ministryTypes: string[] | null | undefined;
+  teamAssignments?: RosterVisibilityAssignment[] | null;
 }): RosterVisibilityScope {
-  const { canManageTeam, ministryTypes } = params;
+  const { canManageTeam, ministryTypes, teamAssignments } = params;
 
   if (canManageTeam) return "all";
+
+  // Prefer actual Team Builder membership over the profile classification. The
+  // latter defaults to "weekend" and can lag behind a volunteer moving to
+  // Production/Video. Only fall back to the profile when membership has no
+  // recognizable worship or support role.
+  if (teamAssignments && teamAssignments.length > 0) {
+    const assignmentFlags = getAssignmentRosterFlags(teamAssignments);
+    if (assignmentFlags.hasSupport || assignmentFlags.hasWorship) {
+      return getRosterScopeFromFlags(
+        assignmentFlags.hasSupport,
+        assignmentFlags.hasWorship,
+      );
+    }
+  }
 
   const types = ministryTypes || [];
   const hasSupport = types.some((type) => ROSTER_SUPPORT_MINISTRY_TYPES.has(type));
   const hasWorship = types.some((type) => ROSTER_WORSHIP_MINISTRY_ALIASES.has(type));
 
-  if (hasSupport && !hasWorship) return "support";
-  if (hasWorship && !hasSupport) return "worship";
   // Both (serves across teams), neither, or other ministries: fail open.
-  return "all";
+  return getRosterScopeFromFlags(hasSupport, hasWorship);
 }
 
 // Assignment-based overrides for the scope above: a volunteer must always see

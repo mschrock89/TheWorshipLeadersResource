@@ -86,9 +86,10 @@ export interface SyncProgress {
   completed_at: string | null;
 }
 
-export function useSongs() {
+export function useSongs(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["songs"],
+    enabled: options?.enabled ?? true,
     staleTime: 5 * 60 * 1000, // 5 minutes - songs library doesn't change often
     queryFn: async () => {
       const { data, error } = await supabase

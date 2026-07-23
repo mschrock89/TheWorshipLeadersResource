@@ -8,9 +8,10 @@ export interface SongKey {
 }
 
 // Fetch all available keys
-export function useSongKeys() {
+export function useSongKeys(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["song-keys"],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("song_keys")

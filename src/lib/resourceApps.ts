@@ -19,7 +19,10 @@ export const RESOURCE_APPS = {
     host: "worship.mychurchresource.com",
     pathPrefix: "/",
     isAdminOnly: false,
-    themeColor: "#000000",
+    // Card color, not black: bootstrap writes this into the theme-color meta,
+    // and iOS paints it into the band it exposes below the short cold-start
+    // viewport — so the strip reads as a continuation of the tab bar.
+    themeColor: "#1c1f21",
     iconPath: "/app-icon-512.png",
     manifestPath: "/manifest.json",
   },

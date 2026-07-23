@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveEffectiveTeamSchedulesForCampuses } from "../_shared/effectiveTeamSchedules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,14 +65,20 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`Running video schedule reminder for ${targetDate} (${TIME_ZONE})`);
 
     // Which video teams are scheduled on the target date (for message detail + early-exit).
-    const { data: schedules, error: scheduleError } = await supabase
-      .from("team_schedule")
-      .select(`team_id, campus_id`)
-      .eq("schedule_date", targetDate)
-      .eq("ministry_type", MINISTRY_TYPE);
+    const [scheduleResult, campusResult] = await Promise.all([
+      supabase
+        .from("team_schedule")
+        .select(`team_id, ministry_type, time_of_day, campus_id, resource_app_key, created_at`)
+        .eq("schedule_date", targetDate)
+        .eq("ministry_type", MINISTRY_TYPE),
+      supabase.from("campuses").select("id"),
+    ]);
 
-    if (scheduleError) {
-      console.error("Error fetching video schedules:", scheduleError);
+    const { data: schedules, error: scheduleError } = scheduleResult;
+    const { data: campuses, error: campusError } = campusResult;
+
+    if (scheduleError || campusError) {
+      console.error("Error fetching video schedules:", { scheduleError, campusError });
       throw new Error("Failed to fetch video schedules");
     }
 
@@ -83,21 +90,39 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const { data: rosterRows, error: rosterError } = await supabase.rpc(
-      "get_roster_notifiable_user_ids",
-      { p_schedule_date: targetDate, p_campus_id: null, p_ministry_type: MINISTRY_TYPE },
+    const effectiveSchedules = resolveEffectiveTeamSchedulesForCampuses(
+      schedules,
+      (campuses || []).map((campus) => campus.id),
     );
+    const recipientUserIds = new Set<string>();
 
-    if (rosterError) {
-      console.error("Error resolving video roster recipients:", rosterError);
-      throw new Error("Failed to resolve video roster recipients");
+    for (const schedule of effectiveSchedules) {
+      if (!schedule.team_id) continue;
+
+      const { data: rosterRows, error: rosterError } = await supabase.rpc(
+        "get_roster_notifiable_user_ids",
+        {
+          p_schedule_date: targetDate,
+          p_campus_id: schedule.campus_id,
+          p_ministry_type: MINISTRY_TYPE,
+          p_team_id: schedule.team_id,
+        },
+      );
+
+      if (rosterError) {
+        console.error(
+          `Error resolving video roster for team ${schedule.team_id} at campus ${schedule.campus_id}:`,
+          rosterError,
+        );
+        throw new Error("Failed to resolve video roster recipients");
+      }
+
+      for (const row of rosterRows || []) {
+        if (row.user_id) recipientUserIds.add(row.user_id);
+      }
     }
 
-    const recipientUserIds = Array.from(
-      new Set((rosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
-    );
-
-    if (recipientUserIds.length === 0) {
+    if (recipientUserIds.size === 0) {
       console.log("No video roster members to notify");
       return new Response(
         JSON.stringify({ success: true, message: "No video members scheduled", pushSent: 0 }),
@@ -105,7 +130,8 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log(`Found ${recipientUserIds.length} video members to remind`);
+    const recipients = Array.from(recipientUserIds);
+    console.log(`Found ${recipients.length} video members to remind`);
 
     const formattedDate = formatDateLabel(targetDate);
     const message = `Heads up — you're on the Video team in 10 days (${formattedDate}). Open Calendar to view details.`;
@@ -124,7 +150,7 @@ serve(async (req: Request): Promise<Response> => {
           message,
           url: "/calendar",
           tag: `video-reminder-${targetDate}`,
-          userIds: recipientUserIds,
+          userIds: recipients,
           contextType: "video-schedule-reminder",
           // Video ministry is Worship-only; scope delivery to worship subscriptions.
           metadata: { scheduleDate: targetDate, ministryType: MINISTRY_TYPE, resourceAppKey: "worship" },
@@ -134,7 +160,7 @@ serve(async (req: Request): Promise<Response> => {
       if (!pushResponse.ok) {
         const text = await pushResponse.text();
         console.error(`Video reminder push failed: ${pushResponse.status} ${text}`);
-        pushFailed = recipientUserIds.length;
+        pushFailed = recipients.length;
       } else {
         const result = await pushResponse.json();
         pushSent = result.sent || 0;
@@ -142,7 +168,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     } catch (error) {
       console.error("Error calling send-push-notification:", error);
-      pushFailed = recipientUserIds.length;
+      pushFailed = recipients.length;
     }
 
     console.log(`Video schedule reminder complete: ${pushSent} sent, ${pushFailed} failed`);
@@ -151,7 +177,7 @@ serve(async (req: Request): Promise<Response> => {
       JSON.stringify({
         success: true,
         targetDate,
-        recipients: recipientUserIds.length,
+        recipients: recipients.length,
         pushSent,
         pushFailed,
       }),

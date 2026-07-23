@@ -26,7 +26,7 @@ interface PublishSetlistDialogProps {
   songs: SongAvailability[];
   targetDate: Date;
   ministryType: string;
-  campusId: string;
+  campusId: string | null;
   customServiceId?: string;
   onPublished?: () => void;
 }
@@ -97,7 +97,8 @@ export function PublishSetlistDialog({
 
   // Check for existing in-progress draft sets when dialog opens
   useEffect(() => {
-    if (open && draftSetId && campusId) {
+    const networkWide = isNetworkWideMinistryType(ministryType);
+    if (open && draftSetId && (campusId || networkWide)) {
       setCheckingExisting(true);
       const planDate = format(targetDate, "yyyy-MM-dd");
       
@@ -110,9 +111,9 @@ export function PublishSetlistDialog({
         .neq("id", draftSetId)
 
       // Network Wide sets (campus_id IS NULL, e.g. Student Camp) are shared.
-      existingQuery = isNetworkWideMinistryType(ministryType)
+      existingQuery = networkWide
         ? existingQuery.is("campus_id", null)
-        : existingQuery.eq("campus_id", campusId);
+        : existingQuery.eq("campus_id", campusId as string);
       
       if (customServiceId) {
         existingQuery = existingQuery.eq("custom_service_id", customServiceId);

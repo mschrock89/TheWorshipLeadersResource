@@ -76,7 +76,8 @@ export function useSongAvailability(
   const { data: songs, isLoading } = useSongsWithStats();
 
   const availability = useMemo(() => {
-    if (!songs || !campusId) return [];
+    const networkWide = isNetworkWideMinistryType(ministryType);
+    if (!songs || (!campusId && !networkWide)) return [];
 
     const targetSunday = getSunday(targetDate);
     const targetDateStr = format(targetDate, "yyyy-MM-dd");
@@ -90,8 +91,8 @@ export function useSongAvailability(
       .map((song): SongAvailability | null => {
        // Filter usages by campus and ministry
        const relevantUsages = (song.usages || []).filter(u => {
-         // Only count usages for this specific campus
-         const matchesCampus = u.campus_id === campusId;
+         // Network-wide ministries (Student Camp) store usages with campus_id NULL.
+         const matchesCampus = networkWide ? u.campus_id == null : u.campus_id === campusId;
 
          const serviceName = (u.service_type_name || '').toLowerCase();
          const matchesMinistry = (() => {
@@ -643,10 +644,12 @@ export function useSaveDraftSet() {
 // Fetch song IDs from published setlists AND scheduled service plans for a specific campus and ministry
 // These should be filtered out of suggestion cards
 export function usePublishedSetlistSongs(campusId: string | null, ministryType: string) {
+  const networkWide = isNetworkWideMinistryType(ministryType);
+
   return useQuery({
-    queryKey: ['published-setlist-songs', campusId, ministryType],
+    queryKey: ['published-setlist-songs', networkWide ? 'network-wide' : campusId, ministryType],
     queryFn: async () => {
-      if (!campusId) return new Set<string>();
+      if (!campusId && !networkWide) return new Set<string>();
 
       // Only consider this app's published draft sets from today onward.
       const today = format(new Date(), 'yyyy-MM-dd');
@@ -660,9 +663,9 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
         .eq('status', 'published')
         .gte('plan_date', today);
 
-      setQuery = isNetworkWideMinistryType(ministryType)
+      setQuery = networkWide
         ? setQuery.is('campus_id', null)
-        : setQuery.eq('campus_id', campusId);
+        : setQuery.eq('campus_id', campusId as string);
 
       if (weekendAliases.includes(ministryType)) {
         setQuery = setQuery.in('ministry_type', weekendAliases);
@@ -689,7 +692,7 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
 
       return songIds;
     },
-    enabled: !!campusId,
+    enabled: !!campusId || networkWide,
     staleTime: 0, // Always refetch to ensure we have the latest data
     refetchOnMount: true,
   });

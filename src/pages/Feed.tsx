@@ -16,6 +16,7 @@ import {
   PlayCircle,
   Share2,
   Trash2,
+  Users,
   Youtube,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -40,6 +41,12 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import {
+  getDefaultFeedMinistryType,
+  getFeedMinistryTypesForResourceApp,
+  isValidFeedMinistryType,
+} from "@/lib/feedMinistries";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCapabilities } from "@/hooks/useCapabilities";
@@ -632,32 +639,53 @@ export default function Feed({
     ?? campuses.find((campus) => campus.id === selectedCampusId)?.name
     ?? null;
   const feedCampusId = campInstanceId ? null : selectedCampusId;
+  const resourceAppKey = getCurrentResourceAppKey();
+  const feedMinistries = useMemo(
+    () => getFeedMinistryTypesForResourceApp(resourceAppKey),
+    [resourceAppKey],
+  );
+  const [selectedMinistryType, setSelectedMinistryType] = useState<string>(() =>
+    getDefaultFeedMinistryType(resourceAppKey),
+  );
+  // Keep the selection valid if the app (and thus its ministry list) changes.
+  useEffect(() => {
+    if (!isValidFeedMinistryType(resourceAppKey, selectedMinistryType)) {
+      setSelectedMinistryType(getDefaultFeedMinistryType(resourceAppKey));
+    }
+  }, [resourceAppKey, selectedMinistryType]);
+  const feedMinistryType = campInstanceId ? null : selectedMinistryType;
+  const selectedMinistryLabel =
+    feedMinistries.find((ministry) => ministry.value === selectedMinistryType)?.label ?? null;
   const shareTargetCampusIds = useMemo(() => {
     if (campInstanceId || !feedCampusId) return [];
     return adminCampusIds.filter((campusId) => campusId !== feedCampusId);
   }, [adminCampusIds, campInstanceId, feedCampusId]);
   const canShareToMyFeed = shareTargetCampusIds.length > 0;
-  const isFeedScopeReady = !!campInstanceId || !!feedCampusId;
+  const isFeedScopeReady = !!campInstanceId || (!!feedCampusId && !!feedMinistryType);
+  const feedScopeName =
+    selectedCampusName && selectedMinistryLabel
+      ? `${selectedMinistryLabel} · ${selectedCampusName}`
+      : selectedCampusName;
   const resolvedComposerDescription = campInstanceId
     ? composerDescription
-    : selectedCampusName
-      ? `Share a thought, scripture, or YouTube link with ${selectedCampusName}.`
+    : feedScopeName
+      ? `Share a thought, scripture, or YouTube link with ${feedScopeName}.`
       : composerDescription;
   const resolvedEmptyAdminMessage = campInstanceId
     ? emptyAdminMessage
-    : selectedCampusName
-      ? `Publish the first post to get the ${selectedCampusName} Feed started.`
+    : feedScopeName
+      ? `Publish the first post to get the ${feedScopeName} Feed started.`
       : emptyAdminMessage;
   const resolvedEmptyReaderMessage = campInstanceId
     ? emptyReaderMessage
-    : selectedCampusName
-      ? `The ${selectedCampusName} Feed is ready. Once an admin publishes a post, it will show up here.`
+    : feedScopeName
+      ? `The ${feedScopeName} Feed is ready. Once an admin publishes a post, it will show up here.`
       : emptyReaderMessage;
-  const { data: posts = [], isLoading } = useFeedPosts(feedCampusId, campInstanceId);
+  const { data: posts = [], isLoading } = useFeedPosts(feedCampusId, campInstanceId, feedMinistryType);
   const showFeedLoading = !isFeedScopeReady || isLoading;
-  const createPost = useCreateFeedPost(feedCampusId, campInstanceId);
-  const updatePost = useUpdateFeedPost(feedCampusId, campInstanceId);
-  const deletePost = useDeleteFeedPost(feedCampusId, campInstanceId);
+  const createPost = useCreateFeedPost(feedCampusId, campInstanceId, feedMinistryType);
+  const updatePost = useUpdateFeedPost(feedCampusId, campInstanceId, feedMinistryType);
+  const deletePost = useDeleteFeedPost(feedCampusId, campInstanceId, feedMinistryType);
   const sharePostToMyFeed = useShareFeedPostToCampuses();
   const votePoll = useVoteFeedPoll();
   const toggleLike = useToggleFeedLike();
@@ -875,6 +903,26 @@ export default function Feed({
                         {selectableCampuses.map((campus) => (
                           <SelectItem key={campus.id} value={campus.id}>
                             {campus.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {feedMinistries.length > 1 ? (
+                  <div className="mx-auto flex w-full max-w-sm items-center justify-center gap-2">
+                    <Users className="h-4 w-4 shrink-0 text-primary" />
+                    <Select
+                      value={selectedMinistryType}
+                      onValueChange={setSelectedMinistryType}
+                    >
+                      <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
+                        <SelectValue placeholder="Select ministry" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {feedMinistries.map((ministry) => (
+                          <SelectItem key={ministry.value} value={ministry.value}>
+                            {ministry.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

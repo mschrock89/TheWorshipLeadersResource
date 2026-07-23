@@ -156,10 +156,15 @@ export function useCustomServiceOccurrences({
         .lte("service_date", endDate)
         .order("service_date", { ascending: true });
 
-      // Network-wide ministries (Student Camp) live under campus_id IS NULL. When a
-      // specific network-wide ministry is requested, target NULL directly; otherwise
-      // include NULL network-wide rows alongside the selected campus.
-      if (isNetworkWideMinistryType(normalizedMinistryType) || isNetworkWideMinistryType(ministryType)) {
+      // Network-wide ministries (Student Camp) and the Calendar/Set Builder
+      // "network-wide" campus sentinel live under campus_id IS NULL. When that
+      // scope is requested, target NULL directly; otherwise include NULL
+      // network-wide rows alongside the selected campus.
+      if (
+        campusId === "network-wide" ||
+        isNetworkWideMinistryType(normalizedMinistryType) ||
+        isNetworkWideMinistryType(ministryType)
+      ) {
         query = query.is("campus_id", null);
       } else if (campusId) {
         query = query.or(`campus_id.eq.${campusId},campus_id.is.null`);

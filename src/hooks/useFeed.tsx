@@ -35,6 +35,7 @@ export interface FeedPostRecord {
   resource_app_key: string;
   campus_id: string | null;
   camp_instance_id: string | null;
+  ministry_type: string | null;
   author_name: string | null;
   like_count: number;
   liked_by_me: boolean;
@@ -70,6 +71,7 @@ interface FeedPostRow {
   updated_at: string;
   campus_id: string | null;
   camp_instance_id: string | null;
+  ministry_type: string | null;
   author: { full_name: string | null } | null;
 }
 
@@ -139,6 +141,7 @@ async function fetchFeedPosts(
   userId: string | undefined,
   campusId?: string | null,
   campInstanceId?: string | null,
+  ministryType?: string | null,
   limit = 40,
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
@@ -160,6 +163,7 @@ async function fetchFeedPosts(
       resource_app_key,
       campus_id,
       camp_instance_id,
+      ministry_type,
       author:profiles!feed_posts_created_by_fkey (
         full_name
       )
@@ -173,6 +177,7 @@ async function fetchFeedPosts(
     postQuery = postQuery
       .eq("resource_app_key", resourceAppKey)
       .eq("campus_id", campusId!)
+      .eq("ministry_type", ministryType!)
       .is("camp_instance_id", null);
   }
 
@@ -307,19 +312,35 @@ async function fetchFeedPosts(
   })) as FeedPostRecord[];
 }
 
-export function useFeedPosts(campusId?: string | null, campInstanceId?: string | null) {
+export function useFeedPosts(
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+) {
   const { user, isLoading } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
-  const enabled = !!user && !isLoading && (!!campInstanceId || !!campusId);
+  const enabled =
+    !!user && !isLoading && (!!campInstanceId || (!!campusId && !!ministryType));
 
   return useQuery({
-    queryKey: ["feed-posts", user?.id, resourceAppKey, campusId ?? null, campInstanceId ?? "app"],
-    queryFn: () => fetchFeedPosts(user?.id, campusId, campInstanceId),
+    queryKey: [
+      "feed-posts",
+      user?.id,
+      resourceAppKey,
+      campusId ?? null,
+      campInstanceId ?? "app",
+      ministryType ?? null,
+    ],
+    queryFn: () => fetchFeedPosts(user?.id, campusId, campInstanceId, ministryType),
     enabled,
   });
 }
 
-export function useCreateFeedPost(campusId?: string | null, campInstanceId?: string | null) {
+export function useCreateFeedPost(
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -330,6 +351,9 @@ export function useCreateFeedPost(campusId?: string | null, campInstanceId?: str
       if (!user?.id) throw new Error("You must be signed in to create a post.");
       if (!campInstanceId && !campusId) {
         throw new Error("Select a campus before publishing to The Feed.");
+      }
+      if (!campInstanceId && !ministryType) {
+        throw new Error("Select a ministry before publishing to The Feed.");
       }
 
       const pollOptions = normalizePollOptions(input.poll_options);
@@ -356,6 +380,7 @@ export function useCreateFeedPost(campusId?: string | null, campInstanceId?: str
           resource_app_key: resourceAppKey,
           campus_id: campInstanceId ? null : campusId,
           camp_instance_id: campInstanceId || null,
+          ministry_type: campInstanceId ? null : ministryType,
         })
         .select("id")
         .single();
@@ -379,6 +404,7 @@ export function useCreateFeedPost(campusId?: string | null, campInstanceId?: str
               resourceAppKey,
               campusId: campInstanceId ? null : campusId,
               campInstanceId: campInstanceId || null,
+              ministryType: campInstanceId ? null : ministryType,
             },
           });
         } catch (notificationError) {
@@ -402,7 +428,11 @@ export function useCreateFeedPost(campusId?: string | null, campInstanceId?: str
   });
 }
 
-export function useUpdateFeedPost(campusId?: string | null, campInstanceId?: string | null) {
+export function useUpdateFeedPost(
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -434,6 +464,7 @@ export function useUpdateFeedPost(campusId?: string | null, campInstanceId?: str
         query = query
           .eq("resource_app_key", resourceAppKey)
           .eq("campus_id", campusId!)
+          .eq("ministry_type", ministryType!)
           .is("camp_instance_id", null);
       }
 
@@ -455,7 +486,11 @@ export function useUpdateFeedPost(campusId?: string | null, campInstanceId?: str
   });
 }
 
-export function useDeleteFeedPost(campusId?: string | null, campInstanceId?: string | null) {
+export function useDeleteFeedPost(
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const resourceAppKey = getCurrentResourceAppKey();
@@ -473,6 +508,7 @@ export function useDeleteFeedPost(campusId?: string | null, campInstanceId?: str
         query = query
           .eq("resource_app_key", resourceAppKey)
           .eq("campus_id", campusId!)
+          .eq("ministry_type", ministryType!)
           .is("camp_instance_id", null);
       }
 
@@ -526,6 +562,7 @@ export function useShareFeedPostToCampuses() {
         resource_app_key: resourceAppKey,
         campus_id: campusId,
         camp_instance_id: null,
+        ministry_type: post.ministry_type,
       }));
 
       const { data, error } = await supabase
@@ -552,6 +589,7 @@ export function useShareFeedPostToCampuses() {
               resourceAppKey,
               campusId: created.campus_id,
               campInstanceId: null,
+              ministryType: post.ministry_type,
             },
           });
         } catch (notificationError) {

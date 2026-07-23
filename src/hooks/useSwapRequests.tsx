@@ -431,13 +431,18 @@ export function useDeleteSwapRequest() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (requestId: string) => {
-      const { error } = await supabase
+    mutationFn: async (requestIds: string | string[]) => {
+      const ids = Array.isArray(requestIds) ? requestIds : [requestIds];
+      const { data, error } = await supabase
         .from("swap_requests")
         .delete()
-        .eq("id", requestId);
+        .in("id", ids)
+        .select("id");
 
       if (error) throw error;
+      if ((data || []).length !== ids.length) {
+        throw new Error("One or more swap requests could not be deleted");
+      }
     },
     onSuccess: () => {
       // Invalidate swap request queries
@@ -445,13 +450,104 @@ export function useDeleteSwapRequest() {
       queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
       // Invalidate team roster queries so schedule reverts to original
       queryClient.invalidateQueries({ queryKey: ["team-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
       queryClient.invalidateQueries({ queryKey: ["scheduled-team"] });
       queryClient.invalidateQueries({ queryKey: ["my-team-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-all"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-for-date"] });
       toast.success("Swap request deleted and schedule reverted");
     },
     onError: (error) => {
       console.error("Failed to delete swap request:", error);
       toast.error("Failed to delete swap request");
+    },
+  });
+}
+
+export type SwapParticipantRole = "requester" | "counterpart";
+
+export function useUpdateSwapParticipants() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      requestIds,
+      participantRole,
+      userId,
+    }: {
+      requestIds: string[];
+      participantRole: SwapParticipantRole;
+      userId: string;
+    }) => {
+      const ids = [...new Set(requestIds)];
+      if (ids.length === 0) throw new Error("No swap requests were selected");
+
+      const { data: existingRequests, error: existingError } = await supabase
+        .from("swap_requests")
+        .select("id, requester_id, target_user_id, accepted_by_id, status")
+        .in("id", ids);
+
+      if (existingError) throw existingError;
+      if ((existingRequests || []).length !== ids.length) {
+        throw new Error("One or more swap requests could not be loaded");
+      }
+
+      const conflictsWithOtherParticipant = (existingRequests || []).some((request) => {
+        if (participantRole === "requester") {
+          return userId === (request.accepted_by_id || request.target_user_id);
+        }
+        return userId === request.requester_id;
+      });
+
+      if (conflictsWithOtherParticipant) {
+        throw new Error("The requester and covering user must be different people");
+      }
+
+      const representative = existingRequests![0];
+      const updateData: {
+        requester_id?: string;
+        target_user_id?: string;
+        accepted_by_id?: string;
+      } = {};
+
+      if (participantRole === "requester") {
+        updateData.requester_id = userId;
+      } else if (representative.status === "accepted") {
+        updateData.accepted_by_id = userId;
+        // Direct requests retain a target after acceptance. Keep the target and
+        // accepted participant synchronized when an admin changes the user.
+        if ((existingRequests || []).some((request) => request.target_user_id)) {
+          updateData.target_user_id = userId;
+        }
+      } else {
+        updateData.target_user_id = userId;
+      }
+
+      const { data, error } = await supabase
+        .from("swap_requests")
+        .update(updateData)
+        .in("id", ids)
+        .select("id");
+
+      if (error) throw error;
+      if ((data || []).length !== ids.length) {
+        throw new Error("One or more swap requests could not be updated");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["swap-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["swap-requests-count"] });
+      queryClient.invalidateQueries({ queryKey: ["team-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-team"] });
+      queryClient.invalidateQueries({ queryKey: ["my-team-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-all"] });
+      queryClient.invalidateQueries({ queryKey: ["user-swaps-for-date"] });
+      toast.success("Swap participants updated");
+    },
+    onError: (error) => {
+      console.error("Failed to update swap participants:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update swap participants");
     },
   });
 }

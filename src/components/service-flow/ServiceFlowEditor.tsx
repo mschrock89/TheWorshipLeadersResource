@@ -1,4 +1,13 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { Plus, Calendar as CalendarIcon, GripVertical, RefreshCw } from "lucide-react";
@@ -54,6 +63,18 @@ interface ServiceFlowEditorProps {
   initialDraftSetId?: string;
   initialCustomServiceId?: string;
   mode?: "editor" | "view";
+}
+
+export type ServiceFlowEditorHandle = {
+  preparePrint: () => Promise<void>;
+  releasePrint: () => void;
+};
+
+function sameVocalistIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((id, index) => id === sortedB[index]);
 }
 
 const WEEKEND_SERVICE_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
@@ -198,14 +219,14 @@ function isLessonPlaceholderTitle(title: string) {
   );
 }
 
-export function ServiceFlowEditor({ 
+export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlowEditorProps>(function ServiceFlowEditor({ 
   initialDate, 
   initialCampusId, 
   initialMinistryType,
   initialDraftSetId,
   initialCustomServiceId,
   mode = "editor",
-}: ServiceFlowEditorProps) {
+}, ref) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -228,13 +249,48 @@ export function ServiceFlowEditor({
   const [draggedItem, setDraggedItem] = useState<ServiceFlowItemType | null>(null);
   const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [printMounted, setPrintMounted] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedVocalists = useRef(false);
-  const hasInvalidatedOnLive = useRef(false);
+  const hasInvalidatedFlowOnLive = useRef(false);
+  const hasInvalidatedItemsOnLive = useRef(false);
+  const printReadyResolveRef = useRef<(() => void) | null>(null);
+  const printPairRef = useRef<HTMLDivElement | null>(null);
+  const printCloneRef = useRef<HTMLElement | null>(null);
+  const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
+  const localItemsRef = useRef<ServiceFlowItemType[]>([]);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragIndexRef = useRef<number | null>(null);
 
   // Came from Live button (Calendar) when we have URL params
   const cameFromLive = !!(initialDate && (initialCampusId || initialMinistryType));
+
+  useImperativeHandle(ref, () => ({
+    preparePrint: () =>
+      new Promise<void>((resolve) => {
+        if (printMounted) {
+          resolve();
+          return;
+        }
+        printReadyResolveRef.current = resolve;
+        setPrintMounted(true);
+      }),
+    releasePrint: () => {
+      printReadyResolveRef.current = null;
+      setPrintMounted(false);
+    },
+  }), [printMounted]);
+
+  useEffect(() => {
+    if (!printMounted || !printReadyResolveRef.current) return;
+    const resolve = printReadyResolveRef.current;
+    printReadyResolveRef.current = null;
+    // Wait for React commit + browser paint so print CSS sees the dual half-sheets.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  }, [printMounted]);
 
   // Sync initial campus from URL to context on mount
   useEffect(() => {
@@ -481,7 +537,8 @@ export function ServiceFlowEditor({
     hasAttemptedAutoGenerate.current = false;
     hasAttemptedEmptyBackfill.current = false;
     hasSyncedVocalists.current = false;
-    hasInvalidatedOnLive.current = false;
+    hasInvalidatedFlowOnLive.current = false;
+    hasInvalidatedItemsOnLive.current = false;
     setResolvedDraftSetId(initialDraftSetId || null);
     setResolvedCustomServiceId(initialCustomServiceId || null);
     setBoundServiceFlowId(null);
@@ -495,18 +552,19 @@ export function ServiceFlowEditor({
     effectiveCustomServiceId
   );
 
-  // When opened via Live button, force refetch to get latest data
+  // When opened via Live button, refresh once per service context (avoid refetch storms).
   useEffect(() => {
-    if (!cameFromLive || !effectiveCampusId || !serviceDateStr) return;
-      queryClient.invalidateQueries({
+    if (!cameFromLive || !effectiveCampusId || !serviceDateStr || hasInvalidatedFlowOnLive.current) return;
+    hasInvalidatedFlowOnLive.current = true;
+    queryClient.invalidateQueries({
       queryKey: ["service-flow", effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId],
     });
   }, [cameFromLive, effectiveCampusId, ministryType, serviceDateStr, resolvedDraftSetId, effectiveCustomServiceId, queryClient]);
 
-  // Invalidate service flow items when opened via Live (after flow is loaded)
+  // Refresh items once when the Live-scoped flow is known.
   useEffect(() => {
-    if (!cameFromLive || !serviceFlow?.id || hasInvalidatedOnLive.current) return;
-    hasInvalidatedOnLive.current = true;
+    if (!cameFromLive || !serviceFlow?.id || hasInvalidatedItemsOnLive.current) return;
+    hasInvalidatedItemsOnLive.current = true;
     queryClient.invalidateQueries({
       queryKey: ["service-flow-items", serviceFlow.id],
     });
@@ -767,7 +825,9 @@ export function ServiceFlowEditor({
         .filter((i) => i.item_type === "song" && i.song_id)
         .sort((a, b) => a.sequence_order - b.sequence_order);
 
+      const writeTasks: Promise<unknown>[] = [];
       let needsUpdate = false;
+
       for (let i = 0; i < Math.min(songItems.length, draftSongs.length); i++) {
         const item = songItems[i];
         const draft = draftSongs[i] as any;
@@ -777,31 +837,52 @@ export function ServiceFlowEditor({
           : ((draft.vocalist_id as string | null) ? [draft.vocalist_id as string] : []);
         const draftVocalistId = draftVocalistIds[0] || null;
         const itemVocalistId = item.vocalist_id ?? null;
+        const currentVocalistIds = item.vocalists?.length
+          ? item.vocalists.map((vocalist) => vocalist.id)
+          : (itemVocalistId ? [itemVocalistId] : []);
+
         if (draftVocalistId !== itemVocalistId) {
           needsUpdate = true;
-          await supabase
-            .from("service_flow_items")
-            .update({ vocalist_id: draftVocalistId })
-            .eq("id", item.id);
+          writeTasks.push(
+            supabase
+              .from("service_flow_items")
+              .update({ vocalist_id: draftVocalistId })
+              .eq("id", item.id)
+          );
         }
 
-        await supabase
-          .from("service_flow_item_vocalists")
-          .delete()
-          .eq("service_flow_item_id", item.id);
-
-        if (draftVocalistIds.length > 0) {
-          const inserts = draftVocalistIds.map((vocalist_id) => ({
-            service_flow_item_id: item.id,
-            vocalist_id,
-          }));
-          const { error: insertError } = await supabase
-            .from("service_flow_item_vocalists")
-            .insert(inserts);
-          if (insertError) {
-            console.error("Failed syncing service flow co-vocalists:", insertError);
-          }
+        // Skip junction rewrite when assignments already match.
+        if (sameVocalistIds(draftVocalistIds, currentVocalistIds)) {
+          continue;
         }
+
+        needsUpdate = true;
+        writeTasks.push(
+          (async () => {
+            await supabase
+              .from("service_flow_item_vocalists")
+              .delete()
+              .eq("service_flow_item_id", item.id);
+
+            if (draftVocalistIds.length === 0) return;
+
+            const { error: insertError } = await supabase
+              .from("service_flow_item_vocalists")
+              .insert(
+                draftVocalistIds.map((vocalist_id) => ({
+                  service_flow_item_id: item.id,
+                  vocalist_id,
+                }))
+              );
+            if (insertError) {
+              console.error("Failed syncing service flow co-vocalists:", insertError);
+            }
+          })()
+        );
+      }
+
+      if (writeTasks.length > 0) {
+        await Promise.all(writeTasks);
       }
 
       if (needsUpdate) {
@@ -820,6 +901,49 @@ export function ServiceFlowEditor({
       setLocalItems(items);
     }
   }, [items, draggedItem]);
+
+  useEffect(() => {
+    localItemsRef.current = localItems;
+  }, [localItems]);
+
+  useEffect(() => {
+    draggedItemRef.current = draggedItem;
+  }, [draggedItem]);
+
+  useEffect(() => {
+    return () => {
+      if (dragFrameRef.current !== null) {
+        cancelAnimationFrame(dragFrameRef.current);
+      }
+    };
+  }, []);
+
+  // Clone one print sheet into the second half-sheet slot (avoids a second React tree).
+  useLayoutEffect(() => {
+    const pair = printPairRef.current;
+    if (!printMounted || !pair) {
+      printCloneRef.current = null;
+      return;
+    }
+
+    const source = pair.firstElementChild;
+    if (!(source instanceof HTMLElement)) return;
+
+    if (printCloneRef.current?.isConnected) {
+      printCloneRef.current.remove();
+    }
+
+    const clone = source.cloneNode(true) as HTMLElement;
+    clone.setAttribute("aria-hidden", "true");
+    clone.setAttribute("data-print-clone", "true");
+    pair.appendChild(clone);
+    printCloneRef.current = clone;
+
+    return () => {
+      printCloneRef.current?.remove();
+      printCloneRef.current = null;
+    };
+  }, [printMounted, servicePreview]);
 
   const createFlow = useCreateServiceFlow();
   const saveItem = useSaveServiceFlowItem();
@@ -1126,33 +1250,53 @@ export function ServiceFlowEditor({
     [activeServiceFlowId, deleteItem]
   );
 
-  const handleDragStart = (e: React.DragEvent, item: ServiceFlowItemType) => {
+  const handleDragStart = useCallback((e: React.DragEvent, item: ServiceFlowItemType) => {
+    draggedItemRef.current = item;
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = "move";
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent, targetIndex: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    if (!draggedItem) return;
-    
-    const draggedIndex = localItems.findIndex(i => i.id === draggedItem.id);
-    if (draggedIndex === targetIndex) return;
+    const currentDragged = draggedItemRef.current;
+    if (!currentDragged) return;
 
-    // Reorder locally for visual feedback
-    const newItems = [...localItems];
-    newItems.splice(draggedIndex, 1);
-    newItems.splice(targetIndex, 0, draggedItem);
-    setLocalItems(newItems);
-  };
+    pendingDragIndexRef.current = targetIndex;
+    if (dragFrameRef.current !== null) return;
 
-  const handleDragEnd = async () => {
-    if (!draggedItem || !activeServiceFlowId) {
+    dragFrameRef.current = requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const dragged = draggedItemRef.current;
+      const nextIndex = pendingDragIndexRef.current;
+      if (!dragged || nextIndex === null) return;
+
+      const currentItems = localItemsRef.current;
+      const draggedIndex = currentItems.findIndex((entry) => entry.id === dragged.id);
+      if (draggedIndex < 0 || draggedIndex === nextIndex) return;
+
+      const newItems = [...currentItems];
+      newItems.splice(draggedIndex, 1);
+      newItems.splice(nextIndex, 0, dragged);
+      localItemsRef.current = newItems;
+      setLocalItems(newItems);
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(async () => {
+    if (dragFrameRef.current !== null) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+
+    const currentDragged = draggedItemRef.current;
+    if (!currentDragged || !activeServiceFlowId) {
+      draggedItemRef.current = null;
       setDraggedItem(null);
       return;
     }
 
     // Update sequence orders based on current local order
-    const reorderedItems = localItems.map((item, index) => ({
+    const reorderedItems = localItemsRef.current.map((item, index) => ({
       id: item.id,
       sequence_order: index,
     }));
@@ -1162,12 +1306,23 @@ export function ServiceFlowEditor({
       items: reorderedItems,
     });
 
+    draggedItemRef.current = null;
     setDraggedItem(null);
-  };
+  }, [activeServiceFlowId, reorderItems]);
 
   const isLoading = campusesLoading || networkWideCampusLoading || flowLoading || itemsLoading || isAutoGenerating;
 
   const servicePreview = useMemo<ServiceFlowPreviewData>(() => {
+    // Skip building the preview model while editing unless print/export needs it.
+    if (mode === "editor" && !printMounted) {
+      return {
+        title: "Service Flow",
+        date: serviceDateStr,
+        totalTime: formatTotalDuration(totalDuration),
+        sections: [],
+      };
+    }
+
     const campusName = serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId)?.name;
     const ministryLabel =
       availableMinistryOptions.find((option) => option.value === ministryType)?.label ||
@@ -1264,6 +1419,8 @@ export function ServiceFlowEditor({
       sections: sections.filter((section) => section.items.length > 0),
     };
   }, [
+    mode,
+    printMounted,
     serviceFlowCampuses,
     effectiveCampusId,
     availableMinistryOptions,
@@ -1411,8 +1568,8 @@ export function ServiceFlowEditor({
               >
                 <ServiceFlowItem
                   item={item}
-                  onUpdate={(updates) => handleUpdateItem(item.id, updates)}
-                  onDelete={() => handleDeleteItem(item.id)}
+                  onUpdate={handleUpdateItem}
+                  onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
                   clockTime={clockTimesByItemId.get(item.id)}
                   isDragging={draggedItem?.id === item.id}
@@ -1453,14 +1610,11 @@ export function ServiceFlowEditor({
         </div>
       ) : null}
 
-      {!isLoading && localItems.length > 0 ? (
-        <div className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]">
-          <ServiceFlowPreview
-            service={servicePreview}
-            compactMode
-            showProgressBar={false}
-            printFitHalfSheet
-          />
+      {printMounted && !isLoading && localItems.length > 0 ? (
+        <div
+          ref={printPairRef}
+          className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]"
+        >
           <ServiceFlowPreview
             service={servicePreview}
             compactMode
@@ -1470,11 +1624,13 @@ export function ServiceFlowEditor({
         </div>
       ) : null}
 
-      <AddItemDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
-        onAdd={handleAddItem}
-      />
+      {mode === "editor" ? (
+        <AddItemDialog
+          open={isAddDialogOpen}
+          onOpenChange={setIsAddDialogOpen}
+          onAdd={handleAddItem}
+        />
+      ) : null}
     </div>
   );
-}
+});

@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { Music4, Video, Megaphone, Mic2, Circle, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/cn";
@@ -124,7 +125,7 @@ function formatSongMeta(item: ServiceItem): string {
   return parts.join(" · ");
 }
 
-export function ServiceFlow({
+export const ServiceFlow = memo(function ServiceFlow({
   service,
   className,
   showIcons = true,
@@ -134,11 +135,20 @@ export function ServiceFlow({
   highlightItemId,
   printFitHalfSheet = false,
 }: ServiceFlowProps) {
-  const sectionDurations = service.sections.map((section) => ({
-    id: section.id,
-    title: section.title,
-    seconds: getSectionRuntime(section),
-  }));
+  const sectionDurations = useMemo(
+    () =>
+      service.sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        seconds: getSectionRuntime(section),
+      })),
+    [service.sections],
+  );
+
+  const sectionRuntimeById = useMemo(
+    () => new Map(sectionDurations.map((section) => [section.id, section.seconds])),
+    [sectionDurations],
+  );
 
   const totalRuntimeSeconds =
     sectionDurations.reduce((total, section) => total + section.seconds, 0) ||
@@ -211,7 +221,7 @@ export function ServiceFlow({
 
         <div className={cn("px-5 py-5 sm:px-7 sm:py-7", compactMode ? "space-y-6" : "space-y-8", printFitHalfSheet && "service-flow-half-sheet-body print:space-y-0 print:px-1.5 print:py-0.5")}>
           {service.sections.map((section) => {
-            const sectionRuntime = getSectionRuntime(section);
+            const sectionRuntime = sectionRuntimeById.get(section.id) ?? 0;
             const isHighlightedSection = section.id === highlightSectionId;
 
             return (
@@ -377,4 +387,4 @@ export function ServiceFlow({
       </div>
     </section>
   );
-}
+});

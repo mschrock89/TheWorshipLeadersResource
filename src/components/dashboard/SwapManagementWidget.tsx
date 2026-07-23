@@ -116,11 +116,13 @@ export function SwapManagementWidget() {
           </p>
         ) : (
           <div className="space-y-3">
-            {recentSwaps.map((swap) => (
-              <div
-                key={swap.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 p-3"
-              >
+            {recentSwaps.map((swap) => {
+              const counterpart = swap.accepted_by || swap.target_user;
+              return (
+                <div
+                  key={swap.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 p-3"
+                >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Avatar className="h-9 w-9 shrink-0">
                     <AvatarImage src={swap.requester?.avatar_url || undefined} />
@@ -133,6 +135,14 @@ export function SwapManagementWidget() {
                       <span className="font-medium text-sm truncate">
                         {swap.requester?.full_name || "Unknown"}
                       </span>
+                      {counterpart && (
+                        <>
+                          <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="font-medium text-sm truncate">
+                            {counterpart.full_name || "Unknown"}
+                          </span>
+                        </>
+                      )}
                       {(swap as any).request_type === "fill_in" && (
                         <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 bg-blue-500/10">
                           <UserPlus className="h-2.5 w-2.5 mr-0.5" />
@@ -186,8 +196,9 @@ export function SwapManagementWidget() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

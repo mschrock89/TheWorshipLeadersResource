@@ -1,7 +1,11 @@
+import { useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ServiceFlowEditor } from "@/components/service-flow/ServiceFlowEditor";
+import {
+  ServiceFlowEditor,
+  type ServiceFlowEditorHandle,
+} from "@/components/service-flow/ServiceFlowEditor";
 import { cn } from "@/lib/cn";
 import {
   Tooltip,
@@ -17,6 +21,7 @@ export default function ServiceFlow() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = requestedTab === "view" ? "view" : "editor";
+  const editorRef = useRef<ServiceFlowEditorHandle>(null);
   
   // Get initial values from URL query params (from Calendar LIVE button)
   const initialDate = searchParams.get("date") || undefined;
@@ -66,9 +71,12 @@ export default function ServiceFlow() {
     }
   };
 
-  const printWithExportMode = () => {
+  const printWithExportMode = async () => {
+    await editorRef.current?.preparePrint();
+
     const printableNode = document.querySelector(".service-flow-print-render");
     if (!printableNode || !(printableNode instanceof HTMLElement)) {
+      editorRef.current?.releasePrint();
       window.print();
       return;
     }
@@ -83,6 +91,7 @@ export default function ServiceFlow() {
       cleanedUp = true;
       html.classList.remove(EXPORT_MODE_CLASS);
       document.title = previousTitle;
+      editorRef.current?.releasePrint();
       window.removeEventListener("afterprint", cleanup);
     };
 
@@ -98,12 +107,12 @@ export default function ServiceFlow() {
   };
 
   const handlePrint = () => {
-    printWithExportMode();
+    void printWithExportMode();
   };
 
   const handleExport = () => {
     // Trigger print/share flow which allows saving as PDF
-    printWithExportMode();
+    void printWithExportMode();
   };
 
   return (
@@ -198,7 +207,8 @@ export default function ServiceFlow() {
         </div>
       </div>
 
-      <ServiceFlowEditor 
+      <ServiceFlowEditor
+        ref={editorRef}
         initialDate={initialDate}
         initialCampusId={initialCampus}
         initialMinistryType={initialMinistry}
