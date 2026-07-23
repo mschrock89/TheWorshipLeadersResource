@@ -263,9 +263,16 @@ html.service-flow-export-mode .sidebar,
 html.service-flow-export-mode .bottom-nav,
 html.service-flow-export-mode [data-radix-popper-content-wrapper],
 html.service-flow-export-mode .toaster,
-html.service-flow-export-mode .screen-header,
-html.service-flow-export-mode .service-flow-screen-layout,
 html.service-flow-export-mode .print-header {
+  display: none !important;
+}
+
+/* Only hide the interactive editor chrome when a print tree is actually mounted.
+   If export-mode gets stuck without a print tree, the page must stay usable. */
+html.service-flow-export-mode:has(.service-flow-print-dual) .screen-header,
+html.service-flow-export-mode:has(.service-flow-print-dual) .service-flow-screen-layout,
+html.service-flow-export-mode:has(.service-flow-print-render) .screen-header,
+html.service-flow-export-mode:has(.service-flow-print-render) .service-flow-screen-layout {
   display: none !important;
 }
 
@@ -632,7 +639,8 @@ html.service-flow-export-mode .service-flow-page .service-flow-song-vocalist {
   font-size: 6.25pt !important;
 }
 
-html.service-flow-export-mode .service-flow-editor > :not(.service-flow-print-dual):not(.service-flow-print-render) {
+html.service-flow-export-mode:has(.service-flow-print-dual) .service-flow-editor > :not(.service-flow-print-dual):not(.service-flow-print-render),
+html.service-flow-export-mode:has(.service-flow-print-render) .service-flow-editor > :not(.service-flow-print-dual):not(.service-flow-print-render) {
   display: none !important;
 }
 
