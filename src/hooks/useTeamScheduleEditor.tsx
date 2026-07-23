@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { resolveMinistryCampusId } from "@/lib/constants";
 
 export interface ScheduleEntry {
   id: string;
@@ -302,8 +303,11 @@ export function useCreateScheduleEntry() {
       rotationPeriod: string;
       suppressToast?: boolean;
     }) => {
+      // Network-wide ministries (Student Camp) share one schedule across campuses.
+      const scheduleCampusId = resolveMinistryCampusId(ministryType, campusId);
+
       const { error } = await supabase.from("team_schedule").insert({
-        campus_id: campusId,
+        campus_id: scheduleCampusId,
         schedule_date: date,
         team_id: teamId,
         ministry_type: ministryType,
