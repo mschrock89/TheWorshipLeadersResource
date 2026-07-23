@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
   useServiceFlow,
@@ -8,13 +9,11 @@ import {
 } from "@/hooks/useServiceFlow";
 import { useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
-import { useSongsForDate } from "@/hooks/useSongs";
 import { isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { ServiceFlow } from "./ServiceFlow";
 import { buildServiceFlowHref, buildServiceFlowPreview } from "./buildServiceFlowPreview";
 
@@ -111,15 +110,12 @@ export function CalendarServiceFlowPanel({
   const isNetworkWide =
     isNetworkWideMinistryType(effectiveMinistryType) ||
     isNetworkWideMinistryType(ministryType);
-  const { data: networkWideCampus } = useNetworkWideCampus();
+  const { data: networkWideCampus, isLoading: networkWideCampusLoading } = useNetworkWideCampus();
 
   // service_flows rows for network-wide ministries use the Network Wide campus UUID.
   const flowCampusId = isNetworkWide
     ? networkWideCampus?.id || null
     : campusId;
-
-  // draft_sets / songs for network-wide ministries are stored with campus_id IS NULL.
-  const songsCampusId = isNetworkWide ? null : campusId;
 
   const resolvedCampusName =
     campusName ||
@@ -132,47 +128,21 @@ export function CalendarServiceFlowPanel({
     MINISTRY_TYPES.find((option) => option.value === ministryType)?.label ||
     "Service";
 
-  const { data: plansWithSongs = [], isLoading: songsLoading } = useSongsForDate(
-    date,
-    songsCampusId,
-    effectiveMinistryType,
-  );
-  const resolvedDraftSetId = useMemo(() => {
-    if (draftSetId) return draftSetId;
-    const ids = plansWithSongs
-      .filter((plan) => (plan.songs || []).length > 0)
-      .map((plan) => plan.draft_set_id)
-      .filter((value): value is string => Boolean(value));
-    return ids.length === 1 ? ids[0] : ids[0] || null;
-  }, [draftSetId, plansWithSongs]);
+  // Resolve the published set the same way the full Service Flow page does when opened
+  // from Calendar — including campus_id IS NULL for Student Camp.
+  const { data: publishedDraftSetId = null, isLoading: draftSetLoading } = useQuery({
+    queryKey: [
+      "calendar-service-flow-draft-set",
+      date,
+      isNetworkWide ? "network-wide" : campusId,
+      effectiveMinistryType,
+      customServiceId,
+    ],
+    enabled: !!date && !!effectiveMinistryType && (!isNetworkWide || !!networkWideCampus),
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (draftSetId) return draftSetId;
 
-  const {
-    data: serviceFlow,
-    isLoading: flowLoading,
-    isFetching: flowFetching,
-  } = useServiceFlow(
-    flowCampusId,
-    effectiveMinistryType,
-    date,
-    resolvedDraftSetId,
-    customServiceId,
-  );
-  const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(
-    serviceFlow?.id || null,
-  );
-
-  const [isGenerating, setIsGenerating] = useState(false);
-  const hasAttemptedGenerate = useRef(false);
-
-  useEffect(() => {
-    hasAttemptedGenerate.current = false;
-  }, [date, flowCampusId, effectiveMinistryType, customServiceId, resolvedDraftSetId]);
-
-  const generateFromTemplate = useCallback(async () => {
-    if (!user?.id || !flowCampusId || !date || readOnly) return false;
-
-    let nextDraftSetId = resolvedDraftSetId;
-    if (!nextDraftSetId) {
       let draftSetQuery = supabase
         .from("draft_sets")
         .select("id")
@@ -182,59 +152,105 @@ export function CalendarServiceFlowPanel({
 
       draftSetQuery = isNetworkWide
         ? draftSetQuery.is("campus_id", null)
-        : draftSetQuery.eq("campus_id", flowCampusId);
+        : draftSetQuery.eq("campus_id", campusId as string);
 
       if (customServiceId) {
         draftSetQuery = draftSetQuery.eq("custom_service_id", customServiceId);
       }
 
-      const { data: draftSet, error } = await draftSetQuery
+      const { data, error } = await draftSetQuery
         .order("published_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      nextDraftSetId = draftSet?.id || null;
+      return data?.id || null;
+    },
+  });
+
+  const resolvedDraftSetId = draftSetId || publishedDraftSetId;
+
+  const {
+    data: serviceFlow,
+    isLoading: flowLoading,
+    isFetching: flowFetching,
+    refetch: refetchFlow,
+  } = useServiceFlow(
+    flowCampusId,
+    effectiveMinistryType,
+    date,
+    resolvedDraftSetId,
+    customServiceId,
+  );
+
+  const [boundFlowId, setBoundFlowId] = useState<string | null>(null);
+  const activeFlowId = boundFlowId || serviceFlow?.id || null;
+  const {
+    data: items = [],
+    isLoading: itemsLoading,
+    isError: itemsError,
+    refetch: refetchItems,
+  } = useServiceFlowItems(activeFlowId);
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const hasAttemptedGenerate = useRef(false);
+  const ensureKeyRef = useRef<string>("");
+
+  const ensureKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${resolvedDraftSetId || ""}|${customServiceId || ""}`;
+
+  useEffect(() => {
+    if (serviceFlow?.id) {
+      setBoundFlowId(serviceFlow.id);
     }
+  }, [serviceFlow?.id]);
 
-    // Still generate from template even without songs when a published set is missing,
-    // so the rundown structure appears from the template alone.
-    const songs = nextDraftSetId ? await loadDraftSongsWithVocalists(nextDraftSetId) : [];
+  useEffect(() => {
+    if (ensureKeyRef.current !== ensureKey) {
+      ensureKeyRef.current = ensureKey;
+      hasAttemptedGenerate.current = false;
+      setGenerateError(null);
+      setBoundFlowId(null);
+    }
+  }, [ensureKey]);
 
-    await generateServiceFlowFromTemplate({
+  const generateFromTemplate = useCallback(async () => {
+    if (!user?.id || !flowCampusId || !date || readOnly) return null;
+
+    const songs = resolvedDraftSetId
+      ? await loadDraftSongsWithVocalists(resolvedDraftSetId)
+      : [];
+
+    const flowId = await generateServiceFlowFromTemplate({
       campusId: flowCampusId,
       ministryType: effectiveMinistryType,
       serviceDate: date,
-      draftSetId: nextDraftSetId,
+      draftSetId: resolvedDraftSetId,
       customServiceId,
       createdBy: user.id,
-      forceTemplateResync: true,
+      // Only build when missing/empty; do not wipe an existing rundown from Calendar.
+      forceTemplateResync: false,
       songs,
     });
 
+    setBoundFlowId(flowId);
+
     await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: [
-          "service-flow",
-          flowCampusId,
-          effectiveMinistryType,
-          date,
-          nextDraftSetId,
-          customServiceId,
-        ],
-      }),
       queryClient.invalidateQueries({ queryKey: ["service-flow"] }),
+      queryClient.invalidateQueries({ queryKey: ["service-flow-items", flowId] }),
       queryClient.invalidateQueries({ queryKey: ["service-flow-items"] }),
     ]);
 
-    return true;
+    await Promise.all([refetchFlow(), refetchItems()]);
+    return flowId;
   }, [
     customServiceId,
     date,
     effectiveMinistryType,
     flowCampusId,
-    isNetworkWide,
     queryClient,
     readOnly,
+    refetchFlow,
+    refetchItems,
     resolvedDraftSetId,
     user?.id,
   ]);
@@ -242,17 +258,20 @@ export function CalendarServiceFlowPanel({
   useEffect(() => {
     const run = async () => {
       if (readOnly) return;
-      if (flowLoading || songsLoading || (isNetworkWide && !networkWideCampus)) return;
+      if (networkWideCampusLoading || draftSetLoading || flowLoading) return;
+      if (isNetworkWide && !networkWideCampus) return;
       if (!flowCampusId || !user?.id) return;
-      if (serviceFlow) return;
+      if (activeFlowId) return;
       if (hasAttemptedGenerate.current || isGenerating) return;
 
       hasAttemptedGenerate.current = true;
       setIsGenerating(true);
+      setGenerateError(null);
       try {
         await generateFromTemplate();
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to auto-generate calendar service flow:", error);
+        setGenerateError(error?.message || "Couldn't generate service flow.");
       } finally {
         setIsGenerating(false);
       }
@@ -260,25 +279,27 @@ export function CalendarServiceFlowPanel({
 
     void run();
   }, [
-    flowCampusId,
+    activeFlowId,
+    draftSetLoading,
     flowLoading,
+    flowCampusId,
     generateFromTemplate,
     isGenerating,
     isNetworkWide,
     networkWideCampus,
+    networkWideCampusLoading,
     readOnly,
-    serviceFlow,
-    songsLoading,
     user?.id,
   ]);
 
   const isLoading =
+    networkWideCampusLoading ||
+    draftSetLoading ||
     flowLoading ||
     flowFetching ||
-    (!!serviceFlow?.id && itemsLoading) ||
+    (!!activeFlowId && itemsLoading) ||
     isGenerating ||
-    (isNetworkWide && !networkWideCampus) ||
-    (songsLoading && !serviceFlow);
+    (isNetworkWide && !networkWideCampus);
 
   const fullPageHref = buildServiceFlowHref({
     date,
@@ -295,10 +316,12 @@ export function CalendarServiceFlowPanel({
         serviceDate: date,
         campusName: resolvedCampusName,
         ministryType: effectiveMinistryType,
-        title: [resolvedCampusName, ministryLabel].filter(Boolean).join(" "),
+        title: ministryLabel,
       }),
     [date, effectiveMinistryType, items, ministryLabel, resolvedCampusName],
   );
+
+  const showEmpty = !isLoading && (!activeFlowId || items.length === 0 || itemsError);
 
   return (
     <section
@@ -337,13 +360,14 @@ export function CalendarServiceFlowPanel({
           <Skeleton className="h-16 w-full rounded-xl" />
           <Skeleton className="h-16 w-full rounded-xl" />
         </div>
-      ) : !serviceFlow || items.length === 0 ? (
+      ) : showEmpty ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
           <p className="text-sm font-medium text-foreground">No service flow yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {readOnly
               ? "A rundown has not been generated for this service."
-              : "We couldn’t generate a rundown from the template. Open the full page to try again."}
+              : generateError ||
+                "Open the full Service Flow page to generate it from the template."}
           </p>
           {!readOnly ? (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -352,9 +376,11 @@ export function CalendarServiceFlowPanel({
                 onClick={() => {
                   hasAttemptedGenerate.current = false;
                   setIsGenerating(true);
+                  setGenerateError(null);
                   void generateFromTemplate()
-                    .catch((error) => {
+                    .catch((error: any) => {
                       console.error("Failed to generate calendar service flow:", error);
+                      setGenerateError(error?.message || "Couldn't generate service flow.");
                     })
                     .finally(() => setIsGenerating(false));
                 }}

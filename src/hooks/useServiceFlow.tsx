@@ -169,6 +169,34 @@ export function useServiceFlow(
       );
       if (legacy) return legacy;
 
+      // 3b) Session ministries (Student Camp Morning/Evening): resolve via the published
+      // draft set for this session. Flows are often opened from Calendar without draftSetId
+      // in the query key, but the saved flow is still linked to that published set.
+      if (isSessionSetMinistryType(ministryType) && !draftSetId) {
+        let publishedSetQuery = supabase
+          .from("draft_sets")
+          .select("id")
+          .eq("ministry_type", ministryType)
+          .eq("plan_date", serviceDate)
+          .eq("status", "published");
+
+        publishedSetQuery = isNetworkWideMinistryType(ministryType)
+          ? publishedSetQuery.is("campus_id", null)
+          : publishedSetQuery.eq("campus_id", campusId);
+
+        const { data: publishedSet } = await publishedSetQuery
+          .order("published_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (publishedSet?.id) {
+          const byPublishedSet = await fetchSingle(
+            supabase.from("service_flows").eq("draft_set_id", publishedSet.id)
+          );
+          if (byPublishedSet) return byPublishedSet;
+        }
+      }
+
       // 4) Prayer Night migration fallback: older flows may still be stored as weekend.
       if (ministryType === "prayer_night") {
         if (customServiceId) {
@@ -205,6 +233,27 @@ export function useServiceFlow(
   });
 }
 
+function mapServiceFlowItemsWithVocalists(
+  items: any[],
+  vocalistsByItemId: Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>,
+): ServiceFlowItem[] {
+  return items.map((item) => {
+    const linked = [...(vocalistsByItemId.get(item.id) || [])];
+    if (item.vocalist && !linked.some((v) => v.id === item.vocalist.id)) {
+      linked.unshift({
+        id: item.vocalist.id,
+        full_name: item.vocalist.full_name,
+        avatar_url: item.vocalist.avatar_url,
+      });
+    }
+    const { service_flow_item_vocalists: _junction, ...rest } = item;
+    return {
+      ...rest,
+      vocalists: linked,
+    } as ServiceFlowItem;
+  });
+}
+
 export function useServiceFlowItems(serviceFlowId: string | null) {
   return useQuery({
     queryKey: ["service-flow-items", serviceFlowId],
@@ -212,8 +261,8 @@ export function useServiceFlowItems(serviceFlowId: string | null) {
     queryFn: async () => {
       if (!serviceFlowId) return [];
       
-      // One round-trip: items + song + primary vocalist + co-vocalists.
-      const { data, error } = await supabase
+      // Prefer one round-trip; fall back if the nested embed is unavailable.
+      const nested = await supabase
         .from("service_flow_items")
         .select(`
           *,
@@ -225,38 +274,66 @@ export function useServiceFlowItems(serviceFlowId: string | null) {
         `)
         .eq("service_flow_id", serviceFlowId)
         .order("sequence_order", { ascending: true });
-      
-      if (error) throw error;
 
-      return ((data || []) as any[]).map((row) => {
-        const linked: Array<{ id: string; full_name: string | null; avatar_url: string | null }> = [];
-        for (const junction of row.service_flow_item_vocalists || []) {
-          const vocalist = junction?.vocalist;
-          if (!vocalist?.id) continue;
-          if (!linked.some((entry) => entry.id === vocalist.id)) {
-            linked.push({
-              id: vocalist.id,
-              full_name: vocalist.full_name,
-              avatar_url: vocalist.avatar_url,
-            });
+      if (!nested.error) {
+        const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
+        for (const row of (nested.data || []) as any[]) {
+          const linked: Array<{ id: string; full_name: string | null; avatar_url: string | null }> = [];
+          for (const junction of row.service_flow_item_vocalists || []) {
+            const vocalist = junction?.vocalist;
+            if (!vocalist?.id) continue;
+            if (!linked.some((entry) => entry.id === vocalist.id)) {
+              linked.push({
+                id: vocalist.id,
+                full_name: vocalist.full_name,
+                avatar_url: vocalist.avatar_url,
+              });
+            }
           }
+          byItemId.set(row.id, linked);
         }
+        return mapServiceFlowItemsWithVocalists(nested.data || [], byItemId);
+      }
 
-        // Always include legacy single vocalist_id as fallback/first vocalist.
-        if (row.vocalist && !linked.some((v) => v.id === row.vocalist.id)) {
-          linked.unshift({
-            id: row.vocalist.id,
-            full_name: row.vocalist.full_name,
-            avatar_url: row.vocalist.avatar_url,
-          });
-        }
+      const { data, error } = await supabase
+        .from("service_flow_items")
+        .select(`
+          *,
+          song:songs(id, title, author, bpm),
+          vocalist:profiles!service_flow_items_vocalist_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq("service_flow_id", serviceFlowId)
+        .order("sequence_order", { ascending: true });
 
-        const { service_flow_item_vocalists: _junction, ...item } = row;
-        return {
-          ...item,
-          vocalists: linked,
-        } as ServiceFlowItem;
-      });
+      if (error) throw error;
+      const items = data || [];
+      const itemIds = items.map((item: any) => item.id as string);
+      if (itemIds.length === 0) return [];
+
+      const { data: flowItemVocalists, error: flowItemVocalistsError } = await supabase
+        .from("service_flow_item_vocalists")
+        .select(`
+          service_flow_item_id,
+          vocalist:profiles(id, full_name, avatar_url)
+        `)
+        .in("service_flow_item_id", itemIds);
+
+      if (flowItemVocalistsError) throw flowItemVocalistsError;
+
+      const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
+      for (const row of (flowItemVocalists || []) as any[]) {
+        const vocalist = row.vocalist;
+        if (!vocalist || !row.service_flow_item_id) continue;
+        const existing = byItemId.get(row.service_flow_item_id) || [];
+        existing.push({
+          id: vocalist.id,
+          full_name: vocalist.full_name,
+          avatar_url: vocalist.avatar_url,
+        });
+        byItemId.set(row.service_flow_item_id, existing);
+      }
+
+      return mapServiceFlowItemsWithVocalists(items, byItemId);
     },
     enabled: !!serviceFlowId,
   });
