@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
+  useDeleteServiceFlowItem,
+  useReorderServiceFlowItems,
+  useSaveServiceFlowItem,
   useServiceFlow,
   useServiceFlowItems,
+  type ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,8 +18,10 @@ import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { ServiceFlow } from "./ServiceFlow";
-import { buildServiceFlowHref, buildServiceFlowPreview } from "./buildServiceFlowPreview";
+import { ServiceFlowItem } from "./ServiceFlowItem";
+import { AddItemDialog } from "./AddItemDialog";
+import { formatTotalDuration } from "./DurationInput";
+import { buildServiceFlowHref } from "./buildServiceFlowPreview";
 
 export type CalendarServiceFlowPanelProps = {
   date: string;
@@ -98,7 +104,6 @@ export function CalendarServiceFlowPanel({
   ministryType,
   draftSetId = null,
   customServiceId = null,
-  campusName = null,
   label = null,
   readOnly = false,
   className,
@@ -112,24 +117,17 @@ export function CalendarServiceFlowPanel({
     isNetworkWideMinistryType(ministryType);
   const { data: networkWideCampus, isLoading: networkWideCampusLoading } = useNetworkWideCampus();
 
-  // service_flows rows for network-wide ministries use the Network Wide campus UUID.
   const flowCampusId = isNetworkWide
     ? networkWideCampus?.id || null
     : campusId;
 
-  const resolvedCampusName =
-    campusName ||
-    (flowCampusId && flowCampusId === networkWideCampus?.id
-      ? networkWideCampus?.name
-      : null);
   const ministryLabel =
     label ||
     MINISTRY_TYPES.find((option) => option.value === effectiveMinistryType)?.label ||
     MINISTRY_TYPES.find((option) => option.value === ministryType)?.label ||
     "Service";
 
-  // Resolve the published set the same way the full Service Flow page does when opened
-  // from Calendar — including campus_id IS NULL for Student Camp.
+  // Only hit the network when Calendar didn't already provide a draft set.
   const { data: publishedDraftSetId = null, isLoading: draftSetLoading } = useQuery({
     queryKey: [
       "calendar-service-flow-draft-set",
@@ -138,11 +136,13 @@ export function CalendarServiceFlowPanel({
       effectiveMinistryType,
       customServiceId,
     ],
-    enabled: !!date && !!effectiveMinistryType && (!isNetworkWide || !!networkWideCampus),
-    staleTime: 30_000,
+    enabled:
+      !draftSetId &&
+      !!date &&
+      !!effectiveMinistryType &&
+      (!isNetworkWide || !!networkWideCampus),
+    staleTime: 60_000,
     queryFn: async () => {
-      if (draftSetId) return draftSetId;
-
       let draftSetQuery = supabase
         .from("draft_sets")
         .select("id")
@@ -169,10 +169,10 @@ export function CalendarServiceFlowPanel({
 
   const resolvedDraftSetId = draftSetId || publishedDraftSetId;
 
+  // Start flow lookup as soon as campus is ready — don't wait on draft-set resolution.
   const {
     data: serviceFlow,
     isLoading: flowLoading,
-    isFetching: flowFetching,
     refetch: refetchFlow,
   } = useServiceFlow(
     flowCampusId,
@@ -191,27 +191,48 @@ export function CalendarServiceFlowPanel({
     refetch: refetchItems,
   } = useServiceFlowItems(activeFlowId);
 
+  const saveItem = useSaveServiceFlowItem();
+  const deleteItem = useDeleteServiceFlowItem();
+  const reorderItems = useReorderServiceFlowItems();
+
+  const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
+  const [draggedItem, setDraggedItem] = useState<ServiceFlowItemType | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const hasAttemptedGenerate = useRef(false);
-  const ensureKeyRef = useRef<string>("");
+  const contextKeyRef = useRef("");
+  const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
+  const localItemsRef = useRef<ServiceFlowItemType[]>([]);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragIndexRef = useRef<number | null>(null);
 
-  const ensureKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${resolvedDraftSetId || ""}|${customServiceId || ""}`;
+  const contextKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${customServiceId || ""}`;
 
   useEffect(() => {
-    if (serviceFlow?.id) {
-      setBoundFlowId(serviceFlow.id);
-    }
+    if (serviceFlow?.id) setBoundFlowId(serviceFlow.id);
   }, [serviceFlow?.id]);
 
   useEffect(() => {
-    if (ensureKeyRef.current !== ensureKey) {
-      ensureKeyRef.current = ensureKey;
-      hasAttemptedGenerate.current = false;
-      setGenerateError(null);
-      setBoundFlowId(null);
-    }
-  }, [ensureKey]);
+    if (contextKeyRef.current === contextKey) return;
+    contextKeyRef.current = contextKey;
+    hasAttemptedGenerate.current = false;
+    setGenerateError(null);
+    setBoundFlowId(null);
+    setDraggedItem(null);
+  }, [contextKey]);
+
+  useEffect(() => {
+    if (!draggedItem) setLocalItems(items);
+  }, [items, draggedItem]);
+
+  useEffect(() => {
+    localItemsRef.current = localItems;
+  }, [localItems]);
+
+  useEffect(() => {
+    draggedItemRef.current = draggedItem;
+  }, [draggedItem]);
 
   const generateFromTemplate = useCallback(async () => {
     if (!user?.id || !flowCampusId || !date || readOnly) return null;
@@ -227,7 +248,6 @@ export function CalendarServiceFlowPanel({
       draftSetId: resolvedDraftSetId,
       customServiceId,
       createdBy: user.id,
-      // Only build when missing/empty; do not wipe an existing rundown from Calendar.
       forceTemplateResync: false,
       songs,
     });
@@ -237,9 +257,7 @@ export function CalendarServiceFlowPanel({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["service-flow"] }),
       queryClient.invalidateQueries({ queryKey: ["service-flow-items", flowId] }),
-      queryClient.invalidateQueries({ queryKey: ["service-flow-items"] }),
     ]);
-
     await Promise.all([refetchFlow(), refetchItems()]);
     return flowId;
   }, [
@@ -258,7 +276,9 @@ export function CalendarServiceFlowPanel({
   useEffect(() => {
     const run = async () => {
       if (readOnly) return;
-      if (networkWideCampusLoading || draftSetLoading || flowLoading) return;
+      if (networkWideCampusLoading || flowLoading) return;
+      // Wait for draft-set lookup only when we still have no flow to show.
+      if (!activeFlowId && !draftSetId && draftSetLoading) return;
       if (isNetworkWide && !networkWideCampus) return;
       if (!flowCampusId || !user?.id) return;
       if (activeFlowId) return;
@@ -280,6 +300,7 @@ export function CalendarServiceFlowPanel({
     void run();
   }, [
     activeFlowId,
+    draftSetId,
     draftSetLoading,
     flowLoading,
     flowCampusId,
@@ -292,14 +313,129 @@ export function CalendarServiceFlowPanel({
     user?.id,
   ]);
 
-  const isLoading =
-    networkWideCampusLoading ||
-    draftSetLoading ||
-    flowLoading ||
-    flowFetching ||
-    (!!activeFlowId && itemsLoading) ||
-    isGenerating ||
-    (isNetworkWide && !networkWideCampus);
+  const handleUpdateItem = useCallback(
+    async (itemId: string, updates: Partial<ServiceFlowItemType>) => {
+      const item = localItemsRef.current.find((entry) => entry.id === itemId);
+      if (!item || !activeFlowId || readOnly) return;
+
+      await saveItem.mutateAsync({
+        id: item.id,
+        service_flow_id: activeFlowId,
+        item_type: updates.item_type || item.item_type,
+        title: updates.title || item.title,
+        duration_seconds: updates.duration_seconds ?? item.duration_seconds,
+        sequence_order: updates.sequence_order ?? item.sequence_order,
+        song_id: updates.song_id ?? item.song_id,
+        song_key: updates.song_key ?? item.song_key,
+        vocalist_id: updates.vocalist_id ?? item.vocalist_id,
+        notes: updates.notes ?? item.notes,
+      });
+    },
+    [activeFlowId, readOnly, saveItem],
+  );
+
+  const handleDeleteItem = useCallback(
+    async (itemId: string) => {
+      if (!activeFlowId || readOnly) return;
+      await deleteItem.mutateAsync({ id: itemId, serviceFlowId: activeFlowId });
+    },
+    [activeFlowId, deleteItem, readOnly],
+  );
+
+  const handleAddItem = useCallback(
+    async (newItem: {
+      item_type: "header" | "item" | "song";
+      title: string;
+      duration_seconds: number | null;
+      song_id?: string | null;
+      song_key?: string | null;
+    }) => {
+      if (!activeFlowId || readOnly) return;
+      await saveItem.mutateAsync({
+        service_flow_id: activeFlowId,
+        item_type: newItem.item_type,
+        title: newItem.title,
+        duration_seconds: newItem.duration_seconds,
+        sequence_order: localItemsRef.current.length,
+        song_id: newItem.song_id,
+        song_key: newItem.song_key,
+      });
+    },
+    [activeFlowId, readOnly, saveItem],
+  );
+
+  const handleDragStart = useCallback((e: React.DragEvent, item: ServiceFlowItemType) => {
+    if (readOnly) return;
+    draggedItemRef.current = item;
+    setDraggedItem(item);
+    e.dataTransfer.effectAllowed = "move";
+  }, [readOnly]);
+
+  const handleDragOver = useCallback((e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (readOnly || !draggedItemRef.current) return;
+
+    pendingDragIndexRef.current = targetIndex;
+    if (dragFrameRef.current !== null) return;
+
+    dragFrameRef.current = requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const dragged = draggedItemRef.current;
+      const nextIndex = pendingDragIndexRef.current;
+      if (!dragged || nextIndex === null) return;
+
+      const currentItems = localItemsRef.current;
+      const draggedIndex = currentItems.findIndex((entry) => entry.id === dragged.id);
+      if (draggedIndex < 0 || draggedIndex === nextIndex) return;
+
+      const nextItems = [...currentItems];
+      nextItems.splice(draggedIndex, 1);
+      nextItems.splice(nextIndex, 0, dragged);
+      localItemsRef.current = nextItems;
+      setLocalItems(nextItems);
+    });
+  }, [readOnly]);
+
+  const handleDragEnd = useCallback(async () => {
+    if (dragFrameRef.current !== null) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+
+    const currentDragged = draggedItemRef.current;
+    if (!currentDragged || !activeFlowId || readOnly) {
+      draggedItemRef.current = null;
+      setDraggedItem(null);
+      return;
+    }
+
+    await reorderItems.mutateAsync({
+      serviceFlowId: activeFlowId,
+      items: localItemsRef.current.map((item, index) => ({
+        id: item.id,
+        sequence_order: index,
+      })),
+    });
+
+    draggedItemRef.current = null;
+    setDraggedItem(null);
+  }, [activeFlowId, readOnly, reorderItems]);
+
+  const totalDuration = useMemo(
+    () =>
+      localItems.reduce(
+        (sum, item) => sum + (item.duration_seconds && item.duration_seconds > 0 ? item.duration_seconds : 0),
+        0,
+      ),
+    [localItems],
+  );
+
+  // Show the editor as soon as we have items — don't block on background refetch/draft lookup.
+  const isInitialLoading =
+    (networkWideCampusLoading && isNetworkWide) ||
+    (flowLoading && !activeFlowId) ||
+    (itemsLoading && localItems.length === 0 && !!activeFlowId) ||
+    (isGenerating && localItems.length === 0);
 
   const fullPageHref = buildServiceFlowHref({
     date,
@@ -309,19 +445,8 @@ export function CalendarServiceFlowPanel({
     customServiceId,
   });
 
-  const preview = useMemo(
-    () =>
-      buildServiceFlowPreview({
-        items,
-        serviceDate: date,
-        campusName: resolvedCampusName,
-        ministryType: effectiveMinistryType,
-        title: ministryLabel,
-      }),
-    [date, effectiveMinistryType, items, ministryLabel, resolvedCampusName],
-  );
-
-  const showEmpty = !isLoading && (!activeFlowId || items.length === 0 || itemsError);
+  const showEmpty =
+    !isInitialLoading && (!activeFlowId || localItems.length === 0 || itemsError);
 
   return (
     <section
@@ -349,16 +474,16 @@ export function CalendarServiceFlowPanel({
         >
           <Link to={fullPageHref}>
             <ExternalLink className="h-3.5 w-3.5" />
-            {readOnly ? "Open" : "Edit"}
+            Full page
           </Link>
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-3">
-          <Skeleton className="h-24 w-full rounded-2xl" />
-          <Skeleton className="h-16 w-full rounded-xl" />
-          <Skeleton className="h-16 w-full rounded-xl" />
+      {isInitialLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
       ) : showEmpty ? (
         <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
@@ -367,7 +492,7 @@ export function CalendarServiceFlowPanel({
             {readOnly
               ? "A rundown has not been generated for this service."
               : generateError ||
-                "Open the full Service Flow page to generate it from the template."}
+                "Generate from the template to start editing this rundown."}
           </p>
           {!readOnly ? (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -388,20 +513,60 @@ export function CalendarServiceFlowPanel({
                 Generate from Template
               </Button>
               <Button asChild size="sm" variant="outline">
-                <Link to={fullPageHref}>Open Service Flow</Link>
+                <Link to={fullPageHref}>Open full page</Link>
               </Button>
             </div>
           ) : null}
         </div>
       ) : (
-        <div className="calendar-service-flow-preview overflow-x-hidden">
-          <ServiceFlow
-            service={preview}
-            compactMode
-            showProgressBar={false}
-            className="max-w-none"
-          />
-        </div>
+        <>
+          <div className={cn("space-y-2", readOnly && "pointer-events-none")}>
+            {localItems.map((item, index) => (
+              <div
+                key={item.id}
+                draggable={!readOnly}
+                onDragStart={(e) => handleDragStart(e, item)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                className={cn(draggedItem?.id === item.id && "opacity-50")}
+              >
+                <ServiceFlowItem
+                  item={item}
+                  onUpdate={handleUpdateItem}
+                  onDelete={handleDeleteItem}
+                  isDragging={draggedItem?.id === item.id}
+                />
+              </div>
+            ))}
+          </div>
+
+          {!readOnly ? (
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => setIsAddDialogOpen(true)}
+                disabled={!activeFlowId}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Add Item
+              </Button>
+              <div className="text-sm font-medium">
+                <span className="text-muted-foreground">Total: </span>
+                <span>{formatTotalDuration(totalDuration)}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {!readOnly ? (
+            <AddItemDialog
+              open={isAddDialogOpen}
+              onOpenChange={setIsAddDialogOpen}
+              onAdd={handleAddItem}
+            />
+          ) : null}
+        </>
       )}
     </section>
   );
