@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -59,6 +59,7 @@ import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
+import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const EVENT_AUDIENCE_OPTIONS = [{
@@ -1028,7 +1029,12 @@ function StandardCalendar() {
 
   // Get events for selected date
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
-  const selectedDayServices = selectedDate ? getCustomServicesForDay(selectedDate.getDate()) : [];
+  const selectedDayServices = useMemo(
+    () => (selectedDateStr
+      ? customServices.filter((service) => service.occurrence_date === selectedDateStr)
+      : []),
+    [customServices, selectedDateStr],
+  );
   const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
   const selectedDayScheduleEntries = useMemo(
     () => selectedDate
@@ -1087,6 +1093,123 @@ function StandardCalendar() {
     selectedDayScheduleEntries,
     selectedDayServices.length,
   ]);
+
+  const inlineServiceFlowTargets = useMemo(() => {
+    if (!selectedDateStr || isCrossCampusReadOnly) return [];
+
+    if (selectedDayServices.length > 0) {
+      return selectedDayServices.map((service) => ({
+        id: `calendar-service-flow-${service.id}`,
+        date: service.occurrence_date || selectedDateStr,
+        campusId: service.campus_id,
+        ministryType: getEffectiveCustomServiceMinistryType(
+          service.ministry_type,
+          service.service_name,
+        ),
+        customServiceId: service.id,
+        draftSetId: null as string | null,
+        campusName: campuses.find((campus) => campus.id === service.campus_id)?.name || null,
+        label: service.service_name,
+      }));
+    }
+
+    const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
+    const sessionBase =
+      ministryFilter && isSessionSetMinistryType(ministryFilter)
+        ? normalizeSessionSetMinistryType(ministryFilter)
+        : null;
+
+    if (sessionBase) {
+      const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
+      const seenSessionTimes = new Set<string>();
+      const sessionEntries = selectedDayScheduleEntries
+        .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
+        .filter((entry) => {
+          const timeOfDay = entry.time_of_day;
+          if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
+          seenSessionTimes.add(timeOfDay);
+          return true;
+        })
+        .sort(
+          (a, b) =>
+            (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
+            (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
+        );
+
+      if (sessionEntries.length > 1) {
+        return sessionEntries.map((entry) => {
+          const timeOfDay = entry.time_of_day as string;
+          const variant = `${sessionBase}_${timeOfDay}`;
+          const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+          return {
+            id: `calendar-service-flow-${variant}`,
+            date: selectedDateStr,
+            campusId: sessionCampusId,
+            ministryType: variant,
+            customServiceId: null as string | null,
+            draftSetId: null as string | null,
+            campusName:
+              (sessionCampusId && campuses.find((campus) => campus.id === sessionCampusId)?.name) ||
+              null,
+            label: `${getMinistryLabel(sessionBase)} · ${sessionLabel}`,
+          };
+        });
+      }
+    }
+
+    if (!showHeaderServiceFlowButton) return [];
+
+    return [
+      {
+        id: "calendar-service-flow-panel",
+        date: selectedDateStr,
+        campusId: headerFlowCampusId,
+        ministryType: ministryFilter || "weekend",
+        customServiceId: null as string | null,
+        draftSetId: headerDraftSetId,
+        campusName:
+          (headerFlowCampusId &&
+            campuses.find((campus) => campus.id === headerFlowCampusId)?.name) ||
+          null,
+        label: getMinistryLabel(ministryFilter === "weekend_team" ? "weekend" : ministryFilter) || "Service",
+      },
+    ];
+  }, [
+    campuses,
+    campusFilter,
+    headerDraftSetId,
+    headerFlowCampusId,
+    isCrossCampusReadOnly,
+    ministryFilter,
+    selectedDateStr,
+    selectedDayScheduleEntries,
+    selectedDayServices,
+    showHeaderServiceFlowButton,
+  ]);
+
+  const scrollToServiceFlowPanel = useCallback((panelId = "calendar-service-flow-panel") => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(panelId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
+
+  const previousSelectedDateStrRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedDateStr || inlineServiceFlowTargets.length === 0) {
+      previousSelectedDateStrRef.current = selectedDateStr;
+      return;
+    }
+    if (previousSelectedDateStrRef.current === selectedDateStr) return;
+    previousSelectedDateStrRef.current = selectedDateStr;
+
+    const timer = window.setTimeout(() => {
+      scrollToServiceFlowPanel(inlineServiceFlowTargets[0].id);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [inlineServiceFlowTargets, scrollToServiceFlowPanel, selectedDateStr]);
 
   // Get team schedule for a specific day
   // Note: Midweek ministries (e.g. HS Worship) should still show even if the user isn't personally scheduled.
@@ -1555,7 +1678,11 @@ function StandardCalendar() {
                         {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
                       </h2>
                       {showHeaderServiceFlowButton && headerServiceFlowLink && (
-                        <ServiceFlowLinkButton to={headerServiceFlowLink} compact />
+                        <ServiceFlowLinkButton
+                          to={headerServiceFlowLink}
+                          compact
+                          onActivate={() => scrollToServiceFlowPanel("calendar-service-flow-panel")}
+                        />
                       )}
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
@@ -1859,6 +1986,7 @@ function StandardCalendar() {
                                   campusId={sessionCampusId}
                                   ministryFilter={variant}
                                   readOnly={isCrossCampusReadOnly}
+                                  serviceFlowPanelId={`calendar-service-flow-${variant}`}
                                 />
                                 <div className="mb-2">
                                   <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
@@ -2199,6 +2327,25 @@ function StandardCalendar() {
                 )}
               </div>;
         })()}
+
+          {selectedDate && inlineServiceFlowTargets.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {inlineServiceFlowTargets.map((target) => (
+                <CalendarServiceFlowPanel
+                  key={target.id}
+                  id={target.id}
+                  date={target.date}
+                  campusId={target.campusId}
+                  ministryType={target.ministryType}
+                  draftSetId={target.draftSetId}
+                  customServiceId={target.customServiceId}
+                  campusName={target.campusName}
+                  label={target.label}
+                  readOnly={isCrossCampusReadOnly}
+                />
+              ))}
+            </div>
+          ) : null}
 
           {isLoading && <div className="flex justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -3989,24 +4136,37 @@ function BandRoster({
 function ServiceFlowLinkButton({
   to,
   compact = false,
+  onActivate,
 }: {
   to: string;
   compact?: boolean;
+  onActivate?: () => void;
 }) {
-  return (
-    <Link
-      to={to}
-      className={
-        compact
-          ? "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
-          : "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700"
-      }
-    >
+  const className = compact
+    ? "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+    : "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700";
+
+  const content = (
+    <>
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-75"></span>
         <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200"></span>
       </span>
       Service Flow
+    </>
+  );
+
+  if (onActivate) {
+    return (
+      <button type="button" onClick={onActivate} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link to={to} className={className}>
+      {content}
     </Link>
   );
 }
@@ -4017,12 +4177,14 @@ function SongsPreview({
   ministryFilter,
   readOnly = false,
   hideServiceFlowButton = false,
+  serviceFlowPanelId,
 }: {
   date: Date;
   campusId?: string | null;
   ministryFilter?: string;
   readOnly?: boolean;
   hideServiceFlowButton?: boolean;
+  serviceFlowPanelId?: string | null;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -4062,7 +4224,19 @@ function SongsPreview({
               View only
             </Badge>
           ) : (
-            <ServiceFlowLinkButton to={serviceFlowLink} />
+            <ServiceFlowLinkButton
+              to={serviceFlowLink}
+              onActivate={
+                serviceFlowPanelId
+                  ? () => {
+                      document.getElementById(serviceFlowPanelId)?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }
+                  : undefined
+              }
+            />
           )}
         </div>
         )}
@@ -4122,6 +4296,12 @@ function CustomServiceSongsPreview({
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
   const serviceFlowLink = `/service-flow?date=${planDate}&campus=${campusId}&ministry=${effectiveMinistryType}&customServiceId=${customServiceId}${existingSet?.id ? `&draftSetId=${existingSet.id}` : ""}`;
+  const scrollToInlinePanel = () => {
+    document.getElementById(`calendar-service-flow-${customServiceId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
 
   if (isSetLoading || isSongsLoading) {
     return <div className="mb-4">
@@ -4135,7 +4315,7 @@ function CustomServiceSongsPreview({
     if (readOnly) return null;
 
     return <div className="mb-4 flex justify-end">
-        <ServiceFlowLinkButton to={serviceFlowLink} />
+        <ServiceFlowLinkButton to={serviceFlowLink} onActivate={scrollToInlinePanel} />
       </div>;
   }
 
@@ -4152,7 +4332,7 @@ function CustomServiceSongsPreview({
               View only
             </Badge>
           ) : (
-            <ServiceFlowLinkButton to={serviceFlowLink} />
+            <ServiceFlowLinkButton to={serviceFlowLink} onActivate={scrollToInlinePanel} />
           )}
         </div>
       </div>
