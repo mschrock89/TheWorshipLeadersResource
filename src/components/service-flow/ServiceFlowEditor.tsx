@@ -918,33 +918,6 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     };
   }, []);
 
-  // Clone one print sheet into the second half-sheet slot (avoids a second React tree).
-  useLayoutEffect(() => {
-    const pair = printPairRef.current;
-    if (!printMounted || !pair) {
-      printCloneRef.current = null;
-      return;
-    }
-
-    const source = pair.firstElementChild;
-    if (!(source instanceof HTMLElement)) return;
-
-    if (printCloneRef.current?.isConnected) {
-      printCloneRef.current.remove();
-    }
-
-    const clone = source.cloneNode(true) as HTMLElement;
-    clone.setAttribute("aria-hidden", "true");
-    clone.setAttribute("data-print-clone", "true");
-    pair.appendChild(clone);
-    printCloneRef.current = clone;
-
-    return () => {
-      printCloneRef.current?.remove();
-      printCloneRef.current = null;
-    };
-  }, [printMounted, servicePreview]);
-
   const createFlow = useCreateServiceFlow();
   const saveItem = useSaveServiceFlowItem();
   const deleteItem = useDeleteServiceFlowItem();
@@ -1431,6 +1404,34 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     serviceDateStr,
     totalDuration,
   ]);
+
+  // Clone one print sheet into the second half-sheet slot (avoids a second React tree).
+  // Must run after servicePreview is defined so the dependency array does not TDZ-crash render.
+  useLayoutEffect(() => {
+    const pair = printPairRef.current;
+    if (!printMounted || !pair) {
+      printCloneRef.current = null;
+      return;
+    }
+
+    const source = pair.firstElementChild;
+    if (!(source instanceof HTMLElement)) return;
+
+    if (printCloneRef.current?.isConnected) {
+      printCloneRef.current.remove();
+    }
+
+    const clone = source.cloneNode(true) as HTMLElement;
+    clone.setAttribute("aria-hidden", "true");
+    clone.setAttribute("data-print-clone", "true");
+    pair.appendChild(clone);
+    printCloneRef.current = clone;
+
+    return () => {
+      printCloneRef.current?.remove();
+      printCloneRef.current = null;
+    };
+  }, [printMounted, servicePreview]);
 
   return (
     <div className="service-flow-editor space-y-4">
