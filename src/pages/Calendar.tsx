@@ -1711,13 +1711,6 @@ function StandardCalendar() {
                       <h2 className="text-base sm:text-lg font-semibold leading-none text-foreground">
                         {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
                       </h2>
-                      {showHeaderServiceFlowButton && headerServiceFlowLink && (
-                        <ServiceFlowLinkButton
-                          to={headerServiceFlowLink}
-                          compact
-                          onActivate={() => scrollToServiceFlowPanel("calendar-service-flow-panel")}
-                        />
-                      )}
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
                       <X className="h-4 w-4" />
@@ -2020,7 +2013,6 @@ function StandardCalendar() {
                                   campusId={sessionCampusId}
                                   ministryFilter={variant}
                                   readOnly={isCrossCampusReadOnly}
-                                  serviceFlowPanelId={`calendar-service-flow-${variant}`}
                                 />
                                 <div className="mb-2">
                                   <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
@@ -2053,7 +2045,6 @@ function StandardCalendar() {
                         campusId={sessionCampusId}
                         ministryFilter={ministryFilter}
                         readOnly={isCrossCampusReadOnly}
-                        hideServiceFlowButton={showHeaderServiceFlowButton}
                       />
                       <div className="mb-2">
                         <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
@@ -4166,59 +4157,16 @@ function BandRoster({
     </div>;
 }
 
-// Songs Preview Component
-function ServiceFlowLinkButton({
-  to,
-  compact = false,
-  onActivate,
-}: {
-  to: string;
-  compact?: boolean;
-  onActivate?: () => void;
-}) {
-  const className = compact
-    ? "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
-    : "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white transition-colors hover:bg-red-700";
-
-  const content = (
-    <>
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-75"></span>
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200"></span>
-      </span>
-      Service Flow
-    </>
-  );
-
-  if (onActivate) {
-    return (
-      <button type="button" onClick={onActivate} className={className}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <Link to={to} className={className}>
-      {content}
-    </Link>
-  );
-}
-
 function SongsPreview({
   date,
   campusId,
   ministryFilter,
   readOnly = false,
-  hideServiceFlowButton = false,
-  serviceFlowPanelId,
 }: {
   date: Date;
   campusId?: string | null;
   ministryFilter?: string;
   readOnly?: boolean;
-  hideServiceFlowButton?: boolean;
-  serviceFlowPanelId?: string | null;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -4226,15 +4174,6 @@ function SongsPreview({
     isLoading
   } = useSongsForDate(dateStr, campusId, ministryFilter);
 
-  // Build service flow link with query params
-  const draftSetIds = plansWithSongs
-    .filter((plan) => (plan.songs || []).length > 0)
-    .map((plan) => plan.draft_set_id)
-    .filter((id): id is string => Boolean(id));
-  const draftSetId = draftSetIds.length === 1 ? draftSetIds[0] : null;
-  const serviceFlowCampusParam =
-    campusId && campusId !== "network-wide" ? `&campus=${campusId}` : "";
-  const serviceFlowLink = `/service-flow?date=${dateStr}${serviceFlowCampusParam}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${draftSetId ? `&draftSetId=${draftSetId}` : ""}`;
   if (isLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">
@@ -4246,34 +4185,16 @@ function SongsPreview({
   const allSongs = plansWithSongs.flatMap(p => p.songs || []);
   if (allSongs.length === 0) return null;
   return <div className="mb-4">
-      <div className={`mb-2 ${hideServiceFlowButton && !readOnly ? "" : "flex items-center justify-between"}`}>
+      <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
           <Music className="h-3.5 w-3.5" />
           Songs
         </h3>
-        {!hideServiceFlowButton && (
-        <div className="flex items-center gap-2">
-          {readOnly ? (
-            <Badge variant="outline" className="text-xs">
-              View only
-            </Badge>
-          ) : (
-            <ServiceFlowLinkButton
-              to={serviceFlowLink}
-              onActivate={
-                serviceFlowPanelId
-                  ? () => {
-                      document.getElementById(serviceFlowPanelId)?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }
-                  : undefined
-              }
-            />
-          )}
-        </div>
-        )}
+        {readOnly ? (
+          <Badge variant="outline" className="text-xs">
+            View only
+          </Badge>
+        ) : null}
       </div>
       <div className="space-y-1.5">
         {allSongs.slice(0, 6).map((song, index) => <div key={`${song.id}-${index}`} className="flex items-center justify-between text-sm py-1">
@@ -4329,13 +4250,6 @@ function CustomServiceSongsPreview({
 
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
-  const serviceFlowLink = `/service-flow?date=${planDate}&campus=${campusId}&ministry=${effectiveMinistryType}&customServiceId=${customServiceId}${existingSet?.id ? `&draftSetId=${existingSet.id}` : ""}`;
-  const scrollToInlinePanel = () => {
-    document.getElementById(`calendar-service-flow-${customServiceId}`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
 
   if (isSetLoading || isSongsLoading) {
     return <div className="mb-4">
@@ -4346,11 +4260,7 @@ function CustomServiceSongsPreview({
   }
 
   if (!existingSet || draftSongs.length === 0) {
-    if (readOnly) return null;
-
-    return <div className="mb-4 flex justify-end">
-        <ServiceFlowLinkButton to={serviceFlowLink} onActivate={scrollToInlinePanel} />
-      </div>;
+    return null;
   }
 
   return <div className="mb-4">
@@ -4365,9 +4275,7 @@ function CustomServiceSongsPreview({
             <Badge variant="outline" className="text-xs">
               View only
             </Badge>
-          ) : (
-            <ServiceFlowLinkButton to={serviceFlowLink} onActivate={scrollToInlinePanel} />
-          )}
+          ) : null}
         </div>
       </div>
       <div className="space-y-1.5">

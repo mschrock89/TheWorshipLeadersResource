@@ -12,6 +12,9 @@ import {
 } from "@/hooks/useServiceFlow";
 import { useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
+import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
+import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +25,12 @@ import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
 import { printServiceFlowDocument } from "./printServiceFlowDocument";
+import {
+  buildResolvedServiceFlowTitles,
+  buildScheduledRoleNames,
+  isLessonPlaceholderTitle,
+  isNamePlaceholderTitle,
+} from "./resolveServiceFlowPlaceholders";
 
 export type CalendarServiceFlowPanelProps = {
   date: string;
@@ -170,6 +179,28 @@ export function CalendarServiceFlowPanel({
 
   const resolvedDraftSetId = draftSetId || publishedDraftSetId;
 
+  const serviceDate = useMemo(() => {
+    const [year, month, day] = date.split("-").map(Number);
+    return new Date(year, (month || 1) - 1, day || 1);
+  }, [date]);
+
+  const { data: teachingWeek } = useTeachingWeekForDate(
+    flowCampusId,
+    effectiveMinistryType,
+    date,
+  );
+  const { data: scheduledTeam } = useScheduledTeamForDate(
+    serviceDate,
+    flowCampusId,
+    effectiveMinistryType,
+  );
+  const { data: scheduledRoster = [] } = useTeamRosterForDate(
+    serviceDate,
+    scheduledTeam?.teamId,
+    effectiveMinistryType,
+    flowCampusId,
+  );
+
   // Start flow lookup as soon as campus is ready — don't wait on draft-set resolution.
   const {
     data: serviceFlow,
@@ -203,6 +234,7 @@ export function CalendarServiceFlowPanel({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const hasAttemptedGenerate = useRef(false);
+  const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
   const localItemsRef = useRef<ServiceFlowItemType[]>([]);
@@ -219,6 +251,7 @@ export function CalendarServiceFlowPanel({
     if (contextKeyRef.current === contextKey) return;
     contextKeyRef.current = contextKey;
     hasAttemptedGenerate.current = false;
+    syncedPlaceholderIdsRef.current = new Set();
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
@@ -432,6 +465,80 @@ export function CalendarServiceFlowPanel({
     [localItems],
   );
 
+  const scheduledRoleNames = useMemo(
+    () => buildScheduledRoleNames(scheduledRoster),
+    [scheduledRoster],
+  );
+
+  const resolvedItemTitlesById = useMemo(
+    () =>
+      buildResolvedServiceFlowTitles(localItems, scheduledRoleNames, {
+        announcerName: teachingWeek?.announcer_name,
+        teacherName: teachingWeek?.teacher_name,
+      }),
+    [
+      localItems,
+      scheduledRoleNames,
+      teachingWeek?.announcer_name,
+      teachingWeek?.teacher_name,
+    ],
+  );
+
+  // Persist resolved announcement/teacher names into the flow so Print and future
+  // loads show the person, not "Name Place Holder". Re-runs when roster/teaching
+  // data arrives later (tracked per item id).
+  useEffect(() => {
+    if (readOnly || !activeFlowId || localItems.length === 0) return;
+
+    const updates: Array<{ id: string; title: string }> = [];
+    for (const item of localItems) {
+      if (item.item_type === "header") continue;
+      if (syncedPlaceholderIdsRef.current.has(item.id)) continue;
+      const resolved = resolvedItemTitlesById.get(item.id);
+      if (!resolved || resolved === item.title) continue;
+      if (!isNamePlaceholderTitle(item.title) && !isLessonPlaceholderTitle(item.title)) {
+        continue;
+      }
+      updates.push({ id: item.id, title: resolved });
+    }
+
+    if (updates.length === 0) return;
+
+    for (const update of updates) {
+      syncedPlaceholderIdsRef.current.add(update.id);
+    }
+
+    void (async () => {
+      for (const update of updates) {
+        const item = localItemsRef.current.find((entry) => entry.id === update.id);
+        if (!item) continue;
+        try {
+          await saveItem.mutateAsync({
+            id: item.id,
+            service_flow_id: activeFlowId,
+            item_type: item.item_type,
+            title: update.title,
+            duration_seconds: item.duration_seconds,
+            sequence_order: item.sequence_order,
+            song_id: item.song_id,
+            song_key: item.song_key,
+            vocalist_id: item.vocalist_id,
+            notes: item.notes,
+          });
+        } catch (error) {
+          console.error("Failed to sync placeholder title:", error);
+          syncedPlaceholderIdsRef.current.delete(update.id);
+        }
+      }
+      setLocalItems((current) =>
+        current.map((item) => {
+          const nextTitle = updates.find((update) => update.id === item.id)?.title;
+          return nextTitle ? { ...item, title: nextTitle } : item;
+        }),
+      );
+    })();
+  }, [activeFlowId, localItems, readOnly, resolvedItemTitlesById, saveItem]);
+
   const handlePrint = useCallback(() => {
     if (localItems.length === 0 || isPrinting) return;
 
@@ -445,6 +552,11 @@ export function CalendarServiceFlowPanel({
         campusName,
         ministryType: effectiveMinistryType,
         title: ministryLabel,
+        resolveTitle: (item, sectionTitle) =>
+          resolvedItemTitlesById.get(item.id) ||
+          item.song?.title ||
+          item.title ||
+          sectionTitle,
       });
       printServiceFlowDocument(preview);
     } catch (error) {
@@ -459,6 +571,7 @@ export function CalendarServiceFlowPanel({
     isPrinting,
     localItems,
     ministryLabel,
+    resolvedItemTitlesById,
   ]);
 
   // Show the editor as soon as we have items — don't block on background refetch/draft lookup.
@@ -556,6 +669,7 @@ export function CalendarServiceFlowPanel({
                   item={item}
                   onUpdate={handleUpdateItem}
                   onDelete={handleDeleteItem}
+                  displayTitle={resolvedItemTitlesById.get(item.id)}
                   isDragging={draggedItem?.id === item.id}
                 />
               </div>
