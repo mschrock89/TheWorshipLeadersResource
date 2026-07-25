@@ -115,10 +115,13 @@ function MainContent({ children }: { children: React.ReactNode }) {
   // leaves a dead strip above the tab bar.
   const isHome = location.pathname === "/";
 
-  // Service Flow print/export can leave a documentElement class that blanks the UI
-  // if afterprint never fires. Clear it on every route change.
+  // Service Flow print/export can leave documentElement classes that blank the UI
+  // if afterprint never fires. Clear them on mount and every route change.
   useLayoutEffect(() => {
-    document.documentElement.classList.remove("service-flow-export-mode");
+    document.documentElement.classList.remove(
+      "service-flow-export-mode",
+      "calendar-service-flow-printing",
+    );
   }, [location.pathname]);
 
   // Home uses the LARGE viewport (100vh) instead of the dynamic one (100dvh):
