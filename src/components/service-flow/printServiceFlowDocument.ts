@@ -39,7 +39,7 @@ function splitServiceTitle(title: string) {
   return { primary: title.trim(), secondary: null as string | null };
 }
 
-function buildPrintHtml(service: Service) {
+export function buildPrintHtml(service: Service) {
   const { primary, secondary } = splitServiceTitle(service.title);
   const formattedDate = formatServiceDate(service.date);
 
@@ -117,6 +117,9 @@ function buildPrintHtml(service: Service) {
       font-size: 14px;
       line-height: 1.45;
       padding: 0.2in;
+      /* Exactly one landscape-letter page; anything taller is scaled down to fit. */
+      height: 8.5in;
+      overflow: hidden;
     }
 
     .pair {
@@ -124,13 +127,13 @@ function buildPrintHtml(service: Service) {
       grid-template-columns: 1fr 1fr;
       gap: 0.22in;
       align-items: stretch;
+      height: 100%;
     }
 
     .sheet {
       border: 1px solid ${BRAND.line};
       border-radius: 10px;
       overflow: hidden;
-      min-height: 7.5in;
       height: 100%;
       display: flex;
       flex-direction: column;
@@ -323,8 +326,10 @@ export function printServiceFlowDocument(service: Service) {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "Service Flow Print");
   iframe.setAttribute("aria-hidden", "true");
+  // Match the printed page size (letter landscape at 96dpi) so on-screen layout
+  // measurements agree with the print layout. Kept invisible and inert.
   iframe.style.cssText =
-    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+    "position:fixed;right:0;bottom:0;width:11in;height:8.5in;border:0;opacity:0;visibility:hidden;pointer-events:none;";
   document.body.appendChild(iframe);
 
   const frameWindow = iframe.contentWindow;
@@ -348,14 +353,56 @@ export function printServiceFlowDocument(service: Service) {
 
   frameWindow.addEventListener("afterprint", cleanup);
 
-  // Wait one frame so the iframe document paints before the print dialog.
-  frameWindow.requestAnimationFrame(() => {
-    try {
-      frameWindow.focus();
-      frameWindow.print();
-    } finally {
-      // Fallback if afterprint never fires (some WebViews).
-      window.setTimeout(cleanup, 2000);
+  // If the sheets are taller than one page, shrink them uniformly so the whole
+  // flow always prints on a single landscape-letter page. `zoom` (unlike
+  // transform) affects layout, so the second page disappears entirely; the
+  // width is compensated so both columns still span the full page.
+  const fitSheetsToOnePage = () => {
+    const pair = frameDocument.querySelector<HTMLElement>(".pair");
+    if (!pair) return;
+    const bodyStyle = frameWindow.getComputedStyle(frameDocument.body);
+    const available =
+      frameDocument.body.clientHeight -
+      parseFloat(bodyStyle.paddingTop) -
+      parseFloat(bodyStyle.paddingBottom);
+
+    // The sheets clip their own overflow, so the natural content height is only
+    // measurable with the page-height constraint released.
+    pair.style.height = "auto";
+    const needed = pair.scrollHeight;
+
+    if (needed <= available || available <= 0) {
+      pair.style.height = "";
+      return;
     }
+
+    const scale = (available / needed) * 0.995;
+    pair.style.width = `${(100 / scale).toFixed(4)}%`;
+    pair.style.setProperty("zoom", scale.toFixed(4));
+  };
+
+  // Wait for the web fonts so the fit measurement (and the printout) use the
+  // final glyph metrics; cap the wait so printing never hangs on a slow font.
+  const fontsReady: Promise<unknown> = frameDocument.fonts
+    ? Promise.race([
+        frameDocument.fonts.ready,
+        new Promise((resolve) => window.setTimeout(resolve, 1500)),
+      ])
+    : Promise.resolve();
+
+  fontsReady.then(() => {
+    // One frame to lay out with the loaded fonts, another to apply the fit.
+    frameWindow.requestAnimationFrame(() => {
+      fitSheetsToOnePage();
+      frameWindow.requestAnimationFrame(() => {
+        try {
+          frameWindow.focus();
+          frameWindow.print();
+        } finally {
+          // Fallback if afterprint never fires (some WebViews).
+          window.setTimeout(cleanup, 2000);
+        }
+      });
+    });
   });
 }
