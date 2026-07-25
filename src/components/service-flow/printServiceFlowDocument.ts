@@ -114,23 +114,24 @@ function buildPrintHtml(service: Service) {
 
     body {
       font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 10.5px;
-      line-height: 1.3;
-      padding: 0.28in;
+      font-size: 14px;
+      line-height: 1.45;
+      padding: 0.2in;
     }
 
     .pair {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0.22in;
-      align-items: start;
+      align-items: stretch;
     }
 
     .sheet {
       border: 1px solid ${BRAND.line};
       border-radius: 10px;
       overflow: hidden;
-      min-height: 7.35in;
+      min-height: 7.5in;
+      height: 100%;
       display: flex;
       flex-direction: column;
     }
@@ -139,16 +140,16 @@ function buildPrintHtml(service: Service) {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 0.12in;
-      padding: 0.14in 0.16in 0.12in;
+      gap: 0.16in;
+      padding: 0.2in 0.2in 0.18in;
       background: linear-gradient(135deg, ${BRAND.sectionBg} 0%, #fff 100%);
       border-bottom: 2px solid ${BRAND.blueDark};
     }
 
     .sheet-kicker {
-      margin: 0 0 2px;
+      margin: 0 0 5px;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 8px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.18em;
       text-transform: uppercase;
@@ -159,12 +160,12 @@ function buildPrintHtml(service: Service) {
       margin: 0;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
       font-size: 0;
-      line-height: 1.05;
+      line-height: 1.08;
     }
 
     .sheet-title-primary {
       display: block;
-      font-size: 20px;
+      font-size: 28px;
       font-weight: 800;
       letter-spacing: -0.02em;
       color: ${BRAND.blueDark};
@@ -172,8 +173,8 @@ function buildPrintHtml(service: Service) {
 
     .sheet-title-secondary {
       display: block;
-      margin-top: 1px;
-      font-size: 13px;
+      margin-top: 4px;
+      font-size: 17px;
       font-weight: 600;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -181,8 +182,8 @@ function buildPrintHtml(service: Service) {
     }
 
     .sheet-date {
-      margin: 4px 0 0;
-      font-size: 10px;
+      margin: 8px 0 0;
+      font-size: 14px;
       font-weight: 600;
       color: ${BRAND.muted};
     }
@@ -190,13 +191,13 @@ function buildPrintHtml(service: Service) {
     .sheet-total {
       flex-shrink: 0;
       text-align: right;
-      padding-top: 2px;
+      padding-top: 4px;
     }
 
     .sheet-total-label {
       margin: 0;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 7.5px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.14em;
       text-transform: uppercase;
@@ -204,9 +205,9 @@ function buildPrintHtml(service: Service) {
     }
 
     .sheet-total-value {
-      margin: 2px 0 0;
+      margin: 5px 0 0;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 15px;
+      font-size: 22px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
       color: ${BRAND.ink};
@@ -214,23 +215,32 @@ function buildPrintHtml(service: Service) {
 
     .sheet-body {
       flex: 1 1 auto;
-      padding: 0.1in 0.14in 0.14in;
+      padding: 0.16in 0.18in 0.2in;
       display: flex;
       flex-direction: column;
-      gap: 0.08in;
+      justify-content: space-between;
+      gap: 0.16in;
+      min-height: 0;
+    }
+
+    .section {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .section-title {
-      margin: 0 0 0.03in;
-      padding: 0.03in 0.06in;
+      margin: 0 0 0.08in;
+      padding: 0.06in 0.1in;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 8.5px;
+      font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: ${BRAND.blueDark};
       background: ${BRAND.sectionBg};
-      border-left: 3px solid ${BRAND.blue};
+      border-left: 4px solid ${BRAND.blue};
       border-radius: 0 4px 4px 0;
     }
 
@@ -238,14 +248,18 @@ function buildPrintHtml(service: Service) {
       list-style: none;
       margin: 0;
       padding: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
     }
 
     .item {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 0.08in;
-      padding: 0.045in 0;
+      gap: 0.12in;
+      padding: 0.09in 0;
       border-bottom: 1px solid ${BRAND.line};
     }
 
@@ -256,32 +270,33 @@ function buildPrintHtml(service: Service) {
     .item-main {
       min-width: 0;
       display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0.04in 0.06in;
+      flex-direction: column;
+      gap: 0.04in;
     }
 
     .item-title {
-      font-size: 11px;
+      font-size: 15px;
       font-weight: 700;
+      line-height: 1.25;
       color: ${BRAND.ink};
     }
 
     .item-meta {
-      font-size: 9.5px;
+      font-size: 13px;
       font-weight: 500;
+      line-height: 1.35;
       color: ${BRAND.muted};
     }
 
     .item-duration {
       flex-shrink: 0;
-      min-width: 0.42in;
-      padding: 0.02in 0.05in;
+      min-width: 0.54in;
+      padding: 0.04in 0.07in;
       border: 1px solid ${BRAND.line};
       border-radius: 999px;
       background: #fff;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 9px;
+      font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       text-align: center;
