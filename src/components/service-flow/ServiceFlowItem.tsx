@@ -124,7 +124,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
         data-flow-item-type={item.item_type}
         data-flow-item-title={printTitleSlug}
         className={cn(
-          "flex items-center gap-2 px-3 py-2 bg-card border rounded-md",
+          "flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 bg-card border rounded-md",
           isDragging && "opacity-50 shadow-lg"
         )}
       >
@@ -144,26 +144,28 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
         <span className="service-flow-song-title flex-1 min-w-0 font-medium text-sm truncate">
           {resolvedTitle}
         </span>
-        <div className="service-flow-song-meta ml-auto flex items-center justify-end gap-2 text-right">
-          {item.song?.bpm && (
-            <span className="service-flow-song-bpm text-xs text-muted-foreground font-medium whitespace-nowrap">
-              {item.song.bpm} BPM
-            </span>
-          )}
-          {item.song_key && (
-            <Badge
-              variant="outline"
-              className="service-flow-song-key min-w-[2rem] justify-center border-foreground bg-background px-2 text-xs font-semibold leading-none text-foreground"
-            >
-              {item.song_key}
-            </Badge>
-          )}
-          {vocalistDisplay && (
-            <span className="service-flow-song-vocalist text-xs text-muted-foreground whitespace-nowrap">
-              {vocalistDisplay}
-            </span>
-          )}
-        </div>
+        {(item.song?.bpm || item.song_key || vocalistDisplay) && (
+          <div className="service-flow-song-meta order-last flex w-full min-w-0 items-center gap-2 pl-6 sm:order-none sm:ml-auto sm:w-auto sm:justify-end sm:pl-0 sm:text-right">
+            {item.song?.bpm && (
+              <span className="service-flow-song-bpm text-xs text-muted-foreground font-medium whitespace-nowrap">
+                {item.song.bpm} BPM
+              </span>
+            )}
+            {item.song_key && (
+              <Badge
+                variant="outline"
+                className="service-flow-song-key min-w-[2rem] justify-center border-foreground bg-background px-2 text-xs font-semibold leading-none text-foreground"
+              >
+                {item.song_key}
+              </Badge>
+            )}
+            {vocalistDisplay && (
+              <span className="service-flow-song-vocalist min-w-0 truncate text-xs text-muted-foreground whitespace-nowrap">
+                {vocalistDisplay}
+              </span>
+            )}
+          </div>
+        )}
         <Button
           variant="ghost"
           size="icon"
