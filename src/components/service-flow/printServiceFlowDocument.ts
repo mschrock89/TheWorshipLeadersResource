@@ -1,5 +1,16 @@
 import type { Service } from "./ServiceFlow";
 
+const BRAND = {
+  blue: "#35B0E5",
+  blueDark: "#27749D",
+  teal: "#008DB3",
+  yellow: "#FFB838",
+  ink: "#0f172a",
+  muted: "#64748b",
+  line: "#e2e8f0",
+  sectionBg: "#f1f5f9",
+} as const;
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -8,37 +19,72 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+function formatServiceDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function splitServiceTitle(title: string) {
+  const match = title.match(/^(.+?)\s+(Worship|Service|Night)$/i);
+  if (match) {
+    return { primary: match[1].trim(), secondary: match[2] };
+  }
+  return { primary: title.trim(), secondary: null as string | null };
+}
+
 function buildPrintHtml(service: Service) {
+  const { primary, secondary } = splitServiceTitle(service.title);
+  const formattedDate = formatServiceDate(service.date);
+
   const sectionsHtml = service.sections
     .map((section) => {
       const itemsHtml = section.items
         .map((item) => {
-          const meta = [item.key ? `Key ${escapeHtml(item.key)}` : "", item.leader ? escapeHtml(item.leader) : ""]
-            .filter(Boolean)
-            .join(" · ");
-          return `<tr>
-            <td class="title">${escapeHtml(item.title)}${meta ? `<div class="meta">${meta}</div>` : ""}</td>
-            <td class="duration">${escapeHtml(item.duration || "")}</td>
-          </tr>`;
+          const metaParts = [
+            typeof item.bpm === "number" ? `${item.bpm} BPM` : "",
+            item.key ? `Key ${escapeHtml(item.key)}` : "",
+            item.leader ? escapeHtml(item.leader) : "",
+          ].filter(Boolean);
+
+          return `<li class="item">
+            <div class="item-main">
+              <span class="item-title">${escapeHtml(item.title)}</span>
+              ${metaParts.length > 0 ? `<span class="item-meta">${metaParts.join(" · ")}</span>` : ""}
+            </div>
+            <span class="item-duration">${escapeHtml(item.duration || "")}</span>
+          </li>`;
         })
         .join("");
 
       return `<section class="section">
-        <h2>${escapeHtml(section.title)}</h2>
-        <table>
-          <tbody>${itemsHtml}</tbody>
-        </table>
+        <h2 class="section-title">${escapeHtml(section.title)}</h2>
+        <ul class="items">${itemsHtml}</ul>
       </section>`;
     })
     .join("");
 
-  // Dual half-sheet copies for fold-over printing, self-contained (no app CSS).
   const sheet = `<article class="sheet">
-    <header>
-      <h1>${escapeHtml(service.title)}</h1>
-      <p>${escapeHtml(service.date)} · Total ${escapeHtml(service.totalTime)}</p>
+    <header class="sheet-header">
+      <div class="sheet-heading">
+        <p class="sheet-kicker">Service Flow</p>
+        <h1 class="sheet-title">
+          <span class="sheet-title-primary">${escapeHtml(primary)}</span>${secondary ? `<span class="sheet-title-secondary">${escapeHtml(secondary)}</span>` : ""}
+        </h1>
+        <p class="sheet-date">${escapeHtml(formattedDate)}</p>
+      </div>
+      <div class="sheet-total">
+        <p class="sheet-total-label">Total</p>
+        <p class="sheet-total-value">${escapeHtml(service.totalTime)}</p>
+      </div>
     </header>
-    ${sectionsHtml}
+    <div class="sheet-body">${sectionsHtml}</div>
   </article>`;
 
   return `<!DOCTYPE html>
@@ -46,43 +92,201 @@ function buildPrintHtml(service: Service) {
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(service.title)} Service Flow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    @page { size: letter landscape; margin: 0.35in; }
-    * { box-sizing: border-box; }
-    body {
+    @page {
+      size: letter landscape;
       margin: 0;
-      font: 11px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #111;
-      background: #fff;
     }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: ${BRAND.ink};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 10.5px;
+      line-height: 1.3;
+      padding: 0.28in;
+    }
+
     .pair {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.25in;
+      gap: 0.22in;
       align-items: start;
     }
+
     .sheet {
-      border: 1.5px solid #222;
-      padding: 0.12in 0.14in;
-      min-height: 7.5in;
+      border: 1px solid ${BRAND.line};
+      border-radius: 10px;
+      overflow: hidden;
+      min-height: 7.35in;
+      display: flex;
+      flex-direction: column;
     }
-    header { margin-bottom: 0.08in; padding-bottom: 0.06in; border-bottom: 1px solid #333; }
-    h1 { margin: 0; font-size: 16px; }
-    header p { margin: 2px 0 0; font-size: 11px; color: #333; }
-    .section { margin-top: 0.08in; }
-    .section h2 {
-      margin: 0 0 0.04in;
-      font-size: 11px;
+
+    .sheet-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.12in;
+      padding: 0.14in 0.16in 0.12in;
+      background: linear-gradient(135deg, ${BRAND.sectionBg} 0%, #fff 100%);
+      border-bottom: 2px solid ${BRAND.blueDark};
+    }
+
+    .sheet-kicker {
+      margin: 0 0 2px;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      border-bottom: 1px solid #999;
-      padding-bottom: 2px;
+      color: ${BRAND.blue};
     }
-    table { width: 100%; border-collapse: collapse; }
-    td { padding: 3px 2px; vertical-align: top; border-bottom: 1px solid #ddd; }
-    td.title { width: 100%; }
-    td.duration { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; padding-left: 8px; }
-    .meta { font-size: 10px; color: #555; margin-top: 1px; }
+
+    .sheet-title {
+      margin: 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 0;
+      line-height: 1.05;
+    }
+
+    .sheet-title-primary {
+      display: block;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: ${BRAND.blueDark};
+    }
+
+    .sheet-title-secondary {
+      display: block;
+      margin-top: 1px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: ${BRAND.teal};
+    }
+
+    .sheet-date {
+      margin: 4px 0 0;
+      font-size: 10px;
+      font-weight: 600;
+      color: ${BRAND.muted};
+    }
+
+    .sheet-total {
+      flex-shrink: 0;
+      text-align: right;
+      padding-top: 2px;
+    }
+
+    .sheet-total-label {
+      margin: 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: ${BRAND.muted};
+    }
+
+    .sheet-total-value {
+      margin: 2px 0 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: ${BRAND.ink};
+    }
+
+    .sheet-body {
+      flex: 1 1 auto;
+      padding: 0.1in 0.14in 0.14in;
+      display: flex;
+      flex-direction: column;
+      gap: 0.08in;
+    }
+
+    .section-title {
+      margin: 0 0 0.03in;
+      padding: 0.03in 0.06in;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: ${BRAND.blueDark};
+      background: ${BRAND.sectionBg};
+      border-left: 3px solid ${BRAND.blue};
+      border-radius: 0 4px 4px 0;
+    }
+
+    .items {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.08in;
+      padding: 0.045in 0;
+      border-bottom: 1px solid ${BRAND.line};
+    }
+
+    .item:last-child {
+      border-bottom: none;
+    }
+
+    .item-main {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.04in 0.06in;
+    }
+
+    .item-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: ${BRAND.ink};
+    }
+
+    .item-meta {
+      font-size: 9.5px;
+      font-weight: 500;
+      color: ${BRAND.muted};
+    }
+
+    .item-duration {
+      flex-shrink: 0;
+      min-width: 0.42in;
+      padding: 0.02in 0.05in;
+      border: 1px solid ${BRAND.line};
+      border-radius: 999px;
+      background: #fff;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      color: ${BRAND.ink};
+    }
   </style>
 </head>
 <body>
