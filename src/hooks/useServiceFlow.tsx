@@ -64,6 +64,22 @@ export interface ServiceFlowItem {
   }>;
 }
 
+// Flow lookup select that embeds the flow's items (with songs and vocalists) so the
+// panel can render in a single round trip instead of waiting flow -> items.
+const FLOW_WITH_ITEMS_SELECT = `
+  *,
+  service_flow_items(
+    *,
+    song:songs(id, title, author, bpm),
+    vocalist:profiles!service_flow_items_vocalist_id_fkey(id, full_name, avatar_url),
+    service_flow_item_vocalists(
+      vocalist:profiles(id, full_name, avatar_url)
+    )
+  )
+`;
+
+type ServiceFlowWithItemRows = ServiceFlow & { service_flow_items?: any[] };
+
 export function useServiceFlow(
   campusId: string | null,
   ministryType: string,
@@ -71,6 +87,8 @@ export function useServiceFlow(
   draftSetId?: string | null,
   customServiceId?: string | null
 ) {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: ["service-flow", campusId, ministryType, serviceDate, draftSetId || null, customServiceId || null],
     staleTime: 30_000,
@@ -78,73 +96,103 @@ export function useServiceFlow(
       if (!campusId || !serviceDate) return null;
 
       const fetchSingle = async (
-        builder: ReturnType<typeof supabase.from<"service_flows", ServiceFlow>>
-      ) => {
-        const { data, error } = await builder
-          .select("*")
+        applyFilters: (query: any) => any,
+      ): Promise<ServiceFlowWithItemRows | null> => {
+        // Prefer one round trip with items embedded; fall back to the flow row alone
+        // if the nested embed is unavailable.
+        const nested = await applyFilters(
+          supabase.from("service_flows").select(FLOW_WITH_ITEMS_SELECT),
+        )
           .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (error) throw error;
-        return (data as ServiceFlow | null) || null;
+        if (!nested.error) {
+          return (nested.data as ServiceFlowWithItemRows | null) || null;
+        }
+
+        const plain = await applyFilters(supabase.from("service_flows").select("*"))
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (plain.error) throw plain.error;
+        return (plain.data as ServiceFlowWithItemRows | null) || null;
       };
 
-      // 1) Prefer exact draft-set linkage when available.
-      if (draftSetId) {
-        const byDraftSet = await fetchSingle(
-          supabase.from("service_flows").eq("draft_set_id", draftSetId)
-        );
-        if (byDraftSet) {
-          // For custom-service contexts, guard against legacy/mismatched draft-set links
-          // (e.g. Prayer Night custom service accidentally linked to a weekend flow).
-          // Also reject cross-session matches (Morning draft set must not return an Evening flow).
-          const byDraftSetCustomServiceId =
-            (byDraftSet as { custom_service_id?: string | null }).custom_service_id ?? null;
-          const byDraftSetMinistryType =
-            (byDraftSet as { ministry_type?: string | null }).ministry_type ?? null;
-          const ministryMatches =
-            !byDraftSetMinistryType || byDraftSetMinistryType === ministryType;
-
-          if (customServiceId) {
-            const customServiceMatches = byDraftSetCustomServiceId === customServiceId;
-            if (customServiceMatches && ministryMatches) {
-              return byDraftSet;
-            }
-          } else if (ministryMatches) {
-            return byDraftSet;
-          }
+      // Seed the items cache from the embedded rows so useServiceFlowItems resolves
+      // instantly instead of issuing a second round trip.
+      const finalize = (flow: ServiceFlowWithItemRows | null): ServiceFlow | null => {
+        if (!flow) return null;
+        const { service_flow_items: itemRows, ...rest } = flow;
+        if (Array.isArray(itemRows)) {
+          queryClient.setQueryData(
+            ["service-flow-items", rest.id],
+            mapNestedItemRows(itemRows),
+          );
         }
-      }
+        return rest as ServiceFlow;
+      };
 
-      // 2) For custom services, try custom-service scoped flow.
-      if (customServiceId) {
-        try {
-          const byCustomService = await fetchSingle(
-            supabase
-              .from("service_flows")
+      // Fire the primary lookups in parallel; precedence is applied once both resolve.
+      const byDraftSetPromise: Promise<ServiceFlowWithItemRows | null> = draftSetId
+        ? fetchSingle((q) => q.eq("draft_set_id", draftSetId))
+        : Promise.resolve(null);
+
+      const scopedPromise: Promise<ServiceFlowWithItemRows | null> = customServiceId
+        ? fetchSingle((q) =>
+            q
               .eq("campus_id", campusId)
               .eq("ministry_type", ministryType)
               .eq("service_date", serviceDate)
-              .eq("custom_service_id", customServiceId)
-          );
-          if (byCustomService) return byCustomService;
-        } catch (error) {
-          if (!isMissingServiceFlowCustomServiceColumn(error)) {
+              .eq("custom_service_id", customServiceId),
+          ).catch((error) => {
+            if (isMissingServiceFlowCustomServiceColumn(error)) return null;
             throw error;
+          })
+        : fetchSingle((q) =>
+            q
+              .eq("campus_id", campusId)
+              .eq("ministry_type", ministryType)
+              .eq("service_date", serviceDate),
+          );
+
+      const [byDraftSet, scoped] = await Promise.all([byDraftSetPromise, scopedPromise]);
+
+      // 1) Prefer exact draft-set linkage when available.
+      if (byDraftSet) {
+        // For custom-service contexts, guard against legacy/mismatched draft-set links
+        // (e.g. Prayer Night custom service accidentally linked to a weekend flow).
+        // Also reject cross-session matches (Morning draft set must not return an Evening flow).
+        const byDraftSetCustomServiceId =
+          (byDraftSet as { custom_service_id?: string | null }).custom_service_id ?? null;
+        const byDraftSetMinistryType =
+          (byDraftSet as { ministry_type?: string | null }).ministry_type ?? null;
+        const ministryMatches =
+          !byDraftSetMinistryType || byDraftSetMinistryType === ministryType;
+
+        if (customServiceId) {
+          const customServiceMatches = byDraftSetCustomServiceId === customServiceId;
+          if (customServiceMatches && ministryMatches) {
+            return finalize(byDraftSet);
           }
+        } else if (ministryMatches) {
+          return finalize(byDraftSet);
         }
+      }
+
+      // 2) For custom services, use the custom-service scoped flow.
+      if (customServiceId) {
+        if (scoped) return finalize(scoped);
 
         if (ministryType === "prayer_night" || ministryType === "kids_camp") {
           try {
-            const legacySpecialtyCustom = await fetchSingle(
-              supabase
-                .from("service_flows")
+            const legacySpecialtyCustom = await fetchSingle((q) =>
+              q
                 .eq("campus_id", campusId)
                 .eq("ministry_type", "weekend")
                 .eq("service_date", serviceDate)
-                .eq("custom_service_id", customServiceId)
+                .eq("custom_service_id", customServiceId),
             );
-            if (legacySpecialtyCustom) return legacySpecialtyCustom;
+            if (legacySpecialtyCustom) return finalize(legacySpecialtyCustom);
           } catch (error) {
             if (!isMissingServiceFlowCustomServiceColumn(error)) {
               throw error;
@@ -161,14 +209,7 @@ export function useServiceFlow(
       }
 
       // 3) Legacy fallback: older flows were only campus+ministry+date scoped.
-      const legacy = await fetchSingle(
-        supabase
-          .from("service_flows")
-          .eq("campus_id", campusId)
-          .eq("ministry_type", ministryType)
-          .eq("service_date", serviceDate)
-      );
-      if (legacy) return legacy;
+      if (scoped) return finalize(scoped);
 
       // 3b) Session ministries (Student Camp Morning/Evening): resolve via the published
       // draft set for this session. Flows are often opened from Calendar without draftSetId
@@ -191,10 +232,10 @@ export function useServiceFlow(
           .maybeSingle();
 
         if (publishedSet?.id) {
-          const byPublishedSet = await fetchSingle(
-            supabase.from("service_flows").eq("draft_set_id", publishedSet.id)
+          const byPublishedSet = await fetchSingle((q) =>
+            q.eq("draft_set_id", publishedSet.id),
           );
-          if (byPublishedSet) return byPublishedSet;
+          if (byPublishedSet) return finalize(byPublishedSet);
         }
       }
 
@@ -202,15 +243,14 @@ export function useServiceFlow(
       if (ministryType === "prayer_night") {
         if (customServiceId) {
           try {
-            const legacyPrayerCustom = await fetchSingle(
-              supabase
-                .from("service_flows")
+            const legacyPrayerCustom = await fetchSingle((q) =>
+              q
                 .eq("campus_id", campusId)
                 .eq("ministry_type", "weekend")
                 .eq("service_date", serviceDate)
-                .eq("custom_service_id", customServiceId)
+                .eq("custom_service_id", customServiceId),
             );
-            if (legacyPrayerCustom) return legacyPrayerCustom;
+            if (legacyPrayerCustom) return finalize(legacyPrayerCustom);
           } catch (error) {
             if (!isMissingServiceFlowCustomServiceColumn(error)) {
               throw error;
@@ -218,14 +258,13 @@ export function useServiceFlow(
           }
         }
 
-        const legacyPrayerGeneral = await fetchSingle(
-          supabase
-            .from("service_flows")
+        const legacyPrayerGeneral = await fetchSingle((q) =>
+          q
             .eq("campus_id", campusId)
             .eq("ministry_type", "weekend")
-            .eq("service_date", serviceDate)
+            .eq("service_date", serviceDate),
         );
-        if (legacyPrayerGeneral) return legacyPrayerGeneral;
+        if (legacyPrayerGeneral) return finalize(legacyPrayerGeneral);
       }
 
       return null;
@@ -255,6 +294,31 @@ function mapServiceFlowItemsWithVocalists(
   });
 }
 
+// Map rows that came back with nested `service_flow_item_vocalists` embeds
+// (from either the items query or the flow query's embedded items).
+function mapNestedItemRows(rows: any[]): ServiceFlowItem[] {
+  const sorted = [...rows].sort(
+    (a, b) => (a.sequence_order ?? 0) - (b.sequence_order ?? 0),
+  );
+  const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
+  for (const row of sorted) {
+    const linked: Array<{ id: string; full_name: string | null; avatar_url: string | null }> = [];
+    for (const junction of row.service_flow_item_vocalists || []) {
+      const vocalist = junction?.vocalist;
+      if (!vocalist?.id) continue;
+      if (!linked.some((entry) => entry.id === vocalist.id)) {
+        linked.push({
+          id: vocalist.id,
+          full_name: vocalist.full_name,
+          avatar_url: vocalist.avatar_url,
+        });
+      }
+    }
+    byItemId.set(row.id, linked);
+  }
+  return mapServiceFlowItemsWithVocalists(sorted, byItemId);
+}
+
 export function useServiceFlowItems(serviceFlowId: string | null) {
   return useQuery({
     queryKey: ["service-flow-items", serviceFlowId],
@@ -277,23 +341,7 @@ export function useServiceFlowItems(serviceFlowId: string | null) {
         .order("sequence_order", { ascending: true });
 
       if (!nested.error) {
-        const byItemId = new Map<string, Array<{ id: string; full_name: string | null; avatar_url: string | null }>>();
-        for (const row of (nested.data || []) as any[]) {
-          const linked: Array<{ id: string; full_name: string | null; avatar_url: string | null }> = [];
-          for (const junction of row.service_flow_item_vocalists || []) {
-            const vocalist = junction?.vocalist;
-            if (!vocalist?.id) continue;
-            if (!linked.some((entry) => entry.id === vocalist.id)) {
-              linked.push({
-                id: vocalist.id,
-                full_name: vocalist.full_name,
-                avatar_url: vocalist.avatar_url,
-              });
-            }
-          }
-          byItemId.set(row.id, linked);
-        }
-        return mapServiceFlowItemsWithVocalists(nested.data || [], byItemId);
+        return mapNestedItemRows((nested.data || []) as any[]);
       }
 
       const { data, error } = await supabase
