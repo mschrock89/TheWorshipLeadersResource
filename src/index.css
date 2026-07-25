@@ -821,32 +821,6 @@ html.service-flow-export-mode .service-flow-print-pair {
     margin-top: 0 !important;
   }
 
-  /* Calendar inline print: only during actual print media — never on screen.
-     Scoping with :has() means we don't need a sticky html class that can blank the UI. */
-  body:has(.calendar-service-flow-panel .service-flow-print-render) #root {
-    visibility: hidden !important;
-  }
-
-  body:has(.calendar-service-flow-panel .service-flow-print-render) .service-flow-print-render,
-  body:has(.calendar-service-flow-panel .service-flow-print-render) .service-flow-print-render * {
-    visibility: visible !important;
-  }
-
-  body:has(.calendar-service-flow-panel .service-flow-print-render) .service-flow-print-render {
-    display: grid !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0.04in !important;
-    background: white !important;
-  }
-
-  body:has(.calendar-service-flow-panel .service-flow-print-render) .calendar-service-flow-panel > *:not(.service-flow-print-render) {
-    display: none !important;
-  }
-
   /* Reset body and html for print - compact for single page */
   html, body {
     background: white !important;

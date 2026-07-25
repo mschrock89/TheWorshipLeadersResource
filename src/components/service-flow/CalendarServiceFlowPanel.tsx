@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,7 +21,7 @@ import { ServiceFlowItem } from "./ServiceFlowItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
-import { ServiceFlow as ServiceFlowPreview } from "./ServiceFlow";
+import { printServiceFlowDocument } from "./printServiceFlowDocument";
 
 export type CalendarServiceFlowPanelProps = {
   date: string;
@@ -201,16 +201,13 @@ export function CalendarServiceFlowPanel({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
-  const [printMounted, setPrintMounted] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const hasAttemptedGenerate = useRef(false);
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
   const localItemsRef = useRef<ServiceFlowItemType[]>([]);
   const dragFrameRef = useRef<number | null>(null);
   const pendingDragIndexRef = useRef<number | null>(null);
-  const printPairRef = useRef<HTMLDivElement | null>(null);
-  const printCloneRef = useRef<HTMLElement | null>(null);
-  const printReadyResolveRef = useRef<(() => void) | null>(null);
 
   const contextKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${customServiceId || ""}`;
 
@@ -225,7 +222,6 @@ export function CalendarServiceFlowPanel({
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
-    setPrintMounted(false);
   }, [contextKey]);
 
   useEffect(() => {
@@ -436,89 +432,34 @@ export function CalendarServiceFlowPanel({
     [localItems],
   );
 
-  const servicePreview = useMemo(
-    () =>
-      buildServiceFlowPreview({
+  const handlePrint = useCallback(() => {
+    if (localItems.length === 0 || isPrinting) return;
+
+    setIsPrinting(true);
+    try {
+      // Build + print in a detached iframe. Never mount the heavy ServiceFlow React
+      // tree or call window.print() on the live Calendar document (freezes Cursor).
+      const preview = buildServiceFlowPreview({
         items: localItems,
         serviceDate: date,
         campusName,
         ministryType: effectiveMinistryType,
         title: ministryLabel,
-      }),
-    [campusName, date, effectiveMinistryType, localItems, ministryLabel],
-  );
-
-  useEffect(() => {
-    if (!printMounted || !printReadyResolveRef.current) return;
-    const resolve = printReadyResolveRef.current;
-    printReadyResolveRef.current = null;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  }, [printMounted]);
-
-  useLayoutEffect(() => {
-    const pair = printPairRef.current;
-    if (!printMounted || !pair) {
-      printCloneRef.current = null;
-      return;
+      });
+      printServiceFlowDocument(preview);
+    } catch (error) {
+      console.error("Failed to print calendar service flow:", error);
+    } finally {
+      window.setTimeout(() => setIsPrinting(false), 500);
     }
-
-    const source = pair.firstElementChild;
-    if (!(source instanceof HTMLElement)) return;
-
-    if (printCloneRef.current?.isConnected) {
-      printCloneRef.current.remove();
-    }
-
-    const clone = source.cloneNode(true) as HTMLElement;
-    clone.setAttribute("aria-hidden", "true");
-    clone.setAttribute("data-print-clone", "true");
-    pair.appendChild(clone);
-    printCloneRef.current = clone;
-
-    return () => {
-      printCloneRef.current?.remove();
-      printCloneRef.current = null;
-    };
-  }, [printMounted, servicePreview]);
-
-  const handlePrint = useCallback(async () => {
-    if (localItems.length === 0) return;
-
-    await new Promise<void>((resolve) => {
-      if (printMounted) {
-        resolve();
-        return;
-      }
-      printReadyResolveRef.current = resolve;
-      setPrintMounted(true);
-    });
-
-    const previousTitle = document.title;
-    let cleanedUp = false;
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      document.title = previousTitle;
-      setPrintMounted(false);
-      window.removeEventListener("afterprint", cleanup);
-    };
-
-    document.title = `${ministryLabel} Service Flow`;
-    window.addEventListener("afterprint", cleanup);
-
-    // Print styles are @media print + :has(.service-flow-print-render) only —
-    // no documentElement class that can blank/freeze the Calendar on screen.
-    window.setTimeout(() => {
-      try {
-        window.print();
-      } finally {
-        window.setTimeout(cleanup, 1500);
-      }
-    }, 50);
-  }, [localItems.length, ministryLabel, printMounted]);
+  }, [
+    campusName,
+    date,
+    effectiveMinistryType,
+    isPrinting,
+    localItems,
+    ministryLabel,
+  ]);
 
   // Show the editor as soon as we have items — don't block on background refetch/draft lookup.
   const isInitialLoading =
@@ -555,8 +496,8 @@ export function CalendarServiceFlowPanel({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
-          onClick={() => void handlePrint()}
-          disabled={!canPrint}
+          onClick={handlePrint}
+          disabled={!canPrint || isPrinting}
         >
           <Printer className="h-3.5 w-3.5" />
           Print
@@ -649,20 +590,6 @@ export function CalendarServiceFlowPanel({
           ) : null}
         </>
       )}
-
-      {printMounted && localItems.length > 0 ? (
-        <div
-          ref={printPairRef}
-          className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]"
-        >
-          <ServiceFlowPreview
-            service={servicePreview}
-            compactMode
-            showProgressBar={false}
-            printFitHalfSheet
-          />
-        </div>
-      ) : null}
     </section>
   );
 }
