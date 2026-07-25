@@ -23,9 +23,6 @@ import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
 import { ServiceFlow as ServiceFlowPreview } from "./ServiceFlow";
 
-const EXPORT_MODE_CLASS = "service-flow-export-mode";
-const CALENDAR_PRINTING_CLASS = "calendar-service-flow-printing";
-
 export type CalendarServiceFlowPanelProps = {
   date: string;
   campusId?: string | null;
@@ -42,10 +39,6 @@ export type CalendarServiceFlowPanelProps = {
 function normalizeMinistryType(ministryType?: string | null) {
   if (!ministryType) return "weekend";
   return ministryType === "weekend_team" ? "weekend" : ministryType;
-}
-
-function clearPrintMode() {
-  document.documentElement.classList.remove(EXPORT_MODE_CLASS, CALENDAR_PRINTING_CLASS);
 }
 
 async function loadDraftSongsWithVocalists(draftSetId: string) {
@@ -246,12 +239,6 @@ export function CalendarServiceFlowPanel({
   useEffect(() => {
     draggedItemRef.current = draggedItem;
   }, [draggedItem]);
-
-  useEffect(() => {
-    return () => {
-      clearPrintMode();
-    };
-  }, []);
 
   const generateFromTemplate = useCallback(async () => {
     if (!user?.id || !flowCampusId || !date || readOnly) return null;
@@ -508,33 +495,28 @@ export function CalendarServiceFlowPanel({
       setPrintMounted(true);
     });
 
-    const printableNode = printPairRef.current;
-    if (!printableNode) {
-      setPrintMounted(false);
-      window.print();
-      return;
-    }
-
-    const html = document.documentElement;
     const previousTitle = document.title;
     let cleanedUp = false;
 
     const cleanup = () => {
       if (cleanedUp) return;
       cleanedUp = true;
-      clearPrintMode();
       document.title = previousTitle;
       setPrintMounted(false);
       window.removeEventListener("afterprint", cleanup);
     };
 
     document.title = `${ministryLabel} Service Flow`;
-    html.classList.add(EXPORT_MODE_CLASS, CALENDAR_PRINTING_CLASS);
     window.addEventListener("afterprint", cleanup);
 
+    // Print styles are @media print + :has(.service-flow-print-render) only —
+    // no documentElement class that can blank/freeze the Calendar on screen.
     window.setTimeout(() => {
-      window.print();
-      window.setTimeout(cleanup, 1500);
+      try {
+        window.print();
+      } finally {
+        window.setTimeout(cleanup, 1500);
+      }
     }, 50);
   }, [localItems.length, ministryLabel, printMounted]);
 
