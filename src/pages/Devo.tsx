@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Home, Loader2 } from "lucide-react";
@@ -28,6 +28,7 @@ import {
   type DevoAssignment,
   type DevoAssignmentStatus,
 } from "@/hooks/useDevoAssignments";
+import { cn } from "@/lib/cn";
 import { toast } from "sonner";
 
 function statusLabel(status: DevoAssignmentStatus) {
@@ -105,28 +106,37 @@ function DevoAssignmentCard({ assignment }: { assignment: DevoAssignment }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card
+      className={cn(
+        "overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(21,30,37,0.96),rgba(13,19,24,0.96))]",
+        "rounded-none border-x-0 shadow-none sm:rounded-2xl sm:border-x sm:shadow-sm",
+      )}
+    >
+      <CardHeader className="space-y-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="text-xl">{assignment.chapter_reference}</CardTitle>
-            <CardDescription className="mt-1">
+            <CardTitle className="text-2xl tracking-tight sm:text-3xl">
+              {assignment.chapter_reference}
+            </CardTitle>
+            <CardDescription className="mt-1 text-[13px] leading-relaxed sm:text-sm">
               {assignment.series_title || assignment.series?.title || "Devotional assignment"}
               {assignment.scheduled_post_at
                 ? ` · Goes live ${formatDevoPostDay(assignment.scheduled_post_at)} at ${formatDevoPostTime(assignment.scheduled_post_at)}`
                 : ""}
             </CardDescription>
           </div>
-          <Badge variant={statusVariant(assignment.status)}>{statusLabel(assignment.status)}</Badge>
+          <Badge variant={statusVariant(assignment.status)} className="shrink-0">
+            {statusLabel(assignment.status)}
+          </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5 px-4 pb-5 sm:space-y-6 sm:px-6 sm:pb-6">
         {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at) ? (
           <p className="text-sm text-muted-foreground">
             Series window: {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at)}
           </p>
         ) : null}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground">
           {assignment.permission_starts_at && new Date(assignment.permission_starts_at).getTime() > Date.now()
             ? `Feed writing unlocks ${formatDevoPostDay(assignment.permission_starts_at)} (${assignment.permission_duration_days ?? 7} days before go-live). Your post stays private until go-live, then appears on The Feed.`
             : "Write anytime in your open access window before go-live. Your post stays private until that time, then appears on The Feed."}
@@ -138,9 +148,16 @@ function DevoAssignmentCard({ assignment }: { assignment: DevoAssignment }) {
         <div className="space-y-2">
           <p className="text-sm font-medium">How-to guide</p>
           {guideName && guidePath ? (
-            <Button type="button" variant="outline" size="sm" onClick={openGuide} disabled={openingGuide} className="gap-2">
-              {openingGuide ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              {guideName}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={openGuide}
+              disabled={openingGuide}
+              className="h-auto max-w-full gap-2 whitespace-normal px-3 py-2 text-left"
+            >
+              {openingGuide ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <FileText className="h-4 w-4 shrink-0" />}
+              <span className="break-all">{guideName}</span>
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">Your admin hasn&apos;t attached a how-to guide yet.</p>
@@ -148,28 +165,30 @@ function DevoAssignmentCard({ assignment }: { assignment: DevoAssignment }) {
         </div>
 
         {canEdit ? (
-          <form className="space-y-3" onSubmit={onSave}>
+          <form className="flex min-h-0 flex-1 flex-col space-y-4" onSubmit={onSave}>
             <div className="space-y-2">
               <Label htmlFor={`title-${assignment.id}`}>Post title</Label>
               <Input
                 id={`title-${assignment.id}`}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                className="h-11 rounded-xl"
                 required
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex min-h-0 flex-1 flex-col space-y-2">
               <Label htmlFor={`body-${assignment.id}`}>Your devotion</Label>
               <Textarea
                 id={`body-${assignment.id}`}
-                rows={8}
+                rows={14}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Write your reflection here…"
+                className="min-h-[42vh] flex-1 resize-y rounded-xl text-base leading-7 sm:min-h-[320px]"
                 required
               />
             </div>
-            <Button type="submit" disabled={savePost.isPending} className="gap-2">
+            <Button type="submit" disabled={savePost.isPending} className="h-11 w-full gap-2 sm:w-auto">
               {savePost.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {assignment.status === "scheduled" ? "Update scheduled post" : "Save for go-live"}
             </Button>
@@ -192,49 +211,51 @@ export default function Devo() {
 
   return (
     <RefreshableContainer queryKeys={[["devo-assignments"]]}>
-      <div className="container mx-auto max-w-2xl px-4 py-6">
-        <Breadcrumb className="mb-4">
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link to="/dashboard" className="flex items-center gap-1.5">
-                  <Home className="h-3.5 w-3.5" />
-                  Dashboard
-                </Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>DEVO</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+      <div className="w-full min-w-0 space-y-4 overflow-x-hidden sm:mx-auto sm:max-w-3xl sm:space-y-6">
+        <div className="px-0 sm:px-0">
+          <Breadcrumb className="mb-3">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link to="/dashboard" className="flex items-center gap-1.5">
+                    <Home className="h-3.5 w-3.5" />
+                    Dashboard
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>DEVO</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
 
-        <div className="mb-6 flex items-center gap-3">
-          <div className="rounded-full bg-primary/10 p-2">
-            <BookOpen className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">DEVO</h1>
-            <p className="text-sm text-muted-foreground">
-              Write early — your post goes live on The Feed at your assigned day and time
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-primary/10 p-2">
+              <BookOpen className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">DEVO</h1>
+              <p className="text-sm text-muted-foreground">
+                Write early — your post goes live on The Feed at your assigned day and time
+              </p>
+            </div>
           </div>
         </div>
 
         {isLoading ? (
           <div className="space-y-3">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-64 w-full rounded-none sm:rounded-2xl" />
+            <Skeleton className="h-40 w-full rounded-none sm:rounded-2xl" />
           </div>
         ) : assignments.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-muted-foreground">
+          <Card className="rounded-none border-x-0 sm:rounded-2xl sm:border-x">
+            <CardContent className="px-4 py-10 text-center text-muted-foreground sm:px-6">
               You don&apos;t have any active devotionals right now.
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="-mx-4 space-y-4 sm:mx-0 sm:space-y-5">
             {assignments.map((assignment) => (
               <DevoAssignmentCard key={assignment.id} assignment={assignment} />
             ))}
