@@ -168,6 +168,7 @@ async function fetchFeedPosts(
         full_name
       )
     `)
+    .or(`goes_live_at.is.null,goes_live_at.lte.${new Date().toISOString()}`)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -298,18 +299,21 @@ async function fetchFeedPosts(
     optionsByPostId.set(option.post_id, existing);
   });
 
-  return posts.map((post) => ({
-    ...post,
-    author_name: post.author?.full_name ?? null,
-    like_count: likesByPostId.get(post.id) || 0,
-    liked_by_me: likedPostIds.has(post.id),
-    likers: likersByPostId.get(post.id) || [],
-    comment_count: (commentsByPostId.get(post.id) || []).length,
-    comments: commentsByPostId.get(post.id) || [],
-    poll_options: optionsByPostId.get(post.id) || [],
-    poll_vote_count: voteCountByPostId.get(post.id) || 0,
-    my_poll_option_id: myVoteByPostId.get(post.id) || null,
-  })) as FeedPostRecord[];
+  return posts.map((post) => {
+    const { author, ...rest } = post;
+    return {
+      ...rest,
+      author_name: author?.full_name ?? null,
+      like_count: likesByPostId.get(post.id) || 0,
+      liked_by_me: likedPostIds.has(post.id),
+      likers: likersByPostId.get(post.id) || [],
+      comment_count: (commentsByPostId.get(post.id) || []).length,
+      comments: commentsByPostId.get(post.id) || [],
+      poll_options: optionsByPostId.get(post.id) || [],
+      poll_vote_count: voteCountByPostId.get(post.id) || 0,
+      my_poll_option_id: myVoteByPostId.get(post.id) || null,
+    };
+  }) as FeedPostRecord[];
 }
 
 export function useFeedPosts(

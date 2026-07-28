@@ -63,6 +63,9 @@ verify_jwt = false
 [functions.notify-schedule-reminder]
 verify_jwt = false
 
+[functions.notify-devo-post-reminders]
+verify_jwt = false
+
 [functions.notify-weekend-track-uploaded]
 verify_jwt = false
 

@@ -7,6 +7,8 @@ import { getMinistryLabel, isVideoPosition } from "@/lib/constants";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 
 const TEAM_WIDE_EVENT_AUDIENCE_TYPES = new Set(["volunteers_only", "volunteer_and_spouse"]);
+// Must stay in sync with the weekend aliases in the notify_new_event() push trigger.
+const WEEKEND_EVENT_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 function formatSwapNotificationMessage(message: string) {
   return message
@@ -46,6 +48,7 @@ export interface Notification {
     eventDate: string;
     startTime: string | null;
     endTime: string | null;
+    location: string | null;
     campusName: string;
     audienceType: string | null;
     isComing: boolean;
@@ -114,7 +117,7 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, adminPingsResult, userCampusesResult, directSwapRequestsResult] = await Promise.all([
+      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, adminPingsResult, userCampusesResult, userMinistryCampusesResult, userProfileResult, directSwapRequestsResult] = await Promise.all([
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
@@ -142,8 +145,13 @@ export function useNotifications() {
             created_at,
             start_time,
             end_time,
+            location,
             audience_type,
+            target_genders,
             campus_id,
+            campus_ids,
+            ministry_type,
+            ministry_types,
             campuses:campuses(name)
           `)
           .gte("event_date", formatDateForDB(new Date()))
@@ -169,6 +177,17 @@ export function useNotifications() {
           .from("user_campuses")
           .select("campus_id")
           .eq("user_id", user.id),
+        // User's ministry/campus assignments for event scope filtering
+        supabase
+          .from("user_ministry_campuses")
+          .select("campus_id, ministry_type")
+          .eq("user_id", user.id),
+        // User's gender for gender-targeted events
+        supabase
+          .from("profiles")
+          .select("gender")
+          .eq("id", user.id)
+          .maybeSingle(),
         // Direct incoming cover/swap requests for this user.
         // Admins can observe all pending requests through RLS, so use observer wording below.
         (isAdmin
@@ -215,9 +234,13 @@ export function useNotifications() {
       if (manualScheduleNotificationsResult.error) throw manualScheduleNotificationsResult.error;
       if (adminPingsResult.error) throw adminPingsResult.error;
       if (userCampusesResult.error) throw userCampusesResult.error;
+      if (userMinistryCampusesResult.error) throw userMinistryCampusesResult.error;
+      if (userProfileResult.error) throw userProfileResult.error;
       if (directSwapRequestsResult.error) throw directSwapRequestsResult.error;
 
       const userCampusIds = userCampusesResult.data?.map((uc) => uc.campus_id) || [];
+      const userMinistryCampuses = userMinistryCampusesResult.data || [];
+      const userGender = (userProfileResult.data?.gender || "").toLowerCase();
       const newSets = newSetsResult.data || [];
       const newEvents = newEventsResult.data || [];
       const manualScheduleNotifications = manualScheduleNotificationsResult.data || [];
@@ -304,12 +327,43 @@ export function useNotifications() {
         comingEventIds = new Set((eventRsvps || []).map((rsvp) => rsvp.event_id));
       }
 
-      // Process new team-wide events only.
+      // Process new team-wide events that match this user's campus, ministry, and
+      // gender scope. Mirrors the recipient filtering in the notify_new_event()
+      // push trigger so in-app and push notifications reach the same people.
       newEvents.forEach((event) => {
         const audienceType = ("audience_type" in event ? (event.audience_type as string | null) : null) || "volunteers_only";
         const isTeamWideEvent = TEAM_WIDE_EVENT_AUDIENCE_TYPES.has(audienceType);
-        const isRelevantCampusEvent = !event.campus_id || userCampusIds.includes(event.campus_id);
-        if (!isTeamWideEvent || !isRelevantCampusEvent) return;
+
+        const eventCampusIds = event.campus_ids && event.campus_ids.length > 0
+          ? event.campus_ids
+          : event.campus_id
+            ? [event.campus_id]
+            : [];
+        const eventMinistryTypes = event.ministry_types && event.ministry_types.length > 0
+          ? event.ministry_types
+          : event.ministry_type
+            ? [event.ministry_type]
+            : [];
+        const eventHasWeekendScope = eventMinistryTypes.some((type) => WEEKEND_EVENT_MINISTRY_ALIASES.has(type));
+        const ministryMatches = (ministryType: string) =>
+          eventMinistryTypes.includes(ministryType) ||
+          (eventHasWeekendScope && WEEKEND_EVENT_MINISTRY_ALIASES.has(ministryType));
+
+        let isRelevantScopeEvent = true;
+        if (eventCampusIds.length > 0 && eventMinistryTypes.length > 0) {
+          isRelevantScopeEvent = userMinistryCampuses.some(
+            (umc) => eventCampusIds.includes(umc.campus_id) && ministryMatches(umc.ministry_type),
+          );
+        } else if (eventCampusIds.length > 0) {
+          isRelevantScopeEvent = eventCampusIds.some((campusId) => userCampusIds.includes(campusId));
+        } else if (eventMinistryTypes.length > 0) {
+          isRelevantScopeEvent = userMinistryCampuses.some((umc) => ministryMatches(umc.ministry_type));
+        }
+
+        const targetGenders = (event.target_genders || []).map((gender: string) => gender.toLowerCase());
+        const matchesGender = targetGenders.length === 0 || (Boolean(userGender) && targetGenders.includes(userGender));
+
+        if (!isTeamWideEvent || !isRelevantScopeEvent || !matchesGender) return;
 
         const campusName = (event.campuses as { name: string } | null)?.name || "";
         const notifId = `event-${event.id}`;
@@ -328,6 +382,7 @@ export function useNotifications() {
             eventDate: event.event_date,
             startTime: "start_time" in event ? (event.start_time as string | null) : null,
             endTime: "end_time" in event ? (event.end_time as string | null) : null,
+            location: "location" in event ? (event.location as string | null) : null,
             campusName,
             audienceType,
             isComing: comingEventIds.has(event.id),
