@@ -61,6 +61,7 @@ import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
 import { EventPushDialog } from "@/components/calendar/EventPushDialog";
+import { EventAttendeesDialog } from "@/components/calendar/EventAttendeesDialog";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const EVENT_AUDIENCE_OPTIONS = [{
@@ -2358,9 +2359,17 @@ function StandardCalendar() {
                             <Check className="h-4 w-4" />
                             {event.is_coming ? "You're coming" : "I'm Coming"}
                           </Button>
-                          <Badge variant="outline">
-                            {(event.attendee_count ?? 0)} coming
-                          </Badge>
+                          {canManageTeam ? (
+                            <EventAttendeesDialog
+                              eventId={event.id}
+                              eventTitle={event.title}
+                              attendeeCount={event.attendee_count ?? 0}
+                            />
+                          ) : (
+                            <Badge variant="outline">
+                              {(event.attendee_count ?? 0)} coming
+                            </Badge>
+                          )}
                           {canManageTeam && <EventPushDialog eventId={event.id} eventTitle={event.title} />}
                         </div>
                       </div>

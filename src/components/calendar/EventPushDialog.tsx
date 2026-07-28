@@ -3,7 +3,6 @@ import { Bell, BellOff, Loader2, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -108,7 +107,7 @@ export function EventPushDialog({ eventId, eventTitle }: EventPushDialogProps) {
               <Badge variant="secondary">{recipients.length} recipient{recipients.length === 1 ? "" : "s"}</Badge>
               <Badge variant="outline">{pushEligibleCount} with push enabled</Badge>
             </div>
-            <ScrollArea className="max-h-64 rounded-md border border-border">
+            <div className="max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border">
               <div className="divide-y divide-border">
                 {recipients.map((recipient) => (
                   <div key={recipient.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -124,7 +123,7 @@ export function EventPushDialog({ eventId, eventTitle }: EventPushDialogProps) {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
             <p className="text-xs text-muted-foreground">
               People marked "no push" haven't enabled push notifications on any device; they'll still see the event in
               the app. You won't send a push to yourself.
