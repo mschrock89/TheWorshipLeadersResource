@@ -13,6 +13,7 @@ import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
 
 export function MainHeader() {
   const {
@@ -35,6 +36,9 @@ export function MainHeader() {
   const {
     data: pendingSwaps = 0
   } = usePendingSwapRequestsCount();
+  const {
+    data: incompleteDevoCount = 0
+  } = useMyIncompleteDevoCount();
   const drumTechAccess = useDrumTechAccess();
   const isStudentApp = isCurrentStudentResourceApp();
   const isOnChatPage = location.pathname === "/chat";
@@ -123,6 +127,19 @@ export function MainHeader() {
                   THE FEED
                 </Link>
               </DropdownMenuItem>
+              {!isAuditionCandidate && (
+                <DropdownMenuItem asChild>
+                  <Link to="/devo" className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    DEVO
+                    {incompleteDevoCount > 0 && (
+                      <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                        {incompleteDevoCount > 99 ? "99+" : incompleteDevoCount}
+                      </Badge>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {!isAuditionCandidate && isStudentApp && (
                 <DropdownMenuItem asChild>
                   <Link to="/attendance" className="flex items-center gap-2">

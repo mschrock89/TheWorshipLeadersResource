@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -492,8 +492,19 @@ function parseTeachingScheduleCsvText(csvText: string, fallbackBook: string): Pr
   });
 }
 
+type AdminToolDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  /** When set, the tile navigates straight to this route instead of opening a detail view. */
+  href?: string;
+  danger?: boolean;
+};
+
 export default function AdminTools() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
@@ -565,7 +576,7 @@ export default function AdminTools() {
   })();
   
   const [isEditing, setIsEditing] = useState(false);
-  const [isLeadershipOpen, setIsLeadershipOpen] = useState(false);
+  const [isLeadershipOpen, setIsLeadershipOpen] = useState(true);
   const [isResettingPasswords, setIsResettingPasswords] = useState(false);
   const [resetResults, setResetResults] = useState<{ successCount: number; skippedCount: number; failCount: number } | null>(null);
   const [customServiceName, setCustomServiceName] = useState("");
@@ -576,6 +587,109 @@ export default function AdminTools() {
   const [customServiceEndTime, setCustomServiceEndTime] = useState("");
   const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
   const covenantTerminology = getCovenantTerminology();
+
+  const adminTools: AdminToolDefinition[] = [
+    {
+      id: "permissions",
+      title: "Permissions",
+      description: "Role capabilities, setlist approval routing, and per-user overrides.",
+      icon: Shield,
+      href: "/permissions",
+    },
+    {
+      id: "push-notifications",
+      title: "Push Notifications",
+      description: "Edit, enable, or disable every push the app sends.",
+      icon: Bell,
+      href: "/push-notifications",
+    },
+    {
+      id: "devo",
+      title: "DEVO Assignments",
+      description: "Plan DEVO series, upload the how-to guide, and grant Feed access.",
+      icon: BookOpen,
+      href: "/devo-admin",
+    },
+    {
+      id: "leadership",
+      title: "Leadership",
+      description: "Organization leaders and their roles.",
+      icon: Users,
+    },
+    {
+      id: "password-reset",
+      title: "Master Password Reset",
+      description: "Reset passwords for users who have never logged in.",
+      icon: KeyRound,
+      danger: true,
+    },
+    {
+      id: "ping",
+      title: "Ping Leaders",
+      description: "Send an in-the-moment push to leaders by ministry, gender, grade, or name.",
+      icon: Megaphone,
+    },
+    {
+      id: "camp-mode",
+      title: "Camp Mode",
+      description: "Share camp info, feed posts, chat, and pings across the student apps.",
+      icon: Tent,
+    },
+    {
+      id: "covenant",
+      title: covenantTerminology.managerTitle,
+      description: `Publish the current ${covenantTerminology.noun} PDF and require signatures.`,
+      icon: FileText,
+    },
+    {
+      id: "custom-services",
+      title: "Custom Service Builder",
+      description: "Create one-off or repeating services for Set Builder.",
+      icon: CalendarClock,
+    },
+    {
+      id: "teaching-schedule",
+      title: "Teaching Schedule Manager",
+      description: "Sync teacher and book info from the Google Sheet or a CSV import.",
+      icon: CalendarClock,
+    },
+    {
+      id: "service-schedule",
+      title: "Service Schedule",
+      description: "Configure service days and times for each campus.",
+      icon: Settings,
+    },
+    {
+      id: "service-flow",
+      title: "Service Flow Templates",
+      description: "Manage master templates for service orders.",
+      icon: ListOrdered,
+    },
+  ];
+
+  const selectedToolId = searchParams.get("tool");
+  const activeTool = adminTools.find((tool) => tool.id === selectedToolId && !tool.href) || null;
+
+  const closeTool = () => {
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      next.delete("tool");
+      return next;
+    });
+  };
+
+  const openTool = (tool: AdminToolDefinition) => {
+    if (tool.href) {
+      navigate(tool.href);
+      return;
+    }
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      next.set("tool", tool.id);
+      return next;
+    });
+  };
+
   const [covenantTitle, setCovenantTitle] = useState(covenantTerminology.title);
   const [covenantDescription, setCovenantDescription] = useState("Standards and expectations for every team member.");
   const [covenantVersionLabel, setCovenantVersionLabel] = useState(() => new Date().toISOString().split("T")[0]);
@@ -1500,54 +1614,72 @@ export default function AdminTools() {
     <div className="mx-auto w-full max-w-6xl py-0 sm:py-4">
       {/* Header */}
       <div className="mb-8">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/dashboard")}
-          className="mb-4 -ml-2 gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        <h1 className="font-display text-3xl font-bold text-foreground">Admin Tools</h1>
+        {activeTool ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={closeTool}
+            className="mb-4 -ml-2 gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Admin Tools
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+            className="mb-4 -ml-2 gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        )}
+        <h1 className="font-display text-3xl font-bold text-foreground">
+          {activeTool ? activeTool.title : "Admin Tools"}
+        </h1>
         <p className="mt-2 text-muted-foreground">
-          Manage organization-wide settings and configurations
+          {activeTool ? activeTool.description : "Manage organization-wide settings and configurations"}
         </p>
       </div>
 
-      {/* Permissions link */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xl font-semibold flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            Permissions
-          </CardTitle>
-          <CardDescription>
-            Edit the role capability matrix, setlist approval routing, and per-user overrides.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => navigate("/permissions")}>Open Permissions</Button>
-        </CardContent>
-      </Card>
-
-      {/* Push Notifications link */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xl font-semibold flex items-center gap-2">
-            <Bell className="h-5 w-5 text-primary" />
-            Push Notifications
-          </CardTitle>
-          <CardDescription>
-            Browse every push the app sends, edit titles and bodies, enable or disable types, and add new ones.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => navigate("/push-notifications")}>Open Push Notifications</Button>
-        </CardContent>
-      </Card>
+      {/* Tool tile grid */}
+      {!activeTool && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+          {adminTools.map((tool) => {
+            const Icon = tool.icon;
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => openTool(tool)}
+                className={`flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border bg-card p-4 text-center shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  tool.danger
+                    ? "border-destructive/30 hover:border-destructive/60 hover:bg-destructive/5"
+                    : "border-border hover:border-primary/50 hover:bg-muted/50"
+                }`}
+              >
+                <span
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg ${
+                    tool.danger ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  <Icon className="h-6 w-6" />
+                </span>
+                <span className="text-sm font-semibold leading-tight text-foreground">
+                  {tool.title}
+                </span>
+                <span className="line-clamp-2 hidden text-xs leading-snug text-muted-foreground sm:block">
+                  {tool.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Leadership Section */}
+      {activeTool?.id === "leadership" && (
       <Collapsible open={isLeadershipOpen} onOpenChange={setIsLeadershipOpen} asChild>
         <Card>
           <CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-5">
@@ -1621,8 +1753,10 @@ export default function AdminTools() {
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      )}
 
       {/* Master Password Reset Section */}
+      {activeTool?.id === "password-reset" && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
@@ -1698,11 +1832,13 @@ export default function AdminTools() {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      <AdminPingCard />
+      {activeTool?.id === "ping" && <AdminPingCard />}
 
-      <CampModeAdminCard />
+      {activeTool?.id === "camp-mode" && <CampModeAdminCard />}
 
+      {activeTool?.id === "covenant" && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
@@ -1819,8 +1955,10 @@ export default function AdminTools() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Custom Services Builder */}
+      {activeTool?.id === "custom-services" && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
@@ -1977,8 +2115,10 @@ export default function AdminTools() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Teaching Schedule Manager */}
+      {activeTool?.id === "teaching-schedule" && (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
@@ -2339,8 +2479,10 @@ export default function AdminTools() {
           </Collapsible>
         </CardContent>
       </Card>
+      )}
 
       {/* Service Schedule Section */}
+      {activeTool?.id === "service-schedule" && (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="space-y-1">
@@ -2540,8 +2682,10 @@ export default function AdminTools() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Service Flow Templates Section */}
+      {activeTool?.id === "service-flow" && (
       <Card className="mt-6">
         <CardHeader className="pb-2">
           <CardTitle className="text-xl font-semibold flex items-center gap-2">
@@ -2556,6 +2700,7 @@ export default function AdminTools() {
           <TemplateManager />
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

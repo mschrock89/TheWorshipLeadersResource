@@ -26,6 +26,8 @@ const Resources = lazy(() => import("@/pages/Resources"));
 const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
 const Bible = lazy(() => import("@/pages/Bible"));
 const Feed = lazy(() => import("@/pages/Feed"));
+const Devo = lazy(() => import("@/pages/Devo"));
+const DevoAdmin = lazy(() => import("@/pages/DevoAdmin"));
 const CampMode = lazy(() => import("@/pages/CampMode"));
 const Attendance = lazy(() => import("@/pages/Attendance"));
 const Snake = lazy(() => import("@/pages/Snake"));
@@ -76,6 +78,8 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/push-notifications", PushNotificationsAdmin),
   route("/resources", Resources),
   route("/feed", Feed),
+  route("/devo", Devo),
+  route("/devo-admin", DevoAdmin),
   route("/attendance", Attendance),
   route("/bible", Bible),
   route("/service-flow", ServiceFlow),

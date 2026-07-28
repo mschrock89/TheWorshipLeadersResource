@@ -44,6 +44,7 @@ export const STUDENT_ALLOWED_PATHS = new Set([
   "/calendar",
   "/camp",
   "/feed",
+  "/devo",
   "/attendance",
   "/my-setlists",
   "/profile",

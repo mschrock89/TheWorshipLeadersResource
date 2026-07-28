@@ -1628,6 +1628,198 @@ export type Database = {
           },
         ]
       }
+      devo_series: {
+        Row: {
+          campus_id: string | null
+          created_at: string
+          created_by: string | null
+          default_permission_days: number
+          ends_at: string
+          id: string
+          ministry_type: string | null
+          resource_app_key: string
+          starts_at: string
+          status: string
+          title: string
+          updated_at: string
+          weeks_to_run: number | null
+          guide_storage_path: string | null
+          guide_file_name: string | null
+          guide_uploaded_at: string | null
+          guide_uploaded_by: string | null
+        }
+        Insert: {
+          campus_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_permission_days?: number
+          ends_at: string
+          id?: string
+          ministry_type?: string | null
+          resource_app_key?: string
+          starts_at: string
+          status?: string
+          title: string
+          updated_at?: string
+          weeks_to_run?: number | null
+          guide_storage_path?: string | null
+          guide_file_name?: string | null
+          guide_uploaded_at?: string | null
+          guide_uploaded_by?: string | null
+        }
+        Update: {
+          campus_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_permission_days?: number
+          ends_at?: string
+          id?: string
+          ministry_type?: string | null
+          resource_app_key?: string
+          starts_at?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          weeks_to_run?: number | null
+          guide_storage_path?: string | null
+          guide_file_name?: string | null
+          guide_uploaded_at?: string | null
+          guide_uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devo_series_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devo_series_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devo_assignments: {
+        Row: {
+          assign_push_sent_at: string | null
+          assigned_by: string | null
+          assignee_id: string
+          campus_id: string | null
+          chapter_reference: string
+          created_at: string
+          due_date: string | null
+          feed_post_id: string | null
+          guide_file_name: string | null
+          guide_storage_path: string | null
+          guide_uploaded_at: string | null
+          id: string
+          ministry_type: string | null
+          notes: string | null
+          permission_duration_days: number | null
+          permission_starts_at: string | null
+          post_feed_expires_at: string | null
+          reminder_push_sent_at: string | null
+          resource_app_key: string
+          scheduled_post_at: string | null
+          series_id: string | null
+          series_title: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assign_push_sent_at?: string | null
+          assigned_by?: string | null
+          assignee_id: string
+          campus_id?: string | null
+          chapter_reference: string
+          created_at?: string
+          due_date?: string | null
+          feed_post_id?: string | null
+          guide_file_name?: string | null
+          guide_storage_path?: string | null
+          guide_uploaded_at?: string | null
+          id?: string
+          ministry_type?: string | null
+          notes?: string | null
+          permission_duration_days?: number | null
+          permission_starts_at?: string | null
+          post_feed_expires_at?: string | null
+          reminder_push_sent_at?: string | null
+          resource_app_key?: string
+          scheduled_post_at?: string | null
+          series_id?: string | null
+          series_title?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assign_push_sent_at?: string | null
+          assigned_by?: string | null
+          assignee_id?: string
+          campus_id?: string | null
+          chapter_reference?: string
+          created_at?: string
+          due_date?: string | null
+          feed_post_id?: string | null
+          guide_file_name?: string | null
+          guide_storage_path?: string | null
+          guide_uploaded_at?: string | null
+          id?: string
+          ministry_type?: string | null
+          notes?: string | null
+          permission_duration_days?: number | null
+          permission_starts_at?: string | null
+          post_feed_expires_at?: string | null
+          reminder_push_sent_at?: string | null
+          resource_app_key?: string
+          scheduled_post_at?: string | null
+          series_id?: string | null
+          series_title?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devo_assignments_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devo_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devo_assignments_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devo_assignments_feed_post_id_fkey"
+            columns: ["feed_post_id"]
+            isOneToOne: false
+            referencedRelation: "feed_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devo_assignments_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "devo_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feed_posts: {
         Row: {
           body: string | null
@@ -1636,6 +1828,8 @@ export type Database = {
           category: string
           created_at: string
           created_by: string
+          go_live_notified_at: string | null
+          goes_live_at: string | null
           id: string
           ministry_type: string | null
           resource_app_key: string
@@ -1653,6 +1847,8 @@ export type Database = {
           category: string
           created_at?: string
           created_by: string
+          go_live_notified_at?: string | null
+          goes_live_at?: string | null
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
@@ -1670,6 +1866,8 @@ export type Database = {
           category?: string
           created_at?: string
           created_by?: string
+          go_live_notified_at?: string | null
+          goes_live_at?: string | null
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
@@ -3925,6 +4123,29 @@ export type Database = {
           full_name: string
           id: string
         }[]
+      }
+      has_capability: {
+        Args: {
+          _user_id: string
+          _cap: string
+          _app?: string
+        }
+        Returns: boolean
+      }
+      grant_devo_post_feed: {
+        Args: {
+          _user_id: string
+          _resource_app: string
+          _expires_at: string
+        }
+        Returns: boolean
+      }
+      revoke_devo_post_feed_if_idle: {
+        Args: {
+          _user_id: string
+          _resource_app: string
+        }
+        Returns: boolean
       }
       get_my_pco_connection: {
         Args: never
