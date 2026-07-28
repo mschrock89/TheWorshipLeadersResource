@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,8 +27,11 @@ import {
   type DevoAssignment,
   type DevoAssignmentStatus,
 } from "@/hooks/useDevoAssignments";
-import { cn } from "@/lib/cn";
+import { buildBibleHref } from "@/lib/bible";
 import { toast } from "sonner";
+
+const DEVO_PAGE_GRADIENT =
+  "bg-[linear-gradient(180deg,rgba(21,30,37,0.98),rgba(13,19,24,1)_42%,rgba(10,14,18,1))]";
 
 function statusLabel(status: DevoAssignmentStatus) {
   switch (status) {
@@ -65,7 +67,7 @@ function formatSeriesWindow(startsAt?: string | null, endsAt?: string | null) {
   return `${start} – ${end}`;
 }
 
-function DevoAssignmentCard({ assignment }: { assignment: DevoAssignment }) {
+function DevoAssignmentPanel({ assignment }: { assignment: DevoAssignment }) {
   const savePost = useSaveDevoScheduledPost();
   const [openingGuide, setOpeningGuide] = useState(false);
   const [title, setTitle] = useState(`${assignment.chapter_reference} Devo`);
@@ -106,103 +108,106 @@ function DevoAssignmentCard({ assignment }: { assignment: DevoAssignment }) {
   };
 
   return (
-    <Card
-      className={cn(
-        "overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(21,30,37,0.96),rgba(13,19,24,0.96))]",
-        "rounded-none border-x-0 shadow-none sm:rounded-2xl sm:border-x sm:shadow-sm",
-      )}
-    >
-      <CardHeader className="space-y-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-6">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="text-2xl tracking-tight sm:text-3xl">
-              {assignment.chapter_reference}
-            </CardTitle>
-            <CardDescription className="mt-1 text-[13px] leading-relaxed sm:text-sm">
-              {assignment.series_title || assignment.series?.title || "Devotional assignment"}
-              {assignment.scheduled_post_at
-                ? ` · Goes live ${formatDevoPostDay(assignment.scheduled_post_at)} at ${formatDevoPostTime(assignment.scheduled_post_at)}`
-                : ""}
-            </CardDescription>
-          </div>
-          <Badge variant={statusVariant(assignment.status)} className="shrink-0">
-            {statusLabel(assignment.status)}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5 px-4 pb-5 sm:space-y-6 sm:px-6 sm:pb-6">
-        {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at) ? (
-          <p className="text-sm text-muted-foreground">
-            Series window: {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at)}
+    <section className="space-y-5 sm:space-y-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            {assignment.chapter_reference}
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground sm:text-sm">
+            {assignment.series_title || assignment.series?.title || "Devotional assignment"}
+            {assignment.scheduled_post_at
+              ? ` · Goes live ${formatDevoPostDay(assignment.scheduled_post_at)} at ${formatDevoPostTime(assignment.scheduled_post_at)}`
+              : ""}
           </p>
-        ) : null}
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {assignment.permission_starts_at && new Date(assignment.permission_starts_at).getTime() > Date.now()
-            ? `Feed writing unlocks ${formatDevoPostDay(assignment.permission_starts_at)} (${assignment.permission_duration_days ?? 7} days before go-live). Your post stays private until go-live, then appears on The Feed.`
-            : "Write anytime in your open access window before go-live. Your post stays private until that time, then appears on The Feed."}
-        </p>
-        {assignment.notes ? (
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{assignment.notes}</p>
-        ) : null}
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium">How-to guide</p>
-          {guideName && guidePath ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openGuide}
-              disabled={openingGuide}
-              className="h-auto max-w-full gap-2 whitespace-normal px-3 py-2 text-left"
-            >
-              {openingGuide ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <FileText className="h-4 w-4 shrink-0" />}
-              <span className="break-all">{guideName}</span>
-            </Button>
-          ) : (
-            <p className="text-sm text-muted-foreground">Your admin hasn&apos;t attached a how-to guide yet.</p>
-          )}
         </div>
+        <Badge variant={statusVariant(assignment.status)} className="shrink-0">
+          {statusLabel(assignment.status)}
+        </Badge>
+      </div>
 
-        {canEdit ? (
-          <form className="flex min-h-0 flex-1 flex-col space-y-4" onSubmit={onSave}>
-            <div className="space-y-2">
-              <Label htmlFor={`title-${assignment.id}`}>Post title</Label>
-              <Input
-                id={`title-${assignment.id}`}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="h-11 rounded-xl"
-                required
-              />
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col space-y-2">
-              <Label htmlFor={`body-${assignment.id}`}>Your devotion</Label>
-              <Textarea
-                id={`body-${assignment.id}`}
-                rows={14}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Write your reflection here…"
-                className="min-h-[42vh] flex-1 resize-y rounded-xl text-base leading-7 sm:min-h-[320px]"
-                required
-              />
-            </div>
-            <Button type="submit" disabled={savePost.isPending} className="h-11 w-full gap-2 sm:w-auto">
-              {savePost.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {assignment.status === "scheduled" ? "Update scheduled post" : "Save for go-live"}
-            </Button>
-          </form>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">This DEVO is live on The Feed.</p>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/feed">View The Feed</Link>
-            </Button>
+      {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at) ? (
+        <p className="text-sm text-muted-foreground">
+          Series window: {formatSeriesWindow(assignment.series?.starts_at, assignment.series?.ends_at)}
+        </p>
+      ) : null}
+      <p className="text-sm leading-relaxed text-muted-foreground">
+        {assignment.permission_starts_at && new Date(assignment.permission_starts_at).getTime() > Date.now()
+          ? `Feed writing unlocks ${formatDevoPostDay(assignment.permission_starts_at)} (${assignment.permission_duration_days ?? 7} days before go-live). Your post stays private until go-live, then appears on The Feed.`
+          : "Write anytime in your open access window before go-live. Your post stays private until that time, then appears on The Feed."}
+      </p>
+      {assignment.notes ? (
+        <p className="whitespace-pre-wrap text-sm text-muted-foreground">{assignment.notes}</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <Link to={buildBibleHref(assignment.chapter_reference, "ESV")}>
+            <BookOpen className="h-4 w-4" />
+            Read Passage
+          </Link>
+        </Button>
+        {guideName && guidePath ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openGuide}
+            disabled={openingGuide}
+            className="h-auto max-w-full gap-2 whitespace-normal px-3 py-2 text-left"
+          >
+            {openingGuide ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4 shrink-0" />
+            )}
+            <span className="break-all">{guideName}</span>
+          </Button>
+        ) : null}
+      </div>
+
+      {!guideName && (
+        <p className="text-sm text-muted-foreground">Your admin hasn&apos;t attached a how-to guide yet.</p>
+      )}
+
+      {canEdit ? (
+        <form className="flex min-h-0 flex-1 flex-col space-y-4" onSubmit={onSave}>
+          <div className="space-y-2">
+            <Label htmlFor={`title-${assignment.id}`}>Post title</Label>
+            <Input
+              id={`title-${assignment.id}`}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-11 rounded-xl border-white/10 bg-black/20"
+              required
+            />
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <div className="flex min-h-0 flex-1 flex-col space-y-2">
+            <Label htmlFor={`body-${assignment.id}`}>Your devotion</Label>
+            <Textarea
+              id={`body-${assignment.id}`}
+              rows={14}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write your reflection here…"
+              className="min-h-[42vh] flex-1 resize-y rounded-xl border-white/10 bg-black/20 text-base leading-7 sm:min-h-[320px]"
+              required
+            />
+          </div>
+          <Button type="submit" disabled={savePost.isPending} className="h-11 w-full gap-2 sm:w-auto">
+            {savePost.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {assignment.status === "scheduled" ? "Update scheduled post" : "Save for go-live"}
+          </Button>
+        </form>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">This DEVO is live on The Feed.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/feed">View The Feed</Link>
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -210,9 +215,15 @@ export default function Devo() {
   const { data: assignments = [], isLoading } = useMyDevoAssignments();
 
   return (
-    <RefreshableContainer queryKeys={[["devo-assignments"]]}>
-      <div className="w-full min-w-0 space-y-4 overflow-x-hidden sm:mx-auto sm:max-w-3xl sm:space-y-6">
-        <div className="px-0 sm:px-0">
+    <RefreshableContainer
+      queryKeys={[["devo-assignments"]]}
+      className={[
+        "-mx-4 -my-5 min-h-[calc(100dvh-3.5rem)] overflow-x-hidden px-4 py-5 sm:-mx-6 sm:-my-7 sm:px-6 sm:py-7",
+        DEVO_PAGE_GRADIENT,
+      ].join(" ")}
+    >
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6 sm:space-y-8">
+        <div>
           <Breadcrumb className="mb-3">
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -245,19 +256,19 @@ export default function Devo() {
 
         {isLoading ? (
           <div className="space-y-3">
-            <Skeleton className="h-64 w-full rounded-none sm:rounded-2xl" />
-            <Skeleton className="h-40 w-full rounded-none sm:rounded-2xl" />
+            <Skeleton className="h-64 w-full rounded-xl bg-white/5" />
+            <Skeleton className="h-40 w-full rounded-xl bg-white/5" />
           </div>
         ) : assignments.length === 0 ? (
-          <Card className="rounded-none border-x-0 sm:rounded-2xl sm:border-x">
-            <CardContent className="px-4 py-10 text-center text-muted-foreground sm:px-6">
-              You don&apos;t have any active devotionals right now.
-            </CardContent>
-          </Card>
+          <p className="py-10 text-center text-muted-foreground">
+            You don&apos;t have any active devotionals right now.
+          </p>
         ) : (
-          <div className="-mx-4 space-y-4 sm:mx-0 sm:space-y-5">
+          <div className="space-y-10 divide-y divide-white/8 sm:space-y-12">
             {assignments.map((assignment) => (
-              <DevoAssignmentCard key={assignment.id} assignment={assignment} />
+              <div key={assignment.id} className="pt-0 first:pt-0 [&:not(:first-child)]:pt-10 sm:[&:not(:first-child)]:pt-12">
+                <DevoAssignmentPanel assignment={assignment} />
+              </div>
             ))}
           </div>
         )}
