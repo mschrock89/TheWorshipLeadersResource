@@ -16,6 +16,8 @@ export interface Event {
   ministry_type: string | null;
   ministry_types?: string[] | null;
   audience_type: string | null;
+  target_genders?: string[] | null;
+  location?: string | null;
   teaching_week_id?: string | null;
   camp_instance_id?: string | null;
   created_by: string | null;
@@ -114,6 +116,8 @@ export function useCreateEvent() {
         ministry_type?: string;
         ministry_types?: string[];
         audience_type?: string;
+        target_genders?: string[];
+        location?: string;
         teaching_week_id?: string;
       }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -144,6 +148,8 @@ export function useCreateEvent() {
           ministry_type: event.ministry_type || "weekend",
           ministry_types: event.ministry_types?.length ? event.ministry_types : event.ministry_type ? [event.ministry_type] : null,
           audience_type: event.audience_type || "volunteers_only",
+          target_genders: event.target_genders?.length ? event.target_genders : null,
+          location: event.location?.trim() || null,
           teaching_week_id: teachingWeekId,
           created_by: user?.id,
         })
@@ -188,6 +194,8 @@ export function useUpdateEvent() {
         ministry_type?: string;
         ministry_types?: string[];
         audience_type?: string;
+        target_genders?: string[];
+        location?: string;
       };
     }) => {
       const { data, error } = await supabase
@@ -203,6 +211,8 @@ export function useUpdateEvent() {
           ministry_type: event.ministry_type || "weekend",
           ministry_types: event.ministry_types?.length ? event.ministry_types : event.ministry_type ? [event.ministry_type] : null,
           audience_type: event.audience_type || "volunteers_only",
+          target_genders: event.target_genders?.length ? event.target_genders : null,
+          location: event.location?.trim() || null,
         })
         .eq("id", eventId)
         .select()

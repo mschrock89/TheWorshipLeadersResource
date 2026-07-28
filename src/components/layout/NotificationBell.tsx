@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck, Megaphone } from "lucide-react";
+import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck, Megaphone, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -219,6 +219,13 @@ export function NotificationBell() {
                   {eventDetails.startTime && eventDetails.endTime && " - "}
                   {formatTime(eventDetails.endTime)}
                 </div>
+              )}
+
+              {eventDetails.location && (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  {eventDetails.location}
+                </p>
               )}
 
               {eventDetails.audienceType && (

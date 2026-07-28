@@ -1241,9 +1241,11 @@ export type Database = {
           end_time: string | null
           event_date: string
           id: string
+          location: string | null
           ministry_type: string | null
           ministry_types: string[] | null
           start_time: string | null
+          target_genders: string[] | null
           teaching_week_id: string | null
           title: string
           updated_at: string | null
@@ -1259,9 +1261,11 @@ export type Database = {
           end_time?: string | null
           event_date: string
           id?: string
+          location?: string | null
           ministry_type?: string | null
           ministry_types?: string[] | null
           start_time?: string | null
+          target_genders?: string[] | null
           teaching_week_id?: string | null
           title: string
           updated_at?: string | null
@@ -1277,9 +1281,11 @@ export type Database = {
           end_time?: string | null
           event_date?: string
           id?: string
+          location?: string | null
           ministry_type?: string | null
           ministry_types?: string[] | null
           start_time?: string | null
+          target_genders?: string[] | null
           teaching_week_id?: string | null
           title?: string
           updated_at?: string | null

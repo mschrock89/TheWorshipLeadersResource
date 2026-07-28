@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -60,6 +60,7 @@ import { buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
+import { EventPushDialog } from "@/components/calendar/EventPushDialog";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const EVENT_AUDIENCE_OPTIONS = [{
@@ -72,6 +73,19 @@ const EVENT_AUDIENCE_OPTIONS = [{
   value: "volunteer_and_spouse",
   label: "Volunteer and Spouse"
 }] as const;
+const EVENT_GENDER_OPTIONS = [{
+  value: "male",
+  label: "Men"
+}, {
+  value: "female",
+  label: "Women"
+}] as const;
+const formatEventGenderLabel = (targetGenders: string[] | null | undefined) => {
+  const genders = new Set((targetGenders || []).map(value => value.toLowerCase()));
+  if (genders.has("male") && !genders.has("female")) return "Men only";
+  if (genders.has("female") && !genders.has("male")) return "Women only";
+  return null;
+};
 const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
   "worship_night",
@@ -308,11 +322,13 @@ const defaultNewEventState = {
   event_type: "team_event" as "team_event" | "service",
   title: "",
   description: "",
+  location: "",
   start_time: "",
   end_time: "",
   ministry_type: "weekend",
   ministry_types: ["weekend"],
   audience_type: "volunteers_only",
+  target_genders: [] as string[],
   campus_id: "",
   campus_ids: [] as string[],
   repeats_weekly: false,
@@ -1439,6 +1455,8 @@ function StandardCalendar() {
             ministry_type: newEvent.ministry_type,
             ministry_types: selectedMinistryTypes,
             audience_type: newEvent.audience_type,
+            target_genders: newEvent.target_genders,
+            location: newEvent.location || undefined,
           },
         });
 
@@ -1459,6 +1477,8 @@ function StandardCalendar() {
         ministry_type: newEvent.ministry_type,
         ministry_types: selectedMinistryTypes,
         audience_type: newEvent.audience_type,
+        target_genders: newEvent.target_genders,
+        location: newEvent.location || undefined,
       });
 
     }
@@ -1472,6 +1492,7 @@ function StandardCalendar() {
       event_type: "team_event",
       title: event.title,
       description: event.description || "",
+      location: event.location || "",
       start_time: event.start_time || "",
       end_time: event.end_time || "",
       ministry_type: event.ministry_types?.[0] || event.ministry_type || "weekend",
@@ -1481,6 +1502,7 @@ function StandardCalendar() {
           ? [event.ministry_type]
           : ["weekend"],
       audience_type: event.audience_type || "volunteers_only",
+      target_genders: event.target_genders || [],
       campus_id: event.campus_ids?.[0] || event.campus_id || "",
       campus_ids: event.campus_ids && event.campus_ids.length > 0
         ? event.campus_ids
@@ -2125,6 +2147,13 @@ function StandardCalendar() {
                           description: e.target.value
                         })} placeholder="Event description" />
                               </div>}
+                            {newEvent.event_type === "team_event" && <div>
+                                <Label htmlFor="event-location">Location (optional)</Label>
+                                <Input id="event-location" value={newEvent.location} onChange={e => setNewEvent({
+                          ...newEvent,
+                          location: e.target.value
+                        })} placeholder="e.g. Central Campus, The Green Room" />
+                              </div>}
                             {newEvent.event_type === "team_event" && <>
                                 <div className="space-y-3">
                                   <Label>Campuses</Label>
@@ -2176,8 +2205,25 @@ function StandardCalendar() {
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                <div className="space-y-3">
+                                  <Label>Gender</Label>
+                                  <div className="flex flex-wrap gap-4 rounded-md border border-border p-3">
+                                    {EVENT_GENDER_OPTIONS.map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
+                                        <Checkbox checked={newEvent.target_genders.includes(option.value)} onCheckedChange={checked => {
+                                  setNewEvent(current => ({
+                                    ...current,
+                                    target_genders: checked ? Array.from(new Set([...current.target_genders, option.value])) : current.target_genders.filter(value => value !== option.value)
+                                  }));
+                                }} />
+                                        <span>{option.label}</span>
+                                      </label>)}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Leave unchecked to include everyone. Select one to make this a gender-specific event (e.g. Men only).
+                                  </p>
+                                </div>
                                 {!editingEventId && <p className="text-sm text-muted-foreground">
-                                  Team members who match this event&apos;s campus and ministry filters will get a push notification automatically.
+                                  Team members who match this event&apos;s campus, ministry, and gender filters will get a push notification automatically.
                                 </p>}
                               </>}
                             {newEvent.event_type === "service" && <>
@@ -2275,6 +2321,10 @@ function StandardCalendar() {
                       <div className="flex-1">
                         <h3 className="font-medium text-foreground">{event.title}</h3>
                         {event.description && <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>}
+                        {event.location && <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {event.location}
+                          </p>}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {(() => {
                             const campusNames = (event.campus_ids && event.campus_ids.length > 0 ? event.campus_ids : event.campus_id ? [event.campus_id] : [])
@@ -2286,8 +2336,11 @@ function StandardCalendar() {
                             return [campusNames.join(", "), ministryLabels.join(", ")].filter(Boolean).join(" • ");
                           })()}
                         </p>
-                        {event.audience_type && <p className="mt-1 text-xs text-muted-foreground">
-                            {EVENT_AUDIENCE_OPTIONS.find(option => option.value === event.audience_type)?.label || event.audience_type}
+                        {(event.audience_type || formatEventGenderLabel(event.target_genders)) && <p className="mt-1 text-xs text-muted-foreground">
+                            {[
+                              event.audience_type ? EVENT_AUDIENCE_OPTIONS.find(option => option.value === event.audience_type)?.label || event.audience_type : null,
+                              formatEventGenderLabel(event.target_genders),
+                            ].filter(Boolean).join(" • ")}
                           </p>}
                         {(event.start_time || event.end_time) && <p className="mt-1 text-xs text-primary">
                             {formatTime(event.start_time)}
@@ -2308,6 +2361,7 @@ function StandardCalendar() {
                           <Badge variant="outline">
                             {(event.attendee_count ?? 0)} coming
                           </Badge>
+                          {canManageTeam && <EventPushDialog eventId={event.id} eventTitle={event.title} />}
                         </div>
                       </div>
                       {canManageTeam && <div className="ml-3 flex items-center gap-1">
