@@ -149,14 +149,13 @@ export default function WeekendRundown() {
   const [songNotes, setSongNotes] = useState<SongNotesState>({});
   const [vocalNotes, setVocalNotes] = useState<VocalNotesState>({});
   const [vocalFitLabels, setVocalFitLabels] = useState<VocalFitState>({});
-  const [formHydrated, setFormHydrated] = useState(false);
+  // Tracks which user/campus/date combination the current form state belongs
+  // to, so drafts are never persisted under a different weekend's key.
+  const formStateKey = `${user?.id || ""}:${selectedCampusId}:${weekendDateStr}`;
+  const [hydratedFormKey, setHydratedFormKey] = useState<string | null>(null);
 
   useEffect(() => {
-    setFormHydrated(false);
-  }, [selectedCampusId, weekendDateStr, user?.id]);
-
-  useEffect(() => {
-    if (existingRundown === undefined || formHydrated) return;
+    if (existingRundown === undefined || hydratedFormKey === formStateKey) return;
 
     if (existingRundown) {
       setOverallStatus(existingRundown.rundown.overall_status);
@@ -177,7 +176,7 @@ export default function WeekendRundown() {
       }
       setVocalNotes(nextVocalNotes);
       setVocalFitLabels(nextVocalFitLabels);
-      setFormHydrated(true);
+      setHydratedFormKey(formStateKey);
       return;
     }
 
@@ -195,11 +194,15 @@ export default function WeekendRundown() {
       setVocalNotes({});
       setVocalFitLabels({});
     }
-    setFormHydrated(true);
-  }, [existingRundown, formHydrated, selectedCampusId, user?.id, weekendDateStr]);
+    setHydratedFormKey(formStateKey);
+  }, [existingRundown, formStateKey, hydratedFormKey, selectedCampusId, user?.id, weekendDateStr]);
 
   useEffect(() => {
-    if (!formHydrated || !user?.id || !selectedCampusId) return;
+    // Only persist the draft once the form has been hydrated for this exact
+    // user/campus/date key. Without this guard, switching the date or campus
+    // fired this effect with the new key but the previous weekend's values,
+    // leaking notes from one weekend into another.
+    if (hydratedFormKey !== formStateKey || !user?.id || !selectedCampusId) return;
 
     saveWeekendRundownDraft(user.id, selectedCampusId, weekendDateStr, {
       overallStatus,
@@ -208,7 +211,7 @@ export default function WeekendRundown() {
       vocalNotes,
       vocalFitLabels,
     });
-  }, [formHydrated, notes, overallStatus, selectedCampusId, songNotes, user?.id, vocalFitLabels, vocalNotes, weekendDateStr]);
+  }, [formStateKey, hydratedFormKey, notes, overallStatus, selectedCampusId, songNotes, user?.id, vocalFitLabels, vocalNotes, weekendDateStr]);
 
   if (!rolesLoading && !hasAccess) {
     return <Navigate to="/dashboard" replace />;
@@ -219,19 +222,30 @@ export default function WeekendRundown() {
   const handleSave = async () => {
     if (!selectedCampus) return;
 
+    // Only persist feedback for songs/vocalists in this weekend's set. Form
+    // state can contain stale entries (e.g. from an old draft) for songs that
+    // are not rendered in the UI, and those must never reach the database.
+    const scopeFeedbackToSet = canReviewSongs && !setSongsLoading && setSongs.length > 0;
+    const setSongIds = new Set(setSongs.map((song) => song.song_id));
+    const setVocalKeys = new Set(
+      setSongs.flatMap((song) => song.vocalists.map((vocalist) => `${song.song_id}:${vocalist.id}`)),
+    );
+
     const vocalFeedbackKeys = Array.from(
       new Set([...Object.keys(vocalNotes), ...Object.keys(vocalFitLabels)]),
-    );
+    ).filter((key) => !scopeFeedbackToSet || setVocalKeys.has(key));
 
     await saveWeekendRundown.mutateAsync({
       campusId: selectedCampus.id,
       weekendDate: weekendDateStr,
       overallStatus,
       notes,
-      songFeedback: Object.entries(songNotes).map(([songId, songNote]) => ({
-        song_id: songId,
-        notes: songNote,
-      })),
+      songFeedback: Object.entries(songNotes)
+        .filter(([songId]) => !scopeFeedbackToSet || setSongIds.has(songId))
+        .map(([songId, songNote]) => ({
+          song_id: songId,
+          notes: songNote,
+        })),
       vocalFeedback: vocalFeedbackKeys.map((key) => {
         const [songId, vocalistId] = key.split(":");
         return {
