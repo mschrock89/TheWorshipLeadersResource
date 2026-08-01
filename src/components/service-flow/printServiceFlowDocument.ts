@@ -127,7 +127,9 @@ export function buildPrintHtml(service: Service) {
       grid-template-columns: 1fr 1fr;
       gap: 0.22in;
       align-items: stretch;
+      width: 100%;
       height: 100%;
+      min-width: 0;
     }
 
     .sheet {
@@ -135,6 +137,7 @@ export function buildPrintHtml(service: Service) {
       border-radius: 10px;
       overflow: hidden;
       height: 100%;
+      min-width: 0;
       display: flex;
       flex-direction: column;
     }
@@ -355,21 +358,35 @@ export function printServiceFlowDocument(service: Service) {
 
   // If the sheets are taller than one page, shrink them uniformly so the whole
   // flow always prints on a single landscape-letter page. `zoom` (unlike
-  // transform) affects layout, so the second page disappears entirely; the
-  // width is compensated so both columns still span the full page.
+  // transform) affects layout, so the second page disappears entirely.
+  // Keep width at 100% — compensating width with 100/scale% overflows the page
+  // in Chrome print and clips the right-hand copy.
   const fitSheetsToOnePage = () => {
     const pair = frameDocument.querySelector<HTMLElement>(".pair");
     if (!pair) return;
+    const sheets = Array.from(
+      frameDocument.querySelectorAll<HTMLElement>(".sheet"),
+    );
     const bodyStyle = frameWindow.getComputedStyle(frameDocument.body);
     const available =
       frameDocument.body.clientHeight -
       parseFloat(bodyStyle.paddingTop) -
       parseFloat(bodyStyle.paddingBottom);
 
-    // The sheets clip their own overflow, so the natural content height is only
-    // measurable with the page-height constraint released.
+    // Release height constraints so scrollHeight reflects natural content size
+    // (sheets otherwise clip overflow at the page height).
     pair.style.height = "auto";
+    pair.style.width = "100%";
+    pair.style.removeProperty("zoom");
+    for (const sheet of sheets) {
+      sheet.style.height = "auto";
+    }
+
     const needed = pair.scrollHeight;
+
+    for (const sheet of sheets) {
+      sheet.style.height = "";
+    }
 
     if (needed <= available || available <= 0) {
       pair.style.height = "";
@@ -377,7 +394,10 @@ export function printServiceFlowDocument(service: Service) {
     }
 
     const scale = (available / needed) * 0.995;
-    pair.style.width = `${(100 / scale).toFixed(4)}%`;
+    // Layout height grows by 1/scale so after zoom the pair still fills the page
+    // vertically; width stays 100% so both columns remain fully on-page.
+    pair.style.width = "100%";
+    pair.style.height = `${(available / scale).toFixed(2)}px`;
     pair.style.setProperty("zoom", scale.toFixed(4));
   };
 
