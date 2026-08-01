@@ -790,6 +790,162 @@ async function getSongDurationsFromMarkers(
   return { byTitle: durationMap, ordered: orderedDurations };
 }
 
+function sameVocalistIdLists(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((id, index) => id === sortedB[index]);
+}
+
+/**
+ * Copy song vocalist assignments from a published Set Builder draft onto an
+ * existing service flow. Prefers song_id pairing, then falls back to sequence
+ * order. Returns true when any rows were written.
+ */
+export async function syncServiceFlowVocalistsFromDraftSet(
+  serviceFlowId: string,
+  draftSetId: string,
+): Promise<boolean> {
+  if (!serviceFlowId || !draftSetId) return false;
+
+  const { data: draftSongs, error: draftSongsError } = await supabase
+    .from("draft_set_songs")
+    .select("id, sequence_order, song_id, vocalist_id")
+    .eq("draft_set_id", draftSetId)
+    .order("sequence_order", { ascending: true });
+  if (draftSongsError || !draftSongs || draftSongs.length === 0) return false;
+
+  const draftSongIds = draftSongs.map((song: { id: string }) => song.id);
+  const { data: draftSongVocalists } = await supabase
+    .from("draft_set_song_vocalists")
+    .select("draft_set_song_id, vocalist_id")
+    .in(
+      "draft_set_song_id",
+      draftSongIds.length > 0 ? draftSongIds : ["00000000-0000-0000-0000-000000000000"],
+    );
+
+  const draftSongVocalistMap = new Map<string, string[]>();
+  for (const row of draftSongVocalists || []) {
+    const existing = draftSongVocalistMap.get(row.draft_set_song_id) || [];
+    existing.push(row.vocalist_id);
+    draftSongVocalistMap.set(row.draft_set_song_id, existing);
+  }
+
+  const { data: flowSongItems, error: flowItemsError } = await supabase
+    .from("service_flow_items")
+    .select("id, sequence_order, song_id, vocalist_id")
+    .eq("service_flow_id", serviceFlowId)
+    .eq("item_type", "song")
+    .order("sequence_order", { ascending: true });
+  if (flowItemsError || !flowSongItems || flowSongItems.length === 0) return false;
+
+  const flowItemIds = flowSongItems.map((item: { id: string }) => item.id);
+  const { data: existingFlowVocalists } = await supabase
+    .from("service_flow_item_vocalists")
+    .select("service_flow_item_id, vocalist_id")
+    .in(
+      "service_flow_item_id",
+      flowItemIds.length > 0 ? flowItemIds : ["00000000-0000-0000-0000-000000000000"],
+    );
+
+  const existingVocalistMap = new Map<string, string[]>();
+  for (const row of existingFlowVocalists || []) {
+    const existing = existingVocalistMap.get(row.service_flow_item_id) || [];
+    existing.push(row.vocalist_id);
+    existingVocalistMap.set(row.service_flow_item_id, existing);
+  }
+
+  type DraftSongRow = {
+    id: string;
+    sequence_order: number;
+    song_id: string | null;
+    vocalist_id: string | null;
+  };
+  type FlowSongRow = {
+    id: string;
+    sequence_order: number;
+    song_id: string | null;
+    vocalist_id: string | null;
+  };
+
+  const usedFlowIds = new Set<string>();
+  const pairs: Array<{ draft: DraftSongRow; flow: FlowSongRow }> = [];
+
+  for (const draft of draftSongs as DraftSongRow[]) {
+    const bySongId = (flowSongItems as FlowSongRow[]).find(
+      (item) =>
+        !!item.song_id &&
+        !!draft.song_id &&
+        item.song_id === draft.song_id &&
+        !usedFlowIds.has(item.id),
+    );
+    if (bySongId) {
+      usedFlowIds.add(bySongId.id);
+      pairs.push({ draft, flow: bySongId });
+      continue;
+    }
+
+    const nextByOrder = (flowSongItems as FlowSongRow[]).find(
+      (item) => !usedFlowIds.has(item.id),
+    );
+    if (nextByOrder) {
+      usedFlowIds.add(nextByOrder.id);
+      pairs.push({ draft, flow: nextByOrder });
+    }
+  }
+
+  const writeTasks: Promise<unknown>[] = [];
+
+  for (const { draft, flow } of pairs) {
+    const vocalistIdsRaw = draftSongVocalistMap.get(draft.id) || [];
+    const vocalistIds =
+      vocalistIdsRaw.length > 0
+        ? Array.from(new Set(vocalistIdsRaw))
+        : draft.vocalist_id
+          ? [draft.vocalist_id]
+          : [];
+    const primaryVocalistId = vocalistIds[0] || null;
+    const currentVocalistIds =
+      existingVocalistMap.get(flow.id) ||
+      (flow.vocalist_id ? [flow.vocalist_id] : []);
+
+    if ((flow.vocalist_id ?? null) !== primaryVocalistId) {
+      writeTasks.push(
+        supabase
+          .from("service_flow_items")
+          .update({ vocalist_id: primaryVocalistId })
+          .eq("id", flow.id),
+      );
+    }
+
+    if (sameVocalistIdLists(vocalistIds, currentVocalistIds)) {
+      continue;
+    }
+
+    writeTasks.push(
+      (async () => {
+        await supabase
+          .from("service_flow_item_vocalists")
+          .delete()
+          .eq("service_flow_item_id", flow.id);
+
+        if (vocalistIds.length === 0) return;
+
+        await supabase.from("service_flow_item_vocalists").insert(
+          vocalistIds.map((vocalist_id) => ({
+            service_flow_item_id: flow.id,
+            vocalist_id,
+          })),
+        );
+      })(),
+    );
+  }
+
+  if (writeTasks.length === 0) return false;
+  await Promise.all(writeTasks);
+  return true;
+}
+
 // Helper to generate service flow from template when setlist is published
 export async function generateServiceFlowFromTemplate(params: {
   campusId: string | null;
@@ -1154,102 +1310,7 @@ export async function generateServiceFlowFromTemplate(params: {
 
   const syncServiceFlowSongVocalists = async (serviceFlowId: string) => {
     if (!params.draftSetId) return;
-
-    const { data: draftSongs, error: draftSongsError } = await supabase
-      .from("draft_set_songs")
-      .select("id, sequence_order, vocalist_id")
-      .eq("draft_set_id", params.draftSetId)
-      .order("sequence_order", { ascending: true });
-    if (draftSongsError || !draftSongs || draftSongs.length === 0) return;
-
-    const draftSongIds = draftSongs.map((s: any) => s.id);
-    const { data: draftSongVocalists } = await supabase
-      .from("draft_set_song_vocalists")
-      .select("draft_set_song_id, vocalist_id")
-      .in("draft_set_song_id", draftSongIds.length > 0 ? draftSongIds : ["00000000-0000-0000-0000-000000000000"]);
-
-    const draftSongVocalistMap = new Map<string, string[]>();
-    for (const row of draftSongVocalists || []) {
-      const existing = draftSongVocalistMap.get(row.draft_set_song_id) || [];
-      existing.push(row.vocalist_id);
-      draftSongVocalistMap.set(row.draft_set_song_id, existing);
-    }
-
-    const { data: flowSongItems, error: flowItemsError } = await supabase
-      .from("service_flow_items")
-      .select("id, sequence_order, vocalist_id")
-      .eq("service_flow_id", serviceFlowId)
-      .eq("item_type", "song")
-      .order("sequence_order", { ascending: true });
-    if (flowItemsError || !flowSongItems || flowSongItems.length === 0) return;
-
-    const flowItemIds = flowSongItems.map((item: any) => item.id as string);
-    const { data: existingFlowVocalists } = await supabase
-      .from("service_flow_item_vocalists")
-      .select("service_flow_item_id, vocalist_id")
-      .in("service_flow_item_id", flowItemIds.length > 0 ? flowItemIds : ["00000000-0000-0000-0000-000000000000"]);
-
-    const existingVocalistMap = new Map<string, string[]>();
-    for (const row of existingFlowVocalists || []) {
-      const existing = existingVocalistMap.get(row.service_flow_item_id) || [];
-      existing.push(row.vocalist_id);
-      existingVocalistMap.set(row.service_flow_item_id, existing);
-    }
-
-    const sameVocalistIds = (a: string[], b: string[]) => {
-      if (a.length !== b.length) return false;
-      const sortedA = [...a].sort();
-      const sortedB = [...b].sort();
-      return sortedA.every((id, index) => id === sortedB[index]);
-    };
-
-    const writeTasks: Promise<unknown>[] = [];
-    const count = Math.min(draftSongs.length, flowSongItems.length);
-    for (let i = 0; i < count; i++) {
-      const draftSong: any = draftSongs[i];
-      const flowItem: any = flowSongItems[i];
-
-      const vocalistIdsRaw = draftSongVocalistMap.get(draftSong.id) || [];
-      const vocalistIds = vocalistIdsRaw.length > 0
-        ? Array.from(new Set(vocalistIdsRaw))
-        : (draftSong.vocalist_id ? [draftSong.vocalist_id as string] : []);
-      const primaryVocalistId = vocalistIds[0] || null;
-      const currentVocalistIds = existingVocalistMap.get(flowItem.id) || (
-        flowItem.vocalist_id ? [flowItem.vocalist_id as string] : []
-      );
-
-      if ((flowItem.vocalist_id ?? null) !== primaryVocalistId) {
-        writeTasks.push(
-          supabase
-            .from("service_flow_items")
-            .update({ vocalist_id: primaryVocalistId })
-            .eq("id", flowItem.id)
-        );
-      }
-
-      if (sameVocalistIds(vocalistIds, currentVocalistIds)) {
-        continue;
-      }
-
-      writeTasks.push(
-        (async () => {
-          await supabase
-            .from("service_flow_item_vocalists")
-            .delete()
-            .eq("service_flow_item_id", flowItem.id);
-
-          if (vocalistIds.length === 0) return;
-
-          await supabase
-            .from("service_flow_item_vocalists")
-            .insert(vocalistIds.map((vocalist_id) => ({ service_flow_item_id: flowItem.id, vocalist_id })));
-        })()
-      );
-    }
-
-    if (writeTasks.length > 0) {
-      await Promise.all(writeTasks);
-    }
+    await syncServiceFlowVocalistsFromDraftSet(serviceFlowId, params.draftSetId);
   };
 
   const getSongVocalistIds = (song: { vocalistIds?: string[]; vocalistId?: string | null }) => {
