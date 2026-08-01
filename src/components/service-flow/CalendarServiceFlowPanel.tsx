@@ -3,6 +3,7 @@ import { Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
+  syncServiceFlowVocalistsFromDraftSet,
   useDeleteServiceFlowItem,
   useReorderServiceFlowItems,
   useSaveServiceFlowItem,
@@ -234,6 +235,7 @@ export function CalendarServiceFlowPanel({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const hasAttemptedGenerate = useRef(false);
+  const hasSyncedVocalists = useRef(false);
   const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
@@ -242,6 +244,7 @@ export function CalendarServiceFlowPanel({
   const pendingDragIndexRef = useRef<number | null>(null);
 
   const contextKey = `${date}|${flowCampusId || ""}|${effectiveMinistryType}|${customServiceId || ""}`;
+  const syncDraftSetId = resolvedDraftSetId || serviceFlow?.draft_set_id || null;
 
   useEffect(() => {
     if (serviceFlow?.id) setBoundFlowId(serviceFlow.id);
@@ -251,11 +254,17 @@ export function CalendarServiceFlowPanel({
     if (contextKeyRef.current === contextKey) return;
     contextKeyRef.current = contextKey;
     hasAttemptedGenerate.current = false;
+    hasSyncedVocalists.current = false;
     syncedPlaceholderIdsRef.current = new Set();
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
   }, [contextKey]);
+
+  // Reset vocalist sync when the linked draft set changes (e.g. republish / new set).
+  useEffect(() => {
+    hasSyncedVocalists.current = false;
+  }, [syncDraftSetId, activeFlowId]);
 
   useEffect(() => {
     if (!draggedItem) setLocalItems(items);
@@ -346,6 +355,41 @@ export function CalendarServiceFlowPanel({
     networkWideCampusLoading,
     readOnly,
     user?.id,
+  ]);
+
+  // Pull latest Set Builder vocalists onto an existing flow. Without this, Calendar
+  // keeps the snapshot from first generate (e.g. Nathan) after Brent is assigned.
+  useEffect(() => {
+    const syncVocalists = async () => {
+      if (readOnly || !activeFlowId || !syncDraftSetId) return;
+      if (itemsLoading || items.length === 0) return;
+      if (hasSyncedVocalists.current) return;
+
+      hasSyncedVocalists.current = true;
+      try {
+        const changed = await syncServiceFlowVocalistsFromDraftSet(
+          activeFlowId,
+          syncDraftSetId,
+        );
+        if (changed) {
+          await queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", activeFlowId],
+          });
+        }
+      } catch (error) {
+        hasSyncedVocalists.current = false;
+        console.error("Failed to sync calendar service flow vocalists:", error);
+      }
+    };
+
+    void syncVocalists();
+  }, [
+    activeFlowId,
+    items,
+    itemsLoading,
+    queryClient,
+    readOnly,
+    syncDraftSetId,
   ]);
 
   const handleUpdateItem = useCallback(

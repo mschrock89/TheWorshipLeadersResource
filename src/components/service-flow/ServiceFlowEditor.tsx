@@ -46,6 +46,7 @@ import {
   useDeleteServiceFlowItem,
   useReorderServiceFlowItems,
   generateServiceFlowFromTemplate,
+  syncServiceFlowVocalistsFromDraftSet,
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { ServiceFlowItem } from "./ServiceFlowItem";
@@ -69,13 +70,6 @@ export type ServiceFlowEditorHandle = {
   preparePrint: () => Promise<void>;
   releasePrint: () => void;
 };
-
-function sameVocalistIds(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sortedA = [...a].sort();
-  const sortedB = [...b].sort();
-  return sortedA.every((id, index) => id === sortedB[index]);
-}
 
 const WEEKEND_SERVICE_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
@@ -791,7 +785,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   ]);
 
   // Keep service flow song vocalist assignments synced with the linked draft set.
-  // This ensures co-leads and swaps persist even when opening Service Flow outside LIVE.
+  // This ensures co-leads and Set Builder reassignments show up after the flow was first created.
   useEffect(() => {
     const syncVocalists = async () => {
       if (!serviceFlow?.draft_set_id || !activeServiceFlowId) return;
@@ -799,100 +793,23 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       if (itemsLoading || items.length === 0) return;
 
       hasSyncedVocalists.current = true;
-
-      const { data: draftSongs, error } = await supabase
-        .from("draft_set_songs")
-        .select("id, sequence_order, song_id, vocalist_id")
-        .eq("draft_set_id", serviceFlow.draft_set_id)
-        .order("sequence_order", { ascending: true });
-
-      if (error || !draftSongs?.length) return;
-
-      const draftSongIds = (draftSongs || []).map((d: any) => d.id);
-      const { data: draftSongVocalists } = await supabase
-        .from("draft_set_song_vocalists")
-        .select("draft_set_song_id, vocalist_id")
-        .in("draft_set_song_id", draftSongIds.length > 0 ? draftSongIds : ["00000000-0000-0000-0000-000000000000"]);
-
-      const draftSongVocalistMap = new Map<string, string[]>();
-      for (const row of draftSongVocalists || []) {
-        const existing = draftSongVocalistMap.get(row.draft_set_song_id) || [];
-        existing.push(row.vocalist_id);
-        draftSongVocalistMap.set(row.draft_set_song_id, existing);
-      }
-
-      const songItems = items
-        .filter((i) => i.item_type === "song" && i.song_id)
-        .sort((a, b) => a.sequence_order - b.sequence_order);
-
-      const writeTasks: Promise<unknown>[] = [];
-      let needsUpdate = false;
-
-      for (let i = 0; i < Math.min(songItems.length, draftSongs.length); i++) {
-        const item = songItems[i];
-        const draft = draftSongs[i] as any;
-        const draftVocalistIdsRaw = draftSongVocalistMap.get(draft.id) || [];
-        const draftVocalistIds = draftVocalistIdsRaw.length > 0
-          ? Array.from(new Set(draftVocalistIdsRaw))
-          : ((draft.vocalist_id as string | null) ? [draft.vocalist_id as string] : []);
-        const draftVocalistId = draftVocalistIds[0] || null;
-        const itemVocalistId = item.vocalist_id ?? null;
-        const currentVocalistIds = item.vocalists?.length
-          ? item.vocalists.map((vocalist) => vocalist.id)
-          : (itemVocalistId ? [itemVocalistId] : []);
-
-        if (draftVocalistId !== itemVocalistId) {
-          needsUpdate = true;
-          writeTasks.push(
-            supabase
-              .from("service_flow_items")
-              .update({ vocalist_id: draftVocalistId })
-              .eq("id", item.id)
-          );
-        }
-
-        // Skip junction rewrite when assignments already match.
-        if (sameVocalistIds(draftVocalistIds, currentVocalistIds)) {
-          continue;
-        }
-
-        needsUpdate = true;
-        writeTasks.push(
-          (async () => {
-            await supabase
-              .from("service_flow_item_vocalists")
-              .delete()
-              .eq("service_flow_item_id", item.id);
-
-            if (draftVocalistIds.length === 0) return;
-
-            const { error: insertError } = await supabase
-              .from("service_flow_item_vocalists")
-              .insert(
-                draftVocalistIds.map((vocalist_id) => ({
-                  service_flow_item_id: item.id,
-                  vocalist_id,
-                }))
-              );
-            if (insertError) {
-              console.error("Failed syncing service flow co-vocalists:", insertError);
-            }
-          })()
+      try {
+        const changed = await syncServiceFlowVocalistsFromDraftSet(
+          activeServiceFlowId,
+          serviceFlow.draft_set_id,
         );
-      }
-
-      if (writeTasks.length > 0) {
-        await Promise.all(writeTasks);
-      }
-
-      if (needsUpdate) {
-        await queryClient.invalidateQueries({
-          queryKey: ["service-flow-items", activeServiceFlowId],
-        });
+        if (changed) {
+          await queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", activeServiceFlowId],
+          });
+        }
+      } catch (error) {
+        hasSyncedVocalists.current = false;
+        console.error("Failed syncing service flow vocalists:", error);
       }
     };
 
-    syncVocalists();
+    void syncVocalists();
   }, [activeServiceFlowId, serviceFlow?.draft_set_id, items, itemsLoading, queryClient]);
 
   // Sync local items with fetched items when not dragging
