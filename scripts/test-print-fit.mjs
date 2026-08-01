@@ -77,23 +77,66 @@ const service = {
 const fitScript = `<script>
   window.addEventListener("load", () => {
     const pair = document.querySelector(".pair");
+    const sheets = [...document.querySelectorAll(".sheet")];
     const bodyStyle = getComputedStyle(document.body);
     const available =
       document.body.clientHeight -
       parseFloat(bodyStyle.paddingTop) -
       parseFloat(bodyStyle.paddingBottom);
     pair.style.height = "auto";
+    pair.style.width = "100%";
+    pair.style.removeProperty("zoom");
+    for (const sheet of sheets) sheet.style.height = "auto";
     const needed = pair.scrollHeight;
-    document.title = "needed=" + needed + " available=" + available;
+    for (const sheet of sheets) sheet.style.height = "";
     if (needed <= available || available <= 0) {
       pair.style.height = "";
-      return;
+    } else {
+      const scale = (available / needed) * 0.995;
+      pair.style.width = "100%";
+      pair.style.height = (available / scale).toFixed(2) + "px";
+      pair.style.setProperty("zoom", scale.toFixed(4));
     }
-    const scale = (available / needed) * 0.995;
-    pair.style.width = (100 / scale).toFixed(4) + "%";
-    pair.style.setProperty("zoom", scale.toFixed(4));
+    const bodyPadL = parseFloat(bodyStyle.paddingLeft);
+    const bodyPadR = parseFloat(bodyStyle.paddingRight);
+    const bodyBox = document.body.getBoundingClientRect();
+    const pairBox = pair.getBoundingClientRect();
+    const sheetBoxes = sheets.map((sheet) => sheet.getBoundingClientRect());
+    const contentRight = bodyBox.right - bodyPadR;
+    const contentLeft = bodyBox.left + bodyPadL;
+    const overflowRight = Math.max(0, pairBox.right - contentRight);
+    const sheetWidthDelta = Math.abs((sheetBoxes[0]?.width || 0) - (sheetBoxes[1]?.width || 0));
+    document.title = JSON.stringify({
+      needed,
+      available,
+      zoom: pair.style.zoom || "1",
+      overflowRight: Math.round(overflowRight * 100) / 100,
+      sheetWidthDelta: Math.round(sheetWidthDelta * 100) / 100,
+      pairWidth: Math.round(pairBox.width * 100) / 100,
+      contentWidth: Math.round((contentRight - contentLeft) * 100) / 100,
+    });
   });
 </script>`;
+
+async function measureFit(name, html) {
+  const htmlPath = join(workDir, `${name}.html`);
+  await writeFile(htmlPath, html.replace("</body>", `${fitScript}</body>`));
+  const { stdout } = await execFileAsync(CHROME, [
+    "--headless",
+    "--disable-gpu",
+    "--no-first-run",
+    "--window-size=1056,816",
+    "--virtual-time-budget=5000",
+    "--dump-dom",
+    pathToFileURL(htmlPath).href,
+  ]);
+  const title = stdout.match(/<title>([^<]*)<\/title>/)?.[1] || "{}";
+  try {
+    return JSON.parse(title);
+  } catch {
+    return { error: title };
+  }
+}
 
 async function printAndCountPages(name, html) {
   const htmlPath = join(workDir, `${name}.html`);
@@ -112,18 +155,8 @@ async function printAndCountPages(name, html) {
   ]);
 
   if (process.env.DEBUG_FIT) {
-    const { stdout } = await execFileAsync(CHROME, [
-      "--headless",
-      "--disable-gpu",
-      "--no-first-run",
-      "--window-size=1056,816",
-      "--virtual-time-budget=5000",
-      "--dump-dom",
-      pathToFileURL(htmlPath).href,
-    ]);
-    const title = stdout.match(/<title>[^<]*<\/title>/)?.[0];
-    const pairTag = stdout.match(/<div class="pair"[^>]*>/)?.[0];
-    console.log(`  debug ${name}: ${title} ${pairTag}`);
+    const metrics = await measureFit(`${name}-debug`, html);
+    console.log(`  debug ${name}:`, metrics);
   }
 
   const pdf = await readFile(pdfPath);
@@ -133,9 +166,20 @@ async function printAndCountPages(name, html) {
 
 let failed = false;
 
-const basePages = await printAndCountPages("base", buildPrintHtml(service));
+function checkLayout(name, metrics) {
+  const overflowOk = (metrics.overflowRight ?? 99) <= 1;
+  const equalCols = (metrics.sheetWidthDelta ?? 99) <= 2;
+  console.log(
+    `${name} layout: overflowRight=${metrics.overflowRight} sheetΔ=${metrics.sheetWidthDelta} zoom=${metrics.zoom} ${overflowOk && equalCols ? "OK" : "FAIL"}`,
+  );
+  if (!overflowOk || !equalCols) failed = true;
+}
+
+const baseHtml = buildPrintHtml(service);
+const basePages = await printAndCountPages("base", baseHtml);
 console.log(`12-item flow: ${basePages} page(s) ${basePages === 1 ? "OK" : "FAIL"}`);
 if (basePages !== 1) failed = true;
+checkLayout("12-item", await measureFit("base-metrics", baseHtml));
 
 // Stress test: a much longer flow must still compress onto one page.
 const bigService = {
@@ -151,15 +195,19 @@ const bigService = {
     },
   ],
 };
-const bigPages = await printAndCountPages("big", buildPrintHtml(bigService));
+const bigHtml = buildPrintHtml(bigService);
+const bigPages = await printAndCountPages("big", bigHtml);
 console.log(`20-item flow: ${bigPages} page(s) ${bigPages === 1 ? "OK" : "FAIL"}`);
 if (bigPages !== 1) failed = true;
+checkLayout("20-item", await measureFit("big-metrics", bigHtml));
 
 // Short flow should still be a single full-height page.
 const smallService = { ...service, sections: service.sections.slice(0, 2) };
-const smallPages = await printAndCountPages("small", buildPrintHtml(smallService));
+const smallHtml = buildPrintHtml(smallService);
+const smallPages = await printAndCountPages("small", smallHtml);
 console.log(`5-item flow: ${smallPages} page(s) ${smallPages === 1 ? "OK" : "FAIL"}`);
 if (smallPages !== 1) failed = true;
+checkLayout("5-item", await measureFit("small-metrics", smallHtml));
 
 await rm(workDir, { recursive: true, force: true });
 process.exit(failed ? 1 : 0);
