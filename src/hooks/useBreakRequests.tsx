@@ -21,6 +21,11 @@ export interface BreakRequest {
   // Joined fields
   user_name?: string;
   period_name?: string;
+  campus_id?: string | null;
+  campus_name?: string | null;
+  period_year?: number;
+  period_trimester?: number;
+  period_is_active?: boolean;
 }
 
 export interface RotationPeriod {
@@ -129,6 +134,68 @@ export function useBreakRequestsForPeriod(rotationPeriodId: string | null) {
       })) as BreakRequest[];
     },
     enabled: !!rotationPeriodId,
+  });
+}
+
+type AdminBreakRequestRow = BreakRequest & {
+  rotation_periods?: {
+    id: string;
+    name: string;
+    year: number;
+    trimester: number;
+    campus_id: string | null;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+  } | null;
+};
+
+/** All break/blackout rows visible to the current user (RLS-scoped). For Admin Tools. */
+export function useAdminBreakRequests() {
+  return useQuery({
+    queryKey: ["break-requests", "admin"],
+    queryFn: async () => {
+      const { data: requests, error } = await supabase
+        .from("break_requests")
+        .select(`
+          *,
+          rotation_periods(id, name, year, trimester, campus_id, start_date, end_date, is_active)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (!requests || requests.length === 0) return [] as BreakRequest[];
+
+      const [{ data: profiles }, { data: campuses }] = await Promise.all([
+        supabase.rpc("get_basic_profiles"),
+        supabase.from("campuses").select("id, name"),
+      ]);
+
+      const profileMap = new Map<string, string>();
+      (profiles || []).forEach((p: { id: string; full_name: string }) => {
+        profileMap.set(p.id, p.full_name);
+      });
+
+      const campusMap = new Map<string, string>();
+      (campuses || []).forEach((c: { id: string; name: string }) => {
+        campusMap.set(c.id, c.name);
+      });
+
+      return ((requests || []) as AdminBreakRequestRow[]).map((r) => {
+        const period = r.rotation_periods;
+        const campusId = period?.campus_id ?? null;
+        return {
+          ...r,
+          user_name: profileMap.get(r.user_id) || "Unknown",
+          period_name: period?.name,
+          campus_id: campusId,
+          campus_name: campusId ? campusMap.get(campusId) || "Unknown campus" : "Network-wide",
+          period_year: period?.year,
+          period_trimester: period?.trimester,
+          period_is_active: period?.is_active,
+        } as BreakRequest;
+      });
+    },
   });
 }
 

@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, type LucideIcon } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -609,6 +609,13 @@ export default function AdminTools() {
       description: "Plan DEVO series, upload the how-to guide, and grant Feed access.",
       icon: BookOpen,
       href: "/devo-admin",
+    },
+    {
+      id: "breaks-blackouts",
+      title: "Breaks & Blackouts",
+      description: "View trimester break requests and volunteer blackout dates.",
+      icon: Coffee,
+      href: "/breaks-admin",
     },
     {
       id: "leadership",
