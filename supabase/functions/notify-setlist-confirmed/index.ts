@@ -56,6 +56,17 @@ serve(async (req) => {
       );
     }
 
+    const campusName = String((draftSet.campuses as { name?: string } | null)?.name || "").trim();
+    const setCampusId = draftSet.campus_id as string | null;
+
+    if (!setCampusId) {
+      console.log("Skipping setlist confirmation push: set has no campus", { draftSetId });
+      return new Response(
+        JSON.stringify({ success: true, notified: false, reason: "Set has no campus" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // 2. Get the confirmer's name
     const { data: confirmerProfile } = await supabase
       .from("profiles")
@@ -65,7 +76,9 @@ serve(async (req) => {
 
     const confirmerName = confirmerProfile?.full_name || "A team member";
 
-    // 3. Find admin recipients for this set's campus.
+    // 3. Find admin recipients for this set's campus only.
+    // Org admins no longer get every campus — only campuses they belong to
+    // (user_campuses and/or admin_campus_id). Campus admins stay scoped to admin_campus_id.
     const { data: adminRoleRows, error: adminRolesError } = await supabase
       .from("user_roles")
       .select("user_id, role, admin_campus_id")
@@ -79,22 +92,63 @@ serve(async (req) => {
       );
     }
 
+    const candidateUserIds = Array.from(
+      new Set(
+        (adminRoleRows || [])
+          .map((row) => row.user_id)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    );
+
+    const { data: userCampusRows, error: userCampusesError } = candidateUserIds.length
+      ? await supabase
+          .from("user_campuses")
+          .select("user_id, campus_id")
+          .in("user_id", candidateUserIds)
+      : { data: [], error: null };
+
+    if (userCampusesError) {
+      console.error("Failed to load admin campuses:", userCampusesError);
+      return new Response(
+        JSON.stringify({ error: "Failed to determine notification recipients" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const campusesByUser = new Map<string, Set<string>>();
+    for (const row of userCampusRows || []) {
+      if (!row.user_id || !row.campus_id) continue;
+      const existing = campusesByUser.get(row.user_id) || new Set<string>();
+      existing.add(row.campus_id);
+      campusesByUser.set(row.user_id, existing);
+    }
+
     const recipientUserIds = Array.from(
       new Set(
         (adminRoleRows || [])
-          .filter((row) =>
-            row.role === "admin" ||
-            (row.role === "campus_admin" && row.admin_campus_id === draftSet.campus_id),
-          )
-          .map((row) => row.user_id)
-          .filter((userId): userId is string => Boolean(userId) && userId !== confirmerId),
+          .filter((row) => {
+            if (!row.user_id || row.user_id === confirmerId) return false;
+
+            if (row.role === "campus_admin") {
+              return row.admin_campus_id === setCampusId;
+            }
+
+            if (row.role === "admin") {
+              if (row.admin_campus_id === setCampusId) return true;
+              return campusesByUser.get(row.user_id)?.has(setCampusId) ?? false;
+            }
+
+            return false;
+          })
+          .map((row) => row.user_id as string),
       ),
     );
 
     if (recipientUserIds.length === 0) {
       console.log("No admin recipients found for setlist confirmation", {
         draftSetId,
-        campusId: draftSet.campus_id,
+        campusId: setCampusId,
+        campusName,
       });
       return new Response(
         JSON.stringify({ success: true, notified: false, reason: "No admin recipients" }),
@@ -103,7 +157,6 @@ serve(async (req) => {
     }
 
     // 4. Format the notification message
-    const campusName = (draftSet.campuses as any)?.name || "";
     const formattedDate = new Date(draftSet.plan_date).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
