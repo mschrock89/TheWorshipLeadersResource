@@ -269,7 +269,19 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      {(approval.songs || []).map((song, index) => (
+                      {(approval.songs || []).map((song, index) => {
+                        const displayVocalists =
+                          song.vocalists?.length > 0
+                            ? song.vocalists
+                            : song.vocalist
+                              ? [song.vocalist]
+                              : [];
+                        const vocalistLabel = displayVocalists
+                          .map((v) => v.full_name)
+                          .filter(Boolean)
+                          .join(", ");
+
+                        return (
                         <div key={song.id} className="rounded-md bg-muted/50 p-2 text-sm flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <button
@@ -289,9 +301,9 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
                             >
                               {index + 1}. {song.song?.title || "Unknown Song"}
                             </button>
-                            {song.vocalist?.full_name ? (
+                            {vocalistLabel ? (
                               <p className="text-xs text-muted-foreground truncate">
-                                Vocalist: {song.vocalist.full_name}
+                                {displayVocalists.length > 1 ? "Leading" : "Vocalist"}: {vocalistLabel}
                               </p>
                             ) : null}
                           </div>
@@ -319,7 +331,8 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
                             ) : null}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     <div className="space-y-2">
