@@ -25,6 +25,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -50,13 +56,22 @@ function getMinistryLabel(type: string): string {
   return labels[type] || type;
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 function ApprovalCard({ approval }: { approval: PendingApproval }) {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
-  
+
   const approveSetlist = useApproveSetlist();
   const rejectSetlist = useRejectSetlist();
-  
+
   const planDate = parseLocalDate(approval.draft_set.plan_date);
   const { data: scheduledTeam } = useScheduledTeamForDate(
     planDate,
@@ -169,39 +184,86 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
               <Music className="h-4 w-4" />
               Songs ({approval.songs.length})
             </h4>
-            <div className="rounded-lg border bg-muted/30 divide-y">
-              {approval.songs.map((song, i) => (
-                <div
-                  key={song.id}
-                  className="px-3 py-2 flex items-center gap-3"
-                >
-                  <span className="text-muted-foreground text-sm w-5">
-                    {i + 1}.
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">
-                      {song.song?.title || "Unknown Song"}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {song.song?.author && (
-                        <span className="truncate">{song.song.author}</span>
+            <TooltipProvider delayDuration={200}>
+              <div className="rounded-lg border bg-muted/30 divide-y">
+                {approval.songs.map((song, i) => {
+                  const displayVocalists =
+                    song.vocalists?.length > 0
+                      ? song.vocalists
+                      : song.vocalist
+                        ? [song.vocalist]
+                        : [];
+                  const displayNames = displayVocalists
+                    .map((v) => v.full_name)
+                    .filter(Boolean)
+                    .join(", ");
+
+                  return (
+                    <div
+                      key={song.id}
+                      className="px-3 py-2.5 flex items-center gap-3"
+                    >
+                      <span className="text-muted-foreground text-sm w-5 shrink-0">
+                        {i + 1}.
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">
+                          {song.song?.title || "Unknown Song"}
+                        </p>
+                        {song.song?.author && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {song.song.author}
+                          </p>
+                        )}
+                      </div>
+                      {displayVocalists.length > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex -space-x-2">
+                                {displayVocalists.slice(0, 2).map((vocalist) => (
+                                  <Avatar
+                                    key={vocalist.id}
+                                    className="h-6 w-6 ring-2 ring-background"
+                                  >
+                                    <AvatarImage src={vocalist.avatar_url || undefined} />
+                                    <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary/30 to-primary/10 text-primary">
+                                      {getInitials(vocalist.full_name || "?")}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </div>
+                              {displayVocalists.length > 2 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  +{displayVocalists.length - 2}
+                                </span>
+                              )}
+                              <span className="hidden sm:inline text-xs text-primary/80 max-w-[120px] truncate">
+                                {displayVocalists.length === 1
+                                  ? displayVocalists[0].full_name?.split(" ")[0]
+                                  : `${displayVocalists.length} leading`}
+                              </span>
+                              <Mic2 className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">
+                              {displayNames}{" "}
+                              {displayVocalists.length > 1 ? "are" : "is"} leading
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
-                      {song.vocalist?.full_name && (
-                        <span className="flex items-center gap-1 text-primary/80">
-                          <Mic2 className="h-3 w-3" />
-                          {song.vocalist.full_name}
-                        </span>
+                      {song.song_key && (
+                        <Badge variant="outline" className="text-xs shrink-0">
+                          {song.song_key}
+                        </Badge>
                       )}
                     </div>
-                  </div>
-                  {song.song_key && (
-                    <Badge variant="outline" className="text-xs">
-                      {song.song_key}
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
           </div>
 
           {/* Team info */}
@@ -271,7 +333,7 @@ export default function Approvals() {
   }
 
   return (
-    <div className="container max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full min-w-0 mx-auto max-w-6xl space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <FileCheck className="h-6 w-6 text-primary" />

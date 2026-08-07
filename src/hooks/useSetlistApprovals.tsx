@@ -69,7 +69,8 @@ export interface PendingApproval extends SetlistApproval {
     song_key: string | null;
     vocalist_id: string | null;
     song: { title: string; author: string | null } | null;
-    vocalist: { full_name: string | null } | null;
+    vocalist: { id: string; full_name: string | null; avatar_url: string | null } | null;
+    vocalists: { id: string; full_name: string | null; avatar_url: string | null }[];
   }[];
 }
 
@@ -118,7 +119,7 @@ async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
     .select("id, full_name, avatar_url")
     .in("id", submitterIds);
 
-  // Get songs for each draft set with vocalist info
+  // Get songs for each draft set (leaders resolved via junction table below)
   const { data: allSongs } = await supabase
     .from("draft_set_songs")
     .select(`
@@ -128,11 +129,45 @@ async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
       sequence_order,
       song_key,
       vocalist_id,
-      songs(title, author),
-      profiles:vocalist_id(full_name)
+      songs(title, author)
     `)
     .in("draft_set_id", draftSetIds)
     .order("sequence_order");
+
+  // Multi-vocalist assignments (same source of truth as Set Builder / My Setlists)
+  const draftSetSongIds = (allSongs || []).map((s) => s.id);
+  const { data: vocalistAssignments } = await supabase
+    .from("draft_set_song_vocalists")
+    .select("draft_set_song_id, vocalist_id")
+    .in(
+      "draft_set_song_id",
+      draftSetSongIds.length > 0 ? draftSetSongIds : ["00000000-0000-0000-0000-000000000000"],
+    );
+
+  const songVocalistMap = new Map<string, string[]>();
+  for (const assignment of vocalistAssignments || []) {
+    const existing = songVocalistMap.get(assignment.draft_set_song_id) || [];
+    existing.push(assignment.vocalist_id);
+    songVocalistMap.set(assignment.draft_set_song_id, existing);
+  }
+
+  const allVocalistIds = new Set<string>();
+  for (const song of allSongs || []) {
+    const junctionVocalists = songVocalistMap.get(song.id) || [];
+    if (junctionVocalists.length > 0) {
+      junctionVocalists.forEach((id) => allVocalistIds.add(id));
+    } else if (song.vocalist_id) {
+      allVocalistIds.add(song.vocalist_id);
+    }
+  }
+
+  // SECURITY DEFINER RPC — same path published setlists use so approvers see names
+  const { data: allBasicProfiles } = await supabase.rpc("get_basic_profiles");
+  const vocalistProfileMap = new Map(
+    (allBasicProfiles || [])
+      .filter((p) => allVocalistIds.has(p.id))
+      .map((p) => [p.id, p]),
+  );
 
   const draftSetMap = new Map((draftSets || []).map((ds) => [ds.id, ds]));
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
@@ -154,15 +189,33 @@ async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
     submitter: profileMap.get(approval.submitted_by) || null,
     songs: (allSongs || [])
       .filter((s) => s.draft_set_id === approval.draft_set_id)
-      .map((s) => ({
-        id: s.id,
-        song_id: s.song_id,
-        sequence_order: s.sequence_order,
-        song_key: s.song_key,
-        vocalist_id: s.vocalist_id,
-        song: s.songs as { title: string; author: string | null } | null,
-        vocalist: s.profiles as { full_name: string | null } | null,
-      })),
+      .map((s) => {
+        const junctionVocalistIds = songVocalistMap.get(s.id) || [];
+        const vocalistIds =
+          junctionVocalistIds.length > 0
+            ? junctionVocalistIds
+            : s.vocalist_id
+              ? [s.vocalist_id]
+              : [];
+        const resolvedVocalists = vocalistIds
+          .map((id) => vocalistProfileMap.get(id))
+          .filter(Boolean)
+          .map((p) => ({
+            id: p!.id,
+            full_name: p!.full_name,
+            avatar_url: p!.avatar_url,
+          }));
+        return {
+          id: s.id,
+          song_id: s.song_id,
+          sequence_order: s.sequence_order,
+          song_key: s.song_key,
+          vocalist_id: s.vocalist_id,
+          song: s.songs as { title: string; author: string | null } | null,
+          vocalist: resolvedVocalists[0] || null,
+          vocalists: resolvedVocalists,
+        };
+      }),
   }));
 
   // Keep only valid pending draft-set records and hide stale duplicates.
