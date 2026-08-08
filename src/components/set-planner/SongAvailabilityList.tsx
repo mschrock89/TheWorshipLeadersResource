@@ -298,12 +298,15 @@ export function SongAvailabilityList({
                   </div>
                   
                   {/* Column 2: Song title + optional last played date */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm truncate">{item.song.title}</p>
+                  <div className="min-w-0 overflow-hidden">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <p className="min-w-0 flex-1 truncate font-medium text-sm">{item.song.title}</p>
                       {hasGoodFitMatch && (
-                        <Badge variant="outline" className="h-5 border-emerald-500/50 text-[10px] text-emerald-600">
-                          Good Fit
+                        <Badge
+                          variant="outline"
+                          className="h-5 shrink-0 whitespace-nowrap px-1.5 py-0 leading-none border-emerald-500/50 text-[10px] text-emerald-600"
+                        >
+                          Fit
                         </Badge>
                       )}
                     </div>
