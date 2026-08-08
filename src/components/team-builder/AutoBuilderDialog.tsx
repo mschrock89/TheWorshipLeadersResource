@@ -556,7 +556,8 @@ export function AutoBuilderDialog({
     );
   }, [availablePool, previousApprovedBreakUserIdSet, previousRosterUserIds]);
 
-  // Position availability stats
+  // Position availability stats — required counts only teams that actually
+  // expose the slot in their template (not every team in the period).
   const positionStats = useMemo(() => {
     const criticalPositions = ["drums", "bass", "keys"];
     const stats: { name: string; required: number; available: number }[] = [];
@@ -564,20 +565,26 @@ export function AutoBuilderDialog({
     criticalPositions.forEach(slot => {
       const slotConfig = POSITION_SLOTS.find(s => s.slot === slot);
       if (!slotConfig) return;
+      if (!allowedCategories.includes(slotConfig.category)) return;
 
-      const available = availablePool.filter(m => 
+      const required = teams.filter((team) =>
+        isTeamSlotVisible(team.template_config, slot, templateContext),
+      ).length;
+      if (required === 0) return;
+
+      const available = availablePool.filter(m =>
         getMemberAvailableSlots(m.positions).includes(slot)
       ).length;
 
       stats.push({
         name: slotConfig.label,
-        required: teams.length,
+        required,
         available,
       });
     });
 
     return stats.filter(s => s.available < s.required);
-  }, [availablePool, teams]);
+  }, [allowedCategories, availablePool, teams, templateContext]);
 
   // Generate preview without saving
   const handlePreview = async () => {

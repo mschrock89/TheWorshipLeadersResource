@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus } from "lucide-react";
+import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,8 @@ import {
   useAdminCampusId,
   useTeamLocksForPeriod,
   useToggleTeamLock,
+  useTeamHidesForPeriod,
+  useToggleTeamHide,
   useUpdateMinistryTypes,
   useUpdateTeamTemplate,
   useCreateWorshipTeam,
@@ -383,6 +385,7 @@ export default function TeamBuilder() {
     selectedMinistryType,
   );
   const { data: teamLocks = [] } = useTeamLocksForPeriod(selectedPeriodId);
+  const { data: teamHides = [] } = useTeamHidesForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
   const { data: multiTeamAssignableMembers = [] } = useMultiTeamAssignableMembers(eligibilityCampusId);
@@ -408,6 +411,7 @@ export default function TeamBuilder() {
   const clearPeriod = useClearPeriod();
   const copyFromPrevious = useCopyFromPreviousPeriod();
   const toggleLock = useToggleTeamLock();
+  const toggleHide = useToggleTeamHide();
   const updateMinistryTypes = useUpdateMinistryTypes();
   const updateTeamTemplate = useUpdateTeamTemplate();
   const createWorshipTeam = useCreateWorshipTeam();
@@ -628,6 +632,21 @@ export default function TeamBuilder() {
 
     return mergeMissingTeams(fallbackTeams);
   }, [filteredTeams, isStudentTeamBuilder, members, resourceAppKey, selectedMinistryType, teams]);
+
+  const hiddenTeamIdSet = useMemo(
+    () => new Set(teamHides.map((hide) => hide.team_id)),
+    [teamHides],
+  );
+
+  const visibleTeams = useMemo(
+    () => displayTeams.filter((team) => !hiddenTeamIdSet.has(team.id)),
+    [displayTeams, hiddenTeamIdSet],
+  );
+
+  const hiddenTeams = useMemo(
+    () => displayTeams.filter((team) => hiddenTeamIdSet.has(team.id)),
+    [displayTeams, hiddenTeamIdSet],
+  );
 
   const displayTeamIds = useMemo(() => displayTeams.map((team) => team.id), [displayTeams]);
   const { data: historicalMemberIds } = useHistoricalTeamMemberIds(
@@ -1332,12 +1351,23 @@ export default function TeamBuilder() {
     return teamLocks.some(lock => lock.team_id === teamId);
   };
 
+  const isTeamHidden = (teamId: string) => hiddenTeamIdSet.has(teamId);
+
   const handleToggleLock = (teamId: string) => {
     if (!selectedPeriodId || !canEditCampus) return;
     toggleLock.mutate({
       teamId,
       rotationPeriodId: selectedPeriodId,
       isCurrentlyLocked: isTeamLocked(teamId),
+    });
+  };
+
+  const handleToggleHide = (teamId: string) => {
+    if (!selectedPeriodId || !canEditCampus) return;
+    toggleHide.mutate({
+      teamId,
+      rotationPeriodId: selectedPeriodId,
+      isCurrentlyHidden: isTeamHidden(teamId),
     });
   };
 
@@ -1493,7 +1523,7 @@ export default function TeamBuilder() {
 
   const teamCards = useMemo(() => {
     if (!shouldUseSplitTeamCards(selectedMinistryType, selectedCampus?.name)) {
-      return displayTeams.map((team) => ({
+      return visibleTeams.map((team) => ({
         key: team.id,
         team,
         title: team.name,
@@ -1506,7 +1536,7 @@ export default function TeamBuilder() {
       selectedCampus?.has_sunday_service ? ("sunday" as const) : null,
     ].filter((value): value is "saturday" | "sunday" => Boolean(value));
 
-    return displayTeams.flatMap((team) =>
+    return visibleTeams.flatMap((team) =>
       serviceDays.map((serviceDay) => ({
         key: `${team.id}-${serviceDay}`,
         team,
@@ -1514,7 +1544,7 @@ export default function TeamBuilder() {
         serviceDay,
       })),
     );
-  }, [displayTeams, selectedCampus, selectedMinistryType]);
+  }, [visibleTeams, selectedCampus, selectedMinistryType]);
 
   const handleEditMinistry = (member: TeamMemberAssignment) => {
     if (!canEditCampus) return;
@@ -1702,6 +1732,7 @@ export default function TeamBuilder() {
                 {canEditCampus && supportsDateSpecificAssignments && (
                   <TeamScheduleWidget
                     campusId={selectedCampusId}
+                    rotationPeriodId={selectedPeriodId}
                     rotationPeriodName={selectedPeriod?.name || null}
                     rotationPeriodStartDate={selectedPeriod?.start_date || null}
                     rotationPeriodEndDate={selectedPeriod?.end_date || null}
@@ -1857,6 +1888,8 @@ export default function TeamBuilder() {
                       isLocked={isTeamLocked(team.id)}
                       onToggleLock={() => handleToggleLock(team.id)}
                       canLock={canEditCampus}
+                      onHideForTrimester={() => handleToggleHide(team.id)}
+                      canHide={canEditCampus}
                       canEditBroadcast={canEditVideoTeam}
                       canEditAudio={isProductionManager || hasFullTeamBuilderAccess}
                       ministryFilter={selectedMinistryType}
@@ -1890,6 +1923,41 @@ export default function TeamBuilder() {
                     />
                   ))}
                 </div>
+
+                {hiddenTeams.length > 0 && (
+                  <div className="rounded-lg border border-dashed p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium">
+                        Hidden for this trimester ({hiddenTeams.length})
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {hiddenTeams.map((team) => (
+                        <div
+                          key={team.id}
+                          className="flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5"
+                        >
+                          <div
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: team.color }}
+                          />
+                          <span className="text-sm">{team.name}</span>
+                          {canEditCampus && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => handleToggleHide(team.id)}
+                            >
+                              Unhide
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Break Requests Widget */}
                 <BreakRequestsWidget
@@ -1992,7 +2060,7 @@ export default function TeamBuilder() {
           campusName={selectedCampus?.name}
           campusWorshipPastorIds={campusWorshipPastors.map((pastor) => pastor.id)}
           allowMultiTeamUserIds={multiTeamAssignableMembers.map((member) => member.id)}
-          teams={filteredTeams}
+          teams={visibleTeams}
           members={availableMembers}
           ministryType={selectedMinistryType}
           previousPeriodMembers={previousPeriodMembers}
