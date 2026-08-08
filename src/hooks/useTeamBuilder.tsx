@@ -30,6 +30,14 @@ export interface TeamPeriodLock {
   locked_by: string | null;
 }
 
+export interface TeamPeriodHide {
+  id: string;
+  team_id: string;
+  rotation_period_id: string;
+  hidden_at: string;
+  hidden_by: string | null;
+}
+
 export interface RotationPeriod {
   id: string;
   name: string;
@@ -3209,6 +3217,76 @@ export function useToggleTeamLock() {
     onError: (error) => {
       toast({
         title: "Failed to toggle lock",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+// Fetch hides for a rotation period
+export function useTeamHidesForPeriod(rotationPeriodId: string | null) {
+  return useQuery({
+    queryKey: ["team-hides", rotationPeriodId],
+    enabled: !!rotationPeriodId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("team_period_hides")
+        .select("*")
+        .eq("rotation_period_id", rotationPeriodId);
+
+      if (error) throw error;
+      return (data || []) as TeamPeriodHide[];
+    },
+  });
+}
+
+// Toggle hide for a team in a rotation period
+export function useToggleTeamHide() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      teamId,
+      rotationPeriodId,
+      isCurrentlyHidden,
+    }: {
+      teamId: string;
+      rotationPeriodId: string;
+      isCurrentlyHidden: boolean;
+    }) => {
+      if (isCurrentlyHidden) {
+        const { error } = await supabase
+          .from("team_period_hides")
+          .delete()
+          .eq("team_id", teamId)
+          .eq("rotation_period_id", rotationPeriodId);
+
+        if (error) throw error;
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error } = await supabase
+          .from("team_period_hides")
+          .insert({
+            team_id: teamId,
+            rotation_period_id: rotationPeriodId,
+            hidden_by: user?.id || null,
+          });
+
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["team-hides", variables.rotationPeriodId] });
+      toast({
+        title: variables.isCurrentlyHidden
+          ? "Team unhidden"
+          : "Team hidden for this trimester",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to toggle team visibility",
         description: error.message,
         variant: "destructive",
       });

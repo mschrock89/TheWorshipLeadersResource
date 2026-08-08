@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil, Church } from "lucide-react";
+import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil, Church, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,8 @@ interface TeamCardProps {
   isLocked?: boolean;
   onToggleLock?: () => void;
   canLock?: boolean;
+  onHideForTrimester?: () => void;
+  canHide?: boolean;
   canEditBroadcast?: boolean;
   canEditAudio?: boolean;
   ministryFilter?: string;
@@ -55,6 +57,8 @@ export function TeamCard({
   isLocked = false,
   onToggleLock,
   canLock = false,
+  onHideForTrimester,
+  canHide = false,
   canEditBroadcast = false,
   canEditAudio = false,
   ministryFilter = "all",
@@ -252,6 +256,18 @@ export function TeamCard({
                 title="Edit team template"
               >
                 <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            )}
+
+            {canHide && onHideForTrimester && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onHideForTrimester}
+                title="Hide for this trimester"
+              >
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
               </Button>
             )}
 

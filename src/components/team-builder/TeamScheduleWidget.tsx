@@ -46,11 +46,13 @@ import {
   usePublishScheduleNetworkWide,
 } from "@/hooks/useTeamScheduleEditor";
 import { useWorshipTeams } from "@/hooks/useTeamSchedule";
+import { useTeamHidesForPeriod } from "@/hooks/useTeamBuilder";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
 
 interface TeamScheduleWidgetProps {
   campusId: string | null;
+  rotationPeriodId?: string | null;
   rotationPeriodName: string | null;
   rotationPeriodStartDate: string | null;
   rotationPeriodEndDate: string | null;
@@ -130,6 +132,7 @@ const MINISTRY_LABELS: Record<string, string> = {
 
 export function TeamScheduleWidget({
   campusId,
+  rotationPeriodId = null,
   rotationPeriodName,
   rotationPeriodStartDate,
   rotationPeriodEndDate,
@@ -155,6 +158,26 @@ export function TeamScheduleWidget({
   );
   const { data: campuses = [] } = useCampuses();
   const { data: teams = [] } = useWorshipTeams();
+  const { data: teamHides = [] } = useTeamHidesForPeriod(rotationPeriodId);
+  const hiddenTeamIdSet = useMemo(
+    () => new Set(teamHides.map((hide) => hide.team_id)),
+    [teamHides],
+  );
+  const selectableTeams = useMemo(
+    () => teams.filter((team) => !hiddenTeamIdSet.has(team.id)),
+    [hiddenTeamIdSet, teams],
+  );
+  const getTeamsForPicker = useCallback(
+    (currentTeamId?: string | null) => {
+      if (!currentTeamId || !hiddenTeamIdSet.has(currentTeamId)) {
+        return selectableTeams;
+      }
+      const currentTeam = teams.find((team) => team.id === currentTeamId);
+      if (!currentTeam) return selectableTeams;
+      return [currentTeam, ...selectableTeams.filter((team) => team.id !== currentTeamId)];
+    },
+    [hiddenTeamIdSet, selectableTeams, teams],
+  );
   const selectedCampus = useMemo(
     () => campuses.find((campus) => campus.id === campusId) || null,
     [campusId, campuses],
@@ -171,6 +194,12 @@ export function TeamScheduleWidget({
   useEffect(() => {
     setNewMinistryType(activeScheduleMinistry);
   }, [activeScheduleMinistry]);
+
+  useEffect(() => {
+    if (newTeamId && hiddenTeamIdSet.has(newTeamId)) {
+      setNewTeamId("");
+    }
+  }, [hiddenTeamIdSet, newTeamId]);
 
   const rotationDates = useMemo(() => {
     if (!rotationPeriodStartDate || !rotationPeriodEndDate) {
@@ -534,7 +563,7 @@ export function TeamScheduleWidget({
                         <SelectValue placeholder="Select team" />
                       </SelectTrigger>
                       <SelectContent>
-                        {teams.map((team) => (
+                        {selectableTeams.map((team) => (
                           <SelectItem key={team.id} value={team.id}>
                             <div className="flex items-center gap-2">
                               <div
@@ -683,7 +712,7 @@ export function TeamScheduleWidget({
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {teams.map((team) => (
+                          {getTeamsForPicker(entry.team_id).map((team) => (
                             <SelectItem key={team.id} value={team.id}>
                               <div className="flex items-center gap-2">
                                 <div

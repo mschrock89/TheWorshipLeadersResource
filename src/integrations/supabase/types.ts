@@ -3610,6 +3610,48 @@ export type Database = {
           },
         ]
       }
+      team_period_hides: {
+        Row: {
+          created_at: string
+          id: string
+          hidden_at: string
+          hidden_by: string | null
+          rotation_period_id: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          hidden_at?: string
+          hidden_by?: string | null
+          rotation_period_id: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          hidden_at?: string
+          hidden_by?: string | null
+          rotation_period_id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_period_hides_rotation_period_id_fkey"
+            columns: ["rotation_period_id"]
+            isOneToOne: false
+            referencedRelation: "rotation_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_period_hides_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "worship_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_schedule: {
         Row: {
           campus_id: string | null
