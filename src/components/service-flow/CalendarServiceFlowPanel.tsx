@@ -3,6 +3,7 @@ import { Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
+  syncServiceFlowSongDurationsFromMarkers,
   syncServiceFlowVocalistsFromDraftSet,
   useDeleteServiceFlowItem,
   useReorderServiceFlowItems,
@@ -236,6 +237,7 @@ export function CalendarServiceFlowPanel({
   const [isPrinting, setIsPrinting] = useState(false);
   const hasAttemptedGenerate = useRef(false);
   const hasSyncedVocalists = useRef(false);
+  const hasSyncedDurations = useRef(false);
   const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
@@ -255,6 +257,7 @@ export function CalendarServiceFlowPanel({
     contextKeyRef.current = contextKey;
     hasAttemptedGenerate.current = false;
     hasSyncedVocalists.current = false;
+    hasSyncedDurations.current = false;
     syncedPlaceholderIdsRef.current = new Set();
     setGenerateError(null);
     setBoundFlowId(null);
@@ -264,6 +267,7 @@ export function CalendarServiceFlowPanel({
   // Reset vocalist sync when the linked draft set changes (e.g. republish / new set).
   useEffect(() => {
     hasSyncedVocalists.current = false;
+    hasSyncedDurations.current = false;
   }, [syncDraftSetId, activeFlowId]);
 
   useEffect(() => {
@@ -385,6 +389,48 @@ export function CalendarServiceFlowPanel({
     void syncVocalists();
   }, [
     activeFlowId,
+    items,
+    itemsLoading,
+    queryClient,
+    readOnly,
+    syncDraftSetId,
+  ]);
+
+  // Apply practice-track marker durations onto song items when opening an existing flow.
+  // Flows are often created before weekend tracks are uploaded; without this sync,
+  // songs keep template default durations forever.
+  useEffect(() => {
+    const syncDurations = async () => {
+      if (readOnly || !activeFlowId || !flowCampusId || !date) return;
+      if (itemsLoading || items.length === 0) return;
+      if (hasSyncedDurations.current) return;
+
+      hasSyncedDurations.current = true;
+      try {
+        const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
+          campusId: flowCampusId,
+          ministryType: effectiveMinistryType,
+          serviceDate: date,
+          draftSetId: syncDraftSetId,
+          serviceFlowId: activeFlowId,
+        });
+        if (updatedCount > 0) {
+          await queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", activeFlowId],
+          });
+        }
+      } catch (error) {
+        hasSyncedDurations.current = false;
+        console.error("Failed to sync calendar service flow song durations:", error);
+      }
+    };
+
+    void syncDurations();
+  }, [
+    activeFlowId,
+    date,
+    effectiveMinistryType,
+    flowCampusId,
     items,
     itemsLoading,
     queryClient,
