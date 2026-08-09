@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from "react";
-import { Upload, FileAudio, Loader2, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Upload, FileAudio, Loader2, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { ReferenceTrackMarkerInput, MarkerInput, markersToDbFormat, introTimestampsToMarkers, SetlistSong } from "./ReferenceTrackMarkerInput";
-import { detectReferenceTrackMarkers, detectReferenceTrackMarkersFromUrl, isMp3File } from "@/lib/detectReferenceTrackMarkers";
+import { ReferenceTrackMarkerInput, MarkerInput, markersToDbFormat, SetlistSong } from "./ReferenceTrackMarkerInput";
+import { isMp3File } from "@/lib/detectReferenceTrackMarkers";
+import { syncServiceFlowDurationsFromPlaylist } from "@/hooks/useServiceFlow";
 
 interface ReferenceTrackUploadDialogProps {
   open: boolean;
@@ -36,15 +37,12 @@ export function ReferenceTrackUploadDialog({
 }: ReferenceTrackUploadDialogProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadPhase, setUploadPhase] = useState<"idle" | "uploading" | "detecting" | "complete">("idle");
   const [progress, setProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [markers, setMarkers] = useState<MarkerInput[]>([]);
   const [markersOpen, setMarkersOpen] = useState(false);
-  const [detectingMarkers, setDetectingMarkers] = useState(false);
-  const detectionRequestId = useRef(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -54,18 +52,18 @@ export function ReferenceTrackUploadDialog({
     return new Promise((resolve, reject) => {
       const audio = new Audio();
       const objectUrl = URL.createObjectURL(file);
-      
-      audio.addEventListener('loadedmetadata', () => {
+
+      audio.addEventListener("loadedmetadata", () => {
         const duration = Math.round(audio.duration);
         URL.revokeObjectURL(objectUrl);
         resolve(duration);
       });
-      
-      audio.addEventListener('error', () => {
+
+      audio.addEventListener("error", () => {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error('Failed to load audio metadata'));
+        reject(new Error("Failed to load audio metadata"));
       });
-      
+
       audio.src = objectUrl;
     });
   }, []);
@@ -77,87 +75,26 @@ export function ReferenceTrackUploadDialog({
     setProgress(0);
     setMarkers([]);
     setMarkersOpen(false);
-    setDetectingMarkers(false);
-    setUploadPhase("idle");
-    detectionRequestId.current += 1;
   };
 
-  const analyzeMarkersFromAudio = useCallback(async (
-    file: File,
-    requestId: number,
-    durationSeconds?: number | null,
-  ) => {
-    if (setlistSongs.length === 0) {
-      toast({
-        title: "No setlist songs",
-        description: "Add songs to the setlist first so auto-detected markers can be mapped.",
-      });
-      return;
-    }
-
-    setDetectingMarkers(true);
-    try {
-      const result = await detectReferenceTrackMarkers(file, setlistSongs.length, durationSeconds);
-      if (requestId !== detectionRequestId.current) return;
-
-      const detectedMarkers = introTimestampsToMarkers(result.intro_timestamps, setlistSongs);
-      setMarkers(detectedMarkers);
-      setMarkersOpen(true);
-
-      if (detectedMarkers.length > 0) {
-        toast({
-          title: "Song markers detected",
-          description: `Found ${detectedMarkers.length} "Intro" cue${detectedMarkers.length !== 1 ? "s" : ""} and mapped them to your setlist.`,
-        });
-      } else {
-        toast({
-          title: "No intro cues found",
-          description: 'Could not hear the word "Intro" in this track. You can add markers manually.',
-        });
-      }
-    } catch (error) {
-      if (requestId !== detectionRequestId.current) return;
-      console.warn("Marker detection failed:", error);
-      toast({
-        title: "Auto-detection unavailable",
-        description: error instanceof Error
-          ? error.message
-          : "Could not analyze the audio. You can still add markers manually.",
-        variant: "destructive",
-      });
-    } finally {
-      if (requestId === detectionRequestId.current) {
-        setDetectingMarkers(false);
-      }
-    }
-  }, [setlistSongs, toast]);
-
   const processSelectedFile = useCallback(async (file: File) => {
-    const requestId = ++detectionRequestId.current;
     setSelectedFile(file);
     setMarkers([]);
     setMarkersOpen(true);
-    let durationSeconds: number | null = null;
 
     try {
       const duration = await extractAudioDuration(file);
-      if (requestId !== detectionRequestId.current) return;
       setAudioDuration(duration);
-      durationSeconds = duration;
     } catch (err) {
       console.warn("Could not extract audio duration:", err);
-      if (requestId === detectionRequestId.current) {
-        setAudioDuration(null);
-      }
+      setAudioDuration(null);
     }
 
     if (!title) {
       const nameWithoutExt = file.name.replace(/\.mp3$/i, "");
       setTitle(nameWithoutExt);
     }
-
-    void analyzeMarkersFromAudio(file, requestId, durationSeconds);
-  }, [analyzeMarkersFromAudio, extractAudioDuration, title]);
+  }, [extractAudioDuration, title]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -202,7 +139,6 @@ export function ReferenceTrackUploadDialog({
     if (!selectedFile || !title.trim() || !user) return;
 
     setUploading(true);
-    setUploadPhase("uploading");
     setProgress(0);
 
     let progressInterval: ReturnType<typeof setInterval> | null = null;
@@ -215,7 +151,7 @@ export function ReferenceTrackUploadDialog({
 
       // Simulate progress for better UX
       progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 90));
+        setProgress((prev) => Math.min(prev + 10, 90));
       }, 200);
 
       // Upload to storage
@@ -262,25 +198,7 @@ export function ReferenceTrackUploadDialog({
 
       if (insertError) throw insertError;
 
-      // Save markers — use pre-detected markers, or auto-detect from uploaded audio
-      let dbMarkers = markersToDbFormat(markers);
-
-      if (dbMarkers.length === 0 && setlistSongs.length > 0) {
-        setUploadPhase("detecting");
-        setProgress(92);
-        try {
-          const result = await detectReferenceTrackMarkersFromUrl(
-            urlData.publicUrl,
-            setlistSongs.length,
-            audioDuration,
-          );
-          dbMarkers = markersToDbFormat(
-            introTimestampsToMarkers(result.intro_timestamps, setlistSongs),
-          );
-        } catch (detectError) {
-          console.warn("Post-upload marker detection failed:", detectError);
-        }
-      }
+      const dbMarkers = markersToDbFormat(markers);
 
       if (dbMarkers.length > 0 && insertedTrack) {
         const { error: markersError } = await supabase
@@ -301,6 +219,14 @@ export function ReferenceTrackUploadDialog({
             description: markersError.message || "The track uploaded, but song markers could not be saved.",
             variant: "destructive",
           });
+        } else {
+          try {
+            await syncServiceFlowDurationsFromPlaylist(playlistId);
+            queryClient.invalidateQueries({ queryKey: ["service-flow"] });
+            queryClient.invalidateQueries({ queryKey: ["service-flow-items"] });
+          } catch (syncError) {
+            console.warn("Failed to sync service flow song durations:", syncError);
+          }
         }
       }
 
@@ -321,13 +247,12 @@ export function ReferenceTrackUploadDialog({
       }
 
       setProgress(100);
-      setUploadPhase("complete");
 
       toast({
         title: "Weekend track uploaded",
         description: dbMarkers.length > 0
-          ? `"${title.trim()}" added with ${dbMarkers.length} auto-detected marker${dbMarkers.length !== 1 ? "s" : ""}`
-          : `"${title.trim()}" uploaded, but no "Intro" cues were detected. You can add markers manually.`,
+          ? `"${title.trim()}" added with ${dbMarkers.length} song marker${dbMarkers.length !== 1 ? "s" : ""}`
+          : `"${title.trim()}" uploaded. Add song markers to calculate Service Flow durations.`,
       });
 
       // Invalidate queries to refresh data
@@ -347,7 +272,6 @@ export function ReferenceTrackUploadDialog({
     } finally {
       if (progressInterval) clearInterval(progressInterval);
       setUploading(false);
-      setUploadPhase("idle");
     }
   };
 
@@ -418,24 +342,15 @@ export function ReferenceTrackUploadDialog({
                   variant="ghost"
                   type="button"
                   className="w-full justify-between px-3 py-2 h-auto font-normal text-sm"
-                  disabled={uploading || detectingMarkers}
+                  disabled={uploading}
                 >
                   <span className="flex items-center gap-2">
-                    {detectingMarkers ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Detecting song markers...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-3.5 w-3.5 text-primary" />
-                        Song Markers
-                        {markers.length > 0 && (
-                          <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                            {markers.length}
-                          </span>
-                        )}
-                      </>
+                    <Clock className="h-3.5 w-3.5 text-primary" />
+                    Song Markers
+                    {markers.length > 0 && (
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        {markers.length}
+                      </span>
                     )}
                   </span>
                   {markersOpen ? (
@@ -446,23 +361,15 @@ export function ReferenceTrackUploadDialog({
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2">
-                {detectingMarkers ? (
-                  <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-lg">
-                    Listening for spoken "Intro" cues to place song markers...
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Markers are auto-detected from spoken "Intro" cues. Review and adjust before uploading.
-                    </p>
-                    <ReferenceTrackMarkerInput
-                      markers={markers}
-                      onChange={setMarkers}
-                      setlistSongs={setlistSongs}
-                      disabled={uploading}
-                    />
-                  </>
-                )}
+                <p className="text-xs text-muted-foreground mb-2">
+                  Add a marker at the start of each song. These timestamps calculate Service Flow song durations.
+                </p>
+                <ReferenceTrackMarkerInput
+                  markers={markers}
+                  onChange={setMarkers}
+                  setlistSongs={setlistSongs}
+                  disabled={uploading}
+                />
               </CollapsibleContent>
             </Collapsible>
           )}
@@ -472,11 +379,7 @@ export function ReferenceTrackUploadDialog({
             <div className="space-y-2">
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-muted-foreground text-center">
-                {uploadPhase === "detecting"
-                  ? "Analyzing audio for Intro cues..."
-                  : progress < 100
-                    ? "Uploading..."
-                    : "Complete!"}
+                {progress < 100 ? "Uploading..." : "Complete!"}
               </p>
             </div>
           )}
@@ -493,7 +396,7 @@ export function ReferenceTrackUploadDialog({
             </Button>
             <Button
               onClick={handleUpload}
-              disabled={!selectedFile || !title.trim() || uploading || detectingMarkers}
+              disabled={!selectedFile || !title.trim() || uploading}
               className="flex-1"
             >
               {uploading ? (

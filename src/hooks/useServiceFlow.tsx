@@ -690,15 +690,93 @@ type MarkerDurations = {
   ordered: number[];
 };
 
+type ReferenceTrackWithMarkers = {
+  id: string;
+  duration_seconds: number | null;
+  sequence_order?: number | null;
+  reference_track_markers:
+    | Array<{
+        title: string;
+        timestamp_seconds: number;
+        sequence_order: number;
+      }>
+    | null;
+};
+
+function computeDurationsFromRefTracks(refTracks: ReferenceTrackWithMarkers[]): MarkerDurations {
+  const durationMap = new Map<string, number>();
+  const orderedDurations: number[] = [];
+
+  // Prefer the track with the most markers (usually the full weekend click/practice track).
+  // Merging every track's markers breaks positional fallback when multiple mixes exist.
+  const tracksWithMarkers = refTracks
+    .map((track) => ({
+      track,
+      markers: [...(track.reference_track_markers || [])].sort(
+        (a, b) => a.sequence_order - b.sequence_order,
+      ),
+    }))
+    .filter((entry) => entry.markers.length > 0)
+    .sort((a, b) => {
+      if (b.markers.length !== a.markers.length) return b.markers.length - a.markers.length;
+      return (a.track.sequence_order ?? 0) - (b.track.sequence_order ?? 0);
+    });
+
+  const best = tracksWithMarkers[0];
+  if (!best) return { byTitle: durationMap, ordered: orderedDurations };
+
+  const { track, markers } = best;
+  const totalTrackDuration = track.duration_seconds;
+
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    const nextMarker = markers[i + 1];
+
+    let duration: number | null = null;
+
+    if (nextMarker) {
+      // Duration = next marker timestamp - this marker timestamp
+      duration = nextMarker.timestamp_seconds - marker.timestamp_seconds;
+    } else if (totalTrackDuration) {
+      // Last marker: duration = total track length - this marker timestamp
+      duration = totalTrackDuration - marker.timestamp_seconds;
+    }
+
+    if (duration && duration > 0) {
+      durationMap.set(normalizeTitle(marker.title), duration);
+      orderedDurations.push(duration);
+    }
+  }
+
+  return { byTitle: durationMap, ordered: orderedDurations };
+}
+
+async function loadReferenceTracksForPlaylist(playlistId: string): Promise<ReferenceTrackWithMarkers[]> {
+  const { data: refTracks, error } = await supabase
+    .from("setlist_playlist_reference_tracks")
+    .select(`
+      id,
+      duration_seconds,
+      sequence_order,
+      reference_track_markers (
+        title,
+        timestamp_seconds,
+        sequence_order
+      )
+    `)
+    .eq("playlist_id", playlistId)
+    .order("sequence_order", { ascending: true });
+
+  if (error) throw error;
+  return (refTracks || []) as ReferenceTrackWithMarkers[];
+}
+
 async function getSongDurationsFromMarkers(
   campusId: string,
   ministryType: string,
   serviceDate: string,
   draftSetId?: string | null
 ): Promise<MarkerDurations> {
-  const durationMap = new Map<string, number>();
-  const orderedDurations: number[] = [];
-
   // Get the playlist for this service.
   // Prefer exact draft_set_id linkage to avoid ministry/date ambiguity on custom services.
   let playlist: { id: string } | null = null;
@@ -739,55 +817,165 @@ async function getSongDurationsFromMarkers(
     playlist = (weekendFallback.data as { id: string } | null) || null;
   }
 
-  if (!playlist) return { byTitle: durationMap, ordered: orderedDurations };
+  if (!playlist) return { byTitle: new Map(), ordered: [] };
 
-  // Get reference tracks and their markers (include duration_seconds for last song calc)
-  const { data: refTracks } = await supabase
-    .from("setlist_playlist_reference_tracks")
-    .select(`
-      id,
-      duration_seconds,
-      reference_track_markers (
-        title,
-        timestamp_seconds,
-        sequence_order
-      )
-    `)
-    .eq("playlist_id", playlist.id)
-    .order("sequence_order", { ascending: true });
+  const refTracks = await loadReferenceTracksForPlaylist(playlist.id);
+  if (refTracks.length === 0) return { byTitle: new Map(), ordered: [] };
 
-  if (!refTracks || refTracks.length === 0) return { byTitle: durationMap, ordered: orderedDurations };
+  return computeDurationsFromRefTracks(refTracks);
+}
 
-  // Process each reference track's markers
-  for (const track of refTracks) {
-    const markers = (track.reference_track_markers || []).sort(
-      (a: any, b: any) => a.sequence_order - b.sequence_order
-    );
-    const totalTrackDuration = (track as any).duration_seconds as number | null;
-
-    for (let i = 0; i < markers.length; i++) {
-      const marker = markers[i];
-      const nextMarker = markers[i + 1];
-
-      let duration: number | null = null;
-
-      if (nextMarker) {
-        // Duration = next marker timestamp - this marker timestamp
-        duration = nextMarker.timestamp_seconds - marker.timestamp_seconds;
-      } else if (totalTrackDuration) {
-        // Last marker: duration = total track length - this marker timestamp
-        duration = totalTrackDuration - marker.timestamp_seconds;
-      }
-
-      if (duration && duration > 0) {
-        const normalizedTitle = normalizeTitle(marker.title);
-        durationMap.set(normalizedTitle, duration);
-        orderedDurations.push(duration);
-      }
-    }
+async function applyMarkerDurationsToFlowSongs(
+  serviceFlowId: string,
+  markerDurations: MarkerDurations,
+): Promise<number> {
+  if (markerDurations.ordered.length === 0 && markerDurations.byTitle.size === 0) {
+    return 0;
   }
 
-  return { byTitle: durationMap, ordered: orderedDurations };
+  const { data: existingItems, error } = await supabase
+    .from("service_flow_items")
+    .select("id, item_type, title, duration_seconds, sequence_order")
+    .eq("service_flow_id", serviceFlowId)
+    .order("sequence_order", { ascending: true });
+
+  if (error) throw error;
+  if (!existingItems || existingItems.length === 0) return 0;
+
+  const songItems = existingItems.filter((item) => item.item_type === "song");
+  const updates: PromiseLike<{ error: { message: string } | null }>[] = [];
+
+  songItems.forEach((item, index) => {
+    const titleDuration = markerDurations.byTitle.get(normalizeTitle(item.title || ""));
+    const orderedDuration = markerDurations.ordered[index];
+    const duration = titleDuration ?? orderedDuration ?? null;
+
+    // Practice-track markers are the source of truth for song lengths.
+    if (duration && duration > 0 && item.duration_seconds !== duration) {
+      updates.push(
+        supabase
+          .from("service_flow_items")
+          .update({ duration_seconds: duration })
+          .eq("id", item.id),
+      );
+    }
+  });
+
+  if (updates.length === 0) return 0;
+  await Promise.all(updates);
+  return updates.length;
+}
+
+/**
+ * Push practice-track marker durations onto the matching Service Flow song items.
+ * Used after weekend-track upload/marker edits, and when opening an existing flow.
+ */
+export async function syncServiceFlowSongDurationsFromMarkers(params: {
+  campusId: string;
+  ministryType: string;
+  serviceDate: string;
+  draftSetId?: string | null;
+  serviceFlowId?: string | null;
+}): Promise<number> {
+  const markerDurations = await getSongDurationsFromMarkers(
+    params.campusId,
+    params.ministryType,
+    params.serviceDate,
+    params.draftSetId,
+  );
+
+  if (markerDurations.ordered.length === 0 && markerDurations.byTitle.size === 0) {
+    return 0;
+  }
+
+  let serviceFlowId = params.serviceFlowId || null;
+
+  if (!serviceFlowId && params.draftSetId) {
+    const { data: byDraft, error } = await supabase
+      .from("service_flows")
+      .select("id")
+      .eq("draft_set_id", params.draftSetId)
+      .maybeSingle();
+    if (error) throw error;
+    serviceFlowId = byDraft?.id || null;
+  }
+
+  if (!serviceFlowId) {
+    const { data: byScope, error } = await supabase
+      .from("service_flows")
+      .select("id")
+      .eq("campus_id", params.campusId)
+      .eq("ministry_type", params.ministryType)
+      .eq("service_date", params.serviceDate)
+      .maybeSingle();
+    if (error) throw error;
+    serviceFlowId = byScope?.id || null;
+  }
+
+  if (!serviceFlowId) return 0;
+  return applyMarkerDurationsToFlowSongs(serviceFlowId, markerDurations);
+}
+
+/**
+ * Sync Service Flow song durations from a specific Our Versions / weekend playlist.
+ */
+export async function syncServiceFlowDurationsFromPlaylist(playlistId: string): Promise<number> {
+  const { data: playlist, error: playlistError } = await supabase
+    .from("setlist_playlists")
+    .select("id, campus_id, ministry_type, service_date, draft_set_id")
+    .eq("id", playlistId)
+    .maybeSingle();
+
+  if (playlistError) throw playlistError;
+  if (!playlist) return 0;
+
+  const refTracks = await loadReferenceTracksForPlaylist(playlist.id);
+  const markerDurations = computeDurationsFromRefTracks(refTracks);
+  if (markerDurations.ordered.length === 0 && markerDurations.byTitle.size === 0) {
+    return 0;
+  }
+
+  let serviceFlowId: string | null = null;
+
+  if (playlist.draft_set_id) {
+    const { data: byDraft, error } = await supabase
+      .from("service_flows")
+      .select("id")
+      .eq("draft_set_id", playlist.draft_set_id)
+      .maybeSingle();
+    if (error) throw error;
+    serviceFlowId = byDraft?.id || null;
+  }
+
+  if (!serviceFlowId) {
+    const { data: byScope, error } = await supabase
+      .from("service_flows")
+      .select("id")
+      .eq("campus_id", playlist.campus_id)
+      .eq("ministry_type", playlist.ministry_type)
+      .eq("service_date", playlist.service_date)
+      .maybeSingle();
+    if (error) throw error;
+    serviceFlowId = byScope?.id || null;
+  }
+
+  // Weekend playlists often back the main weekend service flow even when ministry labels differ.
+  if (!serviceFlowId && ["weekend", "weekend_team"].includes(playlist.ministry_type)) {
+    const { data: weekendFlow, error } = await supabase
+      .from("service_flows")
+      .select("id")
+      .eq("campus_id", playlist.campus_id)
+      .eq("service_date", playlist.service_date)
+      .in("ministry_type", ["weekend", "weekend_team"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    serviceFlowId = weekendFlow?.id || null;
+  }
+
+  if (!serviceFlowId) return 0;
+  return applyMarkerDurationsToFlowSongs(serviceFlowId, markerDurations);
 }
 
 function sameVocalistIdLists(a: string[], b: string[]) {
@@ -1529,27 +1717,9 @@ export async function generateServiceFlowFromTemplate(params: {
     const requiresTemplateResync = !!template && params.forceTemplateResync === true;
 
     if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
-      const updates: Promise<any>[] = [];
-      const songItems = (existingItems as any[]).filter((i) => i.item_type === "song");
-
-      songItems.forEach((item, index) => {
-        const titleDuration = markerDurations.byTitle.get(normalizeTitle(item.title || ""));
-        const orderedDuration = markerDurations.ordered[index];
-        const duration = titleDuration ?? orderedDuration ?? null;
-
-        if (duration && duration > 0 && (!item.duration_seconds || item.duration_seconds <= 0)) {
-          updates.push(
-            supabase
-              .from("service_flow_items")
-              .update({ duration_seconds: duration })
-              .eq("id", item.id)
-          );
-        }
-      });
-
-      if (updates.length > 0) {
-        await Promise.all(updates);
-      }
+      // Practice-track markers are the source of truth for song lengths — always apply
+      // them when available (even if the flow already has template default durations).
+      await applyMarkerDurationsToFlowSongs(existingFlow.id, markerDurations);
       if (!isKidsCampCombinedFlow) {
         await syncServiceFlowSongVocalists(existingFlow.id);
       }

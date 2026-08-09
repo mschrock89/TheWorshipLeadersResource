@@ -46,6 +46,7 @@ import {
   useDeleteServiceFlowItem,
   useReorderServiceFlowItems,
   generateServiceFlowFromTemplate,
+  syncServiceFlowSongDurationsFromMarkers,
   syncServiceFlowVocalistsFromDraftSet,
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
@@ -247,6 +248,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedVocalists = useRef(false);
+  const hasSyncedDurations = useRef(false);
   const hasInvalidatedFlowOnLive = useRef(false);
   const hasInvalidatedItemsOnLive = useRef(false);
   const printReadyResolveRef = useRef<(() => void) | null>(null);
@@ -531,6 +533,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     hasAttemptedAutoGenerate.current = false;
     hasAttemptedEmptyBackfill.current = false;
     hasSyncedVocalists.current = false;
+    hasSyncedDurations.current = false;
     hasInvalidatedFlowOnLive.current = false;
     hasInvalidatedItemsOnLive.current = false;
     setResolvedDraftSetId(initialDraftSetId || null);
@@ -811,6 +814,46 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
 
     void syncVocalists();
   }, [activeServiceFlowId, serviceFlow?.draft_set_id, items, itemsLoading, queryClient]);
+
+  // Apply practice-track marker durations onto song items when opening an existing flow.
+  useEffect(() => {
+    const syncDurations = async () => {
+      if (!activeServiceFlowId || !effectiveCampusId || !serviceDateStr) return;
+      if (hasSyncedDurations.current) return;
+      if (itemsLoading || items.length === 0) return;
+
+      hasSyncedDurations.current = true;
+      try {
+        const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
+          campusId: effectiveCampusId,
+          ministryType,
+          serviceDate: serviceDateStr,
+          draftSetId: serviceFlow?.draft_set_id || resolvedDraftSetId,
+          serviceFlowId: activeServiceFlowId,
+        });
+        if (updatedCount > 0) {
+          await queryClient.invalidateQueries({
+            queryKey: ["service-flow-items", activeServiceFlowId],
+          });
+        }
+      } catch (error) {
+        hasSyncedDurations.current = false;
+        console.error("Failed syncing service flow song durations:", error);
+      }
+    };
+
+    void syncDurations();
+  }, [
+    activeServiceFlowId,
+    effectiveCampusId,
+    items,
+    itemsLoading,
+    ministryType,
+    queryClient,
+    resolvedDraftSetId,
+    serviceDateStr,
+    serviceFlow?.draft_set_id,
+  ]);
 
   // Sync local items with fetched items when not dragging
   useEffect(() => {

@@ -562,8 +562,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
           onOpenChange={setEditMarkersOpen}
           referenceTrackId={selectedRefTrack.referenceTrackId}
           referenceTrackTitle={selectedRefTrack.title}
-          audioUrl={selectedRefTrack.audioUrl}
-          durationSeconds={selectedRefTrack.durationSeconds}
+          playlistId={playlist.id}
           existingMarkers={selectedRefTrack.markers || []}
           setlistSongs={setlistSongs}
         />
