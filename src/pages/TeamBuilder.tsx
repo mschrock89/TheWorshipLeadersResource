@@ -279,6 +279,8 @@ const TEAM_DISPLAY_ORDER = [
   "Team 2",
   "Team 3",
   "Team 4",
+  "Evening A",
+  "Evening B",
   "Combined",
   "Simple Worship",
   "5th Sunday",

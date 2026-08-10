@@ -49,6 +49,7 @@ import { useWorshipTeams } from "@/hooks/useTeamSchedule";
 import { useTeamHidesForPeriod } from "@/hooks/useTeamBuilder";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
+import { isTeamVisibleForMinistry } from "@/lib/constants";
 
 interface TeamScheduleWidgetProps {
   campusId: string | null;
@@ -163,9 +164,17 @@ export function TeamScheduleWidget({
     () => new Set(teamHides.map((hide) => hide.team_id)),
     [teamHides],
   );
+  const activeScheduleMinistry = useMemo(() => {
+    return normalizeScheduleMinistryFilter(scheduleMinistryFilter);
+  }, [scheduleMinistryFilter]);
   const selectableTeams = useMemo(
-    () => teams.filter((team) => !hiddenTeamIdSet.has(team.id)),
-    [hiddenTeamIdSet, teams],
+    () =>
+      teams.filter(
+        (team) =>
+          !hiddenTeamIdSet.has(team.id) &&
+          isTeamVisibleForMinistry(team.name, activeScheduleMinistry || ministryFilter || "all"),
+      ),
+    [activeScheduleMinistry, hiddenTeamIdSet, ministryFilter, teams],
   );
   const getTeamsForPicker = useCallback(
     (currentTeamId?: string | null) => {
@@ -183,10 +192,6 @@ export function TeamScheduleWidget({
     [campusId, campuses],
   );
 
-  const activeScheduleMinistry = useMemo(() => {
-    return normalizeScheduleMinistryFilter(scheduleMinistryFilter);
-  }, [scheduleMinistryFilter]);
-
   useEffect(() => {
     setScheduleMinistryFilter(normalizeScheduleMinistryFilter(ministryFilter));
   }, [ministryFilter]);
@@ -196,10 +201,10 @@ export function TeamScheduleWidget({
   }, [activeScheduleMinistry]);
 
   useEffect(() => {
-    if (newTeamId && hiddenTeamIdSet.has(newTeamId)) {
+    if (newTeamId && !selectableTeams.some((team) => team.id === newTeamId)) {
       setNewTeamId("");
     }
-  }, [hiddenTeamIdSet, newTeamId]);
+  }, [newTeamId, selectableTeams]);
 
   const rotationDates = useMemo(() => {
     if (!rotationPeriodStartDate || !rotationPeriodEndDate) {

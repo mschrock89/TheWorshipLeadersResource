@@ -357,7 +357,8 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   weekend: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Weekend Worship teams plus special weekend options
   worship_night: ["Team 1", "Team 2", "Team 3", "Team 4"], // Worship Night follows the same 4-team campus rotation
   kids_camp: ["Team 1", "Team 2", "Team 3", "Team 4"], // Kids Camp follows the standard 4-team campus rotation
-  student_camp: ["Team 1", "Team 2", "Team 3", "Team 4"], // Student Camp follows the standard 4-team campus rotation
+  // Evening A/B are Student Camp only — never Weekend Worship options.
+  student_camp: ["Team 1", "Team 2", "Team 3", "Team 4", "Evening A", "Evening B"],
   prayer_night: [], // Custom-services only; no standard team rotation filter
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Worship
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // MS Worship uses the full 4-team rotation
@@ -390,6 +391,10 @@ const BUILTIN_TEAM_NAMES = new Set(
   [
     ...Object.values(MINISTRY_TEAM_FILTER).flatMap((list) => list ?? []),
     "Combined",
+    // Keep these built-in even if a ministry filter list is edited later so they
+    // cannot fall back to "custom team → visible under every ministry" behavior.
+    "Evening A",
+    "Evening B",
   ].map((name) => name.toLowerCase()),
 );
 
