@@ -346,6 +346,36 @@ export interface Campus {
 export interface CampusWorshipPastor {
   id: string;
   full_name: string;
+  gender: string | null;
+  role: "campus_worship_pastor" | "student_worship_pastor";
+}
+
+/** Weekend / worship-night builds prioritize Campus Worship Pastors on every team. */
+export const AUTO_BUILD_CAMPUS_WORSHIP_PASTOR_MINISTRIES = new Set([
+  "weekend",
+  "weekend_team",
+  "worship_night",
+]);
+
+/** Student worship builds prioritize Student Worship Leaders on every team. */
+export const AUTO_BUILD_STUDENT_WORSHIP_LEADER_MINISTRIES = new Set([
+  "encounter",
+  "eon",
+  "eon_weekend",
+]);
+
+export function getAutoBuildPriorityLeaderIds(
+  ministryType: string,
+  campusWorshipPastorIds: string[] = [],
+  studentWorshipLeaderIds: string[] = [],
+): string[] {
+  if (AUTO_BUILD_CAMPUS_WORSHIP_PASTOR_MINISTRIES.has(ministryType)) {
+    return [...new Set(campusWorshipPastorIds.filter(Boolean))];
+  }
+  if (AUTO_BUILD_STUDENT_WORSHIP_LEADER_MINISTRIES.has(ministryType)) {
+    return [...new Set(studentWorshipLeaderIds.filter(Boolean))];
+  }
+  return [];
 }
 
 export interface MultiTeamAssignableMember {
@@ -776,12 +806,23 @@ export function useCampusWorshipPastors(campusId: string | null) {
 
       const { data: roleRows, error: roleError } = await supabase
         .from("user_roles")
-        .select("user_id")
-        .in("role", ["campus_worship_pastor", "student_pastor", "student_worship_pastor", "childrens_pastor"]);
+        .select("user_id, role")
+        .in("role", ["campus_worship_pastor", "student_worship_pastor"]);
 
       if (roleError) throw roleError;
 
-      const leaderUserIds = [...new Set((roleRows || []).map((row) => row.user_id).filter(Boolean))];
+      const roleByUserId = new Map<string, "campus_worship_pastor" | "student_worship_pastor">();
+      for (const row of roleRows || []) {
+        if (!row.user_id) continue;
+        if (row.role === "campus_worship_pastor" || row.role === "student_worship_pastor") {
+          // Prefer campus worship pastor if a user somehow has both roles.
+          if (row.role === "campus_worship_pastor" || !roleByUserId.has(row.user_id)) {
+            roleByUserId.set(row.user_id, row.role);
+          }
+        }
+      }
+
+      const leaderUserIds = [...roleByUserId.keys()];
       if (leaderUserIds.length === 0) return [];
 
       const { data: campusRows, error: campusError } = await supabase
@@ -797,11 +838,23 @@ export function useCampusWorshipPastors(campusId: string | null) {
 
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name")
+        .select("id, full_name, gender")
         .in("id", campusLeaderIds);
 
       if (profilesError) throw profilesError;
-      return (profiles || []) as CampusWorshipPastor[];
+
+      return (profiles || [])
+        .map((profile) => {
+          const role = roleByUserId.get(profile.id);
+          if (!role) return null;
+          return {
+            id: profile.id,
+            full_name: profile.full_name,
+            gender: profile.gender || null,
+            role,
+          } satisfies CampusWorshipPastor;
+        })
+        .filter((leader): leader is CampusWorshipPastor => !!leader);
     },
   });
 }
@@ -2410,6 +2463,48 @@ function getVisibleVocalSlots(
   return Array.isArray(vocalSlots) ? vocalSlots : [];
 }
 
+function resolveAutoBuildPriorityLeaders(
+  priorityLeaderIds: string[],
+  availablePool: AvailableMember[],
+  members: AvailableMember[],
+  leaderProfiles: CampusWorshipPastor[],
+  breakExcludedUserIds: string[],
+): AvailableMember[] {
+  if (priorityLeaderIds.length === 0) return [];
+
+  const breakExcluded = new Set(breakExcludedUserIds);
+  const availableById = new Map(availablePool.map((member) => [member.id, member]));
+  const membersById = new Map(members.map((member) => [member.id, member]));
+  const profilesById = new Map(leaderProfiles.map((leader) => [leader.id, leader]));
+  const resolved: AvailableMember[] = [];
+
+  for (const leaderId of priorityLeaderIds) {
+    if (breakExcluded.has(leaderId)) continue;
+
+    const existing = availableById.get(leaderId) || membersById.get(leaderId);
+    if (existing) {
+      resolved.push(existing);
+      continue;
+    }
+
+    const profile = profilesById.get(leaderId);
+    if (!profile) continue;
+
+    // Ensure campus-scoped leaders still land on every team even when they
+    // are missing explicit ministry position rows in Team Builder.
+    resolved.push({
+      id: profile.id,
+      full_name: profile.full_name,
+      avatar_url: null,
+      gender: profile.gender,
+      positions: ["vocalist"],
+      ministry_types: [],
+    });
+  }
+
+  return resolved;
+}
+
 function assignCampusPastorsToVocalSlots(
   teams: WorshipTeam[],
   campusPastors: AvailableMember[],
@@ -2418,21 +2513,26 @@ function assignCampusPastorsToVocalSlots(
 ) {
   for (const pastor of campusPastors) {
     const pastorGender = normalizeGender(pastor.gender);
-    if (!pastorGender) continue;
 
     for (const team of teams) {
       const teamVocalSlots = getVisibleVocalSlots(teamVisibleVocalSlots, team.id);
-      const preferredVocalSlots = teamVocalSlots
-        .filter((slot) => slot.vocalGender === pastorGender)
-        .map((slot) => slot.slot);
+      if (teamVocalSlots.length === 0) continue;
+
+      const preferredVocalSlots = pastorGender
+        ? teamVocalSlots
+            .filter((slot) => slot.vocalGender === pastorGender)
+            .map((slot) => slot.slot)
+        : teamVocalSlots.map((slot) => slot.slot);
       const assigned = preferredVocalSlots.some((slot) =>
         assignMemberToSlot(pastor, team, slot),
       );
 
       if (!assigned) {
-        const fallbackSlots = teamVocalSlots
-          .filter((slot) => slot.vocalGender !== pastorGender)
-          .map((slot) => slot.slot);
+        const fallbackSlots = pastorGender
+          ? teamVocalSlots
+              .filter((slot) => slot.vocalGender !== pastorGender)
+              .map((slot) => slot.slot)
+          : [];
 
         fallbackSlots.some((slot) => assignMemberToSlot(pastor, team, slot));
       }
@@ -2473,6 +2573,8 @@ export function useAutoBuildTeams() {
       ministryType,
       campusName,
       campusWorshipPastorIds,
+      studentWorshipLeaderIds,
+      campusWorshipLeaders,
       allowMultiTeamUserIds,
       previousPeriodMembers,
       breakExcludedUserIds,
@@ -2486,6 +2588,8 @@ export function useAutoBuildTeams() {
       ministryType: string;
       campusName?: string | null;
       campusWorshipPastorIds?: string[];
+      studentWorshipLeaderIds?: string[];
+      campusWorshipLeaders?: CampusWorshipPastor[];
       allowMultiTeamUserIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
       breakExcludedUserIds: string[];
@@ -2625,10 +2729,15 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
+      const priorityLeaderIds = getAutoBuildPriorityLeaderIds(
+        ministryType,
+        campusWorshipPastorIds,
+        studentWorshipLeaderIds,
+      );
       const multiTeamUserIds =
         ministryType === "worship_night"
           ? new Set(members.map((member) => member.id))
-          : new Set(allowMultiTeamUserIds || campusWorshipPastorIds || []);
+          : new Set([...(allowMultiTeamUserIds || []), ...priorityLeaderIds]);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
@@ -2676,6 +2785,17 @@ export function useAutoBuildTeams() {
       const isMurfreesboroWeekendBuild =
         campusName === "Murfreesboro Central" && isWeekendWorshipBuild;
 
+      if (teams.length > 0 && priorityLeaderIds.length > 0) {
+        const priorityLeaders = resolveAutoBuildPriorityLeaders(
+          priorityLeaderIds,
+          availablePool,
+          members,
+          campusWorshipLeaders || [],
+          breakExcludedUserIds,
+        );
+        assignCampusPastorsToVocalSlots(teams, priorityLeaders, visibleSlotsByTeam, assignMemberToSlot);
+      }
+
       if (isWeekendWorshipBuild && teams.length > 0) {
         const allVisibleVocalSlots = teams.flatMap(
           (team) => getVisibleVocalSlots(visibleSlotsByTeam, team.id),
@@ -2711,10 +2831,6 @@ export function useAutoBuildTeams() {
 
         const currentUserMember = availablePool.find((member) => member.id === user?.id);
         const kyleMember = availablePool.find((member) => member.full_name === "Kyle Elkins");
-        const campusPastors = availablePool.filter((member) =>
-          campusWorshipPastorIds?.includes(member.id)
-        );
-        assignCampusPastorsToVocalSlots(teams, campusPastors, visibleSlotsByTeam, assignMemberToSlot);
 
         if (isMurfreesboroWeekendBuild) {
           const prioritizedTeams = teams.slice(0, Math.min(3, teams.length));

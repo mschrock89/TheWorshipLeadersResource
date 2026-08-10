@@ -16,9 +16,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useAutoBuildTeams,
+  getAutoBuildPriorityLeaderIds,
+  AUTO_BUILD_CAMPUS_WORSHIP_PASTOR_MINISTRIES,
+  AUTO_BUILD_STUDENT_WORSHIP_LEADER_MINISTRIES,
   WorshipTeam,
   AvailableMember,
   TeamMemberAssignment,
+  CampusWorshipPastor,
 } from "@/hooks/useTeamBuilder";
 import { MINISTRY_TYPES, POSITION_SLOTS, getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
@@ -29,6 +33,8 @@ interface AutoBuilderDialogProps {
   rotationPeriodId: string;
   campusName?: string | null;
   campusWorshipPastorIds?: string[];
+  studentWorshipLeaderIds?: string[];
+  campusWorshipLeaders?: CampusWorshipPastor[];
   allowMultiTeamUserIds?: string[];
   teams: WorshipTeam[];
   members: AvailableMember[];
@@ -363,26 +369,71 @@ function assignCampusPastorsToVocalSlots(
 ) {
   for (const pastor of campusPastors) {
     const pastorGender = normalizeGender(pastor.gender);
-    if (!pastorGender) continue;
 
     for (const team of teams) {
       const teamVocalSlots = teamVisibleVocalSlots.get(team.id)?.vocalSlots || [];
-      const preferredVocalSlots = teamVocalSlots
-        .filter((slot) => slot.vocalGender === pastorGender)
-        .map((slot) => slot.slot);
+      if (teamVocalSlots.length === 0) continue;
+
+      const preferredVocalSlots = pastorGender
+        ? teamVocalSlots
+            .filter((slot) => slot.vocalGender === pastorGender)
+            .map((slot) => slot.slot)
+        : teamVocalSlots.map((slot) => slot.slot);
       const assigned = preferredVocalSlots.some((slot) =>
         assignMemberToSlot(pastor, team, slot),
       );
 
       if (!assigned) {
-        const fallbackSlots = teamVocalSlots
-          .filter((slot) => slot.vocalGender !== pastorGender)
-          .map((slot) => slot.slot);
+        const fallbackSlots = pastorGender
+          ? teamVocalSlots
+              .filter((slot) => slot.vocalGender !== pastorGender)
+              .map((slot) => slot.slot)
+          : [];
 
         fallbackSlots.some((slot) => assignMemberToSlot(pastor, team, slot));
       }
     }
   }
+}
+
+function resolveAutoBuildPriorityLeaders(
+  priorityLeaderIds: string[],
+  availablePool: AvailableMember[],
+  members: AvailableMember[],
+  leaderProfiles: CampusWorshipPastor[],
+  breakExcludedUserIds: string[],
+): AvailableMember[] {
+  if (priorityLeaderIds.length === 0) return [];
+
+  const breakExcluded = new Set(breakExcludedUserIds);
+  const availableById = new Map(availablePool.map((member) => [member.id, member]));
+  const membersById = new Map(members.map((member) => [member.id, member]));
+  const profilesById = new Map(leaderProfiles.map((leader) => [leader.id, leader]));
+  const resolved: AvailableMember[] = [];
+
+  for (const leaderId of priorityLeaderIds) {
+    if (breakExcluded.has(leaderId)) continue;
+
+    const existing = availableById.get(leaderId) || membersById.get(leaderId);
+    if (existing) {
+      resolved.push(existing);
+      continue;
+    }
+
+    const profile = profilesById.get(leaderId);
+    if (!profile) continue;
+
+    resolved.push({
+      id: profile.id,
+      full_name: profile.full_name,
+      avatar_url: null,
+      gender: profile.gender,
+      positions: ["vocalist"],
+      ministry_types: [],
+    });
+  }
+
+  return resolved;
 }
 
 function isWeekendRosterBreakLogicMinistry(ministryType: string) {
@@ -441,6 +492,8 @@ export function AutoBuilderDialog({
   rotationPeriodId,
   campusName,
   campusWorshipPastorIds = [],
+  studentWorshipLeaderIds = [],
+  campusWorshipLeaders = [],
   allowMultiTeamUserIds = [],
   teams,
   members,
@@ -456,12 +509,16 @@ export function AutoBuilderDialog({
   const [isBuilding, setIsBuilding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewAssignment[] | null>(null);
+  const priorityLeaderIds = useMemo(
+    () => getAutoBuildPriorityLeaderIds(ministryType, campusWorshipPastorIds, studentWorshipLeaderIds),
+    [campusWorshipPastorIds, ministryType, studentWorshipLeaderIds],
+  );
   const multiTeamUserIds = useMemo(
     () =>
       ministryType === "worship_night"
         ? new Set(members.map((member) => member.id))
-        : new Set(allowMultiTeamUserIds),
-    [allowMultiTeamUserIds, members, ministryType],
+        : new Set([...allowMultiTeamUserIds, ...priorityLeaderIds]),
+    [allowMultiTeamUserIds, members, ministryType, priorityLeaderIds],
   );
   const templateContext = useMemo(
     () => ({ campusName, ministryType }),
@@ -667,6 +724,17 @@ export function AutoBuilderDialog({
     const isMurfreesboroWeekendBuild =
       campusName === "Murfreesboro Central" && isWeekendWorshipBuild;
 
+    if (teams.length > 0 && priorityLeaderIds.length > 0) {
+      const priorityLeaders = resolveAutoBuildPriorityLeaders(
+        priorityLeaderIds,
+        availablePool,
+        members,
+        campusWorshipLeaders,
+        breakExcludedUserIds,
+      );
+      assignCampusPastorsToVocalSlots(teams, priorityLeaders, visibleSlotsByTeam, assignMemberToSlot);
+    }
+
     if (isWeekendWorshipBuild && teams.length > 0) {
       const allVocalSlots = teams.flatMap((team) => visibleSlotsByTeam.get(team.id)?.vocalSlots || []);
       const maleVocalists = availablePool.filter((member) =>
@@ -693,9 +761,6 @@ export function AutoBuilderDialog({
       const femaleReturningVocalists = femaleVocalists.filter((member) =>
         !wasOffRosterLastPeriod.some((candidate) => candidate.id === member.id),
       );
-      const campusPastors = availablePool.filter((member) => campusWorshipPastorIds.includes(member.id));
-      assignCampusPastorsToVocalSlots(teams, campusPastors, visibleSlotsByTeam, assignMemberToSlot);
-
       const currentUserMember = availablePool.find((member) => member.id === user?.id);
       const kyleMember = availablePool.find((member) => member.full_name === "Kyle Elkins");
       if (isMurfreesboroWeekendBuild) {
@@ -1076,6 +1141,8 @@ export function AutoBuilderDialog({
         rotationPeriodId,
         campusName,
         campusWorshipPastorIds,
+        studentWorshipLeaderIds,
+        campusWorshipLeaders,
         allowMultiTeamUserIds,
         teams,
         members,
@@ -1269,6 +1336,12 @@ export function AutoBuilderDialog({
             <div className="rounded-lg bg-muted p-4 space-y-2">
               <p className="text-sm font-medium">Algorithm will:</p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                {AUTO_BUILD_CAMPUS_WORSHIP_PASTOR_MINISTRIES.has(ministryType) && (
+                  <li>Place this campus&apos;s worship pastor on every team first</li>
+                )}
+                {AUTO_BUILD_STUDENT_WORSHIP_LEADER_MINISTRIES.has(ministryType) && (
+                  <li>Place this campus&apos;s student worship leader on every team first</li>
+                )}
                 <li>Fill hardest positions first (drums, bass, keys)</li>
                 <li>Prioritize members who were off the previous trimester roster</li>
                 <li>Rotate members to different teams for variety</li>
