@@ -18,7 +18,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { RotationPeriod, useCreateBreakRequest, useRotationPeriodsForUser } from "@/hooks/useBreakRequests";
+import {
+  BreakRequest,
+  RotationPeriod,
+  useCreateBreakRequest,
+  useRotationPeriodsForUser,
+  useUpdateMyBreakRequest,
+} from "@/hooks/useBreakRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { useUserCampusMinistryPositions } from "@/hooks/useCampusMinistryPositions";
@@ -31,6 +37,7 @@ interface DashboardBreakRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMode?: "break" | "blackout";
+  editingRequest?: BreakRequest | null;
 }
 
 const REQUEST_TYPES = [
@@ -46,15 +53,22 @@ const TRIMESTERS = [
 
 const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
+function parseDateKey(date: string) {
+  return startOfDay(new Date(`${date}T00:00:00`));
+}
+
 export function DashboardBreakRequestDialog({
   open,
   onOpenChange,
   initialMode = "break",
+  editingRequest = null,
 }: DashboardBreakRequestDialogProps) {
   const { user } = useAuth();
   const currentYear = new Date().getFullYear();
   const years = [currentYear, currentYear + 1];
-  const isBlackoutDialog = initialMode === "blackout";
+  const isEditing = !!editingRequest;
+  const isBlackoutDialog =
+    editingRequest?.request_scope === "blackout_dates" || initialMode === "blackout";
 
   const [requestType, setRequestType] = useState<string>("need_break");
   const [campusId, setCampusId] = useState<string>(isBlackoutDialog ? NETWORK_WIDE_CAMPUS_ID : "");
@@ -72,6 +86,8 @@ export function DashboardBreakRequestDialog({
   const { data: rotationPeriods = [], isLoading: periodsLoading } = useRotationPeriodsForUser();
 
   const createBreakRequest = useCreateBreakRequest();
+  const updateBreakRequest = useUpdateMyBreakRequest();
+  const isSaving = createBreakRequest.isPending || updateBreakRequest.isPending;
   const isBlackoutMode = requestType === "need_break" && requestScope === "blackout_dates";
   const normalizedCampusId = campusId === NETWORK_WIDE_CAMPUS_ID ? null : campusId || null;
 
@@ -92,6 +108,25 @@ export function DashboardBreakRequestDialog({
   useEffect(() => {
     if (!open) return;
 
+    if (editingRequest) {
+      const isBlackout = editingRequest.request_scope === "blackout_dates";
+      setRequestType(editingRequest.request_type || "need_break");
+      setCampusId(
+        isBlackout
+          ? NETWORK_WIDE_CAMPUS_ID
+          : editingRequest.campus_id || ""
+      );
+      setMinistryType(editingRequest.ministry_type || "");
+      setTrimester(editingRequest.period_trimester?.toString() || "");
+      setYear(editingRequest.period_year?.toString() || currentYear.toString());
+      setRequestScope(isBlackout ? "blackout_dates" : "full_trimester");
+      setBlackoutDates(
+        (editingRequest.blackout_dates || []).map((date) => parseDateKey(date))
+      );
+      setReason(editingRequest.reason || "");
+      return;
+    }
+
     setRequestType("need_break");
     setCampusId(isBlackoutDialog ? NETWORK_WIDE_CAMPUS_ID : "");
     setMinistryType("");
@@ -100,14 +135,15 @@ export function DashboardBreakRequestDialog({
     setRequestScope(isBlackoutDialog ? "blackout_dates" : "full_trimester");
     setBlackoutDates([]);
     setReason("");
-  }, [currentYear, isBlackoutDialog, open]);
+  }, [currentYear, editingRequest, isBlackoutDialog, open]);
 
   useEffect(() => {
+    if (isEditing) return;
     if (!isBlackoutDialog && requestType === "need_break" && requestScope !== "full_trimester") {
       setRequestScope("full_trimester");
       setBlackoutDates([]);
     }
-  }, [isBlackoutDialog, requestScope, requestType]);
+  }, [isBlackoutDialog, isEditing, requestScope, requestType]);
 
   const matchingPeriod = useMemo(() => {
     if (!campusId || !trimester || !year) return null;
@@ -119,10 +155,31 @@ export function DashboardBreakRequestDialog({
     ) || null;
   }, [campusId, normalizedCampusId, rotationPeriods, trimester, year]);
 
-  const campusRotationPeriods = useMemo(
-    () => rotationPeriods.filter((period) => period.campus_id === normalizedCampusId),
-    [normalizedCampusId, rotationPeriods]
-  );
+  const editingPeriod = useMemo(() => {
+    if (!editingRequest) return null;
+    return (
+      rotationPeriods.find((period) => period.id === editingRequest.rotation_period_id) ||
+      (editingRequest.period_start_date && editingRequest.period_end_date
+        ? ({
+            id: editingRequest.rotation_period_id,
+            name: editingRequest.period_name || "Rotation Period",
+            trimester: editingRequest.period_trimester || 1,
+            year: editingRequest.period_year || currentYear,
+            campus_id: editingRequest.campus_id ?? null,
+            start_date: editingRequest.period_start_date,
+            end_date: editingRequest.period_end_date,
+            is_active: editingRequest.period_is_active ?? false,
+          } satisfies RotationPeriod)
+        : null)
+    );
+  }, [currentYear, editingRequest, rotationPeriods]);
+
+  const campusRotationPeriods = useMemo(() => {
+    if (isEditing && isBlackoutMode && editingPeriod) {
+      return [editingPeriod];
+    }
+    return rotationPeriods.filter((period) => period.campus_id === normalizedCampusId);
+  }, [editingPeriod, isBlackoutMode, isEditing, normalizedCampusId, rotationPeriods]);
 
   const periodForDate = useCallback((date: Date): RotationPeriod | null =>
     campusRotationPeriods.find((period) =>
@@ -157,6 +214,7 @@ export function DashboardBreakRequestDialog({
   }, [blackoutDates, isBlackoutMode, periodForDate]);
 
   const handleCampusChange = (value: string) => {
+    if (isEditing) return;
     setCampusId(value);
     setMinistryType("");
     setBlackoutDates([]);
@@ -211,6 +269,25 @@ export function DashboardBreakRequestDialog({
     .map((date) => ({ key: getDateKey(date), date }));
 
   const handleSubmit = async () => {
+    if (isEditing && editingRequest) {
+      if (isBlackoutMode && blackoutDates.length === 0) return;
+
+      await updateBreakRequest.mutateAsync({
+        requestId: editingRequest.id,
+        reason: reason || null,
+        requestType: isBlackoutMode
+          ? "need_break"
+          : (requestType as "need_break" | "willing_break"),
+        blackoutDates: isBlackoutMode
+          ? blackoutDates.map((date) => format(date, "yyyy-MM-dd"))
+          : undefined,
+        ministryType: isBlackoutMode ? null : ministryType || null,
+      });
+
+      onOpenChange(false);
+      return;
+    }
+
     if (isBlackoutMode && blackoutPeriodGroups.length === 0) return;
     if (!isBlackoutMode && !matchingPeriod) return;
 
@@ -240,26 +317,41 @@ export function DashboardBreakRequestDialog({
     onOpenChange(false);
   };
 
-  const canSubmit =
-    requestType &&
-    (isBlackoutDialog || (campusId && ministryType)) &&
-    (isBlackoutMode || (trimester && year)) &&
-    (isBlackoutMode ? blackoutPeriodGroups.length > 0 : matchingPeriod) &&
-    (requestType !== "need_break" ||
-      requestScope !== "blackout_dates" ||
-      blackoutDates.length > 0);
+  const canSubmit = isEditing
+    ? isBlackoutMode
+      ? blackoutDates.length > 0
+      : Boolean(requestType)
+    : Boolean(
+        requestType &&
+          (isBlackoutDialog || (campusId && ministryType)) &&
+          (isBlackoutMode || (trimester && year)) &&
+          (isBlackoutMode ? blackoutPeriodGroups.length > 0 : matchingPeriod) &&
+          (requestType !== "need_break" ||
+            requestScope !== "blackout_dates" ||
+            blackoutDates.length > 0)
+      );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isBlackoutDialog ? "Add Blackout Dates" : "Request a Break"}
+            {isEditing
+              ? isBlackoutDialog
+                ? "Edit Blackout Dates"
+                : "Edit Break Request"
+              : isBlackoutDialog
+                ? "Add Blackout Dates"
+                : "Request a Break"}
           </DialogTitle>
           <DialogDescription>
-            {isBlackoutDialog
-              ? "Add dates when you already know you cannot serve. These blackout dates will apply across campuses and ministries."
-              : "Let your team know if you need time off or are willing to step back if needed."}
+            {isEditing
+              ? isBlackoutDialog
+                ? "Update the dates you cannot serve. Changes apply immediately."
+                : "Update your break request. Approved breaks will go back to pending review."
+              : isBlackoutDialog
+                ? "Add dates when you already know you cannot serve. These blackout dates will apply across campuses and ministries."
+                : "Let your team know if you need time off or are willing to step back if needed."}
           </DialogDescription>
         </DialogHeader>
 
@@ -293,47 +385,61 @@ export function DashboardBreakRequestDialog({
             <>
               <div className="space-y-2">
                 <Label htmlFor="campus">Campus</Label>
-                <Select value={campusId} onValueChange={handleCampusChange}>
-                  <SelectTrigger id="campus">
-                    <SelectValue placeholder={campusesLoading ? "Loading..." : "Select campus"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {userCampuses.map((uc) => (
-                      <SelectItem key={uc.campus_id} value={uc.campus_id}>
-                        {uc.campuses?.name || "Unknown Campus"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isEditing ? (
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    {userCampuses.find((uc) => uc.campus_id === campusId)?.campuses?.name ||
+                      editingRequest?.campus_name ||
+                      "Campus"}
+                  </div>
+                ) : (
+                  <Select value={campusId} onValueChange={handleCampusChange}>
+                    <SelectTrigger id="campus">
+                      <SelectValue placeholder={campusesLoading ? "Loading..." : "Select campus"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userCampuses.map((uc) => (
+                        <SelectItem key={uc.campus_id} value={uc.campus_id}>
+                          {uc.campuses?.name || "Unknown Campus"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="ministry">Ministry</Label>
-                <Select value={ministryType} onValueChange={setMinistryType} disabled={!campusId}>
-                  <SelectTrigger id="ministry">
-                    <SelectValue
-                      placeholder={
-                        !campusId
-                          ? "Select campus first"
-                          : ministriesLoading
-                            ? "Loading ministries..."
-                            : "Select ministry"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableMinistries.map((ministry) => (
-                      <SelectItem key={ministry} value={ministry}>
-                        {getMinistryLabel(ministry)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isEditing ? (
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    {ministryType ? getMinistryLabel(ministryType) : "All ministries"}
+                  </div>
+                ) : (
+                  <Select value={ministryType} onValueChange={setMinistryType} disabled={!campusId}>
+                    <SelectTrigger id="ministry">
+                      <SelectValue
+                        placeholder={
+                          !campusId
+                            ? "Select campus first"
+                            : ministriesLoading
+                              ? "Loading ministries..."
+                              : "Select ministry"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableMinistries.map((ministry) => (
+                        <SelectItem key={ministry} value={ministry}>
+                          {getMinistryLabel(ministry)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </>
           )}
 
-          {!isBlackoutMode && campusId && trimester && year && !periodsLoading && !matchingPeriod && (
+          {!isBlackoutMode && campusId && trimester && year && !periodsLoading && !matchingPeriod && !isEditing && (
             <p className="text-sm text-destructive">
               No rotation period found for Trimester {trimester}, {year} at this campus.
             </p>
@@ -349,35 +455,43 @@ export function DashboardBreakRequestDialog({
             <>
               <div className="space-y-2">
                 <Label htmlFor="trimester">Trimester</Label>
-                <Select value={trimester} onValueChange={setTrimester}>
-                  <SelectTrigger id="trimester">
-                    <SelectValue placeholder="Select trimester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRIMESTERS.map((trimesterOption) => (
-                      <SelectItem key={trimesterOption.value} value={trimesterOption.value}>
-                        {trimesterOption.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isEditing ? (
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    {editingRequest?.period_name || `Trimester ${trimester}, ${year}`}
+                  </div>
+                ) : (
+                  <Select value={trimester} onValueChange={setTrimester}>
+                    <SelectTrigger id="trimester">
+                      <SelectValue placeholder="Select trimester" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRIMESTERS.map((trimesterOption) => (
+                        <SelectItem key={trimesterOption.value} value={trimesterOption.value}>
+                          {trimesterOption.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="year">Year</Label>
-                <Select value={year} onValueChange={setYear}>
-                  <SelectTrigger id="year">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {years.map((yearOption) => (
-                      <SelectItem key={yearOption} value={yearOption.toString()}>
-                        {yearOption}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isEditing && (
+                <div className="space-y-2">
+                  <Label htmlFor="year">Year</Label>
+                  <Select value={year} onValueChange={setYear}>
+                    <SelectTrigger id="year">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((yearOption) => (
+                        <SelectItem key={yearOption} value={yearOption.toString()}>
+                          {yearOption}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </>
           )}
 
@@ -386,8 +500,9 @@ export function DashboardBreakRequestDialog({
               <div className="space-y-1">
                 <Label>Select blackout dates</Label>
                 <p className="text-sm text-muted-foreground">
-                  Pick any dates you already know you cannot serve. These will
-                  apply across campuses and ministries.
+                  {isEditing
+                    ? `Update dates for ${editingRequest?.period_name || "this rotation period"}.`
+                    : "Pick any dates you already know you cannot serve. These will apply across campuses and ministries."}
                 </p>
               </div>
               <div className="rounded-lg border">
@@ -442,12 +557,12 @@ export function DashboardBreakRequestDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!canSubmit || createBreakRequest.isPending}
+            disabled={!canSubmit || isSaving}
           >
-            {createBreakRequest.isPending && (
+            {isSaving && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
-            Confirm
+            {isEditing ? "Save Changes" : "Confirm"}
           </Button>
         </DialogFooter>
       </DialogContent>
