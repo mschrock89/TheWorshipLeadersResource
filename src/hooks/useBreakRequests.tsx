@@ -26,6 +26,8 @@ export interface BreakRequest {
   period_year?: number;
   period_trimester?: number;
   period_is_active?: boolean;
+  period_start_date?: string;
+  period_end_date?: string;
 }
 
 export interface RotationPeriod {
@@ -42,6 +44,12 @@ export interface RotationPeriod {
 type MyBreakRequestRow = BreakRequest & {
   rotation_periods?: {
     name: string;
+    year?: number;
+    trimester?: number;
+    campus_id?: string | null;
+    start_date?: string;
+    end_date?: string;
+    is_active?: boolean;
   } | null;
 };
 
@@ -62,7 +70,7 @@ export function useMyBreakRequests() {
         .from("break_requests")
         .select(`
           *,
-          rotation_periods!inner(name)
+          rotation_periods!inner(name, year, trimester, campus_id, start_date, end_date, is_active)
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -72,6 +80,12 @@ export function useMyBreakRequests() {
       return ((data || []) as MyBreakRequestRow[]).map((r) => ({
         ...r,
         period_name: r.rotation_periods?.name,
+        campus_id: r.rotation_periods?.campus_id ?? null,
+        period_year: r.rotation_periods?.year,
+        period_trimester: r.rotation_periods?.trimester,
+        period_is_active: r.rotation_periods?.is_active,
+        period_start_date: r.rotation_periods?.start_date,
+        period_end_date: r.rotation_periods?.end_date,
       })) as BreakRequest[];
     },
     enabled: !!user?.id,
@@ -375,10 +389,82 @@ export function useCancelBreakRequest() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["break-requests"] });
-      toast.success("Break request cancelled");
+      toast.success("Request removed");
     },
     onError: () => {
-      toast.error("Failed to cancel break request");
+      toast.error("Failed to remove request");
+    },
+  });
+}
+
+export function useUpdateMyBreakRequest() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      reason,
+      requestType,
+      blackoutDates,
+      ministryType,
+    }: {
+      requestId: string;
+      reason?: string | null;
+      requestType?: "need_break" | "willing_break";
+      blackoutDates?: string[] | null;
+      ministryType?: string | null;
+    }) => {
+      if (!user?.id) throw new Error("Not authenticated");
+
+      const updates: {
+        reason?: string | null;
+        request_type?: "need_break" | "willing_break";
+        blackout_dates?: string[] | null;
+        ministry_type?: string | null;
+      } = {};
+
+      if (reason !== undefined) {
+        updates.reason = reason || null;
+      }
+      if (requestType !== undefined) {
+        updates.request_type = requestType;
+      }
+      if (blackoutDates !== undefined) {
+        const uniqueDates = blackoutDates?.length
+          ? Array.from(new Set(blackoutDates)).sort()
+          : null;
+        updates.blackout_dates = uniqueDates;
+      }
+      if (ministryType !== undefined) {
+        updates.ministry_type = normalizeWeekendWorshipMinistryType(ministryType) || null;
+      }
+
+      const { data, error } = await supabase
+        .from("break_requests")
+        .update(updates)
+        .eq("id", requestId)
+        .eq("user_id", user.id)
+        .select("id, request_scope, status")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) throw new Error("Request not found or you cannot edit it");
+
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["break-requests"] });
+      if (data.request_scope === "blackout_dates") {
+        toast.success("Blackout dates updated");
+      } else if (data.status === "pending") {
+        toast.success("Break request updated and sent for review");
+      } else {
+        toast.success("Break request updated");
+      }
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || "Failed to update request");
     },
   });
 }
