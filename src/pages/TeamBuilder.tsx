@@ -388,6 +388,20 @@ export default function TeamBuilder() {
   const { data: teamHides = [] } = useTeamHidesForPeriod(selectedPeriodId);
   const { data: previousPeriodMembers = [] } = usePreviousPeriodMembers(periods, selectedPeriodId);
   const { data: campusWorshipPastors = [] } = useCampusWorshipPastors(selectedCampusId);
+  const campusWorshipPastorIds = useMemo(
+    () =>
+      campusWorshipPastors
+        .filter((leader) => leader.role === "campus_worship_pastor")
+        .map((leader) => leader.id),
+    [campusWorshipPastors],
+  );
+  const studentWorshipLeaderIds = useMemo(
+    () =>
+      campusWorshipPastors
+        .filter((leader) => leader.role === "student_worship_pastor")
+        .map((leader) => leader.id),
+    [campusWorshipPastors],
+  );
   const { data: multiTeamAssignableMembers = [] } = useMultiTeamAssignableMembers(eligibilityCampusId);
   const { data: breakRequests = [] } = useBreakRequestsForPeriod(selectedPeriodId);
   const selectedPeriod = periods.find(p => p.id === selectedPeriodId);
@@ -2058,7 +2072,9 @@ export default function TeamBuilder() {
           onOpenChange={setShowAutoBuilder}
           rotationPeriodId={selectedPeriodId}
           campusName={selectedCampus?.name}
-          campusWorshipPastorIds={campusWorshipPastors.map((pastor) => pastor.id)}
+          campusWorshipPastorIds={campusWorshipPastorIds}
+          studentWorshipLeaderIds={studentWorshipLeaderIds}
+          campusWorshipLeaders={campusWorshipPastors}
           allowMultiTeamUserIds={multiTeamAssignableMembers.map((member) => member.id)}
           teams={visibleTeams}
           members={availableMembers}
