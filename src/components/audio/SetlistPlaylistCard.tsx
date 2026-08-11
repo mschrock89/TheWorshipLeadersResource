@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Play, Pause, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Clock, Pencil, Download, Sparkles, MoreVertical, Layers } from "lucide-react";
+import { Play, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Pencil, Download, Sparkles, MoreVertical, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -183,79 +181,79 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
   return (
     <>
-      <Card className="overflow-hidden border-border/50 bg-card/50">
-        <CardHeader className="pb-3">
+      <div className="overflow-hidden">
+        <div className="pb-3">
           <div className="flex items-start justify-between">
             <div>
-              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+              <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 <span>{formattedDate}</span>
               </div>
-              <CardTitle className="text-lg flex items-center gap-2">
+              <h3 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
                 <Headphones className="h-5 w-5 text-primary" />
                 {customServiceName ? `${customServiceName} Playlist` : "Practice Hub"}
-              </CardTitle>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant="secondary" className="text-xs font-medium">
+              </h3>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground/80">
                   {getMinistryLabel(playlist.ministry_type)}
-                </Badge>
+                </span>
                 {playlist.campuses?.name && (
-                  <Badge variant="outline" className="text-xs font-normal gap-1">
+                  <span className="inline-flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     {playlist.campuses.name}
-                  </Badge>
+                  </span>
                 )}
               </div>
             </div>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="pt-0">
+        <div>
           <Tabs defaultValue={defaultTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 h-auto gap-1 p-1 bg-muted/40">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-0 rounded-none border-b border-border/50 bg-transparent p-0">
               <TabsTrigger
                 value="soundcloud"
-                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-primary"
+                className="h-auto flex-col gap-1 rounded-none border-b-2 border-transparent py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none sm:flex-row"
               >
                 <Music2 className="h-4 w-4" />
                 <span className="text-xs font-medium">SoundCloud</span>
                 {soundcloudCount > 0 && (
-                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-primary/15 text-primary border-0">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center px-1 text-[10px] font-semibold text-primary">
                     {soundcloudCount}
-                  </Badge>
+                  </span>
                 )}
               </TabsTrigger>
               <TabsTrigger
                 value="weekend"
-                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-amber-400"
+                className="h-auto flex-col gap-1 rounded-none border-b-2 border-transparent py-2.5 data-[state=active]:border-amber-400 data-[state=active]:bg-transparent data-[state=active]:text-amber-400 data-[state=active]:shadow-none sm:flex-row"
               >
                 <FileAudio className="h-4 w-4" />
-                <span className="text-xs font-medium whitespace-nowrap">Tracks (MP3)</span>
+                <span className="whitespace-nowrap text-xs font-medium">Tracks (MP3)</span>
                 {weekendCount > 0 && (
-                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-amber-500/15 text-amber-400 border-0">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center px-1 text-[10px] font-semibold text-amber-400">
                     {weekendCount}
-                  </Badge>
+                  </span>
                 )}
               </TabsTrigger>
               <TabsTrigger
                 value="stems"
-                className="flex-col sm:flex-row gap-1 h-auto py-1.5 data-[state=active]:text-violet-400"
+                className="h-auto flex-col gap-1 rounded-none border-b-2 border-transparent py-2.5 data-[state=active]:border-violet-400 data-[state=active]:bg-transparent data-[state=active]:text-violet-400 data-[state=active]:shadow-none sm:flex-row"
               >
                 <Layers className="h-4 w-4" />
                 <span className="text-xs font-medium">Stems</span>
                 {stemCount > 0 && (
-                  <Badge variant="secondary" className="text-[10px] font-semibold px-1 py-0 h-4 min-w-4 justify-center bg-violet-500/15 text-violet-400 border-0">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center px-1 text-[10px] font-semibold text-violet-400">
                     {stemCount}
-                  </Badge>
+                  </span>
                 )}
               </TabsTrigger>
             </TabsList>
 
             {/* ── SoundCloud Versions ── */}
-            <TabsContent value="soundcloud" className="space-y-1 mt-3">
+            <TabsContent value="soundcloud" className="mt-1 divide-y divide-border/30">
               {soundcloudCount === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <Music2 className="h-9 w-9 mx-auto mb-3 opacity-30" />
+                <div className="py-10 text-center text-muted-foreground">
+                  <Music2 className="mx-auto mb-3 h-9 w-9 opacity-30" />
                   <p className="text-sm">No SoundCloud versions for this setlist yet.</p>
                 </div>
               ) : (
@@ -268,23 +266,21 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                     key={track.id}
                     onClick={() => handlePlayTrack(track, index)}
                     className={cn(
-                      "group flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all border",
-                      "hover:bg-primary/10 active:bg-primary/15",
-                      isCurrentTrack
-                        ? "bg-primary/10 border-primary/40"
-                        : "bg-primary/5 border-primary/20 hover:border-primary/40"
+                      "group flex cursor-pointer items-center gap-3 rounded-md px-1 py-2.5 transition-colors",
+                      "hover:bg-muted/40 active:bg-muted/55",
+                      isCurrentTrack && "bg-primary/10",
                     )}
                   >
                     {/* Play button circle */}
-                    <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 rounded-full bg-primary/20 group-hover:bg-primary/30">
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 group-hover:bg-primary/25">
                       {isTrackPlaying ? (
                         <div className="flex items-center gap-[2px]">
-                          <span className="w-[2px] h-3 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite]" />
-                          <span className="w-[2px] h-4 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.15s]" />
-                          <span className="w-[2px] h-2 bg-primary rounded-full animate-[pulse_1s_ease-in-out_infinite_0.3s]" />
+                          <span className="h-3 w-[2px] animate-[pulse_1s_ease-in-out_infinite] rounded-full bg-primary" />
+                          <span className="h-4 w-[2px] animate-[pulse_1s_ease-in-out_infinite_0.15s] rounded-full bg-primary" />
+                          <span className="h-2 w-[2px] animate-[pulse_1s_ease-in-out_infinite_0.3s] rounded-full bg-primary" />
                         </div>
                       ) : (
-                        <Play className="h-4 w-4 text-primary fill-primary" />
+                        <Play className="h-4 w-4 fill-primary text-primary" />
                       )}
                     </div>
 
@@ -310,11 +306,11 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
             </TabsContent>
 
             {/* ── Weekend Tracks ── */}
-            <TabsContent value="weekend" className="space-y-1 mt-3">
+            <TabsContent value="weekend" className="mt-1 space-y-0">
               {weekendCount === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <FileAudio className="h-9 w-9 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm mb-4">No weekend tracks uploaded yet.</p>
+                <div className="py-10 text-center text-muted-foreground">
+                  <FileAudio className="mx-auto mb-3 h-9 w-9 opacity-30" />
+                  <p className="mb-4 text-sm">No weekend tracks uploaded yet.</p>
                   {canUploadReferenceTrack && (
                     <Button
                       variant="outline"
@@ -329,6 +325,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                 </div>
               ) : (
                 <>
+                  <div className="divide-y divide-border/30">
                   {referenceTracks.map((track, idx) => {
                     const trackIndex = playlist.tracks.length + idx;
                     const isCurrentTrack = currentTrack?.id === track.id;
@@ -340,11 +337,9 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                       <div key={track.id} className="space-y-1">
                         <div
                           className={cn(
-                            "group flex items-center gap-3 p-2.5 rounded-lg transition-all border",
-                            "hover:bg-amber-500/10 active:bg-amber-500/15",
-                            isCurrentTrack
-                              ? "bg-amber-500/10 border-amber-500/40"
-                              : "bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40"
+                            "group flex items-center gap-3 rounded-md px-1 py-2.5 transition-colors",
+                            "hover:bg-muted/40 active:bg-muted/55",
+                            isCurrentTrack && "bg-amber-500/10",
                           )}
                         >
                           {/* Expand/Collapse for markers */}
@@ -367,7 +362,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
                           {/* Play button area */}
                           <div 
-                            className="w-8 h-8 flex items-center justify-center flex-shrink-0 cursor-pointer rounded-full bg-amber-500/20 group-hover:bg-amber-500/30"
+                            className="flex h-8 w-8 flex-shrink-0 cursor-pointer items-center justify-center rounded-full bg-amber-500/15 group-hover:bg-amber-500/25"
                             onClick={() => handlePlayTrack(track, trackIndex)}
                           >
                             {isTrackPlaying ? (
@@ -519,6 +514,7 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                       </div>
                     );
                   })}
+                  </div>
                   {canUploadReferenceTrack && (
                     <Button
                       variant="outline"
@@ -545,8 +541,8 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
               />
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <ReferenceTrackUploadDialog
         open={uploadOpen}

@@ -616,8 +616,8 @@ function StandardMySetlists() {
 
         {/* Notes */}
         {setlist.notes && (
-          <div className="text-sm p-3 rounded-lg bg-muted/50 border">
-            <p className="font-medium text-xs text-muted-foreground mb-1">Notes</p>
+          <div className="border-t border-border/40 pt-3 text-sm">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Notes</p>
             <p>{setlist.notes}</p>
           </div>
         )}
@@ -798,7 +798,7 @@ function StandardMySetlists() {
               return (
                 <Card
                   key={key}
-                  className={`transition-all duration-300 ${allConfirmed ? "border-green-500/30" : ""}`}
+                  className={`border-border/40 shadow-none transition-all duration-300 ${allConfirmed ? "border-green-500/30" : ""}`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -844,7 +844,7 @@ function StandardMySetlists() {
                         <div
                           key={session.id}
                           ref={(el) => { cardRefs.current[session.id] = el; }}
-                          className="space-y-4 rounded-lg border border-border/60 p-3 sm:p-4"
+                          className="space-y-4 border-t border-border/40 pt-4 first:border-t-0 first:pt-0"
                         >
                           <Badge className="self-start rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
                             {sessionLabel ?? getMinistryLabel(session.ministry_type)}
@@ -899,7 +899,7 @@ function StandardMySetlists() {
               <Card
                 key={setlist.id}
                 ref={(el) => { cardRefs.current[setlist.id] = el; }}
-                className={`transition-all duration-300 ${isConfirmed ? "border-green-500/30" : ""}`}
+                className={`border-border/40 shadow-none transition-all duration-300 ${isConfirmed ? "border-green-500/30" : ""}`}
               >
                 <CardHeader className="pb-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -950,7 +950,7 @@ function SetlistTeachingSchedule({
   if (!teachingWeek) return null;
 
   return (
-    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+    <div className="border-t border-emerald-500/20 pt-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="bg-emerald-600/10 text-emerald-700 border-transparent">
           Teaching
@@ -1766,7 +1766,7 @@ function SetlistTeamRoster({
   }
 
   return (
-    <div className="space-y-4 rounded-lg border bg-muted/20 p-3">
+    <div className="space-y-4 border-t border-border/50 pt-4">
       <div className="flex items-center gap-2">
         <p className="text-sm font-medium text-muted-foreground">Team Roster</p>
         <GroupTextButton
@@ -1791,12 +1791,12 @@ function SetlistTeamRoster({
             <Church className="h-4 w-4" />
             <p className="text-sm font-medium">Pastors</p>
           </div>
-          <div className="space-y-1">
+          <div className="divide-y divide-border/30">
             {pastorRows.map((member) => (
               <div
                 key={`pastor-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                  member.isSwapped ? "bg-green-500/10" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1824,12 +1824,12 @@ function SetlistTeamRoster({
             <Mic2 className="h-4 w-4" />
             <p className="text-sm font-medium">Vocalists</p>
           </div>
-          <div className="space-y-1">
+          <div className="divide-y divide-border/30">
             {vocalistRows.map((member) => (
               <div
                 key={`vox-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                  member.isSwapped ? "bg-green-500/10" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1857,12 +1857,12 @@ function SetlistTeamRoster({
             <Guitar className="h-4 w-4" />
             <p className="text-sm font-medium">Band</p>
           </div>
-          <div className="space-y-1">
+          <div className="divide-y divide-border/30">
             {bandRows.map((member) => (
               <div
                 key={`band-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                  member.isSwapped ? "bg-green-500/10" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1890,12 +1890,12 @@ function SetlistTeamRoster({
             <BookOpen className="h-4 w-4" />
             <p className="text-sm font-medium">Speaker</p>
           </div>
-          <div className="space-y-1">
+          <div className="divide-y divide-border/30">
             {speakerRows.map((member) => (
               <div
                 key={`speaker-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                  member.isSwapped ? "bg-green-500/10" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1923,12 +1923,12 @@ function SetlistTeamRoster({
             <Headphones className="h-4 w-4" />
             <p className="text-sm font-medium">Production</p>
           </div>
-          <div className="space-y-1">
+          <div className="divide-y divide-border/30">
             {productionRows.map((member) => (
               <div
                 key={`production-${member.id}-${member.memberName}`}
-                className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                  member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                  member.isSwapped ? "bg-green-500/10" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1964,12 +1964,12 @@ function SetlistTeamRoster({
                     {section.label}
                   </p>
                 )}
-                <div className="space-y-1">
+                <div className="divide-y divide-border/30">
                   {section.rows.map((member) => (
                     <div
                       key={`video-${section.key}-${member.id}-${member.memberName}`}
-                      className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 ${
-                        member.isSwapped ? "border border-green-500/50 bg-green-500/10" : "bg-background/50"
+                      className={`flex items-center justify-between gap-3 px-0.5 py-2.5 ${
+                        member.isSwapped ? "bg-green-500/10" : ""
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">

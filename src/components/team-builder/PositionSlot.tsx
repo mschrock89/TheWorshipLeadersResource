@@ -3,7 +3,6 @@ import { X, Plus, User, Edit2, AlertTriangle, SplitSquareVertical, Minus } from 
 import { format, parseISO } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import {
@@ -118,27 +117,36 @@ export function PositionSlot({
       }
     }).join(", ");
 
+  const weekChipClass = (active: boolean, hasOverride = false, hasDateConflict = false) =>
+    cn(
+      "rounded px-2 py-1 text-[10px] font-medium transition-colors",
+      active
+        ? "bg-primary/15 text-foreground"
+        : "bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+      hasOverride && !hasDateConflict && !active && "text-sky-600 dark:text-sky-300",
+      hasOverride && !hasDateConflict && active && "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+      hasDateConflict && !active && "text-amber-600 dark:text-amber-300",
+      hasDateConflict && active && "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    );
+
   return (
     <div
       className={cn(
-        "rounded-lg border p-2 transition-colors",
-        effectiveIsEmpty || selectedAssignmentIsBlank
-          ? "border-dashed border-muted-foreground/30 bg-muted/30"
-          : hasConflicts
-          ? "border-amber-500/35 bg-amber-500/[0.04]"
-          : "border-border bg-card"
+        "py-2.5 transition-colors",
+        hasConflicts && "bg-amber-500/[0.04]",
+        (effectiveIsEmpty || selectedAssignmentIsBlank) && "opacity-80",
       )}
     >
       {effectiveIsEmpty ? (
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted/60">
               <User className="h-4 w-4 text-muted-foreground" />
             </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                <p className="text-xs text-muted-foreground/60">Empty</p>
-              </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-muted-foreground">{label}</p>
+              <p className="text-xs text-muted-foreground/60">Empty</p>
+            </div>
             {!readOnly && (
               <Button
                 variant="ghost"
@@ -153,20 +161,18 @@ export function PositionSlot({
           </div>
 
           {hasWeekendSplit && !readOnly && onAssignDate && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {scheduleDates.map((date, index) => (
-                <Button
+                <button
                   key={date}
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[10px] font-medium"
+                  className={cn(weekChipClass(false), "inline-flex items-center")}
                   onClick={() => onAssignDate(date)}
                   title={`Assign only for ${format(parseISO(date), "MMM d")}`}
                 >
                   <Plus className="mr-1 h-3 w-3" />
                   {`W${index + 1}`}
-                </Button>
+                </button>
               ))}
             </div>
           )}
@@ -174,15 +180,10 @@ export function PositionSlot({
       ) : (
         <div className="space-y-2">
           {hasWeekendSplit && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               <button
                 type="button"
-                className={cn(
-                  "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
-                  effectiveSelectedView === "all"
-                    ? "border-primary/50 bg-primary/10 text-foreground"
-                    : "border-border bg-background text-muted-foreground hover:bg-muted/50",
-                )}
+                className={weekChipClass(effectiveSelectedView === "all")}
                 onClick={() => setSelectedView("all")}
               >
                 All
@@ -197,13 +198,10 @@ export function PositionSlot({
                   <button
                     key={date}
                     type="button"
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
-                      effectiveSelectedView === date
-                        ? "border-primary/50 bg-primary/10 text-foreground"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted/50",
-                      hasOverride && "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-                      hasDateConflict && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                    className={weekChipClass(
+                      effectiveSelectedView === date,
+                      hasOverride,
+                      hasDateConflict,
                     )}
                     onClick={() => setSelectedView(date)}
                     title={format(parseISO(date), "MMM d")}
@@ -217,7 +215,7 @@ export function PositionSlot({
 
           <div className="flex items-center gap-3">
             {selectedAssignmentIsBlank ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted/60">
                 <User className="h-4 w-4 text-muted-foreground" />
               </div>
             ) : (
@@ -240,14 +238,13 @@ export function PositionSlot({
                 </p>
                 <div className="flex-1" />
                 {hasConflicts && (
-                  <Badge
-                    variant="outline"
-                    className="h-5 gap-1 border-amber-500/40 bg-amber-500/8 px-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                  <span
+                    className="inline-flex h-5 items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-300"
                     title={`Blackout conflict on ${formatConflictDates(selectedConflictDates)}`}
                   >
                     <AlertTriangle className="h-3 w-3" />
                     Conflict
-                  </Badge>
+                  </span>
                 )}
                 {ministryBadges.map((badge) => (
                   <span
@@ -345,7 +342,7 @@ export function PositionSlot({
           </div>
 
           {hasConflicts && (
-            <div className="flex items-start gap-2 rounded-md bg-amber-500/8 px-2 py-1.5 text-[11px] text-amber-700/90 dark:text-amber-200">
+            <div className="flex items-start gap-2 pl-11 text-[11px] text-amber-700/90 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
               <p className="leading-relaxed">
                 <span className="font-medium text-amber-700 dark:text-amber-300">Blackout dates:</span>{" "}

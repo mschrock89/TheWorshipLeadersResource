@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { Mic, Music, Lock, Unlock, Video, Volume2, BookOpen, SlidersHorizontal, Users, Palette, Pencil, Church, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { PositionSlot } from "./PositionSlot";
 import {
   POSITION_SLOTS,
@@ -163,12 +162,12 @@ export function TeamCard({
   }) => {
     return (
       <div>
-        <div className="flex items-center gap-2 mb-2">
+        <div className="mb-1 flex items-center gap-2">
           {icon}
           <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
           {emptyMessage && <span className="text-xs text-muted-foreground/60">{emptyMessage}</span>}
         </div>
-        <div className="grid gap-2">
+        <div className="divide-y divide-border/40">
           {slots.map((slotConfig) => {
             const member = getMemberForSlot(slotConfig.slot);
             return renderPositionSlot({
@@ -220,10 +219,10 @@ export function TeamCard({
   const teamConflictCount = Object.values(slotConflictDates).filter((dates) => dates.length > 0).length;
 
   return (
-    <Card className={`overflow-hidden ${isLocked ? "opacity-80" : ""}`}>
+    <Card className={`overflow-hidden border-border/40 shadow-none ${isLocked ? "opacity-80" : ""}`}>
       <CardHeader
-        className="py-3"
-        style={{ backgroundColor: `${team.color}20` }}
+        className="border-b border-border/30 py-3"
+        style={{ backgroundColor: `${team.color}14` }}
       >
         <CardTitle className="flex items-center gap-2 text-lg">
           <span style={{ color: team.color }}>
@@ -291,9 +290,9 @@ export function TeamCard({
           {!canLock && (
             <div className="flex items-center gap-2">
               {teamConflictCount > 0 && (
-                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300">
                   {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
-                </Badge>
+                </span>
               )}
               <span className="text-sm font-normal text-muted-foreground">
                 {filledCount}/{totalSlots} filled
@@ -304,9 +303,9 @@ export function TeamCard({
           {canLock && (
             <div className="flex items-center gap-2">
               {teamConflictCount > 0 && (
-                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/8 text-amber-700 dark:text-amber-300">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300">
                   {teamConflictCount} conflict{teamConflictCount === 1 ? "" : "s"}
-                </Badge>
+                </span>
               )}
               <span className="text-sm font-normal text-muted-foreground">
                 {filledCount}/{totalSlots}
@@ -315,7 +314,7 @@ export function TeamCard({
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-4 space-y-4">
+      <CardContent className="space-y-5 p-4">
         {/* Pastors Section */}
         {showPastors && (
           renderSlotGroup({

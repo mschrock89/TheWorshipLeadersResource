@@ -234,8 +234,8 @@ function FullTeamCard({
       <div
         key={slotConfig.slot}
         className={cn(
-          "flex items-center gap-3 rounded-lg border p-2",
-          isMe ? "border-primary bg-primary/5" : "border-border bg-card",
+          "flex items-center gap-3 px-0.5 py-2.5",
+          isMe && "bg-primary/5",
         )}
       >
         <Avatar className="h-8 w-8">
@@ -266,17 +266,17 @@ function FullTeamCard({
     slots: (typeof POSITION_SLOTS)[number][],
   ) => (
     <div>
-      <div className="flex items-center gap-2 mb-2">
+      <div className="mb-1 flex items-center gap-2">
         <Icon className="h-4 w-4 text-muted-foreground" />
         <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
       </div>
-      <div className="grid gap-2">{slots.map(renderMember)}</div>
+      <div className="divide-y divide-border/40">{slots.map(renderMember)}</div>
     </div>
   );
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="py-4" style={{ backgroundColor: `${team.color}20` }}>
+    <Card className="overflow-hidden border-border/40 shadow-none">
+      <CardHeader className="border-b border-border/30 py-4" style={{ backgroundColor: `${team.color}14` }}>
         <CardTitle className="flex items-center gap-2">
           <span style={{ color: team.color }}>
             {TEAM_ICONS[team.icon] || <Star className="h-5 w-5" />}
