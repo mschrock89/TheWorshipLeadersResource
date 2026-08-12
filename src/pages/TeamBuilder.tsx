@@ -2077,7 +2077,6 @@ export default function TeamBuilder() {
           campusWorshipPastorIds={campusWorshipPastorIds}
           studentWorshipLeaderIds={studentWorshipLeaderIds}
           campusWorshipLeaders={campusWorshipPastors}
-          allowMultiTeamUserIds={multiTeamAssignableMembers.map((member) => member.id)}
           teams={visibleTeams}
           members={availableMembers}
           ministryType={selectedMinistryType}
