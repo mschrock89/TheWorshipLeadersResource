@@ -67,7 +67,7 @@ export const POSITION_LABELS: Record<string, string> = {
   other_instrument: "Other Instrument",
   sound_tech: "FOH",
   audio_shadow: "Audio Shadow",
-  lighting: "Lighting",
+  lighting: "Lights",
   media: "Lyrics",
   mon: "MON",
   broadcast: "Broadcast",
@@ -136,7 +136,7 @@ export const POSITION_LABELS_SHORT: Record<string, string> = {
   other_instrument: "Other",
   sound_tech: "FOH",
   audio_shadow: "Shadow",
-  lighting: "Lighting",
+  lighting: "Lights",
   media: "Lyrics",
   mon: "MON",
   broadcast: "Broadcast",
@@ -221,7 +221,7 @@ export const POSITION_SLOTS: {
   { slot: "mon", label: "MON", category: "Production", position: "mon" },
   { slot: "broadcast", label: "Broadcast", category: "Production", position: "broadcast" },
   { slot: "audio_shadow", label: "Audio Shadow", category: "Production", position: "audio_shadow" },
-  { slot: "lighting", label: "Lighting", category: "Production", position: "lighting" },
+  { slot: "lighting", label: "Lights", category: "Production", position: "lighting" },
   { slot: "propresenter", label: "Lyrics", category: "Production", position: "media" },
   { slot: "producer", label: "Producer", category: "Production", position: "producer" },
   // Video slots
@@ -296,6 +296,8 @@ export const MINISTRY_TYPES = [
   { value: "audition", label: "Audition", shortLabel: "AUD", color: "bg-sky-600" },
   { value: "speaker", label: "Speaker", shortLabel: "SPK", color: "bg-amber-600" },
   { value: "production", label: "Production", shortLabel: "PROD", color: "bg-emerald-500" },
+  { value: "ms_hs_production", label: "MS/HS Production", shortLabel: "M/HP", color: "bg-emerald-600" },
+  { value: "hs_production", label: "HS Production", shortLabel: "HSP", color: "bg-teal-600" },
   { value: "video", label: "Video", shortLabel: "VID", color: "bg-rose-500" },
   { value: "creative", label: "Creative", shortLabel: "CRE", color: "bg-fuchsia-500" },
   { value: STUDENT_TEAM_BUILDER_MINISTRY_TYPE, label: "Students", shortLabel: "STU", color: "bg-blue-600" },
@@ -326,16 +328,20 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   // production slots for this ministry to those three.
   student_camp: ["Pastors", "Vocalists", "Band", "Production"],
   prayer_night: [],
-  encounter: ["Vocalists", "Band", "Production"],
+  // HS Worship / MS/HS Worship schedule production via dedicated ministries
+  // (hs_production / ms_hs_production) rather than on the worship team itself.
+  encounter: ["Vocalists", "Band"],
   eon: ["Vocalists", "Band", "Production"],
   // MS Worship Weekend carries FOH + Lyrics on the worship team (configured in the
   // roster template editor) rather than a separately scheduled Production team.
   eon_weekend: ["Vocalists", "Band", "Production"],
-  ms_hs: ["Vocalists", "Band", "Production"],
+  ms_hs: ["Vocalists", "Band"],
   evident: ["Vocalists", "Band"],
   er: ["Vocalists", "Band"],
   speaker: ["Speaker"],
   production: ["Production"],
+  ms_hs_production: ["Production"],
+  hs_production: ["Production"],
   video: ["Video"],
   creative: ["Creative"],
   students: ["Students"],
@@ -373,6 +379,8 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
   speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speaker rotations follow campus team structure and include the special 5th Sunday team
   production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
+  ms_hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for MS/HS Production
+  hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Production
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   creative: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Creative
   students: [...STUDENT_TEAM_NAMES],
@@ -567,6 +575,8 @@ export const CALENDAR_MINISTRY_FILTER_ORDER = [
   "kids_camp",
   "student_camp",
   "production",
+  "ms_hs_production",
+  "hs_production",
   "video",
   "encounter",
   "eon",
@@ -609,7 +619,14 @@ export function setlistMatchesMinistryFilter(
 ): boolean {
   if (!ministryFilter || ministryFilter === "all") return true;
   // Production/Video volunteers confirm against worship setlists, not a separate set ministry.
-  if (ministryFilter === "production" || ministryFilter === "video") return true;
+  if (
+    ministryFilter === "production" ||
+    ministryFilter === "ms_hs_production" ||
+    ministryFilter === "hs_production" ||
+    ministryFilter === "video"
+  ) {
+    return true;
+  }
   if (!setlistMinistryType) return false;
   if (setlistMinistryType === ministryFilter) return true;
   if (

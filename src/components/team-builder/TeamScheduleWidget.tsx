@@ -113,6 +113,8 @@ function normalizeScheduleMinistryFilter(ministryFilter: string | null) {
 const MINISTRY_COLORS: Record<string, string> = {
   weekend: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  ms_hs_production: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  hs_production: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
   video: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
   encounter: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   eon: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
@@ -127,6 +129,8 @@ const MINISTRY_LABELS: Record<string, string> = {
   kids_camp: "Kids Camp",
   student_camp: "Student Camp",
   production: "Production",
+  ms_hs_production: "MS/HS Production",
+  hs_production: "HS Production",
   video: "Video",
   encounter: "HS Worship",
   eon: "MS Worship",
@@ -489,6 +493,8 @@ export function TeamScheduleWidget({
                 <SelectItem value="kids_camp">Kids Camp</SelectItem>
                 <SelectItem value="student_camp">Student Camp</SelectItem>
                 <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="ms_hs_production">MS/HS Production</SelectItem>
+                <SelectItem value="hs_production">HS Production</SelectItem>
                 <SelectItem value="video">Video</SelectItem>
                 <SelectItem value="encounter">HS Worship</SelectItem>
                 <SelectItem value="eon">MS Worship</SelectItem>
@@ -599,6 +605,8 @@ export function TeamScheduleWidget({
                         <SelectItem value="kids_camp">Kids Camp</SelectItem>
                         <SelectItem value="student_camp">Student Camp</SelectItem>
                         <SelectItem value="production">Production</SelectItem>
+                        <SelectItem value="ms_hs_production">MS/HS Production</SelectItem>
+                        <SelectItem value="hs_production">HS Production</SelectItem>
                         <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">HS Worship</SelectItem>
                         <SelectItem value="eon">MS Worship</SelectItem>

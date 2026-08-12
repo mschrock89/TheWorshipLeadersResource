@@ -5,6 +5,11 @@ import { POSITION_SLOTS, normalizeSessionSetMinistryType } from "@/lib/constants
 // Production team. "propresenter" is the Lyrics slot.
 const STUDENT_CAMP_PRODUCTION_SLOT_IDS = ["foh", "mon", "propresenter"];
 
+// MS/HS Production and HS Production are campus-scoped production ministries with a
+// fixed four-slot crew: Lyrics, Lights, FOH, and MON.
+const STUDENT_PRODUCTION_MINISTRY_SLOT_IDS = ["foh", "mon", "lighting", "propresenter"];
+const STUDENT_PRODUCTION_MINISTRY_TYPES = new Set(["ms_hs_production", "hs_production"]);
+
 // MS Worship Weekend only supports FOH + Lyrics on the worship team template.
 const EON_WEEKEND_PRODUCTION_SLOT_IDS = ["foh", "propresenter"];
 const EON_WEEKEND_PRODUCTION_SLOT_ID_SET = new Set(EON_WEEKEND_PRODUCTION_SLOT_IDS);
@@ -12,6 +17,11 @@ const EON_WEEKEND_PRODUCTION_SLOT_ID_SET = new Set(EON_WEEKEND_PRODUCTION_SLOT_I
 function isStudentCampTemplateContext(context?: TeamTemplateContext | null) {
   const base = normalizeSessionSetMinistryType(context?.ministryType) ?? context?.ministryType;
   return base === "student_camp";
+}
+
+function isStudentProductionMinistryContext(context?: TeamTemplateContext | null) {
+  const base = normalizeSessionSetMinistryType(context?.ministryType) ?? context?.ministryType;
+  return !!base && STUDENT_PRODUCTION_MINISTRY_TYPES.has(base);
 }
 
 function isEonWeekendTemplateContext(context?: TeamTemplateContext | null) {
@@ -183,7 +193,11 @@ export function normalizeTeamTemplateConfig(
     : [];
   const scopedProductionSlots = isEonWeekendTemplateContext(context)
     ? normalizedProductionSlots.filter((slot) => EON_WEEKEND_PRODUCTION_SLOT_ID_SET.has(slot))
-    : normalizedProductionSlots;
+    : isStudentProductionMinistryContext(context)
+      ? normalizedProductionSlots.filter((slot) =>
+          STUDENT_PRODUCTION_MINISTRY_SLOT_IDS.includes(slot),
+        )
+      : normalizedProductionSlots;
   const normalizedVideoSlots = Array.isArray(config?.videoSlots)
     ? config.videoSlots.filter((slot): slot is string => VALID_VIDEO_SLOTS.has(slot))
     : [];
@@ -200,7 +214,9 @@ export function normalizeTeamTemplateConfig(
         ? scopedProductionSlots
         : isEonWeekendTemplateContext(context)
           ? [...EON_WEEKEND_PRODUCTION_SLOT_IDS]
-          : DEFAULT_TEAM_TEMPLATE.productionSlots,
+          : isStudentProductionMinistryContext(context)
+            ? [...STUDENT_PRODUCTION_MINISTRY_SLOT_IDS]
+            : DEFAULT_TEAM_TEMPLATE.productionSlots,
     videoSlots: normalizedVideoSlots.length > 0 ? normalizedVideoSlots : DEFAULT_TEAM_TEMPLATE.videoSlots,
   };
 }
@@ -240,9 +256,12 @@ export function getTeamTemplateSlotConfigs(
   // Student Camp surfaces a fixed set of production slots (FOH, MON, Lyrics) regardless of
   // the team's stored template, since the same team is shared across ministries and we do
   // not want to mutate its weekend production config.
+  // MS/HS Production and HS Production likewise force Lyrics / Lights / FOH / MON.
   const productionSlotIds = isStudentCampTemplateContext(context)
     ? STUDENT_CAMP_PRODUCTION_SLOT_IDS
-    : template.productionSlots;
+    : isStudentProductionMinistryContext(context)
+      ? STUDENT_PRODUCTION_MINISTRY_SLOT_IDS
+      : template.productionSlots;
   const productionSlots = productionSlotIds
     .map((slotId) => POSITION_SLOTS.find((slot) => slot.slot === slotId))
     .filter((slot): slot is (typeof POSITION_SLOTS)[number] => Boolean(slot));

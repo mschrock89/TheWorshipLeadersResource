@@ -168,7 +168,12 @@ const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
   "sunday_am",
   "speaker",
 ]);
-const ROSTER_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+const ROSTER_SUPPORT_MINISTRY_TYPES = new Set([
+  "production",
+  "ms_hs_production",
+  "hs_production",
+  "video",
+]);
 const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
   POSITION_SLOTS.flatMap((slot) => [
     [slot.slot.toLowerCase(), slot.category],

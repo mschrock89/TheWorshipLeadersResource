@@ -26,6 +26,8 @@ const WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "kids_camp",
   "student_camp",
   "production",
+  "ms_hs_production",
+  "hs_production",
   "video",
   "encounter",
   "eon",
