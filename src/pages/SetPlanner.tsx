@@ -160,7 +160,10 @@ export default function SetPlanner() {
   const [suggestedThemes, setSuggestedThemes] = useState<string[]>([]);
   
   // Determine ministry scheduling behavior
-  const isMidweekMinistry = selectedMinistry === 'encounter' || selectedMinistry === 'eon';
+  const isMidweekMinistry =
+    selectedMinistry === "encounter" ||
+    selectedMinistry === "eon" ||
+    selectedMinistry === "ms_hs";
   const isWeekendStyleMinistry = selectedMinistry === 'weekend' || selectedMinistry === 'eon_weekend';
   // Camp songs (Kids Camp / Student Camp) can be repeated as often as needed, so lift
   // the usual rotation/recency restrictions when scheduling for any camp session set.

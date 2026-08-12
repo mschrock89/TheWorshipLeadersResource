@@ -2319,6 +2319,7 @@ export type Database = {
           birthday: string | null
           created_at: string
           default_campus_id: string | null
+          default_ministry_type: string | null
           email: string
           full_name: string | null
           gender: string | null
@@ -2340,6 +2341,7 @@ export type Database = {
           birthday?: string | null
           created_at?: string
           default_campus_id?: string | null
+          default_ministry_type?: string | null
           email: string
           full_name?: string | null
           gender?: string | null
@@ -2361,6 +2363,7 @@ export type Database = {
           birthday?: string | null
           created_at?: string
           default_campus_id?: string | null
+          default_ministry_type?: string | null
           email?: string
           full_name?: string | null
           gender?: string | null
@@ -4221,6 +4224,7 @@ export type Database = {
           birthday: string
           created_at: string
           default_campus_id: string
+          default_ministry_type: string
           email: string
           full_name: string
           gender: string

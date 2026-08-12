@@ -29,7 +29,9 @@ import {
 import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft, ListMusic } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry } from "@/lib/constants";
+import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry, getViewMinistryFilterOptions } from "@/lib/constants";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Database } from "@/integrations/supabase/types";
@@ -48,6 +50,7 @@ const PROFILE_MINISTRY_ORDER = [
   "encounter",
   "eon",
   "eon_weekend",
+  "ms_hs",
   "evident",
   "er",
   "audition",
@@ -229,6 +232,11 @@ export default function Profile() {
   const [shareContactWithCampus, setShareContactWithCampus] = useState(false);
   const [gender, setGender] = useState<string | null>(null);
   const [defaultCampusId, setDefaultCampusId] = useState<string | null>(null);
+  const [defaultMinistryType, setDefaultMinistryType] = useState<string | null>(null);
+  const defaultMinistryOptions = useMemo(
+    () => getViewMinistryFilterOptions(getResourceAppMinistryTypes(getCurrentResourceAppKey())),
+    [],
+  );
   const [followingJesus, setFollowingJesus] = useState(false);
   const [servesSomewhereElse, setServesSomewhereElse] = useState(false);
   const [attendedSixMonths, setAttendedSixMonths] = useState(false);
@@ -270,6 +278,7 @@ export default function Profile() {
       setShareContactWithCampus(profile.share_contact_with_campus ?? false);
       setGender(profile.gender || null);
       setDefaultCampusId(profile.default_campus_id || null);
+      setDefaultMinistryType(profile.default_ministry_type || null);
       setFollowingJesus(profile.following_jesus ?? false);
       setServesSomewhereElse(profile.serves_somewhere_else ?? false);
       setAttendedSixMonths(profile.attended_six_months ?? false);
@@ -332,6 +341,7 @@ export default function Profile() {
       share_contact_with_campus: shareContactWithCampus,
       gender: gender,
       default_campus_id: defaultCampusId,
+      default_ministry_type: defaultMinistryType,
     });
 
     updateServingRequirements.mutate({
@@ -1226,6 +1236,34 @@ export default function Profile() {
                 </div>
               )}
 
+              {/* Default Ministry - same audience as Default Campus; seeds Calendar + My Setlists */}
+              {canManageTeam && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Music className="h-4 w-4" />
+                    Default Ministry
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    This ministry will be pre-selected when you open the Calendar, My Setlists, and other ministry-filtered views.
+                  </p>
+                  <Select
+                    value={defaultMinistryType || ""}
+                    onValueChange={(value) => setDefaultMinistryType(value || null)}
+                  >
+                    <SelectTrigger className="w-full sm:w-[280px]">
+                      <SelectValue placeholder="Select default ministry" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {defaultMinistryOptions.map((ministry) => (
+                        <SelectItem key={ministry.value} value={ministry.value}>
+                          {ministry.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {/* Show campus info for non-managers */}
               {!canManageTeam && userCampuses.length > 0 && (
                 <div className="space-y-2">
@@ -1361,8 +1399,8 @@ export default function Profile() {
                                 // Determine which position categories to show based on ministry type.
                                 // Weekend Worship should only show worship positions here; Production
                                 // and Video are managed through their own ministry assignments.
-                                const showMusicPositions = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'eon_weekend', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
-                                const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'evident'].includes(ministryType);
+                                const showMusicPositions = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'eon_weekend', 'ms_hs', 'evident', 'er', 'prayer_night', 'audition'].includes(ministryType);
+                                const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'ms_hs', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
                                 // Student Camp teams carry their own production crew (FOH, MON, Lyrics)

@@ -31,6 +31,8 @@ import {
   isNetworkWideMinistryType,
   isSessionSetMinistryType,
   normalizeSessionSetMinistryType,
+  getViewMinistryFilterOptions,
+  isValidViewMinistryFilter,
 } from "@/lib/constants";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 import {
@@ -43,6 +45,7 @@ import { CoverButton } from "@/components/calendar/CoverButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelectionContext";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
@@ -87,22 +90,6 @@ const formatEventGenderLabel = (targetGenders: string[] | null | undefined) => {
   if (genders.has("female") && !genders.has("male")) return "Women only";
   return null;
 };
-const CALENDAR_MINISTRY_FILTER_ORDER = [
-  "weekend_team",
-  "worship_night",
-  "kids_camp",
-  "student_camp",
-  "production",
-  "video",
-  "encounter",
-  "eon",
-  "eon_weekend",
-  "evident",
-  "er",
-  "audition",
-  "speaker",
-  "prayer_night",
-] as const;
 const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
   POSITION_SLOTS.flatMap((slot) => [
     [slot.slot.toLowerCase(), slot.category],
@@ -362,6 +349,7 @@ function StandardCalendar() {
   const [localCampusFilter, setLocalCampusFilter] = useState<string>("");
   const campusFilter = campusContext?.selectedCampusId || localCampusFilter;
   const setCampusFilter = campusContext?.setSelectedCampusId || setLocalCampusFilter;
+  const ministryContext = useMinistrySelectionOptional();
   const resourceAppKey = getCurrentResourceAppKey();
   // HS/MS student apps show their own worship ministries plus shared Student Camp;
   // null means show every ministry.
@@ -369,8 +357,27 @@ function StandardCalendar() {
     () => getResourceAppMinistryTypes(resourceAppKey),
     [resourceAppKey],
   );
-  const [ministryFilter, setMinistryFilter] = useState<string>(
+  const ministryFilterOptions = useMemo(
+    () => getViewMinistryFilterOptions(appMinistryTypes),
+    [appMinistryTypes],
+  );
+  const [localMinistryFilter, setLocalMinistryFilter] = useState<string>(
     () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
+  );
+  const ministryFilter =
+    (ministryContext?.selectedMinistryType &&
+    isValidViewMinistryFilter(ministryContext.selectedMinistryType, appMinistryTypes)
+      ? ministryContext.selectedMinistryType
+      : null) || localMinistryFilter;
+  const setMinistryFilter = useCallback(
+    (value: string) => {
+      if (ministryContext) {
+        ministryContext.setSelectedMinistryType(value);
+      } else {
+        setLocalMinistryFilter(value);
+      }
+    },
+    [ministryContext],
   );
 
   // Restore date/campus/ministry when returning from Service Flow (?date=...).
@@ -1313,7 +1320,7 @@ function StandardCalendar() {
     }
 
     // Pick a single entry (HS/MS Worship first when multiple exist)
-    const ministryPriority = ["encounter", "eon", "eon_weekend", "weekend", "sunday_am", "production", "video"];
+    const ministryPriority = ["encounter", "eon", "eon_weekend", "ms_hs", "weekend", "sunday_am", "production", "video"];
     const teamEntry = entries.sort((a, b) => {
       const aIdx = ministryPriority.indexOf(a.ministry_type);
       const bIdx = ministryPriority.indexOf(b.ministry_type);
@@ -1575,11 +1582,7 @@ function StandardCalendar() {
                   <SelectValue placeholder="Ministry" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CALENDAR_MINISTRY_FILTER_ORDER
-                    .filter((value) => !appMinistryTypes || appMinistryTypes.includes(value))
-                    .map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
-                    .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry) && !('hidden' in ministry && ministry.hidden))
-                    .map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
+                  {ministryFilterOptions.map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
                       {ministry.label}
                     </SelectItem>)}
                 </SelectContent>
@@ -3742,7 +3745,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'ms_hs', 'speaker'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -3786,6 +3789,10 @@ function BandRoster({
     },
     eon: {
       label: "MS Worship",
+      order: 5
+    },
+    ms_hs: {
+      label: "MS/HS Worship",
       order: 5
     },
     sunday_am: {

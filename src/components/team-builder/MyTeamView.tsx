@@ -9,6 +9,7 @@ import { TeamMemberAssignment, WorshipTeam, POSITION_SLOTS } from "@/hooks/useTe
 import { cn } from "@/lib/cn";
 import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
+import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
 import { BreakRequestDialog } from "./BreakRequestDialog";
 import { BreakRequestsList } from "./BreakRequestsList";
 import { useMyBreakRequests } from "@/hooks/useBreakRequests";
@@ -341,7 +342,10 @@ export function MyTeamView({
     serviceDay: "saturday" | "sunday" | null,
   ) => {
     if (!serviceDay) return teamMembers;
-    return teamMembers.filter((member) => member.service_day === serviceDay);
+    // Match Calendar: null / both / weekend rows cover the whole weekend.
+    return teamMembers.filter((member) =>
+      assignmentBelongsOnServiceDay(member.service_day, serviceDay),
+    );
   };
   const myAssignments = visibleMembers.filter((member) => member.user_id === userId);
   

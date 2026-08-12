@@ -37,6 +37,14 @@ function serviceMatchesMinistry(serviceTypeName: string, ministryType: string): 
 
   if (ministryType === "encounter") return serviceName.includes("hs worship") || serviceName.includes("encounter");
   if (ministryType === "eon") return serviceName.includes("ms worship") || serviceName.includes("eon");
+  if (ministryType === "ms_hs") {
+    return (
+      serviceName.includes("ms/hs") ||
+      serviceName.includes("ms hs") ||
+      serviceName.includes("hs/ms") ||
+      serviceName.includes("hs ms")
+    );
+  }
   if (ministryType === "evident") return serviceName.includes("evident");
   if (ministryType === "prayer_night") return serviceName.includes("prayer");
 
@@ -46,6 +54,8 @@ function serviceMatchesMinistry(serviceTypeName: string, ministryType: string): 
       !serviceName.includes("encounter") &&
       !serviceName.includes("ms worship") &&
       !serviceName.includes("eon") &&
+      !serviceName.includes("ms/hs") &&
+      !serviceName.includes("ms hs") &&
       !serviceName.includes("evident") &&
       !serviceName.includes("worship night") &&
       !serviceName.includes("prayer") &&

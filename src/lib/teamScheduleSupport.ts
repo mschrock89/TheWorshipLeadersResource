@@ -34,19 +34,32 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(year, month - 1, day);
 }
 
-export function assignmentMatchesServiceDay(
+/**
+ * Null / both / weekend means the assignment covers the whole weekend.
+ * Calendar roster uses this; Team Builder split cards must match.
+ */
+export function assignmentBelongsOnServiceDay(
   serviceDay: string | null | undefined,
-  scheduleDate: string,
+  targetServiceDay: "saturday" | "sunday",
 ): boolean {
   if (!serviceDay) return true;
 
   const normalizedServiceDay = serviceDay.toLowerCase();
-  if (normalizedServiceDay === "both" || normalizedServiceDay === "weekend") return true;
+  if (normalizedServiceDay === "both" || normalizedServiceDay === "weekend") {
+    return true;
+  }
 
+  return normalizedServiceDay === targetServiceDay;
+}
+
+export function assignmentMatchesServiceDay(
+  serviceDay: string | null | undefined,
+  scheduleDate: string,
+): boolean {
   const dateServiceDay = getServiceDayForDate(scheduleDate);
   if (!dateServiceDay) return true;
 
-  return normalizedServiceDay === dateServiceDay;
+  return assignmentBelongsOnServiceDay(serviceDay, dateServiceDay);
 }
 
 // Group the interchangeable weekend worship aliases, but keep video/production distinct:

@@ -243,6 +243,8 @@ export function useSongsWithStats() {
             return "MS Worship";
           case "eon_weekend":
             return "MS Worship Weekend";
+          case "ms_hs":
+            return "MS/HS Worship";
           case "evident":
             return "Evident";
           case "er":
@@ -355,6 +357,8 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
             return "MS Worship";
           case "eon_weekend":
             return "MS Worship Weekend";
+          case "ms_hs":
+            return "MS/HS Worship";
           case "evident":
             return "Evident";
           case "er":
@@ -1223,6 +1227,7 @@ export function useSongsForDate(
           encounter: "HS Worship",
           eon: "MS Worship",
           eon_weekend: "MS Worship Weekend",
+          ms_hs: "MS/HS Worship",
           sunday_am: "Sunday AM"
         };
 

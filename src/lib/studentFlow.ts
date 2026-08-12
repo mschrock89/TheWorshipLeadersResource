@@ -4,8 +4,8 @@ import { isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib
 // Worship ministry types each student resource app is scoped to. Student Camp is
 // shared by both HS/MS apps and session variants normalize to this base type.
 const STUDENT_APP_MINISTRY_TYPES: Record<string, readonly string[]> = {
-  students_hs: ["encounter", "student_camp"],
-  students_ms: ["eon", "eon_weekend", "student_camp"],
+  students_hs: ["encounter", "ms_hs", "student_camp"],
+  students_ms: ["eon", "eon_weekend", "ms_hs", "student_camp"],
 };
 
 // Returns the worship ministry types relevant to a resource app, or null when the

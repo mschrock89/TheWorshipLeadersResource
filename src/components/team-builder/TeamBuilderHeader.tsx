@@ -30,6 +30,7 @@ const WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "encounter",
   "eon",
   "eon_weekend",
+  "ms_hs",
   "evident",
   "er",
   "audition",

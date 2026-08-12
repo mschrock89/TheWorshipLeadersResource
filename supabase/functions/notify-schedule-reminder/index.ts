@@ -10,9 +10,9 @@ const corsHeaders = {
 // Invoked Saturday mornings by the pg_cron wrapper run_schedule_reminder() (see
 // migration 20260705120000). One run covers the whole weekend: it notifies the
 // effective roster for *today* (Saturday) and *tomorrow* (Sunday), across every
-// campus and ministry, using the authoritative get_roster_notifiable_user_ids RPC
-// (which applies rotation periods, service-day matching, date overrides and
-// accepted swaps).
+// campus and ministry, using the authoritative get_roster_notifiable_assignments
+// RPC (rotation periods, service-day matching, Team Builder Splits / blanks on
+// the weekend pair, accepted swaps, and effective positions for the push body).
 
 const TIME_ZONE = "America/Chicago";
 
@@ -123,17 +123,16 @@ serve(async (req: Request): Promise<Response> => {
 
       const recipientUserIds = new Set<string>();
 
-      // Attribute team/position detail per schedule row using the SAME authoritative
-      // RPC that decided who to notify (rotation period, ministry type, date overrides,
-      // and swaps) — a raw team_members join here previously listed every team a person
-      // is a member of anywhere, even ones from a past/inactive rotation (e.g. "Team 1 &
-      // Team 3" when only Team 1 was actually theirs today).
+      // Attribute team/position detail per schedule row from the SAME authoritative
+      // RPC that decides who to notify. Do NOT re-query raw team_members here — that
+      // previously dumped every position the person ever held on the team (including
+      // other rotation periods), e.g. inventing "bass" in the push body.
       for (const schedule of effectiveSchedules) {
         if (!schedule.team_id) continue;
         scheduledTeamIds.add(schedule.team_id);
 
         const { data: teamRosterRows, error: teamRosterError } = await supabase.rpc(
-          "get_roster_notifiable_user_ids",
+          "get_roster_notifiable_assignments",
           {
             p_schedule_date: dateStr,
             p_campus_id: schedule.campus_id,
@@ -147,22 +146,19 @@ serve(async (req: Request): Promise<Response> => {
           continue;
         }
 
-        const teamUserIds = Array.from(
-          new Set((teamRosterRows || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
-        );
-        if (teamUserIds.length === 0) continue;
-
-        const { data: positionRows } = await supabase
-          .from("team_members")
-          .select(`user_id, position`)
-          .eq("team_id", schedule.team_id)
-          .in("user_id", teamUserIds);
-
         const positionsByUser: Record<string, string[]> = {};
-        for (const row of positionRows || []) {
-          if (!row.user_id || !row.position) continue;
-          (positionsByUser[row.user_id] ??= []).push(row.position);
+        for (const row of teamRosterRows || []) {
+          const userId = (row as { user_id?: string }).user_id;
+          const position = (row as { assignment_position?: string | null }).assignment_position;
+          if (!userId) continue;
+          const positions = (positionsByUser[userId] ??= []);
+          if (position && !positions.includes(position)) {
+            positions.push(position);
+          }
         }
+
+        const teamUserIds = Object.keys(positionsByUser);
+        if (teamUserIds.length === 0) continue;
 
         // deno-lint-ignore no-explicit-any
         const teamData = schedule.worship_teams as any;

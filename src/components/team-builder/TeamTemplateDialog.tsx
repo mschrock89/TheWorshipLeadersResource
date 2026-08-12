@@ -154,6 +154,7 @@ export function TeamTemplateDialog({
     ministryType === "encounter" ||
     ministryType === "eon" ||
     ministryType === "eon_weekend" ||
+    ministryType === "ms_hs" ||
     ministryType === "production";
   const isVideoTemplate = ministryType === "video";
   const isProductionOnlyTemplate = ministryType === "production";
