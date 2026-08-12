@@ -5,9 +5,18 @@ import { POSITION_SLOTS, normalizeSessionSetMinistryType } from "@/lib/constants
 // Production team. "propresenter" is the Lyrics slot.
 const STUDENT_CAMP_PRODUCTION_SLOT_IDS = ["foh", "mon", "propresenter"];
 
+// MS Worship Weekend only supports FOH + Lyrics on the worship team template.
+const EON_WEEKEND_PRODUCTION_SLOT_IDS = ["foh", "propresenter"];
+const EON_WEEKEND_PRODUCTION_SLOT_ID_SET = new Set(EON_WEEKEND_PRODUCTION_SLOT_IDS);
+
 function isStudentCampTemplateContext(context?: TeamTemplateContext | null) {
   const base = normalizeSessionSetMinistryType(context?.ministryType) ?? context?.ministryType;
   return base === "student_camp";
+}
+
+function isEonWeekendTemplateContext(context?: TeamTemplateContext | null) {
+  const base = normalizeSessionSetMinistryType(context?.ministryType) ?? context?.ministryType;
+  return base === "eon_weekend";
 }
 
 export type VocalSlotGender = "male" | "female";
@@ -172,6 +181,9 @@ export function normalizeTeamTemplateConfig(
   const normalizedProductionSlots = Array.isArray(config?.productionSlots)
     ? config.productionSlots.filter((slot): slot is string => VALID_PRODUCTION_SLOTS.has(slot))
     : [];
+  const scopedProductionSlots = isEonWeekendTemplateContext(context)
+    ? normalizedProductionSlots.filter((slot) => EON_WEEKEND_PRODUCTION_SLOT_ID_SET.has(slot))
+    : normalizedProductionSlots;
   const normalizedVideoSlots = Array.isArray(config?.videoSlots)
     ? config.videoSlots.filter((slot): slot is string => VALID_VIDEO_SLOTS.has(slot))
     : [];
@@ -184,9 +196,11 @@ export function normalizeTeamTemplateConfig(
         ? orderBandSlotsForContext(normalizedBandSlots, context)
         : getDefaultBandSlotsForContext(context),
     productionSlots:
-      normalizedProductionSlots.length > 0
-        ? normalizedProductionSlots
-        : DEFAULT_TEAM_TEMPLATE.productionSlots,
+      scopedProductionSlots.length > 0
+        ? scopedProductionSlots
+        : isEonWeekendTemplateContext(context)
+          ? [...EON_WEEKEND_PRODUCTION_SLOT_IDS]
+          : DEFAULT_TEAM_TEMPLATE.productionSlots,
     videoSlots: normalizedVideoSlots.length > 0 ? normalizedVideoSlots : DEFAULT_TEAM_TEMPLATE.videoSlots,
   };
 }

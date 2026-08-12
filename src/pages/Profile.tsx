@@ -1368,6 +1368,8 @@ export default function Profile() {
                                 // Student Camp teams carry their own production crew (FOH, MON, Lyrics)
                                 // rather than a separately scheduled Production ministry.
                                 const showStudentCampProduction = ministryType === 'student_camp';
+                                // MS Worship Weekend carries FOH + Lyrics on the worship team template.
+                                const showEonWeekendProduction = ministryType === 'eon_weekend';
                                 const showVideoPositions = ministryType === 'video';
                                 const showCreativePositions = ministryType === 'creative';
                                 const showStudentPositions = ministryType === STUDENT_TEAM_BUILDER_MINISTRY_TYPE;
@@ -1453,6 +1455,17 @@ export default function Profile() {
                                             campus.id,
                                             ministryPositions,
                                             ["sound_tech", "mon", "media"],
+                                          )
+                                        )}
+
+                                        {/* MS Worship Weekend production crew (FOH, Lyrics) */}
+                                        {showEonWeekendProduction && (
+                                          renderMinistryPositionGroup(
+                                            "Production:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            ["sound_tech", "media"],
                                           )
                                         )}
                                         
