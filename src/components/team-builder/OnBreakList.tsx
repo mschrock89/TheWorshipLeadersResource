@@ -9,6 +9,7 @@ import { useCreateManagedBreakRequest, useDeleteManagedBreakRequest } from "@/ho
 import { AvailableMember, TeamMemberAssignment } from "@/hooks/useTeamBuilder";
 import { memberMatchesMinistryFilter } from "@/lib/constants";
 import { cn } from "@/lib/cn";
+import { countsAsTrimesterRosterAssignment } from "@/lib/teamBuilderRosterAssignment";
 
 interface OnBreakListProps {
   allMembers: AvailableMember[];
@@ -93,26 +94,6 @@ const POSITION_GROUPS = [
     positions: []
   },
 ];
-
-function isWeekendRosterBreakLogicMinistry(ministryType: string | undefined) {
-  return (
-    ministryType === "weekend" ||
-    ministryType === "weekend_team" ||
-    ministryType === "video" ||
-    ministryType === "eon_weekend"
-  );
-}
-
-function countsAsTrimesterRosterAssignment(
-  member: Pick<TeamMemberAssignment, "service_day">,
-  ministryType: string | undefined,
-) {
-  if (isWeekendRosterBreakLogicMinistry(ministryType) && member.service_day) {
-    return false;
-  }
-
-  return true;
-}
 
 export function OnBreakList({
   allMembers,

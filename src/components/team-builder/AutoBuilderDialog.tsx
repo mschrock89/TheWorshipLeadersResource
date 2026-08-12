@@ -25,6 +25,7 @@ import {
   CampusWorshipPastor,
 } from "@/hooks/useTeamBuilder";
 import { MINISTRY_TYPES, POSITION_SLOTS, getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib/constants";
+import { countsAsTrimesterRosterAssignment } from "@/lib/teamBuilderRosterAssignment";
 import { getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 
 interface AutoBuilderDialogProps {
@@ -35,7 +36,6 @@ interface AutoBuilderDialogProps {
   campusWorshipPastorIds?: string[];
   studentWorshipLeaderIds?: string[];
   campusWorshipLeaders?: CampusWorshipPastor[];
-  allowMultiTeamUserIds?: string[];
   teams: WorshipTeam[];
   members: AvailableMember[];
   ministryType: string;
@@ -183,6 +183,7 @@ function canAssignMemberToTeam(
   if (!teamAssignments) return true;
 
   if (!allowMultiTeamUserIds?.has(member.id)) {
+    // One volunteer → one team for every ministry (Video, Production, Weekend, etc.)
     const assignedTeamIds = [...teamAssignments.keys()];
     const isAssignedToDifferentTeam = assignedTeamIds.some((assignedTeamId) => assignedTeamId !== teamId);
     if (isAssignedToDifferentTeam) return false;
@@ -436,26 +437,6 @@ function resolveAutoBuildPriorityLeaders(
   return resolved;
 }
 
-function isWeekendRosterBreakLogicMinistry(ministryType: string) {
-  return (
-    ministryType === "weekend" ||
-    ministryType === "weekend_team" ||
-    ministryType === "video" ||
-    ministryType === "eon_weekend"
-  );
-}
-
-function countsAsTrimesterRosterAssignment(
-  member: Pick<TeamMemberAssignment, "service_day">,
-  ministryType: string,
-) {
-  if (isWeekendRosterBreakLogicMinistry(ministryType) && member.service_day) {
-    return false;
-  }
-
-  return true;
-}
-
 interface PreviewAssignment {
   team_id: string;
   team_name: string;
@@ -494,7 +475,6 @@ export function AutoBuilderDialog({
   campusWorshipPastorIds = [],
   studentWorshipLeaderIds = [],
   campusWorshipLeaders = [],
-  allowMultiTeamUserIds = [],
   teams,
   members,
   ministryType,
@@ -513,12 +493,11 @@ export function AutoBuilderDialog({
     () => getAutoBuildPriorityLeaderIds(ministryType, campusWorshipPastorIds, studentWorshipLeaderIds),
     [campusWorshipPastorIds, ministryType, studentWorshipLeaderIds],
   );
+  // Auto-build places each volunteer on only one team across every ministry.
+  // Only intentional priority leaders may span teams.
   const multiTeamUserIds = useMemo(
-    () =>
-      ministryType === "worship_night"
-        ? new Set(members.map((member) => member.id))
-        : new Set([...allowMultiTeamUserIds, ...priorityLeaderIds]),
-    [allowMultiTeamUserIds, members, ministryType, priorityLeaderIds],
+    () => new Set(priorityLeaderIds),
+    [priorityLeaderIds],
   );
   const templateContext = useMemo(
     () => ({ campusName, ministryType }),
@@ -1143,7 +1122,6 @@ export function AutoBuilderDialog({
         campusWorshipPastorIds,
         studentWorshipLeaderIds,
         campusWorshipLeaders,
-        allowMultiTeamUserIds,
         teams,
         members,
         ministryType,
@@ -1343,6 +1321,7 @@ export function AutoBuilderDialog({
                   <li>Place this campus&apos;s student worship leader on every team first</li>
                 )}
                 <li>Fill hardest positions first (drums, bass, keys)</li>
+                <li>Use each volunteer on only one team (all ministries)</li>
                 <li>Prioritize members who were off the previous trimester roster</li>
                 <li>Rotate members to different teams for variety</li>
                 <li>Place assignments directly into team slots</li>

@@ -11,6 +11,7 @@ import {
   normalizeWeekendWorshipMinistryType,
 } from "@/lib/constants";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
+import { countsAsTrimesterRosterAssignment } from "@/lib/teamBuilderRosterAssignment";
 import { TeamTemplateConfig, getRequiredGenderForSlot, getTeamTemplateSlotConfigs, isTeamSlotVisible } from "@/lib/teamTemplates";
 import { useAuth } from "@/hooks/useAuth";
 import { getWeekendKey, isWeekend } from "@/lib/utils";
@@ -2213,32 +2214,6 @@ function exceedsGuitarFamilyLimit(filledSlots: Set<string>, targetSlot: string) 
   return false;
 }
 
-function teamsHaveOverlappingScheduleDates(
-  teamScheduledDatesByTeam: Map<string, Set<string>> | undefined,
-  firstTeamId: string,
-  secondTeamId: string,
-) {
-  const firstTeamDates = teamScheduledDatesByTeam?.get(firstTeamId);
-  const secondTeamDates = teamScheduledDatesByTeam?.get(secondTeamId);
-
-  if (!firstTeamDates?.size || !secondTeamDates?.size) {
-    return false;
-  }
-
-  const [smallerDates, largerDates] =
-    firstTeamDates.size <= secondTeamDates.size
-      ? [firstTeamDates, secondTeamDates]
-      : [secondTeamDates, firstTeamDates];
-
-  for (const date of smallerDates) {
-    if (largerDates.has(date)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function canAssignMemberToTeam(
   assignedSlotsByTeam: Map<string, Map<string, Set<string>>>,
   member: AvailableMember,
@@ -2246,7 +2221,6 @@ function canAssignMemberToTeam(
   targetSlot: string,
   blockedTeammateIdsByTeam?: Map<string, Set<string>>,
   allowMultiTeamUserIds?: Set<string>,
-  teamScheduledDatesByTeam?: Map<string, Set<string>>,
 ) {
   const blockedTeammates = blockedTeammateIdsByTeam?.get(teamId);
   if (blockedTeammates?.has(member.id)) return false;
@@ -2254,14 +2228,13 @@ function canAssignMemberToTeam(
   const teamAssignments = assignedSlotsByTeam.get(member.id);
   if (!teamAssignments) return true;
 
+  // Auto-build uses each volunteer on only one team for every ministry
+  // (Weekend, Video, Production, etc.). Priority leaders may still span teams.
   if (!allowMultiTeamUserIds?.has(member.id)) {
-    const hasOverlappingDifferentTeamAssignment = [...teamAssignments.keys()].some(
-      (assignedTeamId) =>
-        assignedTeamId !== teamId &&
-        teamsHaveOverlappingScheduleDates(teamScheduledDatesByTeam, assignedTeamId, teamId),
+    const isAssignedToDifferentTeam = [...teamAssignments.keys()].some(
+      (assignedTeamId) => assignedTeamId !== teamId,
     );
-
-    if (hasOverlappingDifferentTeamAssignment) return false;
+    if (isAssignedToDifferentTeam) return false;
   }
 
   const existingSlots = teamAssignments.get(teamId);
@@ -2309,7 +2282,6 @@ function findBestCandidateForTeam(
         targetSlot,
         blockedTeammateIdsByTeam,
         allowMultiTeamUserIds,
-        teamScheduledDatesByTeam,
       )
     ) {
       continue;
@@ -2374,7 +2346,6 @@ function findBestTeamForMemberSlot(
         targetSlot,
         blockedTeammateIdsByTeam,
         allowMultiTeamUserIds,
-        teamScheduledDatesByTeam,
       )
     ) {
       continue;
@@ -2551,17 +2522,6 @@ function isWeekendRosterBreakLogicMinistry(ministryType: string) {
   );
 }
 
-function countsAsTrimesterRosterAssignment(
-  member: Pick<TeamMemberAssignment, "service_day">,
-  ministryType: string,
-) {
-  if (isWeekendRosterBreakLogicMinistry(ministryType) && member.service_day) {
-    return false;
-  }
-
-  return true;
-}
-
 // Auto-builder algorithm with ministry filtering, break rotation, and team variety
 export function useAutoBuildTeams() {
   const { user } = useAuth();
@@ -2577,7 +2537,6 @@ export function useAutoBuildTeams() {
       campusWorshipPastorIds,
       studentWorshipLeaderIds,
       campusWorshipLeaders,
-      allowMultiTeamUserIds,
       previousPeriodMembers,
       breakExcludedUserIds,
       previousApprovedBreakUserIds,
@@ -2592,7 +2551,6 @@ export function useAutoBuildTeams() {
       campusWorshipPastorIds?: string[];
       studentWorshipLeaderIds?: string[];
       campusWorshipLeaders?: CampusWorshipPastor[];
-      allowMultiTeamUserIds?: string[];
       previousPeriodMembers: TeamMemberAssignment[];
       breakExcludedUserIds: string[];
       previousApprovedBreakUserIds: string[];
@@ -2731,15 +2689,15 @@ export function useAutoBuildTeams() {
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
       const blockedTeammateIdsByTeam = new Map<string, Set<string>>();
       const slotFilledPerTeam = new Map<string, Set<string>>(); // teamId -> set of slots
+      // Auto-build places each volunteer on only one team across every ministry
+      // (Weekend, Video, Production, etc.). Only intentional priority leaders
+      // (campus worship pastor / student worship leader) may span teams.
       const priorityLeaderIds = getAutoBuildPriorityLeaderIds(
         ministryType,
         campusWorshipPastorIds,
         studentWorshipLeaderIds,
       );
-      const multiTeamUserIds =
-        ministryType === "worship_night"
-          ? new Set(members.map((member) => member.id))
-          : new Set([...(allowMultiTeamUserIds || []), ...priorityLeaderIds]);
+      const multiTeamUserIds = new Set(priorityLeaderIds);
 
       teams.forEach(t => slotFilledPerTeam.set(t.id, new Set()));
 
@@ -2761,7 +2719,6 @@ export function useAutoBuildTeams() {
             targetSlot,
             blockedTeammateIdsByTeam,
             multiTeamUserIds,
-            teamScheduledDatesByTeam,
           )
         ) return false;
 
