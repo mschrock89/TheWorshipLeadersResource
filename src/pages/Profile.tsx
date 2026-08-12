@@ -45,6 +45,8 @@ const PROFILE_MINISTRY_ORDER = [
   "kids_camp",
   "student_camp",
   "production",
+  "ms_hs_production",
+  "hs_production",
   "video",
   "creative",
   "encounter",
@@ -1403,6 +1405,8 @@ export default function Profile() {
                                 const showDrumTechSupport = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'ms_hs', 'evident'].includes(ministryType);
                                 const showSpeakerPositions = ministryType === 'speaker';
                                 const showProductionPositions = ministryType === 'production';
+                                const showStudentProductionPositions =
+                                  ministryType === 'ms_hs_production' || ministryType === 'hs_production';
                                 // Student Camp teams carry their own production crew (FOH, MON, Lyrics)
                                 // rather than a separately scheduled Production ministry.
                                 const showStudentCampProduction = ministryType === 'student_camp';
@@ -1482,6 +1486,17 @@ export default function Profile() {
                                             campus.id,
                                             ministryPositions,
                                             POSITION_CATEGORIES.audio,
+                                          )
+                                        )}
+
+                                        {/* MS/HS Production & HS Production (Lyrics, Lights, FOH, MON) */}
+                                        {showStudentProductionPositions && (
+                                          renderMinistryPositionGroup(
+                                            "Production:",
+                                            ministryType,
+                                            campus.id,
+                                            ministryPositions,
+                                            ["sound_tech", "mon", "lighting", "media"],
                                           )
                                         )}
 

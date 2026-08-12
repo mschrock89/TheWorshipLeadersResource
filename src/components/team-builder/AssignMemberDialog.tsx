@@ -282,6 +282,8 @@ export function AssignMemberDialog({
     : effectiveMinistryFilter === 'eon' ? 'MS Worship'
     : effectiveMinistryFilter === 'encounter' ? 'HS Worship'
     : effectiveMinistryFilter === 'ms_hs' ? 'MS/HS Worship'
+    : effectiveMinistryFilter === 'ms_hs_production' ? 'MS/HS Production'
+    : effectiveMinistryFilter === 'hs_production' ? 'HS Production'
     : effectiveMinistryFilter === 'students' ? 'Students'
     : effectiveMinistryFilter || 'All';
   const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;

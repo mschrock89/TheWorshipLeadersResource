@@ -54,7 +54,7 @@ const PRODUCTION_FIELDS = [
   { key: "mon", label: "MON", max: 1, slots: ["mon"] },
   { key: "broadcast", label: "Broadcast", max: 1, slots: ["broadcast"] },
   { key: "audio_shadow", label: "Audio Shadow", max: 1, slots: ["audio_shadow"] },
-  { key: "lighting", label: "Lighting", max: 1, slots: ["lighting"] },
+  { key: "lighting", label: "Lights", max: 1, slots: ["lighting"] },
   { key: "propresenter", label: "Lyrics", max: 1, slots: ["propresenter"] },
   { key: "producer", label: "Producer", max: 1, slots: ["producer"] },
 ] as const;
@@ -151,17 +151,28 @@ export function TeamTemplateDialog({
   });
 
   const showProductionTemplate =
-    ministryType === "encounter" ||
     ministryType === "eon" ||
     ministryType === "eon_weekend" ||
-    ministryType === "ms_hs" ||
-    ministryType === "production";
+    ministryType === "production" ||
+    ministryType === "ms_hs_production" ||
+    ministryType === "hs_production";
   const isVideoTemplate = ministryType === "video";
-  const isProductionOnlyTemplate = ministryType === "production";
+  const isProductionOnlyTemplate =
+    ministryType === "production" ||
+    ministryType === "ms_hs_production" ||
+    ministryType === "hs_production";
   const productionFields =
     ministryType === "eon_weekend"
       ? PRODUCTION_FIELDS.filter((field) => field.key === "foh" || field.key === "propresenter")
-      : PRODUCTION_FIELDS;
+      : ministryType === "ms_hs_production" || ministryType === "hs_production"
+        ? PRODUCTION_FIELDS.filter(
+            (field) =>
+              field.key === "foh" ||
+              field.key === "mon" ||
+              field.key === "lighting" ||
+              field.key === "propresenter",
+          )
+        : PRODUCTION_FIELDS;
 
   useEffect(() => {
     if (!open) return;

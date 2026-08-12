@@ -134,6 +134,8 @@ function formatMinistryTypes(ministryTypes: string[]): string {
     er: "ER",
     speaker: "Speaker",
     production: "Production",
+    ms_hs_production: "MS/HS Production",
+    hs_production: "HS Production",
     video: "Video",
   };
   
