@@ -833,6 +833,53 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
   });
 }
 
+function isAlreadyConfirmedError(error: { code?: string; message?: string }) {
+  return (
+    error.code === "23505" ||
+    /duplicate key|unique constraint/i.test(error.message ?? "")
+  );
+}
+
+function rosterDeniedConfirmMessage(error: { message?: string }) {
+  // Important: do NOT match bare "violates" — unique-constraint errors also contain it
+  // ("duplicate key value violates unique constraint") and were being shown as a false
+  // roster denial after a successful confirm + double-submit / stale button click.
+  if (/row-level security|violates row-level security/i.test(error.message ?? "")) {
+    return "You can only confirm setlists you're scheduled for.";
+  }
+  return error.message || "Failed to confirm setlist.";
+}
+
+function buildOptimisticConfirmation(
+  draftSetId: string,
+  userId: string,
+): SetlistConfirmation {
+  const now = new Date().toISOString();
+  return {
+    id: `optimistic-${draftSetId}`,
+    draft_set_id: draftSetId,
+    user_id: userId,
+    confirmed_at: now,
+    created_at: now,
+  };
+}
+
+function applyOptimisticConfirmations(
+  setlists: PublishedSetlist[] | undefined,
+  draftSetIds: string[],
+  userId: string,
+) {
+  if (!setlists) return setlists;
+  const ids = new Set(draftSetIds);
+  return setlists.map((setlist) => {
+    if (!ids.has(setlist.id) || setlist.myConfirmation) return setlist;
+    return {
+      ...setlist,
+      myConfirmation: buildOptimisticConfirmation(setlist.id, userId),
+    };
+  });
+}
+
 // Confirm a setlist
 export function useConfirmSetlist() {
   const queryClient = useQueryClient();
@@ -850,17 +897,35 @@ export function useConfirmSetlist() {
           user_id: user.id,
         });
 
-      if (error) throw error;
+      // Already confirmed (double-tap / stale button) — treat as success.
+      if (error && !isAlreadyConfirmedError(error)) throw error;
 
-      // Notify the worship leader that someone confirmed
-      try {
-        await supabase.functions.invoke("notify-setlist-confirmed", {
-          body: { draftSetId, confirmerId: user.id },
-        });
-      } catch (notifyError) {
-        console.error("Failed to send confirmation notification:", notifyError);
-        // Don't throw - confirmation was successful even if notification fails
+      // Only notify on a fresh confirmation, not a duplicate retry.
+      if (!error) {
+        try {
+          await supabase.functions.invoke("notify-setlist-confirmed", {
+            body: { draftSetId, confirmerId: user.id },
+          });
+        } catch (notifyError) {
+          console.error("Failed to send confirmation notification:", notifyError);
+          // Don't throw - confirmation was successful even if notification fails
+        }
       }
+    },
+    onMutate: async (draftSetId) => {
+      if (!user?.id) return { previous: [] as [unknown, unknown][] };
+
+      await queryClient.cancelQueries({ queryKey: ["published-setlists"] });
+      const previous = queryClient.getQueriesData<PublishedSetlist[]>({
+        queryKey: ["published-setlists"],
+      });
+
+      queryClient.setQueriesData<PublishedSetlist[]>(
+        { queryKey: ["published-setlists"] },
+        (old) => applyOptimisticConfirmations(old, [draftSetId], user.id),
+      );
+
+      return { previous };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
@@ -870,14 +935,13 @@ export function useConfirmSetlist() {
         description: "You've confirmed that you've reviewed this setlist.",
       });
     },
-    onError: (error: Error) => {
-      const message =
-        /policy|row-level security|violates/.test(error.message)
-          ? "You can only confirm setlists you're scheduled for."
-          : error.message;
+    onError: (error: Error, _draftSetId, context) => {
+      context?.previous?.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
       toast({
         title: "Error confirming setlist",
-        description: message,
+        description: rosterDeniedConfirmMessage(error),
         variant: "destructive",
       });
     },
@@ -899,14 +963,16 @@ export function useConfirmSetlists() {
       const ids = [...new Set(draftSetIds)].filter(Boolean);
       if (ids.length === 0) return;
 
-      const { error } = await supabase
-        .from("setlist_confirmations")
-        .insert(ids.map((draft_set_id) => ({ draft_set_id, user_id: user.id })));
-
-      if (error) throw error;
-
-      // Notify the worship leader for each confirmed session
+      // Insert one-by-one so an already-confirmed session doesn't fail the whole batch,
+      // and so we only notify for newly created confirmations.
       for (const draftSetId of ids) {
+        const { error } = await supabase
+          .from("setlist_confirmations")
+          .insert({ draft_set_id: draftSetId, user_id: user.id });
+
+        if (error && !isAlreadyConfirmedError(error)) throw error;
+        if (error) continue;
+
         try {
           await supabase.functions.invoke("notify-setlist-confirmed", {
             body: { draftSetId, confirmerId: user.id },
@@ -917,6 +983,22 @@ export function useConfirmSetlists() {
         }
       }
     },
+    onMutate: async (draftSetIds) => {
+      if (!user?.id) return { previous: [] as [unknown, unknown][] };
+
+      const ids = [...new Set(draftSetIds)].filter(Boolean);
+      await queryClient.cancelQueries({ queryKey: ["published-setlists"] });
+      const previous = queryClient.getQueriesData<PublishedSetlist[]>({
+        queryKey: ["published-setlists"],
+      });
+
+      queryClient.setQueriesData<PublishedSetlist[]>(
+        { queryKey: ["published-setlists"] },
+        (old) => applyOptimisticConfirmations(old, ids, user.id),
+      );
+
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
       queryClient.invalidateQueries({ queryKey: ["setlist-confirmation-status"] });
@@ -925,14 +1007,13 @@ export function useConfirmSetlists() {
         description: "You've confirmed that you've reviewed this setlist.",
       });
     },
-    onError: (error: Error) => {
-      const message =
-        /policy|row-level security|violates/.test(error.message)
-          ? "You can only confirm setlists you're scheduled for."
-          : error.message;
+    onError: (error: Error, _draftSetIds, context) => {
+      context?.previous?.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
       toast({
         title: "Error confirming setlist",
-        description: message,
+        description: rosterDeniedConfirmMessage(error),
         variant: "destructive",
       });
     },

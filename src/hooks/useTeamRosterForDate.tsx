@@ -11,6 +11,7 @@ import {
   buildFirstScheduledDateByRotationName,
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
@@ -62,15 +63,9 @@ const assignmentMatchesServiceDay = (
   dateStr: string,
 ) => {
   const rawServiceDay = "service_day" in assignment ? assignment.service_day : assignment.serviceDay;
-  if (!rawServiceDay) return true;
-
-  const serviceDay = rawServiceDay.toLowerCase();
-  if (serviceDay === "both" || serviceDay === "weekend") return true;
-
   const dateServiceDay = getServiceDayForDate(dateStr);
   if (!dateServiceDay) return true;
-
-  return serviceDay === dateServiceDay;
+  return assignmentBelongsOnServiceDay(rawServiceDay, dateServiceDay);
 };
 
 const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefined, ministryType?: string) => {

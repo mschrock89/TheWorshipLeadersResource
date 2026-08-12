@@ -28,7 +28,7 @@ import {
 import { usePublishedSetlists, useConfirmSetlist, useConfirmSetlists } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
-import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession } from "@/lib/constants";
+import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession, getViewMinistryFilterOptions, isValidViewMinistryFilter, setlistMatchesMinistryFilter } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
@@ -37,6 +37,7 @@ import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirm
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelectionContext";
 import { isAuditionCandidateRole } from "@/lib/access";
 import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/constants";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -47,6 +48,7 @@ import { buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
@@ -198,6 +200,34 @@ function StandardMySetlists() {
   // Use global campus selection context if available
   const campusContext = useCampusSelectionOptional();
   const [localCampusId, setLocalCampusId] = useState<string>("");
+  const ministryContext = useMinistrySelectionOptional();
+  const resourceAppKey = getCurrentResourceAppKey();
+  const appMinistryTypes = useMemo(
+    () => getResourceAppMinistryTypes(resourceAppKey),
+    [resourceAppKey],
+  );
+  const ministryFilterOptions = useMemo(
+    () => getViewMinistryFilterOptions(appMinistryTypes),
+    [appMinistryTypes],
+  );
+  const [localMinistryType, setLocalMinistryType] = useState<string>(
+    () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
+  );
+  const selectedMinistryType =
+    (ministryContext?.selectedMinistryType &&
+    isValidViewMinistryFilter(ministryContext.selectedMinistryType, appMinistryTypes)
+      ? ministryContext.selectedMinistryType
+      : null) || localMinistryType;
+  const setSelectedMinistryType = useCallback(
+    (value: string) => {
+      if (ministryContext) {
+        ministryContext.setSelectedMinistryType(value);
+      } else {
+        setLocalMinistryType(value);
+      }
+    },
+    [ministryContext],
+  );
   const canViewCampusWideSetlists = useMemo(
     () => userRoles.some(({ role }) => CROSS_CAMPUS_SETLIST_VIEWER_ROLES.has(role)),
     [userRoles],
@@ -242,6 +272,13 @@ function StandardMySetlists() {
     }
   }, [normalizedCampusId, selectedCampusId, setSelectedCampusId]);
 
+  useEffect(() => {
+    if (ministryFilterOptions.length === 0) return;
+    if (!isValidViewMinistryFilter(selectedMinistryType, appMinistryTypes)) {
+      setSelectedMinistryType(ministryFilterOptions[0].value);
+    }
+  }, [ministryFilterOptions, selectedMinistryType, appMinistryTypes, setSelectedMinistryType]);
+
   // "__none__" means the user has no campus at all — pass no filter rather than
   // leaking that sentinel into a `campus_id.in.(__none__)` query (invalid UUID, 400).
   const campusIdFilter = normalizedCampusId === "__none__" ? undefined : normalizedCampusId;
@@ -270,7 +307,10 @@ function StandardMySetlists() {
   // Group into one chronological list (past first, then upcoming)
   const allGroupedSetlists = useMemo(() => {
     // Convert to format expected by groupByWeekend
-    const allWithScheduleDate = (allSetlists || []).map(s => ({
+    const ministryFiltered = (allSetlists || []).filter((setlist) =>
+      setlistMatchesMinistryFilter(setlist.ministry_type, selectedMinistryType),
+    );
+    const allWithScheduleDate = ministryFiltered.map(s => ({
       ...s,
       scheduleDate: s.plan_date
     }));
@@ -279,7 +319,7 @@ function StandardMySetlists() {
     allWithScheduleDate.sort((a, b) => a.scheduleDate.localeCompare(b.scheduleDate));
 
     return groupByWeekend(allWithScheduleDate);
-  }, [allSetlists]);
+  }, [allSetlists, selectedMinistryType]);
 
   const visibleGroupedSetlists = useMemo(() => {
     if (isAdmin || canViewCampusWideSetlists) return allGroupedSetlists;
@@ -369,7 +409,7 @@ function StandardMySetlists() {
 
       if (combinedUnit) {
         const unconfirmedSessionIds = combinedUnit.sessions
-          .filter((session) => !session.myConfirmation)
+          .filter((session) => !session.myConfirmation && session.amIOnRoster)
           .map((session) => session.id);
 
         if (unconfirmedSessionIds.length > 0) {
@@ -702,21 +742,42 @@ function StandardMySetlists() {
           </p>
         </div>
         
-        {/* Campus Filter */}
-        <div className="flex items-center gap-2 shrink-0">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={selectableCampuses.length === 0}>
-            <SelectTrigger className="w-auto min-w-[160px]">
-              <SelectValue placeholder="Select Campus" />
-            </SelectTrigger>
-            <SelectContent>
-              {selectableCampuses.map((campus) => (
-                <SelectItem key={campus.id} value={campus.id}>
-                  {campus.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Campus + Ministry Filters */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={selectableCampuses.length === 0}>
+              <SelectTrigger className="w-auto min-w-[160px]">
+                <SelectValue placeholder="Select Campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectableCampuses.map((campus) => (
+                  <SelectItem key={campus.id} value={campus.id}>
+                    {campus.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Music2 className="h-4 w-4 text-muted-foreground" />
+            <Select
+              value={selectedMinistryType}
+              onValueChange={setSelectedMinistryType}
+              disabled={ministryFilterOptions.length === 0}
+            >
+              <SelectTrigger className="w-auto min-w-[160px]">
+                <SelectValue placeholder="Select Ministry" />
+              </SelectTrigger>
+              <SelectContent>
+                {ministryFilterOptions.map((ministry) => (
+                  <SelectItem key={ministry.value} value={ministry.value}>
+                    {ministry.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -786,8 +847,11 @@ function StandardMySetlists() {
               const allConfirmed = sessions.every((session) => !!session.myConfirmation);
               const amIOnRoster = sessions.some((session) => session.amIOnRoster);
               const amINotOnRoster = sessions.every((session) => session.amIOnRoster === false);
+              // Only confirm sessions this user is actually rostered for — confirming a
+              // sibling session they're not on would fail RLS and used to surface a
+              // misleading "not scheduled" error for the whole day.
               const unconfirmedSessionIds = sessions
-                .filter((session) => !session.myConfirmation)
+                .filter((session) => !session.myConfirmation && session.amIOnRoster)
                 .map((session) => session.id);
               const latestConfirmedAt = sessions
                 .map((session) => session.myConfirmation?.confirmed_at)
@@ -864,7 +928,7 @@ function StandardMySetlists() {
                         getInitials={getInitials}
                       />
 
-                      {!allConfirmed && amIOnRoster && (
+                      {!allConfirmed && unconfirmedSessionIds.length > 0 && (
                         <Button
                           onClick={() => confirmSetlists.mutate(unconfirmedSessionIds)}
                           disabled={confirmSetlists.isPending}
@@ -881,7 +945,7 @@ function StandardMySetlists() {
                         </p>
                       )}
 
-                      {allConfirmed && latestConfirmedAt && (
+                      {(allConfirmed || (amIOnRoster && unconfirmedSessionIds.length === 0)) && latestConfirmedAt && (
                         <p className="text-xs text-center text-muted-foreground">
                           Confirmed on {format(parseISO(latestConfirmedAt), "MMM d 'at' h:mm a")}
                         </p>

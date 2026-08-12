@@ -92,6 +92,7 @@ import {
   isBlankTeamBuilderAssignment,
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
+import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
 import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
@@ -1359,7 +1360,8 @@ export default function TeamBuilder() {
     return visibleAssignments.filter((member) => {
       if (member.team_id !== teamId) return false;
       if (!serviceDay) return true;
-      return member.service_day === serviceDay;
+      // Match Calendar: null / both / weekend rows cover the whole weekend.
+      return assignmentBelongsOnServiceDay(member.service_day, serviceDay);
     });
   };
 

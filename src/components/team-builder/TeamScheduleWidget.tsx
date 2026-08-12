@@ -97,6 +97,7 @@ function isWednesdayWorshipMinistry(ministryType: string) {
   return (
     ministryType === "encounter" ||
     ministryType === "eon" ||
+    ministryType === "ms_hs" ||
     ministryType === ENCOUNTER_EON_COMBINED
   );
 }
@@ -115,6 +116,7 @@ const MINISTRY_COLORS: Record<string, string> = {
   video: "bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200",
   encounter: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   eon: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  ms_hs: "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200",
   student: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   student_camp: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
   kids_camp: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
@@ -490,6 +492,7 @@ export function TeamScheduleWidget({
                 <SelectItem value="video">Video</SelectItem>
                 <SelectItem value="encounter">HS Worship</SelectItem>
                 <SelectItem value="eon">MS Worship</SelectItem>
+                <SelectItem value="ms_hs">MS/HS Worship</SelectItem>
                 <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                 <SelectItem value="student">Student</SelectItem>
               </SelectContent>
@@ -599,6 +602,7 @@ export function TeamScheduleWidget({
                         <SelectItem value="video">Video</SelectItem>
                         <SelectItem value="encounter">HS Worship</SelectItem>
                         <SelectItem value="eon">MS Worship</SelectItem>
+                        <SelectItem value="ms_hs">MS/HS Worship</SelectItem>
                         <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
                       </SelectContent>

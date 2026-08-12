@@ -290,6 +290,7 @@ export const MINISTRY_TYPES = [
   { value: "encounter", label: "HS Worship", shortLabel: "HS", color: "bg-accent" },
   { value: "eon", label: "MS Worship", shortLabel: "MS", color: "bg-purple-500" },
   { value: "eon_weekend", label: "MS Worship Weekend", shortLabel: "MSW", color: "bg-violet-500" },
+  { value: "ms_hs", label: "MS/HS Worship", shortLabel: "M/H", color: "bg-violet-600" },
   { value: "evident", label: "Evident", shortLabel: "EV", color: "bg-zinc-900 ring-1 ring-zinc-500" },
   { value: "er", label: "ER", shortLabel: "ER", color: "bg-red-500" },
   { value: "audition", label: "Audition", shortLabel: "AUD", color: "bg-sky-600" },
@@ -309,6 +310,7 @@ export const SET_PLANNER_MINISTRY_OPTIONS = [
   { value: "encounter", label: "HS Worship" },
   { value: "eon", label: "MS Worship" },
   { value: "eon_weekend", label: "MS Worship Weekend" },
+  { value: "ms_hs", label: "MS/HS Worship" },
   { value: "evident", label: "Evident Life" },
 ] as const;
 
@@ -329,6 +331,7 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   // MS Worship Weekend carries FOH + Lyrics on the worship team (configured in the
   // roster template editor) rather than a separately scheduled Production team.
   eon_weekend: ["Vocalists", "Band", "Production"],
+  ms_hs: ["Vocalists", "Band", "Production"],
   evident: ["Vocalists", "Band"],
   er: ["Vocalists", "Band"],
   speaker: ["Speaker"],
@@ -365,6 +368,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Worship
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // MS Worship uses the full 4-team rotation
   eon_weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for MS Worship Weekend
+  ms_hs: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for combined MS/HS Worship
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
   speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speaker rotations follow campus team structure and include the special 5th Sunday team
@@ -554,6 +558,70 @@ export function getMinistryLabel(ministryType: string | null | undefined): strin
 
   const normalizedType = normalizeWeekendWorshipMinistryType(ministryType);
   return MINISTRY_TYPES.find((ministry) => ministry.value === normalizedType)?.label || normalizedType || "All";
+}
+
+/** Shared filter order for Calendar, My Setlists, and Default Ministry preference. */
+export const CALENDAR_MINISTRY_FILTER_ORDER = [
+  "weekend_team",
+  "worship_night",
+  "kids_camp",
+  "student_camp",
+  "production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "ms_hs",
+  "evident",
+  "er",
+  "audition",
+  "speaker",
+  "prayer_night",
+] as const;
+
+export type CalendarMinistryFilterValue = (typeof CALENDAR_MINISTRY_FILTER_ORDER)[number];
+
+export function getViewMinistryFilterOptions(
+  allowedMinistryTypes: readonly string[] | null | undefined,
+): Array<(typeof MINISTRY_TYPES)[number]> {
+  return CALENDAR_MINISTRY_FILTER_ORDER
+    .filter((value) => !allowedMinistryTypes || allowedMinistryTypes.includes(value))
+    .map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
+    .filter(
+      (ministry): ministry is (typeof MINISTRY_TYPES)[number] =>
+        Boolean(ministry) && !("hidden" in ministry && ministry.hidden),
+    );
+}
+
+export function isValidViewMinistryFilter(
+  ministryType: string | null | undefined,
+  allowedMinistryTypes: readonly string[] | null | undefined,
+): ministryType is string {
+  if (!ministryType) return false;
+  if (allowedMinistryTypes && !allowedMinistryTypes.includes(ministryType)) return false;
+  return (CALENDAR_MINISTRY_FILTER_ORDER as readonly string[]).includes(ministryType);
+}
+
+/** Match a stored setlist ministry_type against a Calendar-style ministry filter. */
+export function setlistMatchesMinistryFilter(
+  setlistMinistryType: string | null | undefined,
+  ministryFilter: string | null | undefined,
+): boolean {
+  if (!ministryFilter || ministryFilter === "all") return true;
+  // Production/Video volunteers confirm against worship setlists, not a separate set ministry.
+  if (ministryFilter === "production" || ministryFilter === "video") return true;
+  if (!setlistMinistryType) return false;
+  if (setlistMinistryType === ministryFilter) return true;
+  if (
+    isSessionSetMinistryType(ministryFilter) &&
+    normalizeSessionSetMinistryType(setlistMinistryType) === ministryFilter
+  ) {
+    return true;
+  }
+  return (
+    WEEKEND_TEAM_MINISTRY_TYPES.has(setlistMinistryType) &&
+    WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)
+  );
 }
 
 export function resolveTeamBuilderSlotMinistryType(

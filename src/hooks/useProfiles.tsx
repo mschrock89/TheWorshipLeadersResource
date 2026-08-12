@@ -37,6 +37,7 @@ export interface Profile {
   share_contact_with_campus: boolean;
   gender: string | null;
   default_campus_id: string | null;
+  default_ministry_type: string | null;
   following_jesus: boolean;
   serves_somewhere_else: boolean;
   attended_six_months: boolean;
@@ -253,8 +254,9 @@ export function useUpdateProfile() {
       if (error) throw error;
       return data?.[0] ?? null;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profile", variables.id] });
       toast({ title: "Profile updated", description: "Changes saved successfully." });
     },
     onError: (error) => {

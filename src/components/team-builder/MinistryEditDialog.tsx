@@ -24,6 +24,7 @@ const MINISTRY_EDIT_ORDER = [
   "encounter",
   "eon",
   "eon_weekend",
+  "ms_hs",
   "evident",
   "er",
   "audition",

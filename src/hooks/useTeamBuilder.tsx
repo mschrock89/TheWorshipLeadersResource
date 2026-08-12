@@ -365,6 +365,7 @@ export const AUTO_BUILD_STUDENT_WORSHIP_LEADER_MINISTRIES = new Set([
   "encounter",
   "eon",
   "eon_weekend",
+  "ms_hs",
 ]);
 
 export function getAutoBuildPriorityLeaderIds(
@@ -2684,6 +2685,7 @@ export function useAutoBuildTeams() {
         display_order: number;
         rotation_period_id: string;
         ministry_types: string[];
+        service_day: string | null;
       }[] = [];
 
       const userAssignedSlotsByTeam = new Map<string, Map<string, Set<string>>>();
@@ -2725,6 +2727,8 @@ export function useAutoBuildTeams() {
         filledSlots.add(targetSlot);
         trackMemberAssignment(userAssignedSlotsByTeam, member.id, team.id, targetSlot);
 
+        // Whole-weekend assignment (null service_day). Video / Central eon split cards
+        // treat null as both Saturday and Sunday, matching Calendar roster day matching.
         assignments.push({
           team_id: team.id,
           user_id: member.id,
@@ -2734,6 +2738,7 @@ export function useAutoBuildTeams() {
           display_order: POSITION_SLOTS.findIndex(s => s.slot === targetSlot) + 1,
           rotation_period_id: rotationPeriodId,
           ministry_types: ministryType === "all" ? ["weekend"] : [ministryType],
+          service_day: null,
         });
 
         return true;
