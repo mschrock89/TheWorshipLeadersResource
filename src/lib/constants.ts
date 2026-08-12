@@ -326,7 +326,9 @@ export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
   prayer_night: [],
   encounter: ["Vocalists", "Band", "Production"],
   eon: ["Vocalists", "Band", "Production"],
-  eon_weekend: ["Vocalists", "Band"],
+  // MS Worship Weekend carries FOH + Lyrics on the worship team (configured in the
+  // roster template editor) rather than a separately scheduled Production team.
+  eon_weekend: ["Vocalists", "Band", "Production"],
   evident: ["Vocalists", "Band"],
   er: ["Vocalists", "Band"],
   speaker: ["Speaker"],

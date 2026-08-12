@@ -151,9 +151,16 @@ export function TeamTemplateDialog({
   });
 
   const showProductionTemplate =
-    ministryType === "encounter" || ministryType === "eon" || ministryType === "production";
+    ministryType === "encounter" ||
+    ministryType === "eon" ||
+    ministryType === "eon_weekend" ||
+    ministryType === "production";
   const isVideoTemplate = ministryType === "video";
   const isProductionOnlyTemplate = ministryType === "production";
+  const productionFields =
+    ministryType === "eon_weekend"
+      ? PRODUCTION_FIELDS.filter((field) => field.key === "foh" || field.key === "propresenter")
+      : PRODUCTION_FIELDS;
 
   useEffect(() => {
     if (!open) return;
@@ -172,7 +179,10 @@ export function TeamTemplateDialog({
 
   const totalVocalists = Object.values(vocalSelections).filter((value) => value !== "none").length;
   const totalInstruments = Object.values(bandCounts).reduce((sum, count) => sum + count, 0);
-  const totalProductionSlots = Object.values(productionCounts).reduce((sum, count) => sum + count, 0);
+  const totalProductionSlots = productionFields.reduce(
+    (sum, field) => sum + productionCounts[field.key],
+    0,
+  );
   const totalVideoSlots = Object.values(videoCounts).reduce((sum, count) => sum + count, 0);
 
   const handleSave = async () => {
@@ -185,7 +195,7 @@ export function TeamTemplateDialog({
       return;
     }
 
-    const productionSlots = PRODUCTION_FIELDS.flatMap((field) =>
+    const productionSlots = productionFields.flatMap((field) =>
       field.slots.slice(0, productionCounts[field.key]),
     );
 
@@ -361,7 +371,7 @@ export function TeamTemplateDialog({
                     </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {PRODUCTION_FIELDS.map((field) => (
+                    {productionFields.map((field) => (
                       <div key={field.key} className="space-y-2">
                         <Label>{field.label}</Label>
                         <Select
