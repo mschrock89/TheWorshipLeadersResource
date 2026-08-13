@@ -36,6 +36,10 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       return <Clock className="h-4 w-4 text-amber-500" />;
     case "approval_status":
       return <FileCheck className="h-4 w-4 text-green-500" />;
+    case "setlist_confirmed":
+      return <FileCheck className="h-4 w-4 text-green-500" />;
+    case "push":
+      return <Bell className="h-4 w-4 text-primary" />;
     default:
       return <Bell className="h-4 w-4" />;
   }
@@ -86,7 +90,7 @@ function NotificationItem({
     );
   }
 
-  const linkTo = notification.link || "/swaps";
+  const linkTo = notification.link || "/";
   
   return (
     <Link

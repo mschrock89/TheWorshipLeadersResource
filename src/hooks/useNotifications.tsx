@@ -30,7 +30,53 @@ export type NotificationType =
   | "admin_ping"
   | "pending_approval"
   | "approval_status"
-  | "setlist_confirmed";
+  | "setlist_confirmed"
+  | "push";
+
+const IN_APP_NOTIFICATION_ID_PREFIX = "in-app-";
+
+function inAppNotificationId(id: string) {
+  return `${IN_APP_NOTIFICATION_ID_PREFIX}${id}`;
+}
+
+function parseInAppNotificationId(notificationId: string): string | null {
+  if (!notificationId.startsWith(IN_APP_NOTIFICATION_ID_PREFIX)) return null;
+  return notificationId.slice(IN_APP_NOTIFICATION_ID_PREFIX.length);
+}
+
+function mapPushContextToNotificationType(contextType: string | null | undefined): NotificationType {
+  switch (contextType) {
+    case "setlist-published":
+    case "setlist-manual-reminder":
+      return "new_set";
+    case "setlist-confirmed":
+      return "setlist_confirmed";
+    case "event":
+      return "new_event";
+    case "team-schedule-date":
+    case "schedule-reminder":
+    case "video-schedule-reminder":
+      return "team_schedule_update";
+    case "admin-ping":
+      return "admin_ping";
+    case "swap-request":
+    case "swap-request-sent":
+      return "swap_request";
+    case "swap-accepted":
+    case "swap-confirmed":
+      return "swap_accepted";
+    case "swap-declined":
+      return "swap_declined";
+    case "setlist-pending-approval":
+    case "pending-approval":
+      return "pending_approval";
+    case "setlist-rejected":
+    case "approval-status":
+      return "approval_status";
+    default:
+      return "push";
+  }
+}
 
 export interface Notification {
   id: string;
@@ -117,7 +163,34 @@ export function useNotifications() {
     
     setIsLoading(true);
     try {
-      const [newSetsResult, newEventsResult, manualScheduleNotificationsResult, adminPingsResult, userCampusesResult, userMinistryCampusesResult, userProfileResult, directSwapRequestsResult] = await Promise.all([
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [
+        unreadInAppResult,
+        recentReadInAppResult,
+        newSetsResult,
+        newEventsResult,
+        manualScheduleNotificationsResult,
+        adminPingsResult,
+        userCampusesResult,
+        userMinistryCampusesResult,
+        userProfileResult,
+        directSwapRequestsResult,
+      ] = await Promise.all([
+        supabase
+          .from("in_app_notifications")
+          .select("id, title, message, link, notification_type, context_type, context_id, resource_app_key, camp_instance_id, read_at, created_at")
+          .eq("user_id", user.id)
+          .is("read_at", null)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("in_app_notifications")
+          .select("id, title, message, link, notification_type, context_type, context_id, resource_app_key, camp_instance_id, read_at, created_at")
+          .eq("user_id", user.id)
+          .not("read_at", "is", null)
+          .gte("created_at", sevenDaysAgo)
+          .order("created_at", { ascending: false })
+          .limit(50),
         // New draft sets (published in last 7 days)
         supabase
           .from("draft_sets")
@@ -229,6 +302,12 @@ export function useNotifications() {
           .limit(10)),
       ]);
 
+      if (unreadInAppResult.error) {
+        console.error("Failed to load in-app notifications:", unreadInAppResult.error);
+      }
+      if (recentReadInAppResult.error) {
+        console.error("Failed to load recent in-app notifications:", recentReadInAppResult.error);
+      }
       if (newSetsResult.error) throw newSetsResult.error;
       if (newEventsResult.error) throw newEventsResult.error;
       if (manualScheduleNotificationsResult.error) throw manualScheduleNotificationsResult.error;
@@ -242,10 +321,28 @@ export function useNotifications() {
       const userMinistryCampuses = userMinistryCampusesResult.data || [];
       const userGender = (userProfileResult.data?.gender || "").toLowerCase();
       const newSets = newSetsResult.data || [];
-      const newEvents = newEventsResult.data || [];
+      const newEvents = [...(newEventsResult.data || [])];
       const manualScheduleNotifications = manualScheduleNotificationsResult.data || [];
       const adminPings = adminPingsResult.data || [];
       const directSwapRequests = directSwapRequestsResult.data || [];
+      const inAppById = new Map(
+        [...(unreadInAppResult.data || []), ...(recentReadInAppResult.data || [])]
+          .filter((row) => {
+            if (row.resource_app_key === resourceAppKey) return true;
+            if (row.camp_instance_id && row.camp_instance_id === activeCamp?.id) return true;
+            return !row.resource_app_key || row.resource_app_key === "all";
+          })
+          .map((row) => [row.id, row]),
+      );
+      const inAppRows = Array.from(inAppById.values());
+      const inAppContextKeys = new Set(
+        inAppRows
+          .filter((row) => row.context_type && row.context_id)
+          .map((row) => `${row.context_type}:${row.context_id}`),
+      );
+      const inAppFingerprints = new Set(
+        inAppRows.map((row) => `${row.title}|${row.message}`),
+      );
 
       const requesterIds = [...new Set(directSwapRequests.map((request) => request.requester_id).filter(Boolean))];
       const teamIds = [...new Set(directSwapRequests.map((request) => request.team_id).filter(Boolean))];
@@ -277,7 +374,92 @@ export function useNotifications() {
         (teamsResult.data || []).map((team) => [team.id, team.name]),
       );
 
+      const inAppEventIds = inAppRows
+        .filter((row) => row.context_type === "event" && row.context_id)
+        .map((row) => row.context_id as string);
+      const knownEventIds = new Set(newEvents.map((event) => event.id));
+      const missingEventIds = inAppEventIds.filter((eventId) => !knownEventIds.has(eventId));
+
+      if (missingEventIds.length > 0) {
+        const { data: extraEvents, error: extraEventsError } = await supabase
+          .from("events")
+          .select(`
+            id,
+            title,
+            description,
+            event_date,
+            created_at,
+            start_time,
+            end_time,
+            location,
+            audience_type,
+            target_genders,
+            campus_id,
+            campus_ids,
+            ministry_type,
+            ministry_types,
+            campuses:campuses(name)
+          `)
+          .in("id", missingEventIds);
+
+        if (extraEventsError) {
+          console.error("Failed to load events for in-app notifications:", extraEventsError);
+        } else if (extraEvents) {
+          newEvents.push(...extraEvents);
+        }
+      }
+
+      const eventsById = new Map(newEvents.map((event) => [event.id, event]));
+
       const notifs: Notification[] = [];
+
+      const newEventIds = newEvents.map((event) => event.id);
+      let comingEventIds = new Set<string>();
+
+      if (newEventIds.length > 0) {
+        const { data: eventRsvps } = await supabase
+          .from("event_rsvps")
+          .select("event_id")
+          .eq("user_id", user.id)
+          .eq("status", "coming")
+          .in("event_id", newEventIds);
+
+        comingEventIds = new Set((eventRsvps || []).map((rsvp) => rsvp.event_id));
+      }
+
+      inAppRows.forEach((row) => {
+        const notifId = inAppNotificationId(row.id);
+        const type = mapPushContextToNotificationType(row.context_type || row.notification_type);
+        const event = type === "new_event" && row.context_id ? eventsById.get(row.context_id) : undefined;
+        const campusName = (event?.campuses as { name: string } | null | undefined)?.name || "";
+
+        notifs.push({
+          id: notifId,
+          type,
+          title: row.title,
+          message: row.context_type?.startsWith("swap-")
+            ? formatSwapNotificationMessage(row.message)
+            : row.message,
+          timestamp: row.created_at,
+          read: Boolean(row.read_at) || currentReadIds.has(notifId),
+          link: row.link || undefined,
+          swapRequestId: type === "swap_request" && row.context_id ? row.context_id : undefined,
+          eventDetails: event
+            ? {
+                eventId: event.id,
+                title: event.title,
+                description: event.description,
+                eventDate: event.event_date,
+                startTime: event.start_time,
+                endTime: event.end_time,
+                location: event.location,
+                campusName,
+                audienceType: event.audience_type || "volunteers_only",
+                isComing: comingEventIds.has(event.id),
+              }
+            : undefined,
+        });
+      });
 
       const rosterChecks = await Promise.all(
         newSets.map(async (set) => {
@@ -299,6 +481,12 @@ export function useNotifications() {
 
       newSets.forEach((set) => {
         if (!rosteredSetIds.has(set.id)) return;
+        if (
+          inAppContextKeys.has(`setlist-published:${set.id}`) ||
+          inAppContextKeys.has(`setlist-manual-reminder:${set.id}`)
+        ) {
+          return;
+        }
 
         const campusName = (set.campuses as { name: string } | null)?.name || "";
         const notifId = `set-${set.id}`;
@@ -313,24 +501,11 @@ export function useNotifications() {
         });
       });
 
-      const newEventIds = newEvents.map((event) => event.id);
-      let comingEventIds = new Set<string>();
-
-      if (newEventIds.length > 0) {
-        const { data: eventRsvps } = await supabase
-          .from("event_rsvps")
-          .select("event_id")
-          .eq("user_id", user.id)
-          .eq("status", "coming")
-          .in("event_id", newEventIds);
-
-        comingEventIds = new Set((eventRsvps || []).map((rsvp) => rsvp.event_id));
-      }
-
       // Process new team-wide events that match this user's campus, ministry, and
       // gender scope. Mirrors the recipient filtering in the notify_new_event()
       // push trigger so in-app and push notifications reach the same people.
       newEvents.forEach((event) => {
+        if (inAppContextKeys.has(`event:${event.id}`)) return;
         const audienceType = ("audience_type" in event ? (event.audience_type as string | null) : null) || "volunteers_only";
         const isTeamWideEvent = TEAM_WIDE_EVENT_AUDIENCE_TYPES.has(audienceType);
 
@@ -395,6 +570,9 @@ export function useNotifications() {
         if (isAdmin && isSwapNotification && notification.title.startsWith("Open ")) {
           return;
         }
+        if (inAppFingerprints.has(`${notification.title}|${notification.message}`)) {
+          return;
+        }
 
         const notifId = `schedule-update-${notification.id}`;
         notifs.push({
@@ -418,6 +596,7 @@ export function useNotifications() {
           !ping ||
           (ping.resource_app_key !== resourceAppKey && ping.camp_instance_id !== activeCamp?.id)
         ) return;
+        if (inAppContextKeys.has(`admin-ping:${ping.id}`)) return;
 
         const notifId = `admin-ping-recipient-${recipientRow.id}`;
         notifs.push({
@@ -454,6 +633,9 @@ export function useNotifications() {
       });
 
       swapRequestGroups.forEach((group, groupKey) => {
+        if (group.some((request) => inAppContextKeys.has(`swap-request:${request.id}`))) {
+          return;
+        }
         // Use the most recently created request as the representative.
         const sortedByCreated = [...group].sort(
           (a, b) =>
@@ -530,6 +712,11 @@ export function useNotifications() {
       .channel("notifications-all-changes")
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "in_app_notifications", filter: `user_id=eq.${user.id}` },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "draft_sets" },
         scheduleRefresh
       )
@@ -586,6 +773,15 @@ export function useNotifications() {
         { user_id: user.id, notification_id: notificationId },
         { onConflict: "user_id,notification_id" }
       );
+
+    const inAppId = parseInAppNotificationId(notificationId);
+    if (inAppId) {
+      await supabase
+        .from("in_app_notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", inAppId)
+        .eq("user_id", user.id);
+    }
   }, [user]);
 
   const markAllAsRead = useCallback(async () => {
@@ -611,6 +807,18 @@ export function useNotifications() {
     await supabase
       .from("notification_read_status")
       .upsert(records, { onConflict: "user_id,notification_id" });
+
+    const inAppIds = unreadNotifs
+      .map((notification) => parseInAppNotificationId(notification.id))
+      .filter((id): id is string => Boolean(id));
+
+    if (inAppIds.length > 0) {
+      await supabase
+        .from("in_app_notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .in("id", inAppIds);
+    }
   }, [user, notifications]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;

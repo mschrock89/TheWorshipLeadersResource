@@ -463,6 +463,8 @@ export function useSubmitForApproval() {
             message: `A setlist for ${thisSet.plan_date} needs your approval`,
             url: "/approvals",
             userIds: approverUserId ? [approverUserId] : [],
+            contextType: "pending-approval",
+            contextId: draftSetId,
             // Setlists are a Worship-only feature; scope to worship subscriptions.
             metadata: { resourceAppKey: "worship" },
           },
@@ -722,6 +724,8 @@ export function useRejectSetlist() {
               message: notes || "Your setlist was returned for revision",
               url: "/set-planner",
               userIds: [approval.submitted_by],
+              contextType: "setlist-rejected",
+              contextId: draftSetId,
               // Setlists are a Worship-only feature; scope to worship subscriptions.
               metadata: { resourceAppKey: "worship" },
             },

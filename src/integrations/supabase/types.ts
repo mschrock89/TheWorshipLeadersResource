@@ -2127,6 +2127,78 @@ export type Database = {
           },
         ]
       }
+      in_app_notifications: {
+        Row: {
+          camp_instance_id: string | null
+          context_id: string | null
+          context_type: string | null
+          created_at: string
+          dedupe_key: string
+          id: string
+          link: string | null
+          message: string
+          metadata: Json
+          notification_type: string
+          push_notification_log_id: string | null
+          read_at: string | null
+          resource_app_key: string | null
+          tag: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          camp_instance_id?: string | null
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string
+          dedupe_key: string
+          id?: string
+          link?: string | null
+          message: string
+          metadata?: Json
+          notification_type?: string
+          push_notification_log_id?: string | null
+          read_at?: string | null
+          resource_app_key?: string | null
+          tag?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          camp_instance_id?: string | null
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string
+          dedupe_key?: string
+          id?: string
+          link?: string | null
+          message?: string
+          metadata?: Json
+          notification_type?: string
+          push_notification_log_id?: string | null
+          read_at?: string | null
+          resource_app_key?: string | null
+          tag?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "in_app_notifications_push_notification_log_id_fkey"
+            columns: ["push_notification_log_id"]
+            isOneToOne: false
+            referencedRelation: "push_notification_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "in_app_notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_read_status: {
         Row: {
           created_at: string

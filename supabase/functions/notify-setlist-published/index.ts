@@ -456,8 +456,7 @@ serve(async (req) => {
       }
     }
 
-    // 9. Create in-app notifications (insert into a notifications concept if exists)
-    // For now, the published set itself serves as the notification via the My Setlists page
+    // In-app inbox rows are created by send-push-notification for every recipient.
 
     return new Response(
       JSON.stringify({
