@@ -21,6 +21,7 @@ interface PushPayload {
   createdBy?: string;
   metadata?: Record<string, unknown>;
   skipLogging?: boolean;
+  skipInApp?: boolean;
   actions?: Array<{ action: string; title: string }>;
 }
 
@@ -195,6 +196,114 @@ function inferDefinitionKey(payload: PushPayload): string | null {
   if (tag.startsWith("admin-ping-")) return "admin-ping";
   if (tag.startsWith("cancellation-")) return "cancellation";
   return null;
+}
+
+const NOISY_IN_APP_SKIP_TYPES = new Set([
+  "chat-message",
+  "chat-activity",
+  "chat-busy",
+]);
+
+const IN_APP_PATH_PREFIXES = ["/hs", "/ms", "/admin"];
+const IN_APP_INSERT_CHUNK_SIZE = 250;
+
+function shouldCreateInAppNotifications(payload: PushPayload, definitionKey: string | null): boolean {
+  if (payload.skipInApp) return false;
+  const key = definitionKey || payload.contextType || "";
+  if (NOISY_IN_APP_SKIP_TYPES.has(key)) return false;
+  return Boolean(payload.title || payload.message);
+}
+
+function toInAppPath(url?: string): string | null {
+  if (!url) return null;
+
+  let path = url;
+  try {
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      const parsed = new URL(url);
+      path = `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    path = url;
+  }
+
+  for (const prefix of IN_APP_PATH_PREFIXES) {
+    if (path === prefix) return "/";
+    if (path.startsWith(`${prefix}/`)) return path.slice(prefix.length) || "/";
+  }
+
+  return path;
+}
+
+function buildInAppDedupeKey(payload: PushPayload, resourceAppKey: string | null): string {
+  const contextType = payload.contextType || "";
+  const contextId = payload.contextId || "";
+  if (contextType && contextId) {
+    return resourceAppKey && resourceAppKey !== "all"
+      ? `${contextType}:${contextId}:${resourceAppKey}`
+      : `${contextType}:${contextId}`;
+  }
+  if (payload.tag) return payload.tag;
+  return crypto.randomUUID();
+}
+
+function readCampInstanceId(metadata: Record<string, unknown> | undefined): string | null {
+  const value = metadata?.campInstanceId ?? metadata?.camp_instance_id;
+  if (typeof value !== "string" || value.length === 0) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+async function createInAppNotifications(
+  supabase: ReturnType<typeof createClient>,
+  payload: PushPayload,
+  userIds: string[],
+  resourceAppKey: string | null,
+  notificationLogId: string | null,
+  definitionKey: string | null,
+): Promise<number> {
+  if (!shouldCreateInAppNotifications(payload, definitionKey) || userIds.length === 0) {
+    return 0;
+  }
+
+  const contextType = payload.contextType || definitionKey || "push";
+  const storedResourceAppKey = resourceAppKey === "all" ? "all" : resourceAppKey;
+  const dedupeKey = buildInAppDedupeKey(payload, storedResourceAppKey);
+  const campInstanceId = readCampInstanceId(payload.metadata);
+  const rows = userIds.map((userId) => ({
+    user_id: userId,
+    title: payload.title || "Notification",
+    message: payload.message || "",
+    link: toInAppPath(payload.url),
+    notification_type: contextType,
+    context_type: contextType,
+    context_id: payload.contextId || null,
+    tag: payload.tag || null,
+    resource_app_key: storedResourceAppKey,
+    camp_instance_id: campInstanceId,
+    push_notification_log_id: notificationLogId,
+    metadata: payload.metadata || {},
+    dedupe_key: dedupeKey,
+  }));
+
+  let created = 0;
+  for (let index = 0; index < rows.length; index += IN_APP_INSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(index, index + IN_APP_INSERT_CHUNK_SIZE);
+    const { error } = await supabase
+      .from("in_app_notifications")
+      .upsert(chunk, { onConflict: "user_id,dedupe_key", ignoreDuplicates: true });
+
+    if (error) {
+      console.error("Failed to create in-app notifications:", error);
+      break;
+    }
+
+    created += chunk.length;
+  }
+
+  return created;
 }
 
 // HKDF implementation using Web Crypto
@@ -689,17 +798,11 @@ serve(async (req) => {
       );
     }
 
-    if (!subscriptions || subscriptions.length === 0) {
-      console.log("No subscriptions found");
-      return new Response(
-        JSON.stringify({ success: true, sent: 0, failed: 0, total: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`Found ${subscriptions.length} subscription(s)`);
-    const uniqueUserIds = Array.from(new Set(subscriptions.map((subscription) => subscription.user_id).filter(Boolean)));
+    const uniqueUserIds = Array.from(new Set((subscriptions || []).map((subscription) => subscription.user_id).filter(Boolean)));
     let notificationLogId: string | null = null;
+    const inAppRecipientIds = isAdminTestPush
+      ? uniqueUserIds
+      : (recipientUserIds.length > 0 ? recipientUserIds : uniqueUserIds);
 
     // Pushes that can be dispatched from two paths (a Postgres trigger AND a
     // client/edge invoke) are deduped by tag so recipients don't get doubles.
@@ -728,9 +831,9 @@ serve(async (req) => {
             success: true,
             sent: 0,
             failed: 0,
-            total: subscriptions.length,
+            total: (subscriptions || []).length,
             recipientUserCount: uniqueUserIds.length,
-            recipientDeviceCount: subscriptions.length,
+            recipientDeviceCount: (subscriptions || []).length,
             notificationLogId: existingLog.id,
             duplicateSkipped: true,
           }),
@@ -739,7 +842,7 @@ serve(async (req) => {
       }
     }
 
-    if (!payload.skipLogging) {
+    if (!payload.skipLogging && subscriptions && subscriptions.length > 0) {
       const { data: notificationLog, error: notificationLogError } = await supabase
         .from("push_notification_logs")
         .insert({
@@ -774,6 +877,33 @@ serve(async (req) => {
         }
       }
     }
+
+    const inAppCreated = await createInAppNotifications(
+      supabase,
+      payload,
+      inAppRecipientIds,
+      resourceAppKey,
+      notificationLogId,
+      definitionKey,
+    );
+
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log("No subscriptions found; created in-app notifications only", { inAppCreated });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          sent: 0,
+          failed: 0,
+          total: 0,
+          recipientUserCount: inAppRecipientIds.length,
+          recipientDeviceCount: 0,
+          inAppCreated,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Found ${subscriptions.length} subscription(s)`);
 
     // Build notification payload
     const notificationPayload = JSON.stringify({
@@ -879,6 +1009,7 @@ serve(async (req) => {
         recipientUserCount: uniqueUserIds.length,
         recipientDeviceCount: subscriptions.length,
         notificationLogId,
+        inAppCreated,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
