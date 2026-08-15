@@ -985,6 +985,188 @@ function sameVocalistIdLists(a: string[], b: string[]) {
   return sortedA.every((id, index) => id === sortedB[index]);
 }
 
+type PairableSong = {
+  id: string;
+  song_id: string | null;
+};
+
+function pairSongsToFlowItems<TDraft extends PairableSong, TFlow extends PairableSong>(
+  draftSongs: TDraft[],
+  flowSongItems: TFlow[],
+): Array<{ draft: TDraft; flow: TFlow }> {
+  const usedFlowIds = new Set<string>();
+  const pairs: Array<{ draft: TDraft; flow: TFlow }> = [];
+
+  for (const draft of draftSongs) {
+    const bySongId = flowSongItems.find(
+      (item) =>
+        !!item.song_id &&
+        !!draft.song_id &&
+        item.song_id === draft.song_id &&
+        !usedFlowIds.has(item.id),
+    );
+    if (bySongId) {
+      usedFlowIds.add(bySongId.id);
+      pairs.push({ draft, flow: bySongId });
+      continue;
+    }
+
+    const nextByOrder = flowSongItems.find((item) => !usedFlowIds.has(item.id));
+    if (nextByOrder) {
+      usedFlowIds.add(nextByOrder.id);
+      pairs.push({ draft, flow: nextByOrder });
+    }
+  }
+
+  return pairs;
+}
+
+/**
+ * Copy the current posted setlist songs onto an existing service flow without
+ * rebuilding headers or custom items. Matches by song_id first, then unused
+ * song slots in order (so swapping Great Is Thy Faithfulness for How Great
+ * Thou Art updates that worship-set row). Extra setlist songs are appended
+ * after the last song. Unmatched flow songs are left alone.
+ */
+async function syncServiceFlowSongItemsFromSongs(
+  serviceFlowId: string,
+  songs: Array<{
+    id: string;
+    title: string;
+    key?: string | null;
+  }>,
+): Promise<boolean> {
+  if (!serviceFlowId || songs.length === 0) return false;
+
+  const { data: flowItems, error: flowItemsError } = await supabase
+    .from("service_flow_items")
+    .select("id, item_type, title, sequence_order, song_id, song_key")
+    .eq("service_flow_id", serviceFlowId)
+    .order("sequence_order", { ascending: true });
+  if (flowItemsError) throw flowItemsError;
+  if (!flowItems || flowItems.length === 0) return false;
+
+  const flowSongItems = flowItems.filter((item) => item.item_type === "song");
+  if (flowSongItems.length === 0) return false;
+
+  const draftSongs = songs.map((song, index) => ({
+    id: `draft-${index}-${song.id}`,
+    song_id: song.id,
+    title: song.title,
+    song_key: song.key || null,
+  }));
+
+  const pairs = pairSongsToFlowItems(draftSongs, flowSongItems);
+  const pairedDraftIds = new Set(pairs.map((pair) => pair.draft.id));
+  const writeTasks: Promise<unknown>[] = [];
+  let changed = false;
+
+  for (const { draft, flow } of pairs) {
+    const nextSongId = draft.song_id;
+    const nextTitle = draft.title;
+    const nextKey = draft.song_key;
+    const songChanged = (flow.song_id ?? null) !== nextSongId;
+    const titleChanged = (flow.title || "") !== (nextTitle || "");
+    const keyChanged = (flow.song_key ?? null) !== nextKey;
+
+    if (!songChanged && !titleChanged && !keyChanged) continue;
+
+    const updatePayload: {
+      song_id: string | null;
+      title: string;
+      song_key: string | null;
+      duration_seconds?: null;
+    } = {
+      song_id: nextSongId,
+      title: nextTitle,
+      song_key: nextKey,
+    };
+    // Old marker lengths belong to the previous song; clear so duration sync
+    // can apply the replacement's practice-track time.
+    if (songChanged) {
+      updatePayload.duration_seconds = null;
+    }
+
+    writeTasks.push(
+      supabase.from("service_flow_items").update(updatePayload).eq("id", flow.id),
+    );
+    changed = true;
+  }
+
+  const leftoverSongs = draftSongs.filter((song) => !pairedDraftIds.has(song.id));
+  if (leftoverSongs.length > 0) {
+    const lastSongOrder = Math.max(...flowSongItems.map((item) => item.sequence_order));
+    const shiftBy = leftoverSongs.length;
+    const toShift = flowItems
+      .filter((item) => item.sequence_order > lastSongOrder)
+      .sort((a, b) => b.sequence_order - a.sequence_order);
+
+    for (const item of toShift) {
+      writeTasks.push(
+        supabase
+          .from("service_flow_items")
+          .update({ sequence_order: item.sequence_order + shiftBy })
+          .eq("id", item.id),
+      );
+    }
+
+    writeTasks.push(
+      supabase.from("service_flow_items").insert(
+        leftoverSongs.map((song, index) => ({
+          service_flow_id: serviceFlowId,
+          item_type: "song",
+          title: song.title,
+          duration_seconds: null,
+          sequence_order: lastSongOrder + 1 + index,
+          song_id: song.song_id,
+          song_key: song.song_key,
+          vocalist_id: null,
+        })),
+      ),
+    );
+    changed = true;
+  }
+
+  if (writeTasks.length === 0) return false;
+  await Promise.all(writeTasks);
+  return changed;
+}
+
+/**
+ * Load the posted setlist and copy its songs onto an existing service flow.
+ * Returns true when any rows were written.
+ */
+export async function syncServiceFlowSongsFromDraftSet(
+  serviceFlowId: string,
+  draftSetId: string,
+): Promise<boolean> {
+  if (!serviceFlowId || !draftSetId) return false;
+
+  const { data: draftSongs, error: draftSongsError } = await supabase
+    .from("draft_set_songs")
+    .select("sequence_order, song_id, song_key, songs(id, title)")
+    .eq("draft_set_id", draftSetId)
+    .order("sequence_order", { ascending: true });
+  if (draftSongsError) throw draftSongsError;
+  if (!draftSongs || draftSongs.length === 0) return false;
+
+  const songs = draftSongs
+    .map((row) => {
+      const song = row.songs as { id: string; title: string } | { id: string; title: string }[] | null;
+      const resolved = Array.isArray(song) ? song[0] : song;
+      const songId = resolved?.id || row.song_id;
+      if (!songId) return null;
+      return {
+        id: songId as string,
+        title: resolved?.title || "Unknown Song",
+        key: (row.song_key as string | null) || null,
+      };
+    })
+    .filter((song): song is { id: string; title: string; key: string | null } => !!song);
+
+  return syncServiceFlowSongItemsFromSongs(serviceFlowId, songs);
+}
+
 /**
  * Copy song vocalist assignments from a published Set Builder draft onto an
  * existing service flow. Prefers song_id pairing, then falls back to sequence
@@ -1056,31 +1238,10 @@ export async function syncServiceFlowVocalistsFromDraftSet(
     vocalist_id: string | null;
   };
 
-  const usedFlowIds = new Set<string>();
-  const pairs: Array<{ draft: DraftSongRow; flow: FlowSongRow }> = [];
-
-  for (const draft of draftSongs as DraftSongRow[]) {
-    const bySongId = (flowSongItems as FlowSongRow[]).find(
-      (item) =>
-        !!item.song_id &&
-        !!draft.song_id &&
-        item.song_id === draft.song_id &&
-        !usedFlowIds.has(item.id),
-    );
-    if (bySongId) {
-      usedFlowIds.add(bySongId.id);
-      pairs.push({ draft, flow: bySongId });
-      continue;
-    }
-
-    const nextByOrder = (flowSongItems as FlowSongRow[]).find(
-      (item) => !usedFlowIds.has(item.id),
-    );
-    if (nextByOrder) {
-      usedFlowIds.add(nextByOrder.id);
-      pairs.push({ draft, flow: nextByOrder });
-    }
-  }
+  const pairs = pairSongsToFlowItems(
+    draftSongs as DraftSongRow[],
+    flowSongItems as FlowSongRow[],
+  );
 
   const writeTasks: Promise<unknown>[] = [];
 
@@ -1717,6 +1878,9 @@ export async function generateServiceFlowFromTemplate(params: {
     const requiresTemplateResync = !!template && params.forceTemplateResync === true;
 
     if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
+      // Keep worship-set song rows in sync with the posted setlist (swaps, key
+      // changes) without rebuilding headers or custom items.
+      await syncServiceFlowSongItemsFromSongs(existingFlow.id, effectiveSongs);
       // Practice-track markers are the source of truth for song lengths — always apply
       // them when available (even if the flow already has template default durations).
       await applyMarkerDurationsToFlowSongs(existingFlow.id, markerDurations);
