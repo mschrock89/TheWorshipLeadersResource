@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Home, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
@@ -976,6 +975,10 @@ function StandardCalendar() {
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day);
     }
+
+    while (days.length % 7 !== 0) {
+      days.push(null);
+    }
     return days;
   }, [year, month]);
 
@@ -1538,33 +1541,16 @@ function StandardCalendar() {
 
 
   return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
-      <div data-tour="calendar-page" className="min-h-screen bg-background overflow-x-hidden">
+      <div data-tour="calendar-page" className="bg-background overflow-x-hidden">
         <div className="mx-auto max-w-6xl w-full">
-          {/* Breadcrumb Navigation - hidden on mobile for space */}
-          <Breadcrumb className="mb-3 hidden md:block">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink asChild>
-                  <Link to="/dashboard" className="flex items-center gap-1.5">
-                    <Home className="h-3.5 w-3.5" />
-                    Dashboard
-                  </Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>Calendar</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-
-          {/* Mobile-optimized header */}
-          <div className="mb-4 space-y-2">
-            {/* Filters - stacked on mobile, row on desktop */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          {/* Month view fills the remaining viewport so the full grid is visible above the tab bar. */}
+          <div className="flex h-[calc(100dvh-11rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] max-h-[36rem] flex-col sm:h-[calc(100dvh-12rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[38rem]">
+          {/* Filters + month on one compact row */}
+          <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               {/* Campus selector - for admins OR volunteers with multiple campuses */}
               {isCampusAdmin && campuses.length > 0 || !isCampusAdmin && userCampuses.length > 1 ? <Select value={campusFilter} onValueChange={setCampusFilter}>
-                  <SelectTrigger className="w-full sm:w-auto sm:min-w-[200px] h-9 text-sm bg-background border-border">
+                  <SelectTrigger className="h-8 min-w-0 flex-1 text-sm bg-background border-border sm:flex-initial sm:min-w-[180px] sm:max-w-[240px]">
                     <Building2 className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                     <SelectValue placeholder="Campus" />
                   </SelectTrigger>
@@ -1577,7 +1563,7 @@ function StandardCalendar() {
                 </Select> : null}
               {/* Ministry Filter */}
               <Select value={ministryFilter} onValueChange={setMinistryFilter}>
-                <SelectTrigger className="w-full sm:w-auto sm:min-w-[160px] h-9 text-sm bg-background border-border">
+                <SelectTrigger className="h-8 min-w-0 flex-1 text-sm bg-background border-border sm:flex-initial sm:min-w-[150px] sm:max-w-[200px]">
                   <Music className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                   <SelectValue placeholder="Ministry" />
                 </SelectTrigger>
@@ -1588,13 +1574,11 @@ function StandardCalendar() {
                 </SelectContent>
               </Select>
             </div>
-            
-            {/* Month navigation - separate row on mobile */}
-            <div className="flex items-center justify-center sm:justify-end">
+            <div className="flex shrink-0 items-center">
               <Button variant="ghost" size="icon" onClick={() => navigateMonth(-1)} className="text-foreground hover:bg-card h-8 w-8">
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <span className="text-center font-medium whitespace-nowrap min-w-[120px] text-primary text-base">
+              <span className="text-center font-medium whitespace-nowrap min-w-[9.5rem] text-primary text-sm sm:text-base">
                 {MONTHS[month]} {year}
               </span>
               <Button variant="ghost" size="icon" onClick={() => navigateMonth(1)} className="text-foreground hover:bg-card h-8 w-8">
@@ -1606,20 +1590,20 @@ function StandardCalendar() {
           {/* Calendar Grid */}
           <div
             data-tour="calendar-grid"
-            className="mb-4 rounded-lg border border-border bg-card p-2 sm:p-4 overflow-hidden"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card p-1.5 sm:p-2"
           >
             {/* Weekday headers */}
-            <div className="mb-1 sm:mb-2 grid gap-0.5 sm:gap-1 grid-cols-7">
-              {WEEKDAYS.map(day => <div key={day} className="py-1 sm:py-2 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
+            <div className="mb-1 grid shrink-0 grid-cols-7 gap-0.5 sm:gap-1">
+              {WEEKDAYS.map(day => <div key={day} className="py-0.5 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
                   {day}
                 </div>)}
             </div>
 
-            {/* Days grid */}
-            <div className="grid gap-0.5 sm:gap-1 grid-cols-7">
+            {/* Days grid — rows share leftover height so 4–6 week months all fit */}
+            <div className="grid min-h-0 flex-1 grid-cols-7 auto-rows-[minmax(0,1fr)] gap-0.5 sm:gap-1">
               {calendarDays.map((day, index) => {
               if (day === null) {
-                return <div key={`empty-${index}`} className="aspect-square md:aspect-auto md:h-24 lg:h-28" />;
+                return <div key={`empty-${index}`} className="min-h-0" />;
               }
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
@@ -1672,7 +1656,7 @@ function StandardCalendar() {
                 !isSelected(day) &&
                 !showTeamHighlight &&
                 !showCustomAssignmentHighlight;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square md:aspect-auto md:h-24 lg:h-28 flex-col items-center justify-center rounded-md transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-0.5 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
@@ -1684,8 +1668,8 @@ function StandardCalendar() {
               } : isMidweekService && !isSelected(day) ? {
                 backgroundColor: `${teamColor}10`
               } : undefined}>
-                    <span className={`text-sm font-medium ${isSwappedOut ? 'line-through text-muted-foreground' : ''}`}>{day}</span>
-                    <div className="absolute bottom-1 flex items-center gap-0.5">
+                    <span className={`text-xs font-medium sm:text-sm ${isSwappedOut ? 'line-through text-muted-foreground' : ''}`}>{day}</span>
+                    <div className="flex h-3 items-center justify-center gap-0.5 sm:h-3.5">
                       {isSwappedIn && <ArrowRightLeft className="h-2.5 w-2.5 text-amber-500" />}
                       {isSwappedOut && <ArrowRightLeft className="h-2.5 w-2.5 text-red-400" />}
                       {isMidweekService && <span className="text-[8px] font-medium text-purple-500 mr-0.5">MID</span>}
@@ -1699,6 +1683,7 @@ function StandardCalendar() {
                   </button>;
             })}
             </div>
+          </div>
           </div>
 
           {/* Selected Day Panel */}
@@ -1729,7 +1714,7 @@ function StandardCalendar() {
             teamId: userSchedule.teamId
           } : null;
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
-          return <div className="rounded-lg border border-border bg-card p-3 sm:p-4">
+          return <div className="mt-3 rounded-lg border border-border bg-card p-3 sm:p-4">
                 {/* Header Row */}
                 <div className="mb-2">
                   <div className="mb-3 flex items-center justify-between gap-2">
