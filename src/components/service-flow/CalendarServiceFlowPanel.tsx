@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
   syncServiceFlowSongDurationsFromMarkers,
+  syncServiceFlowSongsFromDraftSet,
   syncServiceFlowVocalistsFromDraftSet,
   useDeleteServiceFlowItem,
   useReorderServiceFlowItems,
@@ -17,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
-import { isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
+import { isKidsCampSetMinistryType, isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -236,8 +237,7 @@ export function CalendarServiceFlowPanel({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const hasAttemptedGenerate = useRef(false);
-  const hasSyncedVocalists = useRef(false);
-  const hasSyncedDurations = useRef(false);
+  const hasSyncedSetlist = useRef(false);
   const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
@@ -256,18 +256,16 @@ export function CalendarServiceFlowPanel({
     if (contextKeyRef.current === contextKey) return;
     contextKeyRef.current = contextKey;
     hasAttemptedGenerate.current = false;
-    hasSyncedVocalists.current = false;
-    hasSyncedDurations.current = false;
+    hasSyncedSetlist.current = false;
     syncedPlaceholderIdsRef.current = new Set();
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
   }, [contextKey]);
 
-  // Reset vocalist sync when the linked draft set changes (e.g. republish / new set).
+  // Reset setlist sync when the linked draft set changes (e.g. republish / song swap).
   useEffect(() => {
-    hasSyncedVocalists.current = false;
-    hasSyncedDurations.current = false;
+    hasSyncedSetlist.current = false;
   }, [syncDraftSetId, activeFlowId]);
 
   useEffect(() => {
@@ -361,71 +359,53 @@ export function CalendarServiceFlowPanel({
     user?.id,
   ]);
 
-  // Pull latest Set Builder vocalists onto an existing flow. Without this, Calendar
-  // keeps the snapshot from first generate (e.g. Nathan) after Brent is assigned.
+  // Pull the posted setlist onto an existing flow: swapped songs first, then
+  // vocalists, then practice-track durations. Song identity has to land before
+  // durations so marker matching uses How Great Thou Art instead of the old title.
   useEffect(() => {
-    const syncVocalists = async () => {
-      if (readOnly || !activeFlowId || !syncDraftSetId) return;
+    const syncFromSetlist = async () => {
+      if (readOnly || !activeFlowId) return;
       if (itemsLoading || items.length === 0) return;
-      if (hasSyncedVocalists.current) return;
+      if (hasSyncedSetlist.current) return;
 
-      hasSyncedVocalists.current = true;
+      hasSyncedSetlist.current = true;
       try {
-        const changed = await syncServiceFlowVocalistsFromDraftSet(
-          activeFlowId,
-          syncDraftSetId,
-        );
+        let changed = false;
+        if (syncDraftSetId && !isKidsCampSetMinistryType(effectiveMinistryType)) {
+          changed =
+            (await syncServiceFlowSongsFromDraftSet(activeFlowId, syncDraftSetId)) ||
+            changed;
+        }
+
+        if (syncDraftSetId) {
+          changed =
+            (await syncServiceFlowVocalistsFromDraftSet(activeFlowId, syncDraftSetId)) ||
+            changed;
+        }
+
+        if (flowCampusId && date) {
+          const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
+            campusId: flowCampusId,
+            ministryType: effectiveMinistryType,
+            serviceDate: date,
+            draftSetId: syncDraftSetId,
+            serviceFlowId: activeFlowId,
+          });
+          if (updatedCount > 0) changed = true;
+        }
+
         if (changed) {
           await queryClient.invalidateQueries({
             queryKey: ["service-flow-items", activeFlowId],
           });
         }
       } catch (error) {
-        hasSyncedVocalists.current = false;
-        console.error("Failed to sync calendar service flow vocalists:", error);
+        hasSyncedSetlist.current = false;
+        console.error("Failed to sync calendar service flow from setlist:", error);
       }
     };
 
-    void syncVocalists();
-  }, [
-    activeFlowId,
-    items,
-    itemsLoading,
-    queryClient,
-    readOnly,
-    syncDraftSetId,
-  ]);
-
-  // Apply practice-track marker durations onto song items when opening an existing flow.
-  // Flows are often created before weekend tracks are uploaded; without this sync,
-  // songs keep template default durations forever.
-  useEffect(() => {
-    const syncDurations = async () => {
-      if (readOnly || !activeFlowId || !flowCampusId || !date) return;
-      if (itemsLoading || items.length === 0) return;
-      if (hasSyncedDurations.current) return;
-
-      hasSyncedDurations.current = true;
-      try {
-        const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
-          campusId: flowCampusId,
-          ministryType: effectiveMinistryType,
-          serviceDate: date,
-          draftSetId: syncDraftSetId,
-          serviceFlowId: activeFlowId,
-        });
-        if (updatedCount > 0) {
-          await queryClient.invalidateQueries({
-            queryKey: ["service-flow-items", activeFlowId],
-          });
-        }
-      } catch (error) {
-        hasSyncedDurations.current = false;
-        console.error("Failed to sync calendar service flow song durations:", error);
-      }
-    };
-
-    void syncDurations();
+    void syncFromSetlist();
   }, [
     activeFlowId,
     date,

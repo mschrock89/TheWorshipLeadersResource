@@ -47,6 +47,7 @@ import {
   useReorderServiceFlowItems,
   generateServiceFlowFromTemplate,
   syncServiceFlowSongDurationsFromMarkers,
+  syncServiceFlowSongsFromDraftSet,
   syncServiceFlowVocalistsFromDraftSet,
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
@@ -247,8 +248,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const [printMounted, setPrintMounted] = useState(false);
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
-  const hasSyncedVocalists = useRef(false);
-  const hasSyncedDurations = useRef(false);
+  const hasSyncedSetlist = useRef(false);
   const hasInvalidatedFlowOnLive = useRef(false);
   const hasInvalidatedItemsOnLive = useRef(false);
   const printReadyResolveRef = useRef<(() => void) | null>(null);
@@ -532,8 +532,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   useEffect(() => {
     hasAttemptedAutoGenerate.current = false;
     hasAttemptedEmptyBackfill.current = false;
-    hasSyncedVocalists.current = false;
-    hasSyncedDurations.current = false;
+    hasSyncedSetlist.current = false;
     hasInvalidatedFlowOnLive.current = false;
     hasInvalidatedItemsOnLive.current = false;
     setResolvedDraftSetId(initialDraftSetId || null);
@@ -689,6 +688,10 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const activeServiceFlowId = boundServiceFlowId || serviceFlow?.id || directCustomServiceFlow?.id || null;
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(activeServiceFlowId);
 
+  useEffect(() => {
+    hasSyncedSetlist.current = false;
+  }, [serviceFlow?.draft_set_id, resolvedDraftSetId, activeServiceFlowId]);
+
   // If a flow already exists but is empty, backfill it from the linked setlist/template.
   useEffect(() => {
     const backfillEmptyFlow = async () => {
@@ -787,62 +790,56 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     loadDraftSongsWithVocalists,
   ]);
 
-  // Keep service flow song vocalist assignments synced with the linked draft set.
-  // This ensures co-leads and Set Builder reassignments show up after the flow was first created.
+  // Keep worship-set songs, vocalists, and marker durations in sync with the
+  // posted setlist without rebuilding the rest of the flow.
   useEffect(() => {
-    const syncVocalists = async () => {
-      if (!serviceFlow?.draft_set_id || !activeServiceFlowId) return;
-      if (hasSyncedVocalists.current) return;
+    const syncFromSetlist = async () => {
+      if (!activeServiceFlowId) return;
+      if (hasSyncedSetlist.current) return;
       if (itemsLoading || items.length === 0) return;
 
-      hasSyncedVocalists.current = true;
+      hasSyncedSetlist.current = true;
       try {
-        const changed = await syncServiceFlowVocalistsFromDraftSet(
-          activeServiceFlowId,
-          serviceFlow.draft_set_id,
-        );
+        let changed = false;
+        const draftSetId = serviceFlow?.draft_set_id || resolvedDraftSetId || null;
+        const canSyncSongs =
+          !!draftSetId && !isKidsCampSetMinistryType(ministryType);
+
+        if (canSyncSongs && draftSetId) {
+          changed =
+            (await syncServiceFlowSongsFromDraftSet(activeServiceFlowId, draftSetId)) ||
+            changed;
+        }
+
+        if (draftSetId) {
+          changed =
+            (await syncServiceFlowVocalistsFromDraftSet(activeServiceFlowId, draftSetId)) ||
+            changed;
+        }
+
+        if (effectiveCampusId && serviceDateStr) {
+          const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
+            campusId: effectiveCampusId,
+            ministryType,
+            serviceDate: serviceDateStr,
+            draftSetId,
+            serviceFlowId: activeServiceFlowId,
+          });
+          if (updatedCount > 0) changed = true;
+        }
+
         if (changed) {
           await queryClient.invalidateQueries({
             queryKey: ["service-flow-items", activeServiceFlowId],
           });
         }
       } catch (error) {
-        hasSyncedVocalists.current = false;
-        console.error("Failed syncing service flow vocalists:", error);
+        hasSyncedSetlist.current = false;
+        console.error("Failed syncing service flow from setlist:", error);
       }
     };
 
-    void syncVocalists();
-  }, [activeServiceFlowId, serviceFlow?.draft_set_id, items, itemsLoading, queryClient]);
-
-  // Apply practice-track marker durations onto song items when opening an existing flow.
-  useEffect(() => {
-    const syncDurations = async () => {
-      if (!activeServiceFlowId || !effectiveCampusId || !serviceDateStr) return;
-      if (hasSyncedDurations.current) return;
-      if (itemsLoading || items.length === 0) return;
-
-      hasSyncedDurations.current = true;
-      try {
-        const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
-          campusId: effectiveCampusId,
-          ministryType,
-          serviceDate: serviceDateStr,
-          draftSetId: serviceFlow?.draft_set_id || resolvedDraftSetId,
-          serviceFlowId: activeServiceFlowId,
-        });
-        if (updatedCount > 0) {
-          await queryClient.invalidateQueries({
-            queryKey: ["service-flow-items", activeServiceFlowId],
-          });
-        }
-      } catch (error) {
-        hasSyncedDurations.current = false;
-        console.error("Failed syncing service flow song durations:", error);
-      }
-    };
-
-    void syncDurations();
+    void syncFromSetlist();
   }, [
     activeServiceFlowId,
     effectiveCampusId,
