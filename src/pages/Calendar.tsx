@@ -428,12 +428,12 @@ function CalendarDayWidget({
   className?: string;
 }) {
   return (
-    <section className={cn("flex min-h-0 min-w-0 w-full flex-col rounded-lg border border-border bg-card p-2.5 sm:p-3", className)}>
+    <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2.5 sm:p-3", className)}>
       <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground sm:text-base">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className="min-h-0 min-w-0 flex-1">{children}</div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</div>
     </section>
   );
 }
@@ -2119,7 +2119,10 @@ function StandardCalendar() {
 
                 <div className="mt-1.5 min-h-0 min-w-0 flex-1 space-y-2">
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Team Roster</p>
+                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
+                      <MicVocal className="h-3.5 w-3.5" />
+                      Team Roster
+                    </p>
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
@@ -2143,7 +2146,6 @@ function StandardCalendar() {
                             campusId={service.campus_id}
                             ministryType={service.ministry_type}
                             serviceLabel={service.service_name}
-                            compact
                           />
                         </div>
                       );
@@ -2176,7 +2178,6 @@ function StandardCalendar() {
                             rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
                             scheduledMinistries={sessionBase ? [sessionBase] : []}
                             campusId={sessionCampusId}
-                            compact
                           />
                         </div>
                       );
@@ -2199,12 +2200,14 @@ function StandardCalendar() {
                     })()}
                     campusId={sessionCampusId}
                     supportNotificationTargets={selectedSupportNotificationTargets}
-                    compact
                   />
                 )}
                   </div>
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Setlist</p>
+                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
+                      <ListMusic className="h-3.5 w-3.5" />
+                      Setlist
+                    </p>
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
@@ -2223,7 +2226,6 @@ function StandardCalendar() {
                             ministryType={service.ministry_type}
                             serviceName={service.service_name}
                             readOnly={isCrossCampusReadOnly}
-                            compact
                           />
                         </div>
                       );
@@ -2252,7 +2254,6 @@ function StandardCalendar() {
                             campusId={sessionCampusId}
                             ministryFilter={variant}
                             readOnly={isCrossCampusReadOnly}
-                            compact
                           />
                         </div>
                       );
@@ -2264,7 +2265,6 @@ function StandardCalendar() {
                     campusId={sessionCampusId}
                     ministryFilter={ministryFilter}
                     readOnly={isCrossCampusReadOnly}
-                    compact
                   />
                 )}
                   </div>
@@ -2272,7 +2272,7 @@ function StandardCalendar() {
               </CalendarDayWidget>
 
               {selectedDayServices.length > 0 ? null : sessionEntries.length > 0 ? (
-                <CalendarDayWidget title="Production & Video" className="min-w-0 lg:col-span-2">
+                <CalendarDayWidget title="Production & Video" className="min-w-0">
                   <div className="space-y-4">
                     {sessionEntries.map((entry) => {
                       const timeOfDay = entry.time_of_day as string;
@@ -4536,7 +4536,7 @@ function BandRoster({
   const renderRosterBody = (body: React.ReactNode) => {
     if (!supportOnly || embedded) return body;
     return (
-      <CalendarDayWidget title="Production & Video" className="min-w-0 lg:col-span-2">
+      <CalendarDayWidget title="Production & Video" className="min-w-0">
         {body}
       </CalendarDayWidget>
     );
