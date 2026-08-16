@@ -57,6 +57,7 @@ import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
@@ -419,18 +420,20 @@ function CalendarDayWidget({
   title,
   actions,
   children,
+  className,
 }: {
   title: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2.5 sm:p-3">
+    <section className={cn("flex min-h-0 min-w-0 w-full flex-col rounded-lg border border-border bg-card p-2.5 sm:p-3", className)}>
       <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground sm:text-base">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{children}</div>
+      <div className="min-h-0 min-w-0 flex-1">{children}</div>
     </section>
   );
 }
@@ -1805,11 +1808,11 @@ function StandardCalendar() {
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 gap-3 ${selectedDate ? "sm:grid-cols-2" : "mx-auto max-w-[30rem]"}`}>
-          {/* Calendar Grid — square widget, same size as the other day cards */}
+          <div className={`grid grid-cols-1 items-start gap-3 ${selectedDate ? "lg:grid-cols-2" : "mx-auto max-w-[30rem]"}`}>
+          {/* Calendar Grid — square widget that scales with column width */}
           <div
             data-tour="calendar-grid"
-            className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3"
+            className="flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3"
           >
             {/* Weekday headers */}
             <div className="mb-1.5 grid shrink-0 grid-cols-7 gap-1">
@@ -2114,7 +2117,7 @@ function StandardCalendar() {
                       </span>}
                   </div>}
 
-                <div className="mt-1.5 min-h-0 flex-1 space-y-2">
+                <div className="mt-1.5 min-h-0 min-w-0 flex-1 space-y-2">
                   <div className="min-w-0">
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Team Roster</p>
                 {selectedDayServices.length > 0 ? (
@@ -2166,7 +2169,7 @@ function StandardCalendar() {
                           <BandRoster
                             date={selectedDate}
                             teamId={entry.team_id}
-                            showAudioVideo
+                            showAudioVideo={false}
                             ministryFilter={sessionBase}
                             timeOfDay={timeOfDay}
                             scheduledEntries={[entry]}
@@ -2183,7 +2186,7 @@ function StandardCalendar() {
                   <BandRoster
                     date={selectedDate}
                     teamId={selectedDayTeam?.team_id}
-                    showAudioVideo
+                    showAudioVideo={false}
                     ministryFilter={ministryFilter}
                     scheduledEntries={selectedDayScheduleEntries}
                     rotationPeriodName={selectedDayTeam?.rotation_period || null}
@@ -2267,6 +2270,63 @@ function StandardCalendar() {
                   </div>
                 </div>
               </CalendarDayWidget>
+
+              {selectedDayServices.length > 0 ? null : sessionEntries.length > 0 ? (
+                <CalendarDayWidget title="Production & Video" className="min-w-0 lg:col-span-2">
+                  <div className="space-y-4">
+                    {sessionEntries.map((entry) => {
+                      const timeOfDay = entry.time_of_day as string;
+                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+                      return (
+                        <div key={`support-${entry.id}`}>
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-teal-600/10 text-[10px] text-teal-700 border-transparent">
+                              {sessionLabel}
+                            </Badge>
+                            {entry.worship_teams?.name && (
+                              <span className="text-xs text-muted-foreground">
+                                {entry.worship_teams.name}
+                              </span>
+                            )}
+                          </div>
+                          <BandRoster
+                            date={selectedDate}
+                            teamId={entry.team_id}
+                            showAudioVideo
+                            supportOnly
+                            embedded
+                            ministryFilter={sessionBase}
+                            timeOfDay={timeOfDay}
+                            scheduledEntries={[entry]}
+                            rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
+                            scheduledMinistries={sessionBase ? [sessionBase] : []}
+                            campusId={sessionCampusId}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CalendarDayWidget>
+              ) : (
+                <BandRoster
+                  date={selectedDate}
+                  teamId={selectedDayTeam?.team_id}
+                  showAudioVideo
+                  supportOnly
+                  ministryFilter={ministryFilter}
+                  scheduledEntries={selectedDayScheduleEntries}
+                  rotationPeriodName={selectedDayTeam?.rotation_period || null}
+                  scheduledMinistries={(() => {
+                    let scheduleEntries = selectedDayScheduleEntries;
+                    if (ministryFilter && ministryFilter !== "all") {
+                      scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
+                    }
+                    return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
+                  })()}
+                  campusId={sessionCampusId}
+                  supportNotificationTargets={selectedSupportNotificationTargets}
+                />
+              )}
 
               {selectedTeachingWeek ? (
               <CalendarDayWidget title="Service">
@@ -3406,6 +3466,7 @@ function RosterOutreachWidget({
   worshipPushTeamId,
   worshipPushRotationPeriodName,
   compact = false,
+  hideSetlistPush = false,
 }: {
   date: Date;
   campusId?: string;
@@ -3425,12 +3486,13 @@ function RosterOutreachWidget({
   worshipPushTeamId?: string;
   worshipPushRotationPeriodName?: string | null;
   compact?: boolean;
+  hideSetlistPush?: boolean;
 }) {
   const scheduleDateStr = formatDateForStorage(date);
   const notifyTargets = supportNotificationTargets.filter(
     (target) => target.ministryType !== supportPushMinistry,
   );
-  const showSetlistPush = !supportPushMinistry;
+  const showSetlistPush = !hideSetlistPush && !supportPushMinistry;
   const showSupportPush = Boolean(supportPushMinistry);
   const showGroupText = groupTextMembers.length > 0;
 
@@ -3531,6 +3593,8 @@ function BandRoster({
   timeOfDay,
   supportNotificationTargets = [],
   compact = false,
+  supportOnly = false,
+  embedded = false,
 }: {
   date: Date;
   teamId?: string;
@@ -3545,6 +3609,8 @@ function BandRoster({
   timeOfDay?: string | null;
   supportNotificationTargets?: ScheduleNotificationTarget[];
   compact?: boolean;
+  supportOnly?: boolean;
+  embedded?: boolean;
 }) {
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -3847,8 +3913,8 @@ function BandRoster({
   const amAssignedWorship =
     !!user &&
     normalizedRosterRaw.some((m) => m.userId === user.id && hasWorshipPosition(memberRoleValues(m)));
-  const showWorshipSections = rosterScope !== "support" || amAssignedWorship;
-  const showSupportSections = showAudioVideo && (rosterScope !== "worship" || amAssignedSupport);
+  const showWorshipSections = !supportOnly && (rosterScope !== "support" || amAssignedWorship);
+  const showSupportSections = (supportOnly || showAudioVideo) && (rosterScope !== "worship" || amAssignedSupport);
 
   const serviceLabel = useMemo(() => {
     if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
@@ -3960,17 +4026,18 @@ function BandRoster({
       )
     );
   }, [normalizedRosterRaw, effectiveMinistryFilter, scheduledMinistries, isWeekendTeamFilter, dedupeMembersForDisplay]);
-  if (!effectiveTeamId) return null;
-  if (isLoading) {
+  if (!supportOnly && !effectiveTeamId) return null;
+  if (!supportOnly && isLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">
           {[1, 2, 3].map(i => <div key={i} className="h-8 bg-muted rounded" />)}
         </div>
       </div>;
   }
-  if (roster.length === 0 && !(showSupportSections && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
+  if (!supportOnly && roster.length === 0 && !(showSupportSections && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
     return null;
   }
+  if (supportOnly && !showSupportSections) return null;
 
   // Determine which ministries are represented on this date
   const dayOfWeek = date.getDay();
@@ -4196,6 +4263,7 @@ function BandRoster({
       worshipPushTeamId={effectiveTeamId}
       worshipPushRotationPeriodName={effectiveRotationPeriodName}
       compact={compact}
+      hideSetlistPush={supportOnly}
     />
   );
 
@@ -4275,7 +4343,7 @@ function BandRoster({
           {member.memberName.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="text-foreground min-w-0 flex-1 truncate">
+      <span className="min-w-0 flex-1 break-words text-foreground">
         {member.memberName}
         {member.isSwapped && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
             <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
@@ -4284,7 +4352,7 @@ function BandRoster({
             <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
       </span>
-      <span className={`text-muted-foreground text-right ${compact ? "max-w-[46%] truncate text-[10px] leading-tight" : "text-xs"}`}>
+      <span className={`min-w-0 max-w-[50%] break-words text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
         {member.positions.map((p, idx) => {
         // Use position slot for more accurate labeling (eg_1, eg_2, ag_1, ag_2)
         const slot = member.positionSlots?.[idx]?.toLowerCase();
@@ -4331,7 +4399,7 @@ function BandRoster({
             {title}
           </h3>}
         {compact ? (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <div className="grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2">
             {vocalists.length > 0 && <div>
                 <h4 className={sectionTitleClass}>
                   <MicVocal className={iconClass} />
@@ -4350,7 +4418,7 @@ function BandRoster({
                   {bandMembers.map(renderMember)}
                 </div>
               </div>}
-            {speakerMembers.length > 0 && <div className={vocalists.length > 0 && bandMembers.length > 0 ? "col-span-2" : ""}>
+            {speakerMembers.length > 0 && <div className={vocalists.length > 0 && bandMembers.length > 0 ? "sm:col-span-2" : ""}>
                 <h4 className={sectionTitleClass}>
                   <BookOpen className={iconClass} />
                   Speaker
@@ -4433,7 +4501,7 @@ function BandRoster({
       // Not a weekend day or no split days - show all
       filteredVideoMembers = broadcastMembers;
     }
-    if (compact && audioMembers.length === 0 && filteredVideoMembers.length === 0) {
+    if (!supportOnly && compact && audioMembers.length === 0 && filteredVideoMembers.length === 0) {
       return null;
     }
     const sectionTitleClass = compact
@@ -4441,8 +4509,8 @@ function BandRoster({
       : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
     const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
     const listClass = compact ? "space-y-0" : "space-y-1.5";
-    return <div className={compact ? "grid grid-cols-2 gap-x-3 gap-y-1.5" : "space-y-4"}>
-        {(audioMembers.length > 0 || !compact) && <div>
+    return <div className={supportOnly || compact ? "grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2" : "space-y-4"}>
+        {(audioMembers.length > 0 || !compact || supportOnly) && <div className="min-w-0">
           <h4 className={sectionTitleClass}>
             <Volume2 className={iconClass} />
             Production
@@ -4452,7 +4520,7 @@ function BandRoster({
             </div> : <p className="text-xs text-muted-foreground italic">No production members assigned</p>}
         </div>}
 
-        {(filteredVideoMembers.length > 0 || !compact) && <div>
+        {(filteredVideoMembers.length > 0 || !compact || supportOnly) && <div className="min-w-0">
           <h4 className={sectionTitleClass}>
             <Video className={iconClass} />
             Video
@@ -4465,9 +4533,18 @@ function BandRoster({
       </div>;
   };
 
+  const renderRosterBody = (body: React.ReactNode) => {
+    if (!supportOnly || embedded) return body;
+    return (
+      <CalendarDayWidget title="Production & Video" className="min-w-0 lg:col-span-2">
+        {body}
+      </CalendarDayWidget>
+    );
+  };
+
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
-    return <div className={compact ? "space-y-2" : "mb-4 space-y-6"}>
+    return renderRosterBody(<div className={compact ? "space-y-2" : "mb-4 space-y-6"}>
         {outreachWidget}
         <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-4"}>
           {/* Left Column: Vocalists + Band by Ministry */}
@@ -4485,7 +4562,7 @@ function BandRoster({
           {/* Right Column: Production + Video */}
           {renderProductionVideoSection()}
         </div>
-      </div>;
+      </div>);
   }
 
   // Single ministry filter applied, single ministry found, or no grouping - show flat
@@ -4493,7 +4570,7 @@ function BandRoster({
   const membersToShow = effectiveMinistryFilter ? roster.filter(m => !fallbackProductionVideoMembers.includes(m)) // Already filtered by hook
   : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !fallbackProductionVideoMembers.includes(m)); // Exclude production/video from band list
 
-  return <div className={compact ? "" : "mb-4"}>
+  return renderRosterBody(<div className={compact ? "" : "mb-4"}>
       {outreachWidget}
       <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-4"}>
         {/* Left Column: Vocalists + Band */}
@@ -4504,7 +4581,7 @@ function BandRoster({
         {/* Right Column: Production + Video */}
         {renderProductionVideoSection()}
       </div>
-    </div>;
+    </div>);
 }
 
 function SongsPreview({
