@@ -1543,10 +1543,8 @@ function StandardCalendar() {
   return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
       <div data-tour="calendar-page" className="bg-background overflow-x-hidden">
         <div className="mx-auto max-w-6xl w-full">
-          {/* Month view fills the remaining viewport so the full grid is visible above the tab bar. */}
-          <div className="flex h-[calc(100dvh-11rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] max-h-[36rem] flex-col sm:h-[calc(100dvh-12rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[38rem]">
           {/* Filters + month on one compact row */}
-          <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               {/* Campus selector - for admins OR volunteers with multiple campuses */}
               {isCampusAdmin && campuses.length > 0 || !isCampusAdmin && userCampuses.length > 1 ? <Select value={campusFilter} onValueChange={setCampusFilter}>
@@ -1587,23 +1585,23 @@ function StandardCalendar() {
             </div>
           </div>
 
-          {/* Calendar Grid */}
+          <div className={selectedDate ? "lg:grid lg:grid-cols-[minmax(0,30rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-start lg:gap-4" : ""}>
+          {/* Calendar Grid — width-capped so day cells stay close to square instead of stretching short and wide */}
           <div
             data-tour="calendar-grid"
-            className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card p-1.5 sm:p-2"
+            className={`mx-auto w-full max-w-[30rem] overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3 ${selectedDate ? "lg:mx-0 lg:max-w-none" : ""}`}
           >
             {/* Weekday headers */}
-            <div className="mb-1 grid shrink-0 grid-cols-7 gap-0.5 sm:gap-1">
-              {WEEKDAYS.map(day => <div key={day} className="py-0.5 text-center text-[10px] sm:text-xs font-medium text-muted-foreground">
+            <div className="mb-1.5 grid grid-cols-7 gap-1">
+              {WEEKDAYS.map(day => <div key={day} className="py-1 text-center text-[11px] sm:text-xs font-medium text-muted-foreground">
                   {day}
                 </div>)}
             </div>
 
-            {/* Days grid — rows share leftover height so 4–6 week months all fit */}
-            <div className="grid min-h-0 flex-1 grid-cols-7 auto-rows-[minmax(0,1fr)] gap-0.5 sm:gap-1">
+            <div className="grid grid-cols-7 gap-1">
               {calendarDays.map((day, index) => {
               if (day === null) {
-                return <div key={`empty-${index}`} className="min-h-0" />;
+                return <div key={`empty-${index}`} className="aspect-square" />;
               }
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
@@ -1656,7 +1654,7 @@ function StandardCalendar() {
                 !isSelected(day) &&
                 !showTeamHighlight &&
                 !showCustomAssignmentHighlight;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-0.5 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
@@ -1668,12 +1666,12 @@ function StandardCalendar() {
               } : isMidweekService && !isSelected(day) ? {
                 backgroundColor: `${teamColor}10`
               } : undefined}>
-                    <span className={`text-xs font-medium sm:text-sm ${isSwappedOut ? 'line-through text-muted-foreground' : ''}`}>{day}</span>
-                    <div className="flex h-3 items-center justify-center gap-0.5 sm:h-3.5">
+                    <span className={`text-sm font-medium ${isSwappedOut ? 'line-through text-muted-foreground' : ''}`}>{day}</span>
+                    <div className="flex h-3.5 items-center justify-center gap-0.5">
                       {isSwappedIn && <ArrowRightLeft className="h-2.5 w-2.5 text-amber-500" />}
                       {isSwappedOut && <ArrowRightLeft className="h-2.5 w-2.5 text-red-400" />}
                       {isMidweekService && <span className="text-[8px] font-medium text-purple-500 mr-0.5">MID</span>}
-                      {TeamIcon && <TeamIcon className="h-3 w-3" style={{
+                      {TeamIcon && <TeamIcon className="h-3.5 w-3.5" style={{
                     color: teamColor
                   }} />}
                       {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
@@ -1683,7 +1681,6 @@ function StandardCalendar() {
                   </button>;
             })}
             </div>
-          </div>
           </div>
 
           {/* Selected Day Panel */}
@@ -1714,7 +1711,7 @@ function StandardCalendar() {
             teamId: userSchedule.teamId
           } : null;
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
-          return <div className="mt-3 rounded-lg border border-border bg-card p-3 sm:p-4">
+          return <div className="mt-3 rounded-lg border border-border bg-card p-3 sm:p-4 lg:mt-0 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto">
                 {/* Header Row */}
                 <div className="mb-2">
                   <div className="mb-3 flex items-center justify-between gap-2">
@@ -2403,6 +2400,7 @@ function StandardCalendar() {
                 )}
               </div>;
         })()}
+          </div>
 
           {selectedDate && inlineServiceFlowTargets.length > 0 ? (
             <div className="mt-4 space-y-4">
