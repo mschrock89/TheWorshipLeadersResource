@@ -126,6 +126,22 @@ const SERVICE_OVERRIDE_MINISTRY_OPTIONS = MINISTRY_TYPES.filter(
 
 const WEEKEND_TEAM_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team", "production", "video"]);
 const CALENDAR_WEEKEND_MINISTRY_FILTERS = new Set(["weekend", "sunday_am", "weekend_team"]);
+const WEEKEND_SERVICE_MINISTRY_FILTERS = new Set([
+  "weekend",
+  "weekend_team",
+  "sunday_am",
+  "production",
+  "video",
+  "eon_weekend",
+  "speaker",
+]);
+const MIDWEEK_SERVICE_MINISTRY_FILTERS = new Set([
+  "encounter",
+  "eon",
+  "ms_hs",
+  "hs_production",
+  "ms_hs_production",
+]);
 
 const scheduleEntryMatchesCalendarFilter = (
   entryMinistryType: string | null | undefined,
@@ -198,6 +214,76 @@ const addDays = (date: Date, amount: number) => {
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + amount);
   return nextDate;
+};
+
+const startOfLocalDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const getNextWeekdayOnOrAfter = (from: Date, weekday: number) => {
+  const start = startOfLocalDay(from);
+  return addDays(start, (weekday - start.getDay() + 7) % 7);
+};
+
+const getNextCampusWeekendServiceDate = (
+  from: Date,
+  campus: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null,
+) => {
+  const start = startOfLocalDay(from);
+  for (let offset = 0; offset < 14; offset += 1) {
+    const date = addDays(start, offset);
+    const day = date.getDay();
+    if (!campus) {
+      if (day === 0 || day === 6) return date;
+      continue;
+    }
+    if (day === 6 && campus.has_saturday_service) return date;
+    if (day === 0 && campus.has_sunday_service) return date;
+  }
+  return null;
+};
+
+const getNextUpcomingServiceDate = ({
+  from,
+  ministryFilter,
+  campusFilter,
+  campus,
+  scheduledDates,
+  extraDates,
+}: {
+  from: Date;
+  ministryFilter: string;
+  campusFilter: string;
+  campus: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null;
+  scheduledDates: string[];
+  extraDates: string[];
+}) => {
+  const todayStr = formatDateForStorage(from);
+  const candidates: string[] = [];
+  const addIfUpcoming = (dateStr: string | null | undefined) => {
+    if (dateStr && dateStr >= todayStr) candidates.push(dateStr);
+  };
+
+  if (WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) && campusFilter !== "network-wide") {
+    const nextWeekend = getNextCampusWeekendServiceDate(from, campus);
+    if (nextWeekend) addIfUpcoming(formatDateForStorage(nextWeekend));
+  } else if (MIDWEEK_SERVICE_MINISTRY_FILTERS.has(ministryFilter)) {
+    addIfUpcoming(formatDateForStorage(getNextWeekdayOnOrAfter(from, 3)));
+  }
+
+  for (const dateStr of scheduledDates) {
+    if (WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) && campus) {
+      const day = parseLocalDate(dateStr).getDay();
+      if (day === 6 && !campus.has_saturday_service) continue;
+      if (day === 0 && !campus.has_sunday_service) continue;
+    }
+    addIfUpcoming(dateStr);
+  }
+
+  extraDates.forEach((dateStr) => addIfUpcoming(dateStr));
+
+  if (candidates.length === 0) return null;
+  candidates.sort();
+  return parseLocalDate(candidates[0]);
 };
 
 const resolveSetlistPushMinistryType = (ministryType?: string) => {
@@ -342,6 +428,9 @@ function StandardCalendar() {
   const [isSwapOpen, setIsSwapOpen] = useState(false);
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const hasHydratedFromUrl = useRef(false);
+  const skipAutoSelectFromUrlRef = useRef(false);
+  const lastAutoSelectFilterKeyRef = useRef<string | null>(null);
+  const suppressServiceFlowScrollRef = useRef(false);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -394,6 +483,7 @@ function StandardCalendar() {
       if (!Number.isNaN(parsed.getTime())) {
         setCurrentDate(parsed);
         setSelectedDate(parsed);
+        skipAutoSelectFromUrlRef.current = true;
       }
     }
     if (campusParam) {
@@ -569,6 +659,48 @@ function StandardCalendar() {
       endDate: scheduleRangeEnd,
     },
   );
+  const usesRecurringServiceDay =
+    WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) ||
+    MIDWEEK_SERVICE_MINISTRY_FILTERS.has(ministryFilter);
+  const upcomingServiceHorizon = formatDateForStorage(addDays(new Date(), 90));
+  const todayStr = formatDateForStorage(new Date());
+  const { data: upcomingScheduledServiceDates = [], isFetched: upcomingScheduleFetched } = useQuery({
+    queryKey: [
+      "calendar-upcoming-service-dates",
+      campusFilter,
+      ministryFilter,
+      todayStr,
+      resourceAppKey,
+      isStudentCampMinistryFilter,
+    ],
+    enabled: Boolean(ministryFilter) && !usesRecurringServiceDay,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const resourceAppKeys = isStudentCampMinistryFilter
+        ? ["students_hs", "students_ms", "worship"]
+        : [resourceAppKey];
+      let query = supabase
+        .from("team_schedule")
+        .select("schedule_date, ministry_type, campus_id")
+        .in("resource_app_key", resourceAppKeys)
+        .gte("schedule_date", todayStr)
+        .lte("schedule_date", upcomingServiceHorizon)
+        .order("schedule_date")
+        .limit(80);
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.or(`campus_id.eq.${campusFilter},campus_id.is.null`);
+      } else if (campusFilter === "network-wide") {
+        query = query.is("campus_id", null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || [])
+        .filter((entry) => scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter))
+        .map((entry) => entry.schedule_date as string);
+    },
+  });
   const {
     scheduledDates,
     uniqueTeams
@@ -770,6 +902,70 @@ function StandardCalendar() {
     if (!campusFilter || campusFilter === "network-wide") return null;
     return campuses.find((c) => c.id === campusFilter) || null;
   }, [campusFilter, campuses]);
+
+  useEffect(() => {
+    if (!ministryFilter) return;
+    const campusReady = campusFilter === "network-wide" || Boolean(selectedCampusConfig);
+    if (!campusReady) return;
+    if (!usesRecurringServiceDay && !upcomingScheduleFetched) return;
+
+    const filterKey = `${campusFilter}|${ministryFilter}`;
+    if (lastAutoSelectFilterKeyRef.current === filterKey) return;
+
+    if (skipAutoSelectFromUrlRef.current) {
+      skipAutoSelectFromUrlRef.current = false;
+      lastAutoSelectFilterKeyRef.current = filterKey;
+      return;
+    }
+
+    const extraDates = [
+      ...customServices
+        .filter((service) =>
+          serviceOverrideMatchesMinistryFilter(
+            getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
+            ministryFilter,
+          ),
+        )
+        .map((service) => service.occurrence_date),
+      ...filteredServiceTimeOverrides.map((override) => override.service_date),
+    ];
+    const scheduledDates = Array.from(
+      new Set([
+        ...teamSchedule
+          .filter((entry) => scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter))
+          .map((entry) => entry.schedule_date),
+        ...upcomingScheduledServiceDates,
+      ]),
+    );
+
+    const nextServiceDate = getNextUpcomingServiceDate({
+      from: new Date(),
+      ministryFilter,
+      campusFilter,
+      campus: selectedCampusConfig,
+      scheduledDates,
+      extraDates,
+    });
+    if (!nextServiceDate) {
+      lastAutoSelectFilterKeyRef.current = filterKey;
+      return;
+    }
+
+    lastAutoSelectFilterKeyRef.current = filterKey;
+    suppressServiceFlowScrollRef.current = true;
+    setCurrentDate(nextServiceDate);
+    setSelectedDate(nextServiceDate);
+  }, [
+    campusFilter,
+    customServices,
+    filteredServiceTimeOverrides,
+    ministryFilter,
+    selectedCampusConfig,
+    teamSchedule,
+    upcomingScheduleFetched,
+    upcomingScheduledServiceDates,
+    usesRecurringServiceDay,
+  ]);
   const teachingCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
   const teachingMinistryFilter =
     ministryFilter && ministryFilter !== "all" ? ministryFilter : "weekend";
@@ -1265,6 +1461,10 @@ function StandardCalendar() {
     }
     if (previousSelectedDateStrRef.current === selectedDateStr) return;
     previousSelectedDateStrRef.current = selectedDateStr;
+    if (suppressServiceFlowScrollRef.current) {
+      suppressServiceFlowScrollRef.current = false;
+      return;
+    }
 
     const timer = window.setTimeout(() => {
       scrollToServiceFlowPanel(inlineServiceFlowTargets[0].id);
