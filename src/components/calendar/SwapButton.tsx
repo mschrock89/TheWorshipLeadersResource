@@ -13,9 +13,9 @@ export function SwapButton({ onClick, disabled }: SwapButtonProps) {
       size="sm"
       onClick={onClick}
       disabled={disabled}
-      className="gap-2"
+      className="h-6 gap-1 px-2 text-[11px]"
     >
-      <ArrowLeftRight className="h-4 w-4" />
+      <ArrowLeftRight className="h-3 w-3" />
       Swap
     </Button>
   );

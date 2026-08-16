@@ -13,9 +13,9 @@ export function CoverButton({ onClick, disabled }: CoverButtonProps) {
       size="sm"
       onClick={onClick}
       disabled={disabled}
-      className="gap-2"
+      className="h-6 gap-1 px-2 text-[11px]"
     >
-      <UserPlus className="h-4 w-4" />
+      <UserPlus className="h-3 w-3" />
       Cover
     </Button>
   );

@@ -428,9 +428,9 @@ function CalendarDayWidget({
   className?: string;
 }) {
   return (
-    <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2.5 sm:p-3", className)}>
-      <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
-        <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground sm:text-base">{title}</h2>
+    <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5", className)}>
+      <div className="mb-1 flex shrink-0 items-start justify-between gap-2">
+        <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</div>
@@ -1961,21 +1961,21 @@ function StandardCalendar() {
               <CalendarDayWidget
                 title={`${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
                 actions={
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
-                    <X className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
                   </Button>
                 }
               >
                     {/* Service Times */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-[11px] text-muted-foreground">
                             <span className="font-medium text-foreground/70">{st.campusName}</span>
                             {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
                           </span>)}
                     {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 && <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
                           <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-6 gap-1 px-2 text-[11px]" title="Add extra Friday, Saturday, or Sunday services for this specific weekend." onClick={openServiceOverrideDialog}>
-                              <Plus className="h-3 w-3" />
+                            <Button variant="outline" size="sm" className="h-5 gap-0.5 px-1.5 text-[10px]" title="Add extra Friday, Saturday, or Sunday services for this specific weekend." onClick={openServiceOverrideDialog}>
+                              <Plus className="h-2.5 w-2.5" />
                               Add Service Time
                             </Button>
                           </DialogTrigger>
@@ -2074,16 +2074,16 @@ function StandardCalendar() {
                   </div>}
 
                 {/* User Schedule Section - Show if playing (home team without swap out, OR swapped in) */}
-                {effectiveTeam && <div className="mb-2 rounded-md px-2 py-1.5" style={{
+                {effectiveTeam && <div className="mb-1.5 rounded-md px-1.5 py-1" style={{
               backgroundColor: `${effectiveTeam.teamColor}10`,
               border: `1px solid ${effectiveTeam.teamColor}30`
             }}>
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{
                     backgroundColor: effectiveTeam.teamColor
                   }} />
-                        <span className="truncate text-xs font-medium" style={{
+                        <span className="truncate text-[11px] font-medium" style={{
                     color: effectiveTeam.teamColor
                   }}>
                           {hasSwappedIn ? "Covering for " : "Playing with "}{effectiveTeam.teamName}
@@ -2091,7 +2091,7 @@ function StandardCalendar() {
                       </div>
                       {/* Only show swap button if user is on their home team (not swapped in) */}
                       {!hasSwappedIn && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex shrink-0 items-center gap-1">
                           <SwapButton onClick={() => setIsSwapOpen(true)} />
                           <CoverButton onClick={() => setIsCoverOpen(true)} />
                         </div>
@@ -2107,7 +2107,7 @@ function StandardCalendar() {
                   color: selectedDayTeam.worship_teams.color
                 }} /> : null;
               })()}
-                    <span className="text-sm font-medium" style={{
+                    <span className="text-[11px] font-medium" style={{
                 color: selectedDayTeam.worship_teams.color
               }}>
                       {selectedDayTeam.worship_teams.name} Playing
@@ -4262,7 +4262,7 @@ function BandRoster({
       worshipPushScheduleDate={formatDateForStorage(effectiveRosterDate)}
       worshipPushTeamId={effectiveTeamId}
       worshipPushRotationPeriodName={effectiveRotationPeriodName}
-      compact={compact}
+      compact
       hideSetlistPush={supportOnly}
     />
   );
