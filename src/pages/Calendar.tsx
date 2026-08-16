@@ -4399,13 +4399,13 @@ function BandRoster({
       : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
     const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
     const listClass = compact ? "space-y-0" : "space-y-1.5";
+    const showWorshipColumns = vocalists.length > 0 && bandMembers.length > 0;
     return <div className={compact ? "space-y-1.5" : "space-y-4"}>
         {title && <h3 className={compact ? "mb-1 border-b border-border pb-0.5 text-xs font-semibold text-primary" : "mb-3 border-b border-border pb-1 text-sm font-semibold text-primary"}>
             {title}
           </h3>}
-        {compact ? (
-          <div className="grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2">
-            {vocalists.length > 0 && <div>
+        <div className={`grid ${showWorshipColumns ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+            {vocalists.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <MicVocal className={iconClass} />
                   Vocalists
@@ -4414,7 +4414,7 @@ function BandRoster({
                   {vocalists.map(renderMember)}
                 </div>
               </div>}
-            {bandMembers.length > 0 && <div>
+            {bandMembers.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <Guitar className={iconClass} />
                   Band
@@ -4423,7 +4423,7 @@ function BandRoster({
                   {bandMembers.map(renderMember)}
                 </div>
               </div>}
-            {speakerMembers.length > 0 && <div className={vocalists.length > 0 && bandMembers.length > 0 ? "sm:col-span-2" : ""}>
+            {speakerMembers.length > 0 && <div className={`min-w-0 ${showWorshipColumns ? "col-span-2" : ""}`}>
                 <h4 className={sectionTitleClass}>
                   <BookOpen className={iconClass} />
                   Speaker
@@ -4432,40 +4432,7 @@ function BandRoster({
                   {speakerMembers.map(renderMember)}
                 </div>
               </div>}
-          </div>
-        ) : (
-          <>
-        {vocalists.length > 0 && <div>
-            <h4 className={sectionTitleClass}>
-              <MicVocal className={iconClass} />
-              Vocalists
-            </h4>
-            <div className={listClass}>
-              {vocalists.map(renderMember)}
-            </div>
-          </div>}
-
-        {speakerMembers.length > 0 && <div>
-            <h4 className={sectionTitleClass}>
-              <BookOpen className={iconClass} />
-              Speaker
-            </h4>
-            <div className={listClass}>
-              {speakerMembers.map(renderMember)}
-            </div>
-          </div>}
-
-        {bandMembers.length > 0 && <div>
-            <h4 className={sectionTitleClass}>
-              <Guitar className={iconClass} />
-              Band
-            </h4>
-            <div className={listClass}>
-              {bandMembers.map(renderMember)}
-            </div>
-          </div>}
-          </>
-        )}
+        </div>
       </div>;
   };
   const renderProductionVideoSection = () => {
