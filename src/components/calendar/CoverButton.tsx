@@ -9,14 +9,15 @@ interface CoverButtonProps {
 export function CoverButton({ onClick, disabled }: CoverButtonProps) {
   return (
     <Button
-      variant="outline"
-      size="sm"
+      variant="ghost"
+      size="icon"
       onClick={onClick}
       disabled={disabled}
-      className="h-6 gap-1 px-2 text-[11px]"
+      title="Cover another team"
+      className="h-5 w-5 text-muted-foreground hover:text-foreground"
     >
       <UserPlus className="h-3 w-3" />
-      Cover
+      <span className="sr-only">Cover</span>
     </Button>
   );
 }
