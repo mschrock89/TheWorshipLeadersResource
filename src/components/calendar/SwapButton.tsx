@@ -9,14 +9,15 @@ interface SwapButtonProps {
 export function SwapButton({ onClick, disabled }: SwapButtonProps) {
   return (
     <Button
-      variant="outline"
-      size="sm"
+      variant="ghost"
+      size="icon"
       onClick={onClick}
       disabled={disabled}
-      className="h-6 gap-1 px-2 text-[11px]"
+      title="Request a swap"
+      className="h-5 w-5 text-muted-foreground hover:text-foreground"
     >
       <ArrowLeftRight className="h-3 w-3" />
-      Swap
+      <span className="sr-only">Swap</span>
     </Button>
   );
 }

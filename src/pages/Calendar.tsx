@@ -429,7 +429,7 @@ function CalendarDayWidget({
 }) {
   return (
     <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5", className)}>
-      <div className="mb-1 flex shrink-0 items-start justify-between gap-2">
+      <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
@@ -1959,11 +1959,46 @@ function StandardCalendar() {
           })();
           return <>
               <CalendarDayWidget
-                title={`${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
+                title={
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate">
+                      {`${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
+                    </span>
+                    {effectiveTeam ? (
+                      <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium" style={{ color: effectiveTeam.teamColor }}>
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: effectiveTeam.teamColor }} />
+                        <span className="truncate">{hasSwappedIn ? `Covering ${effectiveTeam.teamName}` : effectiveTeam.teamName}</span>
+                      </span>
+                    ) : selectedDayTeam?.worship_teams ? (
+                      <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium" style={{ color: selectedDayTeam.worship_teams.color }}>
+                        {(() => {
+                          const TeamIcon = teamIcons[selectedDayTeam.worship_teams.icon];
+                          return TeamIcon ? <TeamIcon className="h-3 w-3 shrink-0" /> : (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: selectedDayTeam.worship_teams.color }} />
+                          );
+                        })()}
+                        <span className="truncate">{selectedDayTeam.worship_teams.name}</span>
+                        {selectedDayTeam.notes ? (
+                          <span className="rounded bg-primary/20 px-1 py-px text-[10px] font-medium text-primary">
+                            {selectedDayTeam.notes}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </span>
+                }
                 actions={
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground">
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
+                  <>
+                    {effectiveTeam && !hasSwappedIn ? (
+                      <>
+                        <SwapButton onClick={() => setIsSwapOpen(true)} />
+                        <CoverButton onClick={() => setIsCoverOpen(true)} />
+                      </>
+                    ) : null}
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
                 }
               >
                     {/* Service Times */}
@@ -2073,51 +2108,7 @@ function StandardCalendar() {
                     </div>
                   </div>}
 
-                {/* User Schedule Section - Show if playing (home team without swap out, OR swapped in) */}
-                {effectiveTeam && <div className="mb-1.5 rounded-md px-1.5 py-1" style={{
-              backgroundColor: `${effectiveTeam.teamColor}10`,
-              border: `1px solid ${effectiveTeam.teamColor}30`
-            }}>
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{
-                    backgroundColor: effectiveTeam.teamColor
-                  }} />
-                        <span className="truncate text-[11px] font-medium" style={{
-                    color: effectiveTeam.teamColor
-                  }}>
-                          {hasSwappedIn ? "Covering for " : "Playing with "}{effectiveTeam.teamName}
-                        </span>
-                      </div>
-                      {/* Only show swap button if user is on their home team (not swapped in) */}
-                      {!hasSwappedIn && (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <SwapButton onClick={() => setIsSwapOpen(true)} />
-                          <CoverButton onClick={() => setIsCoverOpen(true)} />
-                        </div>
-                      )}
-                    </div>
-                  </div>}
-
-                {/* Team Playing Section (if different from user's team or user not scheduled) */}
-                {selectedDayTeam?.worship_teams && !effectiveTeam && <div className="mb-2 flex items-center gap-2">
-                    {(() => {
-                const TeamIcon = teamIcons[selectedDayTeam.worship_teams.icon];
-                return TeamIcon ? <TeamIcon className="h-4 w-4" style={{
-                  color: selectedDayTeam.worship_teams.color
-                }} /> : null;
-              })()}
-                    <span className="text-[11px] font-medium" style={{
-                color: selectedDayTeam.worship_teams.color
-              }}>
-                      {selectedDayTeam.worship_teams.name} Playing
-                    </span>
-                    {selectedDayTeam.notes && <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-medium text-primary">
-                        {selectedDayTeam.notes}
-                      </span>}
-                  </div>}
-
-                <div className="mt-1.5 min-h-0 min-w-0 flex-1 space-y-2">
+                <div className="mt-1 min-h-0 min-w-0 flex-1 space-y-2">
                   <div className="min-w-0">
                     <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
                       <MicVocal className="h-3.5 w-3.5" />
