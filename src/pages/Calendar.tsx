@@ -415,6 +415,26 @@ const buildDefaultNewEventState = (appMinistryTypes: readonly string[] | null) =
   return { ...defaultNewEventState, ministry_type: ministry, ministry_types: [ministry] };
 };
 
+function CalendarDayWidget({
+  title,
+  actions,
+  children,
+}: {
+  title: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-3 sm:p-4">
+      <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
+        <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground sm:text-base">{title}</h2>
+        {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
+      </div>
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</div>
+    </section>
+  );
+}
+
 function StandardCalendar() {
   const {
     isAdmin,
@@ -1785,23 +1805,23 @@ function StandardCalendar() {
             </div>
           </div>
 
-          <div className={selectedDate ? "lg:grid lg:grid-cols-[minmax(0,30rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-start lg:gap-4" : ""}>
-          {/* Calendar Grid — width-capped so day cells stay close to square instead of stretching short and wide */}
+          <div className={`grid grid-cols-1 gap-3 ${selectedDate ? "sm:grid-cols-2" : "mx-auto max-w-[30rem]"}`}>
+          {/* Calendar Grid — square widget, same size as the other day cards */}
           <div
             data-tour="calendar-grid"
-            className={`mx-auto w-full max-w-[30rem] overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3 ${selectedDate ? "lg:mx-0 lg:max-w-none" : ""}`}
+            className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3"
           >
             {/* Weekday headers */}
-            <div className="mb-1.5 grid grid-cols-7 gap-1">
+            <div className="mb-1.5 grid shrink-0 grid-cols-7 gap-1">
               {WEEKDAYS.map(day => <div key={day} className="py-1 text-center text-[11px] sm:text-xs font-medium text-muted-foreground">
                   {day}
                 </div>)}
             </div>
 
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid min-h-0 flex-1 grid-cols-7 auto-rows-fr gap-1">
               {calendarDays.map((day, index) => {
               if (day === null) {
-                return <div key={`empty-${index}`} className="aspect-square" />;
+                return <div key={`empty-${index}`} className="min-h-0" />;
               }
               const dayEvents = getEventsForDay(day);
               const dayServices = getCustomServicesForDay(day);
@@ -1854,7 +1874,7 @@ function StandardCalendar() {
                 !isSelected(day) &&
                 !showTeamHighlight &&
                 !showCustomAssignmentHighlight;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
@@ -1911,20 +1931,38 @@ function StandardCalendar() {
             teamId: userSchedule.teamId
           } : null;
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
-          return <div className="mt-3 rounded-lg border border-border bg-card p-3 sm:p-4 lg:mt-0 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto">
-                {/* Header Row */}
-                <div className="mb-2">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                      <h2 className="text-base sm:text-lg font-semibold leading-none text-foreground">
-                        {MONTHS[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
-                      </h2>
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="min-w-0">
+          const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
+          const sessionBase =
+            ministryFilter && isSessionSetMinistryType(ministryFilter)
+              ? normalizeSessionSetMinistryType(ministryFilter)
+              : null;
+          const sessionEntries = (() => {
+            if (!sessionBase) return [];
+            const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
+            const seenSessionTimes = new Set<string>();
+            return selectedDayScheduleEntries
+              .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
+              .filter((entry) => {
+                const timeOfDay = entry.time_of_day;
+                if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
+                seenSessionTimes.add(timeOfDay);
+                return true;
+              })
+              .sort(
+                (a, b) =>
+                  (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
+                  (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
+              );
+          })();
+          return <>
+              <CalendarDayWidget
+                title={`${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
+                actions={
+                  <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground">
+                    <X className="h-4 w-4" />
+                  </Button>
+                }
+              >
                     {/* Service Times */}
                     {serviceTimes && serviceTimes.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-1">
                         {serviceTimes.map((st, idx) => <span key={idx} className="text-xs text-muted-foreground">
@@ -2015,8 +2053,6 @@ function StandardCalendar() {
                           Add extra Friday, Saturday, or Sunday services for this specific weekend.
                         </span>
                       </div>}
-                  </div>
-                </div>
 
                 {selectedDateOverrides.length > 0 && <div className="mb-3 rounded-lg border border-dashed border-border bg-muted/30 p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -2082,10 +2118,10 @@ function StandardCalendar() {
                         {selectedDayTeam.notes}
                       </span>}
                   </div>}
+              </CalendarDayWidget>
 
-                {/* Songs + Team Roster Section */}
                 {selectedTeachingWeek && (
-                  <div className="mb-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                  <CalendarDayWidget title="Teaching">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary" className="bg-emerald-600/10 text-emerald-700 border-transparent">
                         Teaching
@@ -2119,30 +2155,21 @@ function StandardCalendar() {
                         {[selectedTeachingWeek.psa_highlight, selectedTeachingWeek.announcer_name].filter(Boolean).join(" • ")}
                       </p>
                     ) : null}
-                  </div>
+                  </CalendarDayWidget>
                 )}
 
+              <CalendarDayWidget title="Songs">
                 {selectedDayServices.length > 0 ? (
-                  <div className="space-y-5 mb-4">
+                  <div className="space-y-4">
                     {selectedDayServices.map((service) => {
                       const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
-                        <div key={service.occurrence_key} className="rounded-md border border-border/70 p-3 sm:p-4">
-                          <div className="mb-2 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground">{service.service_name}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {campusName} • {getMinistryLabel(service.ministry_type)}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {service.start_time ? formatTime(service.start_time) : "Time TBD"}
-                                {service.end_time ? ` - ${formatTime(service.end_time)}` : ""}
-                              </p>
-                            </div>
-                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>}
-                          </div>
+                        <div key={`songs-${service.occurrence_key}`}>
+                          <p className="text-sm font-medium text-foreground">{service.service_name}</p>
+                          <p className="mb-2 text-xs text-muted-foreground">
+                            {campusName} • {getMinistryLabel(service.ministry_type)}
+                            {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
+                          </p>
                           <CustomServiceSongsPreview
                             customServiceId={service.id}
                             planDate={service.occurrence_date}
@@ -2151,6 +2178,66 @@ function StandardCalendar() {
                             serviceName={service.service_name}
                             readOnly={isCrossCampusReadOnly}
                           />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : sessionEntries.length > 0 ? (
+                  <div className="space-y-4">
+                    {sessionEntries.map((entry) => {
+                      const timeOfDay = entry.time_of_day as string;
+                      const variant = `${sessionBase}_${timeOfDay}`;
+                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+                      return (
+                        <div key={`songs-${entry.id}`}>
+                          <div className="mb-2 flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
+                              {sessionLabel}
+                            </Badge>
+                            {entry.worship_teams?.name && (
+                              <span className="text-xs text-muted-foreground">
+                                {entry.worship_teams.name}
+                              </span>
+                            )}
+                          </div>
+                          <SongsPreview
+                            date={selectedDate}
+                            campusId={sessionCampusId}
+                            ministryFilter={variant}
+                            readOnly={isCrossCampusReadOnly}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <SongsPreview
+                    date={selectedDate}
+                    campusId={sessionCampusId}
+                    ministryFilter={ministryFilter}
+                    readOnly={isCrossCampusReadOnly}
+                  />
+                )}
+              </CalendarDayWidget>
+
+              <CalendarDayWidget title="Team Roster">
+                {selectedDayServices.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedDayServices.map((service) => {
+                      const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
+                      return (
+                        <div key={`roster-${service.occurrence_key}`}>
+                          <div className="mb-2 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">{service.service_name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {campusName} • {getMinistryLabel(service.ministry_type)}
+                              </p>
+                            </div>
+                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>}
+                          </div>
                           <CustomServiceRoster
                             customServiceId={service.id}
                             assignmentDate={service.occurrence_date}
@@ -2162,131 +2249,63 @@ function StandardCalendar() {
                       );
                     })}
                   </div>
-                ) : (() => {
-                  // Network Wide view uses campus_id IS NULL for Student Camp sets/schedules.
-                  const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
-
-                  // Multi-session services (e.g. Student Camp Morning/Evening) run more than
-                  // one worship set + roster on the same day. When such a ministry is the
-                  // active filter, render every session so the user can view both the Morning
-                  // and Evening set and roster from a single calendar click.
-                  const sessionBase =
-                    ministryFilter && isSessionSetMinistryType(ministryFilter)
-                      ? normalizeSessionSetMinistryType(ministryFilter)
-                      : null;
-
-                  if (sessionBase) {
-                    // Only split into Morning/Evening sessions that are ACTUALLY scheduled in
-                    // Team Builder for this date (rows with an explicit time_of_day). Driving the
-                    // sessions off real schedule rows prevents fabricating an empty/duplicate
-                    // session card (e.g. an "Afternoon" roster that just mirrored the base team).
-                    const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
-                    const seenSessionTimes = new Set<string>();
-                    const sessionEntries = selectedDayScheduleEntries
-                      .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
-                      .filter((entry) => {
-                        const tod = entry.time_of_day;
-                        if (!tod || seenSessionTimes.has(tod)) return false;
-                        seenSessionTimes.add(tod);
-                        return true;
-                      })
-                      .sort(
-                        (a, b) =>
-                          (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
-                          (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
-                      );
-
-                    if (sessionEntries.length > 0) {
+                ) : sessionEntries.length > 0 ? (
+                  <div className="space-y-4">
+                    {sessionEntries.map((entry) => {
+                      const timeOfDay = entry.time_of_day as string;
+                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
                       return (
-                        <div className="space-y-5 mb-4">
-                          {sessionEntries.map((entry) => {
-                            const timeOfDay = entry.time_of_day as string;
-                            const variant = `${sessionBase}_${timeOfDay}`;
-                            const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-
-                            return (
-                              <div key={entry.id} className="rounded-md border border-border/70 p-3 sm:p-4">
-                                <div className="mb-2 flex items-center gap-2">
-                                  <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
-                                    {sessionLabel}
-                                  </Badge>
-                                  {entry.worship_teams?.name && (
-                                    <span className="text-xs text-muted-foreground">
-                                      {entry.worship_teams.name}
-                                    </span>
-                                  )}
-                                </div>
-                                <SongsPreview
-                                  date={selectedDate}
-                                  campusId={sessionCampusId}
-                                  ministryFilter={variant}
-                                  readOnly={isCrossCampusReadOnly}
-                                />
-                                <div className="mb-2">
-                                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
-                                </div>
-                                <BandRoster
-                                  date={selectedDate}
-                                  teamId={entry.team_id}
-                                  showAudioVideo
-                                  ministryFilter={sessionBase}
-                                  timeOfDay={timeOfDay}
-                                  scheduledEntries={[entry]}
-                                  rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
-                                  scheduledMinistries={[sessionBase]}
-                                  campusId={sessionCampusId}
-                                />
-                              </div>
-                            );
-                          })}
+                        <div key={`roster-${entry.id}`}>
+                          <div className="mb-2 flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
+                              {sessionLabel}
+                            </Badge>
+                            {entry.worship_teams?.name && (
+                              <span className="text-xs text-muted-foreground">
+                                {entry.worship_teams.name}
+                              </span>
+                            )}
+                          </div>
+                          <BandRoster
+                            date={selectedDate}
+                            teamId={entry.team_id}
+                            showAudioVideo
+                            ministryFilter={sessionBase}
+                            timeOfDay={timeOfDay}
+                            scheduledEntries={[entry]}
+                            rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
+                            scheduledMinistries={sessionBase ? [sessionBase] : []}
+                            campusId={sessionCampusId}
+                          />
                         </div>
                       );
-                    }
-                    // No explicit Morning/Evening rows scheduled — fall through to the standard
-                    // single roster view below.
-                  }
-
-                  return (
-                    <>
-                      <SongsPreview
-                        date={selectedDate}
-                        campusId={sessionCampusId}
-                        ministryFilter={ministryFilter}
-                        readOnly={isCrossCampusReadOnly}
-                      />
-                      <div className="mb-2">
-                        <span className="text-xs sm:text-sm font-medium text-muted-foreground">Team Roster</span>
-                      </div>
-                      <BandRoster
-                        date={selectedDate}
-                        teamId={selectedDayTeam?.team_id}
-                        showAudioVideo
-                        ministryFilter={ministryFilter}
-                        scheduledEntries={selectedDayScheduleEntries}
-                        rotationPeriodName={selectedDayTeam?.rotation_period || null}
-                        scheduledMinistries={(() => {
-                          let scheduleEntries = selectedDayScheduleEntries;
-                          if (ministryFilter && ministryFilter !== "all") {
-                            scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
-                          }
-                          return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
-                        })()}
-                        campusId={sessionCampusId}
-                        supportNotificationTargets={selectedSupportNotificationTargets}
-                      />
-                    </>
-                  );
-                })()}
+                    })}
+                  </div>
+                ) : (
+                  <BandRoster
+                    date={selectedDate}
+                    teamId={selectedDayTeam?.team_id}
+                    showAudioVideo
+                    ministryFilter={ministryFilter}
+                    scheduledEntries={selectedDayScheduleEntries}
+                    rotationPeriodName={selectedDayTeam?.rotation_period || null}
+                    scheduledMinistries={(() => {
+                      let scheduleEntries = selectedDayScheduleEntries;
+                      if (ministryFilter && ministryFilter !== "all") {
+                        scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
+                      }
+                      return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
+                    })()}
+                    campusId={sessionCampusId}
+                    supportNotificationTargets={selectedSupportNotificationTargets}
+                  />
+                )}
+              </CalendarDayWidget>
 
                 {/* Events Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      {selectedDayEventListCount === 0
-                        ? "No events"
-                        : `${selectedDayEventListCount} item${selectedDayEventListCount > 1 ? "s" : ""}`}
-                    </p>
-                    {canManageTeam && <Dialog open={isAddOpen} onOpenChange={(open) => {
+                <CalendarDayWidget
+                  title="Events"
+                  actions={canManageTeam ? <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
                     if (!open) {
                       setEditingEventId(null);
@@ -2481,8 +2500,14 @@ function StandardCalendar() {
                             </div>
                           </div>
                         </DialogContent>
-                      </Dialog>}
-                  </div>
+                      </Dialog> : null}
+                >
+
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    {selectedDayEventListCount === 0
+                      ? "No events"
+                      : `${selectedDayEventListCount} item${selectedDayEventListCount > 1 ? "s" : ""}`}
+                  </p>
 
                   {/* Event List */}
                   {selectedDayAuditions.map(audition => {
@@ -2567,11 +2592,11 @@ function StandardCalendar() {
                           </Button>
                         </div>}
                     </div>)}
-                </div>
+                </CalendarDayWidget>
 
             {/* Swap/Cover dialogs - only available for home team (not when covering/swapped in) */}
                 {userSchedule && !hasSwappedOut && !hasSwappedIn && (
-                  <>
+                  <div className="hidden">
                     <SwapRequestDialog
                       open={isSwapOpen}
                       onOpenChange={setIsSwapOpen}
@@ -2596,9 +2621,9 @@ function StandardCalendar() {
                       ministryType={userSchedule.ministryType}
                       rotationPeriodId={userSchedule.rotationPeriodId}
                     />
-                  </>
+                  </div>
                 )}
-              </div>;
+              </>;
         })()}
           </div>
 
@@ -4372,7 +4397,7 @@ function BandRoster({
   if (showGrouped && ministriesToShow.length > 1) {
     return <div className="mb-4 space-y-6">
         {outreachWidget}
-        <div className={`grid grid-cols-1 ${showWorshipSections && showSupportSections ? 'md:grid-cols-2' : ''} gap-6`}>
+        <div className="grid grid-cols-1 gap-4">
           {/* Left Column: Vocalists + Band by Ministry */}
           {showWorshipSections && <div className="space-y-6">
             {ministriesToShow.map(ministry => {
@@ -4398,7 +4423,7 @@ function BandRoster({
 
   return <div className="mb-4">
       {outreachWidget}
-      <div className={`grid grid-cols-1 ${showWorshipSections && showSupportSections ? 'md:grid-cols-2' : ''} gap-6`}>
+      <div className="grid grid-cols-1 gap-4">
         {/* Left Column: Vocalists + Band */}
         {showWorshipSections && <div>
           {renderBandSection(membersToShow)}
@@ -4428,29 +4453,24 @@ function SongsPreview({
   } = useSongsForDate(dateStr, campusId, ministryFilter);
 
   if (isLoading) {
-    return <div className="mb-4">
-        <div className="animate-pulse space-y-2">
-          {[1, 2].map(i => <div key={i} className="h-6 bg-muted rounded" />)}
-        </div>
+    return <div className="animate-pulse space-y-2">
+        {[1, 2].map(i => <div key={i} className="h-6 bg-muted rounded" />)}
       </div>;
   }
-  if (plansWithSongs.length === 0) return null;
+  if (plansWithSongs.length === 0 || plansWithSongs.every((plan) => (plan.songs || []).length === 0)) {
+    return <p className="text-sm text-muted-foreground">No songs for this service.</p>;
+  }
   const allSongs = plansWithSongs.flatMap(p => p.songs || []);
-  if (allSongs.length === 0) return null;
-  return <div className="mb-4">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
-          <Music className="h-3.5 w-3.5" />
-          Songs
-        </h3>
-        {readOnly ? (
+  return <div>
+      {readOnly ? (
+        <div className="mb-2 flex justify-end">
           <Badge variant="outline" className="text-xs">
             View only
           </Badge>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       <div className="space-y-1.5">
-        {allSongs.slice(0, 6).map((song, index) => <div key={`${song.id}-${index}`} className="flex items-center justify-between text-sm py-1">
+        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className="flex items-center justify-between text-sm py-1">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="text-foreground truncate">{song.title}</span>
               {song.isFirstUse && <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
@@ -4474,9 +4494,6 @@ function SongsPreview({
                 </Badge>}
             </div>
           </div>)}
-        {allSongs.length > 6 && <p className="text-xs text-muted-foreground pt-1">
-            +{allSongs.length - 6} more songs
-          </p>}
       </div>
     </div>;
 }
@@ -4513,7 +4530,7 @@ function CustomServiceSongsPreview({
   }
 
   if (!existingSet || draftSongs.length === 0) {
-    return null;
+    return <p className="text-sm text-muted-foreground">No songs for this service.</p>;
   }
 
   return <div className="mb-4">
