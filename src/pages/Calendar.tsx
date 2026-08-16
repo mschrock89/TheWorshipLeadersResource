@@ -425,12 +425,12 @@ function CalendarDayWidget({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-3 sm:p-4">
-      <div className="mb-2 flex shrink-0 items-start justify-between gap-2">
+    <section className="flex aspect-square min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2.5 sm:p-3">
+      <div className="mb-1.5 flex shrink-0 items-start justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground sm:text-base">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{children}</div>
     </section>
   );
 }
@@ -1964,16 +1964,14 @@ function StandardCalendar() {
                 }
               >
                     {/* Service Times */}
-                    {serviceTimes && serviceTimes.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {serviceTimes.map((st, idx) => <span key={idx} className="text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-xs text-muted-foreground">
                             <span className="font-medium text-foreground/70">{st.campusName}</span>
                             {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
                           </span>)}
-                      </div>}
-                    {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
+                    {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 && <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
                           <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={openServiceOverrideDialog}>
+                            <Button variant="outline" size="sm" className="h-6 gap-1 px-2 text-[11px]" title="Add extra Friday, Saturday, or Sunday services for this specific weekend." onClick={openServiceOverrideDialog}>
                               <Plus className="h-3 w-3" />
                               Add Service Time
                             </Button>
@@ -2048,13 +2046,10 @@ function StandardCalendar() {
                               </div>
                             </div>
                           </DialogContent>
-                        </Dialog>
-                        <span className="text-xs text-muted-foreground">
-                          Add extra Friday, Saturday, or Sunday services for this specific weekend.
-                        </span>
-                      </div>}
+                        </Dialog>}
+                    </div>
 
-                {selectedDateOverrides.length > 0 && <div className="mb-3 rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                {selectedDateOverrides.length > 0 && <div className="mb-2 rounded-md border border-dashed border-border bg-muted/30 p-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Additional weekend services</p>
                     </div>
@@ -2076,16 +2071,16 @@ function StandardCalendar() {
                   </div>}
 
                 {/* User Schedule Section - Show if playing (home team without swap out, OR swapped in) */}
-                {effectiveTeam && <div className="mb-3 sm:mb-4 rounded-lg p-2.5 sm:p-3" style={{
+                {effectiveTeam && <div className="mb-2 rounded-md px-2 py-1.5" style={{
               backgroundColor: `${effectiveTeam.teamColor}10`,
               border: `1px solid ${effectiveTeam.teamColor}30`
             }}>
-                    <div className="flex items-center justify-between gap-2 sm:gap-3 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{
                     backgroundColor: effectiveTeam.teamColor
                   }} />
-                        <span className="text-xs sm:text-sm font-medium truncate" style={{
+                        <span className="truncate text-xs font-medium" style={{
                     color: effectiveTeam.teamColor
                   }}>
                           {hasSwappedIn ? "Covering for " : "Playing with "}{effectiveTeam.teamName}
@@ -2093,7 +2088,7 @@ function StandardCalendar() {
                       </div>
                       {/* Only show swap button if user is on their home team (not swapped in) */}
                       {!hasSwappedIn && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <SwapButton onClick={() => setIsSwapOpen(true)} />
                           <CoverButton onClick={() => setIsCoverOpen(true)} />
                         </div>
@@ -2102,7 +2097,7 @@ function StandardCalendar() {
                   </div>}
 
                 {/* Team Playing Section (if different from user's team or user not scheduled) */}
-                {selectedDayTeam?.worship_teams && !effectiveTeam && <div className="mb-4 flex items-center gap-2">
+                {selectedDayTeam?.worship_teams && !effectiveTeam && <div className="mb-2 flex items-center gap-2">
                     {(() => {
                 const TeamIcon = teamIcons[selectedDayTeam.worship_teams.icon];
                 return TeamIcon ? <TeamIcon className="h-4 w-4" style={{
@@ -2119,23 +2114,24 @@ function StandardCalendar() {
                       </span>}
                   </div>}
 
-                <div className="mt-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Team Roster</p>
+                <div className="mt-1.5 min-h-0 flex-1 space-y-2">
+                  <div className="min-w-0">
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Team Roster</p>
                 {selectedDayServices.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     {selectedDayServices.map((service) => {
                       const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
                         <div key={`roster-${service.occurrence_key}`}>
-                          <div className="mb-2 flex items-start justify-between gap-3">
+                          <div className="mb-1 flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground">{service.service_name}</p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="truncate text-xs font-medium text-foreground">{service.service_name}</p>
+                              <p className="truncate text-[10px] text-muted-foreground">
                                 {campusName} • {getMinistryLabel(service.ministry_type)}
                               </p>
                             </div>
-                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-4 w-4" />
+                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-6 w-6 shrink-0 text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-3 w-3" />
                               </Button>}
                           </div>
                           <CustomServiceRoster
@@ -2144,24 +2140,25 @@ function StandardCalendar() {
                             campusId={service.campus_id}
                             ministryType={service.ministry_type}
                             serviceLabel={service.service_name}
+                            compact
                           />
                         </div>
                       );
                     })}
                   </div>
                 ) : sessionEntries.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     {sessionEntries.map((entry) => {
                       const timeOfDay = entry.time_of_day as string;
                       const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
                       return (
                         <div key={`roster-${entry.id}`}>
-                          <div className="mb-2 flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
+                          <div className="mb-1 flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent text-[10px]">
                               {sessionLabel}
                             </Badge>
                             {entry.worship_teams?.name && (
-                              <span className="text-xs text-muted-foreground">
+                              <span className="truncate text-[10px] text-muted-foreground">
                                 {entry.worship_teams.name}
                               </span>
                             )}
@@ -2176,6 +2173,7 @@ function StandardCalendar() {
                             rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
                             scheduledMinistries={sessionBase ? [sessionBase] : []}
                             campusId={sessionCampusId}
+                            compact
                           />
                         </div>
                       );
@@ -2198,13 +2196,80 @@ function StandardCalendar() {
                     })()}
                     campusId={sessionCampusId}
                     supportNotificationTargets={selectedSupportNotificationTargets}
+                    compact
                   />
                 )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Setlist</p>
+                {selectedDayServices.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedDayServices.map((service) => {
+                      const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
+                      return (
+                        <div key={`songs-${service.occurrence_key}`}>
+                          <p className="truncate text-xs font-medium text-foreground">{service.service_name}</p>
+                          <p className="mb-1 truncate text-[10px] text-muted-foreground">
+                            {campusName} • {getMinistryLabel(service.ministry_type)}
+                            {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
+                          </p>
+                          <CustomServiceSongsPreview
+                            customServiceId={service.id}
+                            planDate={service.occurrence_date}
+                            campusId={service.campus_id}
+                            ministryType={service.ministry_type}
+                            serviceName={service.service_name}
+                            readOnly={isCrossCampusReadOnly}
+                            compact
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : sessionEntries.length > 0 ? (
+                  <div className="space-y-2">
+                    {sessionEntries.map((entry) => {
+                      const timeOfDay = entry.time_of_day as string;
+                      const variant = `${sessionBase}_${timeOfDay}`;
+                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+                      return (
+                        <div key={`songs-${entry.id}`}>
+                          <div className="mb-1 flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent text-[10px]">
+                              {sessionLabel}
+                            </Badge>
+                            {entry.worship_teams?.name && (
+                              <span className="truncate text-[10px] text-muted-foreground">
+                                {entry.worship_teams.name}
+                              </span>
+                            )}
+                          </div>
+                          <SongsPreview
+                            date={selectedDate}
+                            campusId={sessionCampusId}
+                            ministryFilter={variant}
+                            readOnly={isCrossCampusReadOnly}
+                            compact
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <SongsPreview
+                    date={selectedDate}
+                    campusId={sessionCampusId}
+                    ministryFilter={ministryFilter}
+                    readOnly={isCrossCampusReadOnly}
+                    compact
+                  />
+                )}
+                  </div>
                 </div>
               </CalendarDayWidget>
 
+              {selectedTeachingWeek ? (
               <CalendarDayWidget title="Service">
-                {selectedTeachingWeek ? (
                   <div className="mb-3 rounded-md border border-emerald-600/20 bg-emerald-600/5 p-2.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary" className="bg-emerald-600/10 text-emerald-700 border-transparent">
@@ -2240,69 +2305,8 @@ function StandardCalendar() {
                       </p>
                     ) : null}
                   </div>
-                ) : null}
-
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Songs</p>
-                {selectedDayServices.length > 0 ? (
-                  <div className="space-y-4">
-                    {selectedDayServices.map((service) => {
-                      const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
-                      return (
-                        <div key={`songs-${service.occurrence_key}`}>
-                          <p className="text-sm font-medium text-foreground">{service.service_name}</p>
-                          <p className="mb-2 text-xs text-muted-foreground">
-                            {campusName} • {getMinistryLabel(service.ministry_type)}
-                            {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
-                          </p>
-                          <CustomServiceSongsPreview
-                            customServiceId={service.id}
-                            planDate={service.occurrence_date}
-                            campusId={service.campus_id}
-                            ministryType={service.ministry_type}
-                            serviceName={service.service_name}
-                            readOnly={isCrossCampusReadOnly}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : sessionEntries.length > 0 ? (
-                  <div className="space-y-4">
-                    {sessionEntries.map((entry) => {
-                      const timeOfDay = entry.time_of_day as string;
-                      const variant = `${sessionBase}_${timeOfDay}`;
-                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-                      return (
-                        <div key={`songs-${entry.id}`}>
-                          <div className="mb-2 flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent">
-                              {sessionLabel}
-                            </Badge>
-                            {entry.worship_teams?.name && (
-                              <span className="text-xs text-muted-foreground">
-                                {entry.worship_teams.name}
-                              </span>
-                            )}
-                          </div>
-                          <SongsPreview
-                            date={selectedDate}
-                            campusId={sessionCampusId}
-                            ministryFilter={variant}
-                            readOnly={isCrossCampusReadOnly}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <SongsPreview
-                    date={selectedDate}
-                    campusId={sessionCampusId}
-                    ministryFilter={ministryFilter}
-                    readOnly={isCrossCampusReadOnly}
-                  />
-                )}
               </CalendarDayWidget>
+              ) : null}
 
                 {/* Events Section */}
                 <CalendarDayWidget
@@ -3401,6 +3405,7 @@ function RosterOutreachWidget({
   worshipPushScheduleDate,
   worshipPushTeamId,
   worshipPushRotationPeriodName,
+  compact = false,
 }: {
   date: Date;
   campusId?: string;
@@ -3419,6 +3424,7 @@ function RosterOutreachWidget({
   worshipPushScheduleDate?: string;
   worshipPushTeamId?: string;
   worshipPushRotationPeriodName?: string | null;
+  compact?: boolean;
 }) {
   const scheduleDateStr = formatDateForStorage(date);
   const notifyTargets = supportNotificationTargets.filter(
@@ -3432,68 +3438,82 @@ function RosterOutreachWidget({
     return null;
   }
 
+  const buttonClassName = compact
+    ? "h-6 w-auto justify-center gap-1 px-2 text-[10px]"
+    : "h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto";
+
+  const buttons = (
+    <>
+      {showSetlistPush && (
+        <SetlistPushButton
+          date={date}
+          campusId={campusId}
+          ministryType={ministryFilter}
+          serviceLabel={serviceLabel}
+          rosterScheduleDate={worshipPushScheduleDate}
+          rosterTeamId={worshipPushTeamId}
+          rotationPeriodName={worshipPushRotationPeriodName}
+          className={buttonClassName}
+        />
+      )}
+      {showSupportPush && supportPushMinistry && (
+        <TeamSchedulePushButton
+          scheduleDate={supportPushScheduleDate ?? scheduleDateStr}
+          campusId={campusId}
+          ministryType={supportPushMinistry}
+          teamId={supportPushTeamId}
+          serviceLabel={serviceLabel}
+          buttonLabel={`Notify ${getMinistryLabel(supportPushMinistry)}`}
+          className={buttonClassName}
+          compact
+        />
+      )}
+      {showGroupText && (
+        <GroupTextButton
+          phoneNumbers={groupTextMembers.map((member) => member.phone)}
+          rosterMembers={groupTextMembers.map((member) => ({
+            name: member.memberName,
+            phone: member.phone,
+            ministryTypes: member.ministryTypes,
+            positions: member.positions,
+          }))}
+          defaultMessage={buildRosterGroupTextTemplate({
+            date,
+            serviceLabel,
+          })}
+          className={buttonClassName}
+        />
+      )}
+      {notifyTargets.map((target) => {
+        const ministryLabel = getMinistryLabel(target.ministryType);
+        return (
+          <TeamSchedulePushButton
+            key={`${target.teamId}:${target.ministryType}`}
+            scheduleDate={scheduleDateStr}
+            campusId={target.campusId}
+            ministryType={target.ministryType}
+            teamId={target.teamId}
+            serviceLabel={target.teamName}
+            buttonLabel={`Notify ${ministryLabel}`}
+            className={buttonClassName}
+            compact
+          />
+        );
+      })}
+    </>
+  );
+
+  if (compact) {
+    return <div className="mb-1.5 flex flex-wrap gap-1">{buttons}</div>;
+  }
+
   return (
     <div className="mb-3 rounded-lg border border-border/70 bg-muted/15 p-3">
       <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Team Outreach
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {showSetlistPush && (
-          <SetlistPushButton
-            date={date}
-            campusId={campusId}
-            ministryType={ministryFilter}
-            serviceLabel={serviceLabel}
-            rosterScheduleDate={worshipPushScheduleDate}
-            rosterTeamId={worshipPushTeamId}
-            rotationPeriodName={worshipPushRotationPeriodName}
-            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
-          />
-        )}
-        {showSupportPush && supportPushMinistry && (
-          <TeamSchedulePushButton
-            scheduleDate={supportPushScheduleDate ?? scheduleDateStr}
-            campusId={campusId}
-            ministryType={supportPushMinistry}
-            teamId={supportPushTeamId}
-            serviceLabel={serviceLabel}
-            buttonLabel={`Notify ${getMinistryLabel(supportPushMinistry)}`}
-            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
-            compact
-          />
-        )}
-        {showGroupText && (
-          <GroupTextButton
-            phoneNumbers={groupTextMembers.map((member) => member.phone)}
-            rosterMembers={groupTextMembers.map((member) => ({
-              name: member.memberName,
-              phone: member.phone,
-              ministryTypes: member.ministryTypes,
-              positions: member.positions,
-            }))}
-            defaultMessage={buildRosterGroupTextTemplate({
-              date,
-              serviceLabel,
-            })}
-            className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
-          />
-        )}
-        {notifyTargets.map((target) => {
-          const ministryLabel = getMinistryLabel(target.ministryType);
-          return (
-            <TeamSchedulePushButton
-              key={`${target.teamId}:${target.ministryType}`}
-              scheduleDate={scheduleDateStr}
-              campusId={target.campusId}
-              ministryType={target.ministryType}
-              teamId={target.teamId}
-              serviceLabel={target.teamName}
-              buttonLabel={`Notify ${ministryLabel}`}
-              className="h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto"
-              compact
-            />
-          );
-        })}
+        {buttons}
       </div>
     </div>
   );
@@ -3510,6 +3530,7 @@ function BandRoster({
   rotationPeriodName,
   timeOfDay,
   supportNotificationTargets = [],
+  compact = false,
 }: {
   date: Date;
   teamId?: string;
@@ -3523,6 +3544,7 @@ function BandRoster({
   // matching team_schedule row by its time_of_day so each session shows its own team.
   timeOfDay?: string | null;
   supportNotificationTargets?: ScheduleNotificationTarget[];
+  compact?: boolean;
 }) {
   const { user, isAdmin } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -4173,6 +4195,7 @@ function BandRoster({
       worshipPushScheduleDate={formatDateForStorage(effectiveRosterDate)}
       worshipPushTeamId={effectiveTeamId}
       worshipPushRotationPeriodName={effectiveRotationPeriodName}
+      compact={compact}
     />
   );
 
@@ -4245,23 +4268,23 @@ function BandRoster({
       bandMembers
     };
   };
-  const renderMember = (member: typeof roster[0]) => <div key={member.id} className={`flex items-center gap-2 text-sm rounded-md px-2 py-1.5 -mx-2 ${member.isSwapped ? "bg-green-500/10 border border-green-500/30" : member.hasPendingSwap ? "bg-ecc-yellow/10 border border-ecc-yellow/30" : ""}`}>
-      <Avatar className="h-6 w-6">
+  const renderMember = (member: typeof roster[0]) => <div key={member.id} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 text-sm px-2 py-1.5 -mx-2"} ${member.isSwapped ? "bg-green-500/10 border border-green-500/30" : member.hasPendingSwap ? "bg-ecc-yellow/10 border border-ecc-yellow/30" : ""}`}>
+      <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
         <AvatarImage src={member.avatarUrl || undefined} />
-        <AvatarFallback className="text-[10px]">
+        <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
           {member.memberName.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="text-foreground flex-1 truncate">
+      <span className="text-foreground min-w-0 flex-1 truncate">
         {member.memberName}
-        {member.isSwapped && <span className="ml-1.5 inline-flex items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
-            <ArrowRightLeft className="h-3 w-3" />
+        {member.isSwapped && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
+            <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
-        {member.hasPendingSwap && !member.isSwapped && <span className="ml-1.5 inline-flex items-center gap-0.5 text-xs text-ecc-yellow" title="Swap pending">
-            <ArrowRightLeft className="h-3 w-3" />
+        {member.hasPendingSwap && !member.isSwapped && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-ecc-yellow" title="Swap pending">
+            <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
       </span>
-      <span className="text-muted-foreground text-xs text-right">
+      <span className={`text-muted-foreground text-right ${compact ? "max-w-[46%] truncate text-[10px] leading-tight" : "text-xs"}`}>
         {member.positions.map((p, idx) => {
         // Use position slot for more accurate labeling (eg_1, eg_2, ag_1, ag_2)
         const slot = member.positionSlots?.[idx]?.toLowerCase();
@@ -4298,39 +4321,78 @@ function BandRoster({
     if (vocalists.length === 0 && speakerMembers.length === 0 && bandMembers.length === 0) {
       return null;
     }
-    return <div className="space-y-4">
-        {title && <h3 className="text-sm font-semibold text-primary border-b border-border pb-1 mb-3">
+    const sectionTitleClass = compact
+      ? "mb-0.5 flex items-center gap-1 text-[11px] font-medium text-blue-400"
+      : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
+    const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
+    const listClass = compact ? "space-y-0" : "space-y-1.5";
+    return <div className={compact ? "space-y-1.5" : "space-y-4"}>
+        {title && <h3 className={compact ? "mb-1 border-b border-border pb-0.5 text-xs font-semibold text-primary" : "mb-3 border-b border-border pb-1 text-sm font-semibold text-primary"}>
             {title}
           </h3>}
+        {compact ? (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {vocalists.length > 0 && <div>
+                <h4 className={sectionTitleClass}>
+                  <MicVocal className={iconClass} />
+                  Vocalists
+                </h4>
+                <div className={listClass}>
+                  {vocalists.map(renderMember)}
+                </div>
+              </div>}
+            {bandMembers.length > 0 && <div>
+                <h4 className={sectionTitleClass}>
+                  <Guitar className={iconClass} />
+                  Band
+                </h4>
+                <div className={listClass}>
+                  {bandMembers.map(renderMember)}
+                </div>
+              </div>}
+            {speakerMembers.length > 0 && <div className={vocalists.length > 0 && bandMembers.length > 0 ? "col-span-2" : ""}>
+                <h4 className={sectionTitleClass}>
+                  <BookOpen className={iconClass} />
+                  Speaker
+                </h4>
+                <div className={listClass}>
+                  {speakerMembers.map(renderMember)}
+                </div>
+              </div>}
+          </div>
+        ) : (
+          <>
         {vocalists.length > 0 && <div>
-            <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
-              <MicVocal className="h-3.5 w-3.5" />
+            <h4 className={sectionTitleClass}>
+              <MicVocal className={iconClass} />
               Vocalists
             </h4>
-            <div className="space-y-1.5">
+            <div className={listClass}>
               {vocalists.map(renderMember)}
             </div>
           </div>}
 
         {speakerMembers.length > 0 && <div>
-            <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
-              <BookOpen className="h-3.5 w-3.5" />
+            <h4 className={sectionTitleClass}>
+              <BookOpen className={iconClass} />
               Speaker
             </h4>
-            <div className="space-y-1.5">
+            <div className={listClass}>
               {speakerMembers.map(renderMember)}
             </div>
           </div>}
 
         {bandMembers.length > 0 && <div>
-            <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
-              <Guitar className="h-3.5 w-3.5" />
+            <h4 className={sectionTitleClass}>
+              <Guitar className={iconClass} />
               Band
             </h4>
-            <div className="space-y-1.5">
+            <div className={listClass}>
               {bandMembers.map(renderMember)}
             </div>
           </div>}
+          </>
+        )}
       </div>;
   };
   const renderProductionVideoSection = () => {
@@ -4371,37 +4433,45 @@ function BandRoster({
       // Not a weekend day or no split days - show all
       filteredVideoMembers = broadcastMembers;
     }
-    return <div className="space-y-4">
-        <div>
-          <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
-            <Volume2 className="h-3.5 w-3.5" />
+    if (compact && audioMembers.length === 0 && filteredVideoMembers.length === 0) {
+      return null;
+    }
+    const sectionTitleClass = compact
+      ? "mb-0.5 flex items-center gap-1 text-[11px] font-medium text-blue-400"
+      : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
+    const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
+    const listClass = compact ? "space-y-0" : "space-y-1.5";
+    return <div className={compact ? "grid grid-cols-2 gap-x-3 gap-y-1.5" : "space-y-4"}>
+        {(audioMembers.length > 0 || !compact) && <div>
+          <h4 className={sectionTitleClass}>
+            <Volume2 className={iconClass} />
             Production
           </h4>
-          {audioMembers.length > 0 ? <div className="space-y-1.5">
+          {audioMembers.length > 0 ? <div className={listClass}>
               {audioMembers.map(renderMember)}
             </div> : <p className="text-xs text-muted-foreground italic">No production members assigned</p>}
-        </div>
+        </div>}
 
-        <div>
-          <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5">
-            <Video className="h-3.5 w-3.5" />
+        {(filteredVideoMembers.length > 0 || !compact) && <div>
+          <h4 className={sectionTitleClass}>
+            <Video className={iconClass} />
             Video
-            {showDayLabel && <span className="text-xs text-muted-foreground font-normal ml-1">({dayLabel})</span>}
+            {showDayLabel && <span className="ml-1 text-[10px] font-normal text-muted-foreground">({dayLabel})</span>}
           </h4>
-          {filteredVideoMembers.length > 0 ? <div className="space-y-1.5">
+          {filteredVideoMembers.length > 0 ? <div className={listClass}>
               {filteredVideoMembers.map(renderMember)}
             </div> : <p className="text-xs text-muted-foreground italic">No video members assigned</p>}
-        </div>
+        </div>}
       </div>;
   };
 
   // Render grouped by ministry or flat if only one ministry
   if (showGrouped && ministriesToShow.length > 1) {
-    return <div className="mb-4 space-y-6">
+    return <div className={compact ? "space-y-2" : "mb-4 space-y-6"}>
         {outreachWidget}
-        <div className="grid grid-cols-1 gap-4">
+        <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-4"}>
           {/* Left Column: Vocalists + Band by Ministry */}
-          {showWorshipSections && <div className="space-y-6">
+          {showWorshipSections && <div className={compact ? "space-y-2" : "space-y-6"}>
             {ministriesToShow.map(ministry => {
             const members = getMembersForMinistry(ministry);
             if (members.length === 0) return null;
@@ -4423,9 +4493,9 @@ function BandRoster({
   const membersToShow = effectiveMinistryFilter ? roster.filter(m => !fallbackProductionVideoMembers.includes(m)) // Already filtered by hook
   : showGrouped && ministriesToShow.length === 1 ? getMembersForMinistry(ministriesToShow[0]) : roster.filter(m => !fallbackProductionVideoMembers.includes(m)); // Exclude production/video from band list
 
-  return <div className="mb-4">
+  return <div className={compact ? "" : "mb-4"}>
       {outreachWidget}
-      <div className="grid grid-cols-1 gap-4">
+      <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-4"}>
         {/* Left Column: Vocalists + Band */}
         {showWorshipSections && <div>
           {renderBandSection(membersToShow)}
@@ -4442,11 +4512,13 @@ function SongsPreview({
   campusId,
   ministryFilter,
   readOnly = false,
+  compact = false,
 }: {
   date: Date;
   campusId?: string | null;
   ministryFilter?: string;
   readOnly?: boolean;
+  compact?: boolean;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -4460,26 +4532,27 @@ function SongsPreview({
       </div>;
   }
   if (plansWithSongs.length === 0 || plansWithSongs.every((plan) => (plan.songs || []).length === 0)) {
-    return <p className="text-sm text-muted-foreground">No songs for this service.</p>;
+    return <p className={compact ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>No songs for this service.</p>;
   }
   const allSongs = plansWithSongs.flatMap(p => p.songs || []);
   return <div>
       {readOnly ? (
-        <div className="mb-2 flex justify-end">
-          <Badge variant="outline" className="text-xs">
+        <div className={compact ? "mb-1 flex justify-end" : "mb-2 flex justify-end"}>
+          <Badge variant="outline" className="text-[10px]">
             View only
           </Badge>
         </div>
       ) : null}
-      <div className="space-y-1.5">
-        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className="flex items-center justify-between text-sm py-1">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-foreground truncate">{song.title}</span>
-              {song.isFirstUse && <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4 shrink-0">
+      <div className={compact ? "space-y-0" : "space-y-1.5"}>
+        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
+              <span className="truncate text-foreground">{song.title}</span>
+              {song.isFirstUse && <Badge className="h-4 shrink-0 bg-ecc-teal px-1.5 py-0 text-[10px] text-white">
                   NEW
                 </Badge>}
             </div>
-            <div className="flex items-center gap-2 shrink-0 ml-2">
+            <div className="ml-2 flex shrink-0 items-center gap-1.5">
               {(() => {
                 const vocalists = Array.isArray((song as any).vocalists) && (song as any).vocalists.length > 0
                   ? (song as any).vocalists
@@ -4489,9 +4562,9 @@ function SongsPreview({
                   .map((v: any) => (v?.name || "").split(" ")[0])
                   .filter(Boolean)
                   .join(", ");
-                return <span className="text-xs text-primary/70">{label}</span>;
+                return <span className={`text-primary/70 ${compact ? "max-w-[4.5rem] truncate text-[10px]" : "text-xs"}`}>{label}</span>;
               })()}
-              {song.key && <Badge variant="outline" className="text-xs">
+              {song.key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
                   {song.key}
                 </Badge>}
             </div>
@@ -4507,6 +4580,7 @@ function CustomServiceSongsPreview({
   ministryType,
   serviceName,
   readOnly = false,
+  compact = false,
 }: {
   customServiceId: string;
   planDate: string;
@@ -4514,6 +4588,7 @@ function CustomServiceSongsPreview({
   ministryType: string;
   serviceName: string;
   readOnly?: boolean;
+  compact?: boolean;
 }) {
   const effectiveMinistryType = useMemo(
     () => getEffectiveCustomServiceMinistryType(ministryType, serviceName),
@@ -4532,34 +4607,36 @@ function CustomServiceSongsPreview({
   }
 
   if (!existingSet || draftSongs.length === 0) {
-    return <p className="text-sm text-muted-foreground">No songs for this service.</p>;
+    return <p className={compact ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>No songs for this service.</p>;
   }
 
-  return <div className="mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
-          <Music className="h-3.5 w-3.5" />
-          Song Set
-        </h3>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
-          {readOnly ? (
-            <Badge variant="outline" className="text-xs">
-              View only
-            </Badge>
-          ) : null}
+  return <div className={compact ? "" : "mb-4"}>
+      {!compact ? (
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="flex items-center gap-1.5 text-sm font-medium text-blue-400">
+            <Music className="h-3.5 w-3.5" />
+            Song Set
+          </h3>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs capitalize">{existingSet.status}</Badge>
+            {readOnly ? (
+              <Badge variant="outline" className="text-xs">
+                View only
+              </Badge>
+            ) : null}
+          </div>
         </div>
-      </div>
-      <div className="space-y-1.5">
-        {draftSongs.map((song, index) => <div key={song.id} className="flex items-center justify-between text-sm py-1">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-xs text-muted-foreground w-5">{index + 1}.</span>
-              <span className="text-foreground truncate">{song.song?.title || "Untitled Song"}</span>
+      ) : null}
+      <div className={compact ? "space-y-0" : "space-y-1.5"}>
+        {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className={`shrink-0 text-muted-foreground ${compact ? "w-3 text-[10px]" : "w-5 text-xs"}`}>{index + 1}.</span>
+              <span className="truncate text-foreground">{song.song?.title || "Untitled Song"}</span>
             </div>
-            {song.song_key && <Badge variant="outline" className="text-xs">{song.song_key}</Badge>}
+            {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
           </div>)}
       </div>
-      {!readOnly ? (
+      {!readOnly && !compact ? (
         <CustomServiceFlowTitleEditor
           campusId={campusId}
           ministryType={effectiveMinistryType}
@@ -4686,12 +4763,14 @@ function CustomServiceRoster({
   campusId,
   ministryType,
   serviceLabel,
+  compact = false,
 }: {
   customServiceId: string;
   assignmentDate: string;
   campusId: string;
   ministryType: string;
   serviceLabel?: string;
+  compact?: boolean;
 }) {
   const { user, isLoading: authLoading } = useAuth();
   const { data: assignments = [], isLoading } = useCustomServiceAssignments(customServiceId, assignmentDate);
@@ -4742,19 +4821,22 @@ function CustomServiceRoster({
     roles: Set<string>;
   }>()).values()).sort((a, b) => a.name.localeCompare(b.name));
 
-  return <div className="mb-4">
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-sm font-medium text-blue-400 flex items-center gap-1.5">
-          <MicVocal className="h-3.5 w-3.5" />
-          Team Roster
-        </h3>
-        <div className="ml-auto flex flex-wrap justify-end gap-2">
+  return <div className={compact ? "" : "mb-4"}>
+      <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
+        {!compact ? (
+          <h3 className="flex items-center gap-1.5 text-sm font-medium text-blue-400">
+            <MicVocal className="h-3.5 w-3.5" />
+            Team Roster
+          </h3>
+        ) : null}
+        <div className="ml-auto flex flex-wrap justify-end gap-1">
           <SetlistPushButton
             date={new Date(`${assignmentDate}T12:00:00`)}
             campusId={campusId}
             ministryType={effectiveMinistryType}
             customServiceId={customServiceId}
             serviceLabel={serviceLabel}
+            className={compact ? "h-6 gap-1 px-2 text-[10px]" : undefined}
           />
           <GroupTextButton
             phoneNumbers={grouped.map((member) => member.phone)}
@@ -4763,20 +4845,21 @@ function CustomServiceRoster({
               date: new Date(`${assignmentDate}T12:00:00`),
               serviceLabel,
             })}
+            className={compact ? "h-6 gap-1 px-2 text-[10px]" : undefined}
           />
         </div>
       </div>
-      <div className="space-y-1.5">
-        {grouped.map((member) => <div key={member.userId} className="flex items-center gap-2 rounded-md px-2 py-1.5 -mx-2">
-            <Avatar className="h-6 w-6">
+      <div className={compact ? "space-y-0" : "space-y-1.5"}>
+        {grouped.map((member) => <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 -mx-2"}`}>
+            <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
               <AvatarImage src={member.avatarUrl || undefined} />
-              <AvatarFallback className="text-[10px]">
+              <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
                 {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
               </AvatarFallback>
             </Avatar>
-            <span className="text-foreground flex-1 truncate">{member.name}</span>
-            <div className="flex flex-wrap gap-1 justify-end">
-              {Array.from(member.roles).sort().map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className="text-xs">
+            <span className="min-w-0 flex-1 truncate text-foreground">{member.name}</span>
+            <div className="flex flex-wrap justify-end gap-1">
+              {Array.from(member.roles).sort().map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
                   {POSITION_LABELS[role] || role}
                 </Badge>)}
             </div>
