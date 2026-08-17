@@ -420,7 +420,10 @@ serve(async (req: Request): Promise<Response> => {
           tag: "swap-confirmed",
           userIds: leaderIdsToNotify,
           // Scope delivery to the app this swap request belongs to.
-          metadata: { resourceAppKey: swapRequest.resource_app_key || "worship" },
+          metadata: {
+            resourceAppKey: swapRequest.resource_app_key || "worship",
+            ministryType: leaderAudience.ministryType,
+          },
         }),
       });
 

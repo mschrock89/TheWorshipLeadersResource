@@ -3898,6 +3898,27 @@ export type Database = {
           },
         ]
       }
+      user_push_ministry_prefs: {
+        Row: {
+          enabled: boolean
+          ministry_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          enabled?: boolean
+          ministry_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          ministry_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           admin_campus_id: string | null

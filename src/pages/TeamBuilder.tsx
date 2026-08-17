@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -89,6 +90,8 @@ import {
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
   isCampFamilyMinistry,
+  normalizeWeekendWorshipMinistryType,
+  normalizeSessionSetMinistryType,
 } from "@/lib/constants";
 import {
   TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME,
@@ -330,21 +333,107 @@ function sortTeamsForDisplay(sourceTeams: WorshipTeam[], isStudentApp = false) {
   });
 }
 
+const TEAM_BUILDER_MINISTRY_PREFERENCE_ORDER = [
+  "weekend",
+  "worship_night",
+  "kids_camp",
+  "student_camp",
+  "production",
+  "ms_hs_production",
+  "hs_production",
+  "video",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "ms_hs",
+  "evident",
+  "er",
+  "audition",
+  "prayer_night",
+] as const;
+
+function normalizeTeamBuilderMinistryParam(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "all") return null;
+
+  const normalized =
+    normalizeSessionSetMinistryType(normalizeWeekendWorshipMinistryType(trimmed)) || trimmed;
+  if (normalized === "weekend_team" || normalized === "speaker" || normalized === "sunday_am") {
+    return "weekend";
+  }
+
+  return normalized;
+}
+
+function resolveTeamBuilderMinistryFromTypes(ministryTypes: string[]): string | null {
+  const filters = new Set(
+    ministryTypes
+      .map((type) => normalizeTeamBuilderMinistryParam(type))
+      .filter((type): type is string => Boolean(type)),
+  );
+  if (filters.size === 0) return null;
+
+  return (
+    TEAM_BUILDER_MINISTRY_PREFERENCE_ORDER.find((type) => filters.has(type)) ||
+    Array.from(filters)[0]
+  );
+}
+
+function buildTeamBuilderDeepLink(params: {
+  campusId?: string | null;
+  periodId?: string | null;
+  ministryType?: string | null;
+}) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campus", params.campusId);
+  if (params.periodId) search.set("period", params.periodId);
+  const ministry = normalizeTeamBuilderMinistryParam(params.ministryType);
+  if (ministry) search.set("ministry", ministry);
+  const query = search.toString();
+  return query ? `/team-builder?${query}` : "/team-builder";
+}
+
+function readTeamBuilderSearchParams() {
+  if (typeof window === "undefined") {
+    return { campus: null as string | null, period: null as string | null, ministry: null as string | null };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return {
+    campus: params.get("campus"),
+    period: params.get("period"),
+    ministry: normalizeTeamBuilderMinistryParam(params.get("ministry")),
+  };
+}
+
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
   const { data: currentUserRoles = [] } = useUserRoles(user?.id);
+  const [searchParams] = useSearchParams();
   const resourceAppKey = getCurrentResourceAppKey();
   const isStudentTeamBuilder = isStudentResourceAppKey(resourceAppKey);
+  const initialSearch = useMemo(() => readTeamBuilderSearchParams(), []);
+  const appliedSearchKeyRef = useRef<string | null>(
+    initialSearch.campus || initialSearch.period || initialSearch.ministry
+      ? `${initialSearch.campus || ""}|${initialSearch.period || ""}|${initialSearch.ministry || ""}`
+      : null,
+  );
+  const pendingUrlPeriodIdRef = useRef<string | null>(initialSearch.period);
+  const urlMinistryLockedRef = useRef(Boolean(initialSearch.ministry) && !isStudentTeamBuilder);
+  const userChoseMinistryRef = useRef(false);
 
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const [selectedCampusId, setSelectedCampusId] = useState<string | null>(null);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
+  const [selectedCampusId, setSelectedCampusId] = useState<string | null>(initialSearch.campus);
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(initialSearch.period);
   const [selectedMinistryType, setSelectedMinistryType] = useState<string>(
-    isStudentTeamBuilder ? STUDENT_TEAM_BUILDER_MINISTRY_TYPE : "weekend",
+    isStudentTeamBuilder
+      ? STUDENT_TEAM_BUILDER_MINISTRY_TYPE
+      : initialSearch.ministry || "weekend",
   );
   const [showAutoBuilder, setShowAutoBuilder] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -472,30 +561,65 @@ export default function TeamBuilder() {
 
   const isAdminUser = adminCampusInfo?.isOrgAdmin || !!adminCampusInfo?.campusId;
 
+  // Apply campus/period/ministry from rotation push (and other) deep links.
+  useEffect(() => {
+    const campus = searchParams.get("campus");
+    const period = searchParams.get("period");
+    const ministry = normalizeTeamBuilderMinistryParam(searchParams.get("ministry"));
+    if (!campus && !period && !ministry) return;
+
+    const searchKey = `${campus || ""}|${period || ""}|${ministry || ""}`;
+    if (appliedSearchKeyRef.current === searchKey) return;
+    if (campus && campuses.length === 0) return;
+
+    if (campus && campuses.some((item) => item.id === campus)) {
+      setSelectedCampusId(campus);
+    }
+    if (ministry && !isStudentTeamBuilder) {
+      setSelectedMinistryType(ministry);
+      urlMinistryLockedRef.current = true;
+    }
+    pendingUrlPeriodIdRef.current = period;
+    appliedSearchKeyRef.current = searchKey;
+  }, [campuses, isStudentTeamBuilder, searchParams]);
+
   // Auto-select campus on load
   useEffect(() => {
-    if (campuses.length > 0 && !selectedCampusId && adminCampusInfo) {
-      if (adminCampusInfo.isOrgAdmin) {
-        const murfCentral = campuses.find(c => c.name === "Murfreesboro Central");
-        setSelectedCampusId(murfCentral?.id || campuses[0].id);
-      } else if (adminCampusInfo.campusId) {
-        setSelectedCampusId(adminCampusInfo.campusId);
-      } else {
-        setSelectedCampusId(campuses[0].id);
-      }
+    if (campuses.length === 0 || !adminCampusInfo) return;
+    if (selectedCampusId && campuses.some((campus) => campus.id === selectedCampusId)) {
+      return;
+    }
+
+    if (adminCampusInfo.isOrgAdmin) {
+      const murfCentral = campuses.find((c) => c.name === "Murfreesboro Central");
+      setSelectedCampusId(murfCentral?.id || campuses[0].id);
+    } else if (adminCampusInfo.campusId && campuses.some((campus) => campus.id === adminCampusInfo.campusId)) {
+      setSelectedCampusId(adminCampusInfo.campusId);
+    } else {
+      const homeCampus = campuses.find((campus) => campus.id === adminCampusInfo.homeCampusId);
+      setSelectedCampusId(homeCampus?.id || campuses[0].id);
     }
   }, [campuses, adminCampusInfo, selectedCampusId]);
 
   // Auto-select active period when campus changes
   useEffect(() => {
     if (periods.length > 0) {
+      const pendingUrlPeriodId = pendingUrlPeriodIdRef.current;
+      if (pendingUrlPeriodId && periods.some((period) => period.id === pendingUrlPeriodId)) {
+        pendingUrlPeriodIdRef.current = null;
+        if (selectedPeriodId !== pendingUrlPeriodId) {
+          setSelectedPeriodId(pendingUrlPeriodId);
+        }
+        return;
+      }
+
       if (selectedPeriodId && periods.some((period) => period.id === selectedPeriodId)) {
         return;
       }
 
       const active = periods.find(p => p.is_active);
       setSelectedPeriodId(active?.id || periods[0].id);
-    } else {
+    } else if (!pendingUrlPeriodIdRef.current) {
       setSelectedPeriodId(null);
     }
   }, [periods, selectedPeriodId]);
@@ -511,6 +635,11 @@ export default function TeamBuilder() {
       setSelectedMinistryType("weekend");
     }
   }, [isStudentTeamBuilder, selectedMinistryType]);
+
+  const handleMinistryTypeChange = (type: string) => {
+    userChoseMinistryRef.current = true;
+    setSelectedMinistryType(type);
+  };
 
   const previousApprovedBreakUserIds = useMemo(() => {
     const matchingBreaks = previousBreakRequests.filter(
@@ -702,6 +831,48 @@ export default function TeamBuilder() {
     );
   }, [members, selectedMinistryType]);
 
+  // Volunteers land on Weekend Worship by default. If they were assigned (or filled
+  // in) on another ministry this period, switch so "View My Team" matches the rotation.
+  useEffect(() => {
+    if (isAdminUser || isStudentTeamBuilder || !user?.id || !selectedPeriodId || membersLoading) {
+      return;
+    }
+    if (urlMinistryLockedRef.current || userChoseMinistryRef.current) {
+      return;
+    }
+
+    const myAssignments = members.filter((member) => member.user_id === user.id);
+    const myOverrides = activeDateOverrides.filter(
+      (override) => override.user_id === user.id && !isBlankTeamBuilderAssignment(override),
+    );
+    const isAssignedInSelectedMinistry =
+      myAssignments.some((member) =>
+        memberMatchesMinistryFilter(member.ministry_types, selectedMinistryType),
+      ) ||
+      myOverrides.some((override) =>
+        memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
+      );
+
+    if (isAssignedInSelectedMinistry) return;
+
+    const nextMinistry = resolveTeamBuilderMinistryFromTypes([
+      ...myAssignments.flatMap((member) => member.ministry_types || []),
+      ...myOverrides.flatMap((override) => override.ministry_types || []),
+    ]);
+    if (nextMinistry && nextMinistry !== selectedMinistryType) {
+      setSelectedMinistryType(nextMinistry);
+    }
+  }, [
+    activeDateOverrides,
+    isAdminUser,
+    isStudentTeamBuilder,
+    members,
+    membersLoading,
+    selectedMinistryType,
+    selectedPeriodId,
+    user?.id,
+  ]);
+
   const blackoutConflictDatesByTeamSlot = useMemo(() => {
     const teamScheduleDates = scheduleEntries.reduce<Map<string, Set<string>>>((acc, entry) => {
       if (!acc.has(entry.team_id)) {
@@ -791,6 +962,38 @@ export default function TeamBuilder() {
   }, [activeDateOverrides, selectedMinistryType]);
 
   const displayTeamIdSet = useMemo(() => new Set(displayTeamIds), [displayTeamIds]);
+
+  const volunteerViewAssignments = useMemo(() => {
+    const byKey = new Map<string, TeamMemberAssignment>();
+
+    visibleAssignments.forEach((assignment) => {
+      if (!assignment.user_id) return;
+      byKey.set(`${assignment.team_id}:${assignment.user_id}:${assignment.position_slot || ""}`, assignment);
+    });
+
+    ministryVisibleDateOverrides.forEach((override) => {
+      if (!override.user_id || isBlankTeamBuilderAssignment(override)) return;
+      if (!displayTeamIdSet.has(override.team_id)) return;
+
+      const key = `${override.team_id}:${override.user_id}:${override.position_slot || ""}`;
+      if (byKey.has(key)) return;
+
+      byKey.set(key, {
+        id: override.id,
+        team_id: override.team_id,
+        user_id: override.user_id,
+        member_name: override.member_name,
+        position: override.position,
+        position_slot: override.position_slot,
+        display_order: 0,
+        rotation_period_id: override.rotation_period_id,
+        ministry_types: override.ministry_types,
+        service_day: getServiceDayForDate(override.schedule_date),
+      });
+    });
+
+    return Array.from(byKey.values());
+  }, [displayTeamIdSet, ministryVisibleDateOverrides, visibleAssignments]);
 
   const dateOverridesByTeamSlot = useMemo(() => {
     return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
@@ -1091,17 +1294,24 @@ export default function TeamBuilder() {
       .sort((a, b) => a.memberName.localeCompare(b.memberName));
   }, [availableMembers, selectedPeriod?.name, selectedPeriodBreakUserIds]);
 
+  const teamBuilderDeepLink = buildTeamBuilderDeepLink({
+    campusId: selectedCampusId,
+    periodId: selectedPeriodId,
+    ministryType: selectedMinistryType,
+  });
+
   const publishNotifications = useMemo<RotationPublishNotification[]>(() => {
     const assignmentNotifications = rotationPushPreviewRecipients.flatMap((recipient) =>
       recipient.teams.map((teamEntry) => ({
         userId: recipient.userId,
         title: `Welcome to ${teamEntry.teamName}`,
         message: teamEntry.message,
-        url: "/team-builder",
+        url: teamBuilderDeepLink,
         tag: `rotation-publish-${selectedPeriodId || "unknown"}-${teamEntry.teamId}-${recipient.userId}`,
         metadata: {
           type: "rotation_assignment",
           rotationPeriodId: selectedPeriodId,
+          campusId: selectedCampusId,
           teamId: teamEntry.teamId,
           teamName: teamEntry.teamName,
           ministryType: selectedMinistryType,
@@ -1113,11 +1323,12 @@ export default function TeamBuilder() {
       userId: recipient.userId,
       title: recipient.title,
       message: recipient.message,
-      url: "/team-builder",
+      url: teamBuilderDeepLink,
       tag: `rotation-break-${selectedPeriodId || "unknown"}-${recipient.userId}`,
       metadata: {
         type: "rotation_break",
         rotationPeriodId: selectedPeriodId,
+        campusId: selectedCampusId,
         ministryType: selectedMinistryType,
       },
     }));
@@ -1126,8 +1337,10 @@ export default function TeamBuilder() {
   }, [
     breakPushPreviewRecipients,
     rotationPushPreviewRecipients,
+    selectedCampusId,
     selectedMinistryType,
     selectedPeriodId,
+    teamBuilderDeepLink,
   ]);
 
   const assignableMembersForSlot = useMemo(() => {
@@ -1712,6 +1925,7 @@ export default function TeamBuilder() {
   };
 
   const isLoading = periodsLoading || teamsLoading || membersLoading || authLoading || campusesLoading || adminCampusLoading;
+  const canExportPdf = !isLoading && teamCards.length > 0 && !!selectedCampusId && !!selectedPeriodId;
   const utilityActionButtonClassName =
     "border-blue-500/60 bg-black text-white hover:bg-blue-500/10 hover:border-blue-400 hover:text-white";
   const primaryAutoBuildButtonClassName =
@@ -1729,9 +1943,9 @@ export default function TeamBuilder() {
         selectedPeriodId={selectedPeriodId}
         onPeriodChange={setSelectedPeriodId}
         selectedMinistryType={selectedMinistryType}
-        onMinistryTypeChange={setSelectedMinistryType}
+        onMinistryTypeChange={handleMinistryTypeChange}
         onExportPdf={isAdminUser ? handleExportPdf : undefined}
-        canExportPdf={!isLoading && teamCards.length > 0 && !!selectedCampusId && !!selectedPeriodId}
+        canExportPdf={canExportPdf}
       />
 
       {/* No periods message */}
@@ -2059,7 +2273,7 @@ export default function TeamBuilder() {
               <MyTeamView
                 userId={user?.id || ""}
                 teams={displayTeams}
-                members={visibleAssignments}
+                members={volunteerViewAssignments}
                 isLoading={membersLoading}
                 periodName={selectedPeriod?.name}
                 periods={periods}

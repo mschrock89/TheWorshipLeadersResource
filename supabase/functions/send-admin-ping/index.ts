@@ -495,7 +495,14 @@ serve(async (req: Request): Promise<Response> => {
             contextType: "admin-ping",
             contextId: ping.id,
             createdBy: user.id,
-            metadata: { resourceAppKey: targetAppKey, campInstanceId, filters },
+            metadata: {
+              resourceAppKey: targetAppKey,
+              campInstanceId,
+              filters,
+              ministryTypes: (body.ministryKeys || []).filter(
+                (key) => typeof key === "string" && key.length > 0 && !key.startsWith("team:"),
+              ),
+            },
           }),
         });
         const pushResult = await pushResponse.json();

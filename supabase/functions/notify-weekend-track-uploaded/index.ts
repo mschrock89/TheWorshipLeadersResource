@@ -131,6 +131,7 @@ serve(async (req) => {
     const draftSet = playlist.draft_sets as {
       id?: string;
       plan_date?: string;
+      ministry_type?: string | null;
     } | null;
     if (!draftSet?.id) {
       return new Response(
@@ -218,6 +219,7 @@ serve(async (req) => {
             playlistId,
             referenceTrackId,
             type: "weekend_track_uploaded",
+            ministryType: draftSet.ministry_type || playlist.ministry_type || "weekend_team",
             // Weekend tracks are a Worship-only feature; scope to worship subscriptions.
             resourceAppKey: "worship",
           },

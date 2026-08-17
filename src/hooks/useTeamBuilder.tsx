@@ -483,6 +483,7 @@ export interface AdminCampusScope {
   isOrgAdmin: boolean;
   campusId: string | null;
   campusIds: string[];
+  homeCampusId: string | null;
 }
 
 export function useAdminCampusId() {
@@ -527,6 +528,7 @@ export function useAdminCampusId() {
           isOrgAdmin: true,
           campusId: null,
           campusIds: [],
+          homeCampusId: fallbackCampusId,
         } satisfies AdminCampusScope;
       }
 
@@ -546,6 +548,7 @@ export function useAdminCampusId() {
           isOrgAdmin: false,
           campusId: campusAdminRole.admin_campus_id,
           campusIds: campusAdminIds,
+          homeCampusId: fallbackCampusId,
         };
       }
 
@@ -564,6 +567,7 @@ export function useAdminCampusId() {
         isOrgAdmin: false,
         campusId: campusAdminRole?.admin_campus_id || (hasCampusScopedBuilderRole ? fallbackCampusId : null),
         campusIds: campusAdminIds,
+        homeCampusId: fallbackCampusId,
       } satisfies AdminCampusScope;
     },
   });

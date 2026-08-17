@@ -142,7 +142,7 @@ export function TeamBuilderHeader({
       </div>
 
       {/* Period and Ministry Selectors - same row, right-justified */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end mt-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end mt-4">
         <Select
           value={selectedPeriodId || ""}
           onValueChange={onPeriodChange}
@@ -185,7 +185,7 @@ export function TeamBuilderHeader({
             variant="outline"
             onClick={onExportPdf}
             disabled={!canExportPdf}
-            className="w-full sm:w-auto"
+            className="w-full shrink-0 sm:w-auto"
             title="Export all teams for this campus and ministry as a PDF"
           >
             <FileDown className="h-4 w-4" />

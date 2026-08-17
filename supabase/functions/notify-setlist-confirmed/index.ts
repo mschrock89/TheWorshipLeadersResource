@@ -170,7 +170,10 @@ serve(async (req) => {
       tag: `setlist-confirm-${draftSetId}-${confirmerId}`,
       userIds: recipientUserIds,
       // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
-      metadata: { resourceAppKey: "worship" },
+      metadata: {
+        resourceAppKey: "worship",
+        ministryType: draftSet.ministry_type,
+      },
     };
 
     // 5. Send push notification via the existing function

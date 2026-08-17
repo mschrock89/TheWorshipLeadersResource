@@ -39,6 +39,7 @@ interface AppNotification {
   dateStr: string;
   positions: string[];
   teams: string[];
+  ministryTypes: string[];
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -175,9 +176,13 @@ serve(async (req: Request): Promise<Response> => {
             dateStr,
             positions: [],
             teams: [],
+            ministryTypes: [],
           });
           if (teamName && !entry.teams.includes(teamName)) {
             entry.teams.push(teamName);
+          }
+          if (schedule.ministry_type && !entry.ministryTypes.includes(schedule.ministry_type)) {
+            entry.ministryTypes.push(schedule.ministry_type);
           }
           for (const position of positionsByUser[userId] || []) {
             if (!entry.positions.includes(position)) {
@@ -236,7 +241,10 @@ serve(async (req: Request): Promise<Response> => {
         tag: `schedule-reminder-${entry.dateStr}`,
         userIds: [entry.userId],
         contextType: "schedule-reminder",
-        metadata: { resourceAppKey: entry.appKey },
+        metadata: {
+          resourceAppKey: entry.appKey,
+          ministryTypes: entry.ministryTypes,
+        },
       }, entry.userId);
     }
 
