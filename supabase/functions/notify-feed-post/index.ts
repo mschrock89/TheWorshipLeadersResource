@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveFeedAudienceUserIds } from "../_shared/feedAudienceRecipients.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,14 +9,22 @@ const corsHeaders = {
 };
 
 // Frontend-invoked fallback for feed-post pushes (mirrors notify-chat-message).
-// The Postgres trigger remains the server-side guarantee; send-push-notification
-// dedupes by the feed-post-<id> tag so the two paths never double-send.
+// The Postgres trigger remains the server-side guarantee for immediate posts;
+// scheduled / DEVO go-live is handled here (cron + client). send-push-notification
+// dedupes by tag so the two paths never double-send.
 
 interface FeedPostNotifyRequest {
   postId?: string;
   resourceAppKey?: string;
   campusId?: string | null;
   campInstanceId?: string | null;
+  ministryType?: string | null;
+}
+
+function bearerToken(authHeader: string | null): string | null {
+  if (!authHeader) return null;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -28,6 +37,8 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const authHeader = req.headers.get("Authorization");
+    const token = bearerToken(authHeader);
+    const isServiceRole = Boolean(token && token === supabaseServiceKey);
 
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization header" }), {
@@ -36,19 +47,21 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const {
-      data: { user },
-      error: userError,
-    } = await userClient.auth.getUser();
-
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (!isServiceRole) {
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
       });
+      const {
+        data: { user },
+        error: userError,
+      } = await userClient.auth.getUser();
+
+      if (userError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const body: FeedPostNotifyRequest = await req.json().catch(() => ({}));
@@ -63,7 +76,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: post, error: postError } = await supabase
       .from("feed_posts")
-      .select("id, title, category, created_by, resource_app_key, campus_id, camp_instance_id")
+      .select("id, title, category, scripture_reference, created_by, resource_app_key, campus_id, camp_instance_id, ministry_type")
       .eq("id", body.postId)
       .maybeSingle();
 
@@ -74,8 +87,17 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
+    const { data: assignment } = await supabase
+      .from("devo_assignments")
+      .select("id, chapter_reference, series_title")
+      .eq("feed_post_id", post.id)
+      .neq("status", "cancelled")
+      .maybeSingle();
+
+    const isDevo = Boolean(assignment);
     const campInstanceId = post.camp_instance_id || body.campInstanceId || null;
     const campusId = post.campus_id || body.campusId || null;
+    const ministryType = post.ministry_type || body.ministryType || null;
     const resourceAppKey = post.resource_app_key || body.resourceAppKey || null;
     let campResourceAppKeys: string[] = [];
 
@@ -93,46 +115,14 @@ serve(async (req: Request): Promise<Response> => {
       campResourceAppKeys = Array.isArray(camp?.resource_app_keys) ? camp.resource_app_keys : [];
     }
 
-    // Recipients: everyone with a subscription in this app except the author.
-    // Main Feed posts are further limited to users assigned to that campus.
-    let subQuery = supabase
-      .from("push_subscriptions")
-      .select("user_id")
-      .not("user_id", "is", null)
-      .neq("user_id", post.created_by);
-
-    if (campResourceAppKeys.length > 0) {
-      subQuery = subQuery.in("resource_app_key", campResourceAppKeys);
-    } else if (resourceAppKey) {
-      subQuery = subQuery.eq("resource_app_key", resourceAppKey);
-    }
-
-    const { data: subs, error: subsError } = await subQuery;
-    if (subsError) {
-      console.error("Error fetching feed push recipients:", subsError);
-      throw new Error("Failed to fetch recipients");
-    }
-
-    let recipientUserIds = Array.from(
-      new Set((subs || []).map((s: { user_id: string }) => s.user_id).filter(Boolean)),
-    );
-
-    if (!campInstanceId && campusId && recipientUserIds.length > 0) {
-      const { data: campusUsers, error: campusUsersError } = await supabase
-        .from("user_campuses")
-        .select("user_id")
-        .eq("campus_id", campusId)
-        .in("user_id", recipientUserIds);
-
-      if (campusUsersError) {
-        console.error("Error filtering feed push recipients by campus:", campusUsersError);
-        throw new Error("Failed to filter recipients by campus");
-      }
-
-      recipientUserIds = Array.from(
-        new Set((campusUsers || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
-      );
-    }
+    const recipientUserIds = await resolveFeedAudienceUserIds(supabase, {
+      resourceAppKey,
+      campusId,
+      ministryType: isDevo && !campInstanceId ? ministryType : null,
+      campInstanceId,
+      campResourceAppKeys,
+      excludeUserId: post.created_by,
+    });
 
     if (recipientUserIds.length === 0) {
       return new Response(
@@ -151,18 +141,37 @@ serve(async (req: Request): Promise<Response> => {
     const titlePreview = (post.title || "New post").length > 97
       ? `${post.title.slice(0, 97)}...`
       : (post.title || "New post");
+    const chapter = assignment?.chapter_reference || post.scripture_reference || "";
+    const seriesTitle = assignment?.series_title || "DEVO";
 
-    let pushSent = 0;
-    let pushFailed = 0;
-    let pushError: string | null = null;
-    try {
-      const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({
+    const pushPayload = isDevo
+      ? {
+          title: "New DEVO is live",
+          message: chapter
+            ? `${authorName} shared ${chapter}: ${titlePreview}`
+            : `${authorName} shared a new DEVO: ${titlePreview}`,
+          url: campInstanceId ? "/camp" : "/feed",
+          tag: `devo-live-${post.id}`,
+          userIds: recipientUserIds,
+          contextType: "devo-live",
+          contextId: post.id,
+          createdBy: post.created_by,
+          metadata: {
+            postId: post.id,
+            category: post.category,
+            resourceAppKey,
+            campusId,
+            campInstanceId,
+            ministryType,
+            vars: {
+              author: authorName,
+              chapter,
+              title_preview: titlePreview,
+              series_title: seriesTitle,
+            },
+          },
+        }
+      : {
           title: campInstanceId ? "New Camp Feed Post" : "New Post in The Feed",
           message: `${authorName} shared: ${titlePreview}`,
           url: campInstanceId ? "/camp" : "/feed",
@@ -177,8 +186,24 @@ serve(async (req: Request): Promise<Response> => {
             resourceAppKey,
             campusId,
             campInstanceId,
+            vars: {
+              author: authorName,
+              title_preview: titlePreview,
+            },
           },
-        }),
+        };
+
+    let pushSent = 0;
+    let pushFailed = 0;
+    let pushError: string | null = null;
+    try {
+      const pushResponse = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify(pushPayload),
       });
 
       if (!pushResponse.ok) {
@@ -202,6 +227,7 @@ serve(async (req: Request): Promise<Response> => {
         pushSent,
         pushFailed,
         pushError,
+        contextType: pushPayload.contextType,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

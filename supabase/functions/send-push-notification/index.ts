@@ -188,6 +188,9 @@ function inferDefinitionKey(payload: PushPayload): string | null {
   if (tag.startsWith("chat-activity-")) return "chat-activity";
   if (tag.startsWith("chat-message-")) return "chat-message";
   if (tag.startsWith("feed-post-")) return "feed-post";
+  if (tag.startsWith("devo-live-")) return "devo-live";
+  if (tag.startsWith("devo-post-reminder-")) return "devo-post-reminder";
+  if (tag.startsWith("devo-assigned-")) return "devo-assigned";
   if (tag.startsWith("event-")) return "event";
   if (tag.startsWith("drum-tech-comment-")) return "drum-tech-comment";
   if (tag.startsWith("break-request-")) return "break-request";
@@ -810,7 +813,9 @@ serve(async (req) => {
       payload.contextType?.startsWith("chat-") ||
       payload.tag?.startsWith("chat-") ||
       payload.contextType === "feed-post" ||
-      payload.tag?.startsWith("feed-post-");
+      payload.tag?.startsWith("feed-post-") ||
+      payload.contextType === "devo-live" ||
+      payload.tag?.startsWith("devo-live-");
 
     if (!payload.skipLogging && isDedupablePush && payload.tag) {
       const { data: existingLog, error: existingLogError } = await supabase
