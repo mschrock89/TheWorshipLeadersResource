@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -35,6 +36,8 @@ import { BreakRequestsWidget } from "@/components/team-builder/BreakRequestsWidg
 import { TeamScheduleWidget } from "@/components/team-builder/TeamScheduleWidget";
 import { TeamTemplateDialog } from "@/components/team-builder/TeamTemplateDialog";
 import { EditTeamDialog, TeamEditorValue } from "@/components/team-builder/EditTeamDialog";
+import { buildTeamScheduleExportDocument } from "@/components/team-builder/buildTeamScheduleExport";
+import { printTeamScheduleDocument } from "@/components/team-builder/printTeamScheduleDocument";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import {
   useRotationPeriodsForCampus,
@@ -1647,6 +1650,49 @@ export default function TeamBuilder() {
     setPublishConfirmOpen(false);
   };
 
+  const handleExportPdf = () => {
+    if (!selectedCampus || !selectedPeriod || teamCards.length === 0) {
+      toast.error("Select a campus, ministry, and rotation with teams before exporting.");
+      return;
+    }
+
+    try {
+      const exportDocument = buildTeamScheduleExportDocument({
+        campusName: selectedCampus.name,
+        campus: selectedCampus,
+        ministryType: selectedMinistryType,
+        periodName: selectedPeriod.name,
+        periodStartDate: selectedPeriod.start_date,
+        periodEndDate: selectedPeriod.end_date,
+        cards: teamCards.map(({ key, team, title, serviceDay }) => ({
+          key,
+          team,
+          title,
+          members: serviceDay
+            ? getMembersForTeamServiceDay(team.id, serviceDay)
+            : getMembersForTeam(team.id),
+          slotScheduleDates: !supportsDateSpecificAssignments
+            ? []
+            : filterScheduleDatesForServiceDay(
+                scheduleDatesByTeam[team.id] || [],
+                serviceDay,
+              ),
+          slotDateOverrides: !supportsDateSpecificAssignments
+            ? {}
+            : filterOverridesByServiceDay(
+                dateOverridesByTeamSlot[team.id] || {},
+                serviceDay,
+              ),
+        })),
+      });
+
+      printTeamScheduleDocument(exportDocument);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to export schedule PDF";
+      toast.error(message);
+    }
+  };
+
   const handleCrossCheck = async () => {
     if (!selectedPeriodId || !selectedPeriod) return;
 
@@ -1681,6 +1727,8 @@ export default function TeamBuilder() {
         onPeriodChange={setSelectedPeriodId}
         selectedMinistryType={selectedMinistryType}
         onMinistryTypeChange={setSelectedMinistryType}
+        onExportPdf={isAdminUser ? handleExportPdf : undefined}
+        canExportPdf={!isLoading && teamCards.length > 0 && !!selectedCampusId && !!selectedPeriodId}
       />
 
       {/* No periods message */}
