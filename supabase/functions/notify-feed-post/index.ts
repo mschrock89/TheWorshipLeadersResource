@@ -186,6 +186,7 @@ serve(async (req: Request): Promise<Response> => {
             resourceAppKey,
             campusId,
             campInstanceId,
+            ministryType,
             vars: {
               author: authorName,
               title_preview: titlePreview,

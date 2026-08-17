@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Users, Building2, Music, Eye, Home } from "lucide-react";
+import { Users, Building2, Music, Eye, Home, FileDown } from "lucide-react";
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -58,6 +59,8 @@ interface TeamBuilderHeaderProps {
   onPeriodChange: (periodId: string) => void;
   selectedMinistryType: string;
   onMinistryTypeChange: (type: string) => void;
+  onExportPdf?: () => void;
+  canExportPdf?: boolean;
 }
 
 export function TeamBuilderHeader({
@@ -71,6 +74,8 @@ export function TeamBuilderHeader({
   onPeriodChange,
   selectedMinistryType,
   onMinistryTypeChange,
+  onExportPdf,
+  canExportPdf = false,
 }: TeamBuilderHeaderProps) {
   const isStudentTeamBuilder = isStudentResourceAppKey(getCurrentResourceAppKey());
   const ministryFilterOrder = isStudentTeamBuilder
@@ -137,7 +142,7 @@ export function TeamBuilderHeader({
       </div>
 
       {/* Period and Ministry Selectors - same row, right-justified */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end mt-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end mt-4">
         <Select
           value={selectedPeriodId || ""}
           onValueChange={onPeriodChange}
@@ -173,6 +178,19 @@ export function TeamBuilderHeader({
               ))}
             </SelectContent>
           </Select>
+        )}
+
+        {onExportPdf && (
+          <Button
+            variant="outline"
+            onClick={onExportPdf}
+            disabled={!canExportPdf}
+            className="w-full shrink-0 sm:w-auto"
+            title="Export all teams for this campus and ministry as a PDF"
+          >
+            <FileDown className="h-4 w-4" />
+            Export PDF
+          </Button>
         )}
       </div>
 

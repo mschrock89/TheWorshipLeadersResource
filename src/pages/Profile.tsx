@@ -10,6 +10,7 @@ import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from 
 import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
+import { PushMinistryPreferences } from "@/components/settings/PushMinistryPreferences";
 import { TestPushNotification } from "@/components/settings/TestPushNotification";
 import { PromoteAuditionCandidateDialog } from "@/components/team/PromoteAuditionCandidateDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1663,6 +1664,7 @@ export default function Profile() {
               {isOwnProfile && (
                 <div className="space-y-2 rounded-lg border p-4 bg-muted/30">
                   <PushNotificationToggle />
+                  <PushMinistryPreferences />
                   <TestPushNotification />
                 </div>
               )}

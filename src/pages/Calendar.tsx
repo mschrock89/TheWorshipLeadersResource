@@ -1995,26 +1995,15 @@ function StandardCalendar() {
                         <CoverButton onClick={() => setIsCoverOpen(true)} />
                       </>
                     ) : null}
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground">
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                }
-              >
-                    {/* Service Times */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-[11px] text-muted-foreground">
-                            <span className="font-medium text-foreground/70">{st.campusName}</span>
-                            {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
-                          </span>)}
-                    {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 && <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-5 gap-0.5 px-1.5 text-[10px]" title="Add extra Friday, Saturday, or Sunday services for this specific weekend." onClick={openServiceOverrideDialog}>
-                              <Plus className="h-2.5 w-2.5" />
-                              Add Service Time
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-lg">
+                    {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 ? (
+                      <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground" title="Add extra Friday, Saturday, or Sunday services for this specific weekend." onClick={openServiceOverrideDialog}>
+                            <Plus className="h-3 w-3" />
+                            <span className="sr-only">Add Service Time</span>
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
                             <DialogHeader>
                               <DialogTitle>Add Weekend-Only Service Times</DialogTitle>
                             </DialogHeader>
@@ -2084,7 +2073,20 @@ function StandardCalendar() {
                               </div>
                             </div>
                           </DialogContent>
-                        </Dialog>}
+                      </Dialog>
+                    ) : null}
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                }
+              >
+                    {/* Service Times */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-[11px] text-muted-foreground">
+                            <span className="font-medium text-foreground/70">{st.campusName}</span>
+                            {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
+                          </span>)}
                     </div>
 
                 {selectedDateOverrides.length > 0 && <div className="mb-2 rounded-md border border-dashed border-border bg-muted/30 p-2">
@@ -2110,10 +2112,6 @@ function StandardCalendar() {
 
                 <div className="mt-1 min-h-0 min-w-0 flex-1 space-y-2">
                   <div className="min-w-0">
-                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
-                      <MicVocal className="h-3.5 w-3.5" />
-                      Team Roster
-                    </p>
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
@@ -4875,12 +4873,6 @@ function CustomServiceRoster({
 
   return <div className={compact ? "" : "mb-4"}>
       <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
-        {!compact ? (
-          <h3 className="flex items-center gap-1.5 text-sm font-medium text-blue-400">
-            <MicVocal className="h-3.5 w-3.5" />
-            Team Roster
-          </h3>
-        ) : null}
         <div className="ml-auto flex flex-wrap justify-end gap-1">
           <SetlistPushButton
             date={new Date(`${assignmentDate}T12:00:00`)}

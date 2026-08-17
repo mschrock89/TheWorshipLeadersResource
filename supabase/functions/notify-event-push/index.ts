@@ -266,6 +266,7 @@ serve(async (req: Request): Promise<Response> => {
           eventDate: event.event_date,
           location: event.location,
           targetGenders: Array.from(targetGenders),
+          ministryTypes: eventMinistryTypes,
           resourceAppKey: "worship",
         },
       }),

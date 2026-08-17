@@ -334,7 +334,7 @@ serve(async (req: Request): Promise<Response> => {
           userIds: recipientUserIds,
           contextType: "team-schedule-date",
           // Scope delivery to the app this scheduled team belongs to.
-          metadata: { resourceAppKey: matchedSchedules[0]?.resource_app_key || "worship" },
+          metadata: { resourceAppKey: matchedSchedules[0]?.resource_app_key || "worship", ministryType },
         }),
       });
 

@@ -678,6 +678,7 @@ serve(async (req: Request): Promise<Response> => {
       teamId: swapRequest.team_id,
       originalDate: swapRequest.original_date,
       swapDate: swapRequest.swap_date,
+      ministryType: scheduleMinistryType,
       // Scope delivery to the app this swap request belongs to.
       resourceAppKey: swapRequest.resource_app_key || "worship",
     };

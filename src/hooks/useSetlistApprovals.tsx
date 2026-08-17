@@ -466,7 +466,10 @@ export function useSubmitForApproval() {
             contextType: "pending-approval",
             contextId: draftSetId,
             // Setlists are a Worship-only feature; scope to worship subscriptions.
-            metadata: { resourceAppKey: "worship" },
+            metadata: {
+              resourceAppKey: "worship",
+              ministryType: thisSet.ministry_type,
+            },
           },
         });
 
@@ -716,6 +719,12 @@ export function useRejectSetlist() {
         .eq("id", approvalId)
         .single();
 
+      const { data: rejectedSet } = await supabase
+        .from("draft_sets")
+        .select("ministry_type")
+        .eq("id", draftSetId)
+        .maybeSingle();
+
       if (approval?.submitted_by) {
         try {
           await supabase.functions.invoke("send-push-notification", {
@@ -727,7 +736,10 @@ export function useRejectSetlist() {
               contextType: "setlist-rejected",
               contextId: draftSetId,
               // Setlists are a Worship-only feature; scope to worship subscriptions.
-              metadata: { resourceAppKey: "worship" },
+              metadata: {
+                resourceAppKey: "worship",
+                ministryType: rejectedSet?.ministry_type,
+              },
             },
           });
         } catch (e) {

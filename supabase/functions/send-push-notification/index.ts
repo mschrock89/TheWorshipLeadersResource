@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  isMutedForAllPushMinistries,
+  normalizePushMinistryType,
+  readPushMinistryTypesFromMetadata,
+} from "../_shared/pushMinistryPrefs.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -750,6 +755,64 @@ serve(async (req) => {
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Opt-out filter: drop recipients who muted every ministry on this notification.
+    // Admin test pushes and payloads without ministry context are left unchanged.
+    const notificationMinistryTypes = isAdminTestPush
+      ? []
+      : readPushMinistryTypesFromMetadata(payload.metadata);
+
+    if (notificationMinistryTypes.length > 0 && recipientUserIds.length > 0) {
+      const { data: mutedPrefs, error: mutedPrefsError } = await supabase
+        .from("user_push_ministry_prefs")
+        .select("user_id, ministry_type")
+        .in("user_id", recipientUserIds)
+        .eq("enabled", false);
+
+      if (mutedPrefsError) {
+        console.warn(
+          "Could not load user_push_ministry_prefs (continuing without filter):",
+          mutedPrefsError.message,
+        );
+      } else if (mutedPrefs?.length) {
+        const mutedByUser = new Map<string, Set<string>>();
+        for (const row of mutedPrefs) {
+          const normalized = normalizePushMinistryType(row.ministry_type);
+          if (!normalized) continue;
+          const set = mutedByUser.get(row.user_id) ?? new Set<string>();
+          set.add(normalized);
+          mutedByUser.set(row.user_id, set);
+        }
+
+        const beforeCount = recipientUserIds.length;
+        recipientUserIds = recipientUserIds.filter(
+          (userId) => !isMutedForAllPushMinistries(mutedByUser.get(userId), notificationMinistryTypes),
+        );
+        const dropped = beforeCount - recipientUserIds.length;
+        if (dropped > 0) {
+          console.log(
+            `Push ministry prefs filtered ${dropped} recipient(s) for ministries: ${notificationMinistryTypes.join(", ")}`,
+          );
+        }
+
+        if (recipientUserIds.length === 0) {
+          console.log("Push skipped: all recipients muted these ministries");
+          return new Response(
+            JSON.stringify({
+              success: true,
+              sent: 0,
+              failed: 0,
+              total: 0,
+              recipientUserCount: 0,
+              recipientDeviceCount: 0,
+              skipped: true,
+              reason: "All recipients muted ministry preferences",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
     }
 
     let query = supabase.from("push_subscriptions").select("*");
