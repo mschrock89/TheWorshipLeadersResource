@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const LOOKBACK_MS = 20 * 60 * 1000;
+const REMINDER_LEAD_MS = 5 * 24 * 60 * 60 * 1000;
 
 function formatPostDay(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -84,7 +85,9 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 1) DEVO assignment reminders at scheduled go-live time
+    // 1) DEVO assignment reminders 5 days before scheduled go-live.
+    // Catch-up: if T-5 has already passed but the post is not live yet, send once.
+    const reminderDueBy = new Date(now.getTime() + REMINDER_LEAD_MS).toISOString();
     const { data: dueAssignments, error } = await supabase
       .from("devo_assignments")
       .select(
@@ -93,8 +96,8 @@ serve(async (req: Request): Promise<Response> => {
       .in("status", ["assigned", "guide_uploaded", "scheduled"])
       .is("reminder_push_sent_at", null)
       .not("scheduled_post_at", "is", null)
-      .gte("scheduled_post_at", windowStart)
-      .lte("scheduled_post_at", windowEnd);
+      .gt("scheduled_post_at", windowEnd)
+      .lte("scheduled_post_at", reminderDueBy);
 
     if (error) throw error;
 
@@ -114,10 +117,10 @@ serve(async (req: Request): Promise<Response> => {
             Authorization: `Bearer ${supabaseServiceKey}`,
           },
           body: JSON.stringify({
-            title: `Time to post ${chapter}`,
+            title: `Time to write ${chapter}`,
             message:
-              `Your ${chapter} DEVO is going live now on The Feed. Open The Feed to see it — or finish writing in DEVO if you have not yet. Need the how-to? Profile badge → DEVO.`,
-            url: `/feed?compose=scripture&reference=${encodeURIComponent(chapter)}`,
+              `Your ${chapter} DEVO goes live ${formatPostDay(scheduled)} at ${formatPostTime(scheduled)}. Open DEVO to write your post — it publishes to The Feed at go-live. Need the how-to? Profile badge → DEVO.`,
+            url: "/devo",
             tag: `devo-post-reminder-${row.id}`,
             userIds: [row.assignee_id],
             contextType: "devo-post-reminder",
@@ -152,7 +155,8 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 2) Notify The Feed audience when scheduled posts go live
+    // 2) Notify The Feed audience when scheduled posts go live.
+    // DEVO posts send a dedicated `devo-live` push to users assigned to that Feed.
     const { data: livePosts, error: liveError } = await supabase
       .from("feed_posts")
       .select("id, title, created_by, resource_app_key, campus_id, camp_instance_id, ministry_type, goes_live_at")
