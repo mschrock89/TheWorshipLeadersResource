@@ -57,6 +57,7 @@ import {
   type FeedCommentRecord,
   type FeedPostInput,
   type FeedPostRecord,
+  feedPostPublishedAt,
   MAX_POLL_OPTIONS,
   MIN_POLL_OPTIONS,
   useCreateFeedComment,
@@ -170,6 +171,8 @@ function buildTitle(state: ComposerState, category: FeedCategory) {
 
 function timeAgoLabel(timestamp: string) {
   const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (diffMs < 0) return new Date(timestamp).toLocaleDateString();
+
   const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
 
   if (diffMinutes < 60) return `${diffMinutes} min ago`;
@@ -178,6 +181,10 @@ function timeAgoLabel(timestamp: string) {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
   return new Date(timestamp).toLocaleDateString();
+}
+
+function isFeedPostEdited(post: FeedPostRecord) {
+  return Date.parse(post.updated_at) - Date.parse(feedPostPublishedAt(post)) > 2000;
 }
 
 function buildComposerPayload(state: ComposerState, mode: ComposerMode): FeedPostInput | null {
@@ -295,11 +302,11 @@ function PostCard({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <h3 className="text-sm font-semibold text-foreground">{post.author_name || "Experience Music"}</h3>
                   <span className="text-xs text-muted-foreground/60">•</span>
-                  <span className="text-xs text-muted-foreground">{timeAgoLabel(post.created_at)}</span>
+                  <span className="text-xs text-muted-foreground">{timeAgoLabel(feedPostPublishedAt(post))}</span>
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <Clock3 className="h-3.5 w-3.5" />
-                  <span>{post.updated_at !== post.created_at ? "Edited" : "Published"}</span>
+                  <span>{isFeedPostEdited(post) ? "Edited" : "Published"}</span>
                 </div>
               </div>
             </div>

@@ -32,6 +32,7 @@ export interface FeedPostRecord {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  goes_live_at: string | null;
   resource_app_key: string;
   campus_id: string | null;
   camp_instance_id: string | null;
@@ -69,6 +70,7 @@ interface FeedPostRow {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  goes_live_at: string | null;
   campus_id: string | null;
   camp_instance_id: string | null;
   ministry_type: string | null;
@@ -119,6 +121,14 @@ export interface FeedPostInput {
 const MIN_POLL_OPTIONS = 2;
 const MAX_POLL_OPTIONS = 10;
 
+/** When the post actually appeared on The Feed (scheduled go-live, else insert time). */
+export function feedPostPublishedAt(post: {
+  goes_live_at?: string | null;
+  created_at: string;
+}) {
+  return post.goes_live_at || post.created_at;
+}
+
 function normalizePollOptions(options: string[] | undefined) {
   return (options || [])
     .map((option) => option.trim())
@@ -137,18 +147,7 @@ async function insertPollOptions(postId: string, options: string[]) {
   if (error) throw error;
 }
 
-async function fetchFeedPosts(
-  userId: string | undefined,
-  campusId?: string | null,
-  campInstanceId?: string | null,
-  ministryType?: string | null,
-  limit = 40,
-) {
-  const resourceAppKey = getCurrentResourceAppKey();
-
-  let postQuery = supabase
-    .from("feed_posts")
-    .select(`
+const FEED_POST_SELECT = `
       id,
       category,
       title,
@@ -160,6 +159,7 @@ async function fetchFeedPosts(
       updated_by,
       created_at,
       updated_at,
+      goes_live_at,
       resource_app_key,
       campus_id,
       camp_instance_id,
@@ -167,26 +167,66 @@ async function fetchFeedPosts(
       author:profiles!feed_posts_created_by_fkey (
         full_name
       )
-    `)
-    .or(`goes_live_at.is.null,goes_live_at.lte.${new Date().toISOString()}`)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    `;
+
+function scopedFeedPostsQuery(
+  nowIso: string,
+  resourceAppKey: string,
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+) {
+  const postQuery = supabase
+    .from("feed_posts")
+    .select(FEED_POST_SELECT)
+    .or(`goes_live_at.is.null,goes_live_at.lte.${nowIso}`);
 
   if (campInstanceId) {
-    postQuery = postQuery.eq("camp_instance_id", campInstanceId);
-  } else {
-    postQuery = postQuery
-      .eq("resource_app_key", resourceAppKey)
-      .eq("campus_id", campusId!)
-      .eq("ministry_type", ministryType!)
-      .is("camp_instance_id", null);
+    return postQuery.eq("camp_instance_id", campInstanceId);
   }
 
-  const { data: postRows, error: postError } = await postQuery;
+  return postQuery
+    .eq("resource_app_key", resourceAppKey)
+    .eq("campus_id", campusId!)
+    .eq("ministry_type", ministryType!)
+    .is("camp_instance_id", null);
+}
 
-  if (postError) throw postError;
+async function fetchFeedPosts(
+  userId: string | undefined,
+  campusId?: string | null,
+  campInstanceId?: string | null,
+  ministryType?: string | null,
+  limit = 40,
+) {
+  const resourceAppKey = getCurrentResourceAppKey();
+  const nowIso = new Date().toISOString();
 
-  const posts = (postRows || []) as FeedPostRow[];
+  const [
+    { data: createdRows, error: createdError },
+    { data: liveRows, error: liveError },
+  ] = await Promise.all([
+    scopedFeedPostsQuery(nowIso, resourceAppKey, campusId, campInstanceId, ministryType)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    // Scheduled DEVOs keep created_at at save time; also fetch by go-live.
+    scopedFeedPostsQuery(nowIso, resourceAppKey, campusId, campInstanceId, ministryType)
+      .not("goes_live_at", "is", null)
+      .order("goes_live_at", { ascending: false })
+      .limit(limit),
+  ]);
+
+  if (createdError) throw createdError;
+  if (liveError) throw liveError;
+
+  const postsById = new Map<string, FeedPostRow>();
+  for (const post of [...((liveRows || []) as FeedPostRow[]), ...((createdRows || []) as FeedPostRow[])]) {
+    postsById.set(post.id, post);
+  }
+
+  const posts = Array.from(postsById.values())
+    .sort((a, b) => Date.parse(feedPostPublishedAt(b)) - Date.parse(feedPostPublishedAt(a)))
+    .slice(0, limit);
   const postIds = posts.map((post) => post.id);
 
   if (postIds.length === 0) {
