@@ -777,14 +777,20 @@ export default function TeamBuilder() {
     }, {});
   }, [scheduleEntries, selectedMinistryType]);
 
-  const dateOverridesByTeamSlot = useMemo(() => {
-    const visibleDateOverrides = selectedMinistryType === "all"
-      ? activeDateOverrides
-      : activeDateOverrides.filter((override) =>
-          memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
-        );
+  const ministryVisibleDateOverrides = useMemo(() => {
+    if (selectedMinistryType === "all") {
+      return activeDateOverrides;
+    }
 
-    return visibleDateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
+    return activeDateOverrides.filter((override) =>
+      memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
+    );
+  }, [activeDateOverrides, selectedMinistryType]);
+
+  const displayTeamIdSet = useMemo(() => new Set(displayTeamIds), [displayTeamIds]);
+
+  const dateOverridesByTeamSlot = useMemo(() => {
+    return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
       const scheduleBucketKey = isWeekend(override.schedule_date) &&
         shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
           ? getWeekendKey(override.schedule_date)
@@ -815,16 +821,10 @@ export default function TeamBuilder() {
 
       return acc;
     }, {});
-  }, [activeDateOverrides, selectedMinistryType]);
+  }, [ministryVisibleDateOverrides, selectedMinistryType]);
 
   const blackoutConflictDatesByTeamSlotDateOverride = useMemo(() => {
-    const visibleDateOverrides = selectedMinistryType === "all"
-      ? activeDateOverrides
-      : activeDateOverrides.filter((override) =>
-          memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
-        );
-
-    return visibleDateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
+    return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
       if (!override.user_id) return acc;
 
       const scheduleBucketKey = isWeekend(override.schedule_date) &&
@@ -851,7 +851,7 @@ export default function TeamBuilder() {
       acc[override.team_id][override.position_slot][scheduleBucketKey] = Array.from(existing).sort();
       return acc;
     }, {});
-  }, [activeDateOverrides, blackoutDatesByUser, selectedMinistryType]);
+  }, [blackoutDatesByUser, ministryVisibleDateOverrides, selectedMinistryType]);
 
   const combinedConflictDatesByTeamSlot = useMemo(() => {
     const combined: Record<string, Record<string, string[]>> = {};
@@ -940,6 +940,7 @@ export default function TeamBuilder() {
 
     visibleAssignments.forEach((assignment) => {
       if (!assignment.user_id || !assignment.position_slot) return;
+      if (!displayTeamIdSet.has(assignment.team_id)) return;
 
       const team = teamById[assignment.team_id];
       if (!team) return;
@@ -971,8 +972,9 @@ export default function TeamBuilder() {
       recipientMap.set(assignment.user_id, recipient);
     });
 
-    activeDateOverrides.forEach((override) => {
-      if (!override.user_id) return;
+    ministryVisibleDateOverrides.forEach((override) => {
+      if (!override.user_id || isBlankTeamBuilderAssignment(override)) return;
+      if (!displayTeamIdSet.has(override.team_id)) return;
 
       const team = teamById[override.team_id];
       if (!team) return;
@@ -1055,9 +1057,10 @@ export default function TeamBuilder() {
       .filter((recipient) => recipient.teams.length > 0)
       .sort((a, b) => a.memberName.localeCompare(b.memberName));
   }, [
-    activeDateOverrides,
     dateOverridesByTeamSlot,
+    displayTeamIdSet,
     effectiveTeamSnapshotByBucket,
+    ministryVisibleDateOverrides,
     scheduleDatesByTeam,
     selectedMinistryType,
     selectedPeriod?.name,
