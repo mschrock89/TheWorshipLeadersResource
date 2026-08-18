@@ -2,9 +2,6 @@ import { FormEvent, MouseEvent, PointerEvent, useEffect, useMemo, useRef, useSta
 import { Navigate } from "react-router-dom";
 import { differenceInCalendarDays, formatDistanceToNowStrict, isValid, parseISO } from "date-fns";
 import {
-  AlertTriangle,
-  CalendarClock,
-  CircleGauge,
   Disc3,
   Drum,
   Lock,
@@ -45,8 +42,6 @@ import {
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -547,14 +542,14 @@ function CymbalCrackMonitor({
         ))}
       </button>
 
-      <div className="space-y-3">
+      <div className="divide-y divide-border/40">
         {markers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="py-2 text-sm text-muted-foreground">
             {editable ? "Click the cymbal to pin a crack location." : "No crack markers logged."}
           </p>
         ) : (
           markers.map((marker, index) => (
-            <div key={marker.id} className="rounded-xl border border-border p-3">
+            <div key={marker.id} className="py-3 first:pt-0 last:pb-0">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-foreground">Crack {index + 1}</p>
@@ -856,9 +851,9 @@ function KitBuilderDialog({
                 rows={6}
               />
             </div>
-            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-              <p className="text-sm font-medium text-foreground">Builder guidance</p>
-              <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Builder guidance</p>
+              <ul className="space-y-2">
                 <li>Use one entry per physical piece on the kit.</li>
                 <li>Only drum pieces need batter and resonant head brand, model, and lifespan.</li>
                 <li>Cymbals stay interactive in the stage plot but won’t show head wear.</li>
@@ -878,12 +873,12 @@ function KitBuilderDialog({
               </Button>
             </div>
 
-            <div className="space-y-3">
+            <div className="divide-y divide-border/40">
               {form.pieces.map((piece, index) => {
                 const meta = getPieceMeta(piece.piece_type);
 
                 return (
-                  <div key={`${piece.id || "new"}-${index}`} className="rounded-2xl border border-border bg-card p-4">
+                  <div key={`${piece.id || "new"}-${index}`} className="py-4 first:pt-0 last:pb-0">
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="space-y-2">
                         <Label>Piece type</Label>
@@ -947,8 +942,8 @@ function KitBuilderDialog({
                     </div>
 
                     {meta.hasHeads && (
-                      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                      <div className="mt-4 grid gap-6 xl:grid-cols-2">
+                        <div>
                           <p className="mb-3 text-sm font-medium text-foreground">Batter Head</p>
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
@@ -990,7 +985,7 @@ function KitBuilderDialog({
                             </div>
                           </div>
                         </div>
-                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                        <div>
                           <p className="mb-3 text-sm font-medium text-foreground">Reso Head</p>
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
@@ -1136,7 +1131,7 @@ function DrumTechCommentBoard({
       : "just now";
 
     return (
-      <div key={reply.id} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+      <div key={reply.id} className="border-b border-border/40 py-3 last:border-b-0 last:pb-0">
         <div className="flex items-start gap-3">
           <Avatar className="h-8 w-8">
             <AvatarImage src={reply.author_avatar_url || undefined} alt={authorName} />
@@ -1155,157 +1150,151 @@ function DrumTechCommentBoard({
   };
 
   return (
-    <Card className="border-border/70">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-xl">
+    <section className="space-y-5">
+      <div>
+        <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
           <MessageSquare className="h-5 w-5 text-primary" />
           Message Board
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Shared notes for {campusName}. Everyone with Drum Tech access can post updates, needs, or quick handoff notes.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <form className="space-y-3" onSubmit={handleSubmit}>
-          <Textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Share an update, ask a question, or leave a handoff note..."
-            maxLength={500}
-            rows={4}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">{message.length}/500 characters</p>
-            <Button type="submit" disabled={isSubmitting || !message.trim()}>
-              <Send className="mr-2 h-4 w-4" />
-              {isSubmitting ? "Posting..." : "Post message"}
-            </Button>
-          </div>
-        </form>
+        </p>
+      </div>
 
-        <div className="space-y-3">
-          {isLoading ? (
-            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-              Loading messages...
-            </div>
-          ) : comments && comments.length > 0 ? (
-            comments.map((comment) => {
-              const authorName = comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member");
-              const timestamp = isValid(parseISO(comment.created_at))
-                ? formatDistanceToNowStrict(parseISO(comment.created_at), { addSuffix: true })
-                : "just now";
+      <form className="space-y-3" onSubmit={handleSubmit}>
+        <Textarea
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder="Share an update, ask a question, or leave a handoff note..."
+          maxLength={500}
+          rows={4}
+        />
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">{message.length}/500 characters</p>
+          <Button type="submit" disabled={isSubmitting || !message.trim()}>
+            <Send className="mr-2 h-4 w-4" />
+            {isSubmitting ? "Posting..." : "Post message"}
+          </Button>
+        </div>
+      </form>
 
-              return (
-                <div key={comment.id} className="rounded-2xl border border-border bg-muted/20 p-4">
-                  <div className="flex items-start gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={comment.author_avatar_url || undefined} alt={authorName} />
-                      <AvatarFallback className="text-[11px]">{getInitials(authorName)}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <p className="font-medium text-foreground">{authorName}</p>
-                        <span className="text-xs text-muted-foreground">{timestamp}</span>
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className={cn(
-                            "h-8 gap-2",
-                            comment.my_reaction === "like" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
-                          )}
-                          onClick={() => onToggleReaction(comment.id, "like", comment.my_reaction)}
-                          disabled={isTogglingReaction}
-                        >
-                          <ThumbsUp className="h-3.5 w-3.5" />
-                          <span>Like</span>
-                          <span className="text-xs">{comment.like_count}</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className={cn(
-                            "h-8 gap-2",
-                            comment.my_reaction === "dislike" && "border-rose-500/40 bg-rose-500/10 text-rose-600",
-                          )}
-                          onClick={() => onToggleReaction(comment.id, "dislike", comment.my_reaction)}
-                          disabled={isTogglingReaction}
-                        >
-                          <ThumbsDown className="h-3.5 w-3.5" />
-                          <span>Dislike</span>
-                          <span className="text-xs">{comment.dislike_count}</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-2"
-                          onClick={() => setOpenReplyComposerId((current) => (current === comment.id ? null : comment.id))}
-                        >
-                          <Reply className="h-3.5 w-3.5" />
-                          <span>Reply</span>
-                          <span className="text-xs">{comment.reply_count}</span>
-                        </Button>
-                      </div>
-                      {(comment.replies.length > 0 || openReplyComposerId === comment.id) && (
-                        <div className="mt-4 space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-3">
-                          {comment.replies.length > 0 && (
-                            <div className="space-y-2">
-                              {comment.replies.map((reply) => renderReply(reply))}
-                            </div>
-                          )}
-                          {openReplyComposerId === comment.id && (
-                            <div className="space-y-3">
-                              <Textarea
-                                value={replyDrafts[comment.id] || ""}
-                                onChange={(event) =>
-                                  setReplyDrafts((current) => ({
-                                    ...current,
-                                    [comment.id]: event.target.value,
-                                  }))
-                                }
-                                placeholder="Write a reply..."
-                                maxLength={500}
-                                rows={3}
-                              />
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-xs text-muted-foreground">{(replyDrafts[comment.id] || "").length}/500 characters</p>
-                                <div className="flex gap-2">
-                                  <Button type="button" variant="ghost" size="sm" onClick={() => setOpenReplyComposerId(null)}>
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={() => handleReplySubmit(comment.id)}
-                                    disabled={isSubmittingReply || !(replyDrafts[comment.id] || "").trim()}
-                                  >
-                                    <Send className="mr-2 h-4 w-4" />
-                                    {isSubmittingReply ? "Replying..." : "Post reply"}
-                                  </Button>
-                                </div>
+      <div>
+        {isLoading ? (
+          <p className="py-2 text-sm text-muted-foreground">Loading messages...</p>
+        ) : comments && comments.length > 0 ? (
+          comments.map((comment) => {
+            const authorName = comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member");
+            const timestamp = isValid(parseISO(comment.created_at))
+              ? formatDistanceToNowStrict(parseISO(comment.created_at), { addSuffix: true })
+              : "just now";
+
+            return (
+              <div key={comment.id} className="border-b border-border/40 py-4 last:border-b-0">
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={comment.author_avatar_url || undefined} alt={authorName} />
+                    <AvatarFallback className="text-[11px]">{getInitials(authorName)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-medium text-foreground">{authorName}</p>
+                      <span className="text-xs text-muted-foreground">{timestamp}</span>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{comment.body}</p>
+                    <div className="mt-3 flex flex-wrap gap-x-1 gap-y-2 text-sm text-muted-foreground">
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-muted hover:text-foreground",
+                          comment.my_reaction === "like" && "bg-emerald-500/10 text-emerald-600",
+                        )}
+                        onClick={() => onToggleReaction(comment.id, "like", comment.my_reaction)}
+                        disabled={isTogglingReaction}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5" />
+                        <span>Like</span>
+                        <span className="text-xs">{comment.like_count}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-muted hover:text-foreground",
+                          comment.my_reaction === "dislike" && "bg-rose-500/10 text-rose-600",
+                        )}
+                        onClick={() => onToggleReaction(comment.id, "dislike", comment.my_reaction)}
+                        disabled={isTogglingReaction}
+                      >
+                        <ThumbsDown className="h-3.5 w-3.5" />
+                        <span>Dislike</span>
+                        <span className="text-xs">{comment.dislike_count}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-full px-2.5 py-2 transition-colors hover:bg-muted hover:text-foreground",
+                          openReplyComposerId === comment.id && "bg-muted text-foreground",
+                        )}
+                        onClick={() => setOpenReplyComposerId((current) => (current === comment.id ? null : comment.id))}
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                        <span>Reply</span>
+                        <span className="text-xs">{comment.reply_count}</span>
+                      </button>
+                    </div>
+                    {(comment.replies.length > 0 || openReplyComposerId === comment.id) && (
+                      <div className="mt-4 space-y-3 border-t border-border/40 pt-3">
+                        {comment.replies.length > 0 && (
+                          <div>
+                            {comment.replies.map((reply) => renderReply(reply))}
+                          </div>
+                        )}
+                        {openReplyComposerId === comment.id && (
+                          <div className="space-y-3">
+                            <Textarea
+                              value={replyDrafts[comment.id] || ""}
+                              onChange={(event) =>
+                                setReplyDrafts((current) => ({
+                                  ...current,
+                                  [comment.id]: event.target.value,
+                                }))
+                              }
+                              placeholder="Write a reply..."
+                              maxLength={500}
+                              rows={3}
+                            />
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs text-muted-foreground">{(replyDrafts[comment.id] || "").length}/500 characters</p>
+                              <div className="flex gap-2">
+                                <Button type="button" variant="ghost" size="sm" onClick={() => setOpenReplyComposerId(null)}>
+                                  Cancel
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleReplySubmit(comment.id)}
+                                  disabled={isSubmittingReply || !(replyDrafts[comment.id] || "").trim()}
+                                >
+                                  <Send className="mr-2 h-4 w-4" />
+                                  {isSubmittingReply ? "Replying..." : "Post reply"}
+                                </Button>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-              No messages yet. Start the conversation with a quick update or request.
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+              </div>
+            );
+          })
+        ) : (
+          <p className="py-2 text-sm text-muted-foreground">
+            No messages yet. Start the conversation with a quick update or request.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1595,7 +1584,7 @@ export default function DrumTech() {
 
   if (!selectedCampusId) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 py-10">
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-4 py-10">
         <h1 className="text-3xl font-semibold">Drum Tech</h1>
         <p className="text-muted-foreground">Assign the user to a campus first so the kit health workspace has a home.</p>
       </div>
@@ -1605,495 +1594,433 @@ export default function DrumTech() {
   const selectedCampusName = availableCampuses.find((campus) => campus.id === selectedCampusId)?.name || "this campus";
 
   return (
-    <div className="space-y-6 pb-28">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-[linear-gradient(145deg,rgba(14,116,144,0.22),rgba(15,23,42,0.92))] p-6 text-white shadow-[0_30px_80px_-45px_rgba(14,165,233,0.55)]">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-3">
-            <Badge variant="outline" className="border-white/20 bg-white/10 text-white">
-              Drum Tech Workspace
-            </Badge>
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Kit Health</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-200/82">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-8 overflow-x-hidden pb-28">
+      <section className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(53,176,229,0.22),transparent_32%),linear-gradient(135deg,rgba(20,29,35,0.98),rgba(10,15,19,0.98))] px-6 py-7 text-white shadow-[0_28px_80px_rgba(0,0,0,0.35)] sm:px-8 sm:py-8">
+        <div className="relative grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Kit Health</h1>
+              <p className="max-w-2xl text-sm leading-6 text-slate-200/82">
                 Build a digital version of each campus kit, track head age, and keep replacement decisions grounded in real wear.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-200/82">
-              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                {access.canEditCampus ? "Editable by Drum Tech" : "Read only at this campus"}
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                Head lifespan forecasts per drum
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                Interactive stage plot
-              </span>
+            <div className="flex flex-wrap items-center gap-3">
+              {availableCampuses.length > 1 && setSelectedCampusId && (
+                <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
+                  <SelectTrigger className="h-11 min-w-[220px] rounded-xl border-white/10 bg-black/25 text-white backdrop-blur">
+                    <SelectValue placeholder="Select campus" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCampuses.map((campus) => (
+                      <SelectItem key={campus.id} value={campus.id}>
+                        {campus.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {access.canEditCampus && (
+                <Button className="h-11 rounded-xl bg-white text-slate-950 hover:bg-slate-100" onClick={openCreate}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New kit
+                </Button>
+              )}
             </div>
+            <p className="text-xs text-slate-200/70">
+              {access.canEditCampus ? "Editable by Drum Tech" : "Read only at this campus"}
+              {" · "}Head lifespan forecasts per drum
+              {" · "}Interactive stage plot
+            </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {availableCampuses.length > 1 && setSelectedCampusId && (
-              <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
-                <SelectTrigger className="min-w-[220px] border-white/20 bg-slate-950/35 text-white">
-                  <SelectValue placeholder="Select campus" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableCampuses.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            {access.canEditCampus && (
-              <Button className="bg-white text-slate-950 hover:bg-slate-100" onClick={openCreate}>
-                <Plus className="mr-2 h-4 w-4" />
-                New kit
-              </Button>
-            )}
-          </div>
+          {selectedKit ? (
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                <p className="text-2xl font-semibold text-foreground">{stats.headTrackedPieces.length}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Heads</p>
+              </div>
+              <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                <p className="text-2xl font-semibold text-foreground">{stats.monitorCount}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Monitor</p>
+              </div>
+              <div className="min-w-0 rounded-2xl border border-white/8 bg-white/5 px-2 py-4">
+                <p className="text-2xl font-semibold text-foreground">{stats.dueCount}</p>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Due</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <Card className="border-border/80">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Drum className="h-5 w-5 text-primary" />
-                Campus Kits
-              </CardTitle>
-              <CardDescription>
-                {isLoading ? "Loading kits..." : `${kits.length} kit${kits.length === 1 ? "" : "s"} at this campus`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {kits.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  No kits yet. Create the first digital build for this campus.
-                </div>
-              ) : (
-                kits.map((kit) => {
-                  const tracked = kit.drum_kit_pieces.filter((piece) => getPieceMeta(piece.piece_type).hasHeads);
-                  const overdue = tracked.filter((piece) => getPieceHealthSummary(piece).tone === "critical").length;
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+          <Drum className="h-4 w-4 text-primary" />
+          <span>
+            {isLoading ? "Loading kits..." : `${kits.length} kit${kits.length === 1 ? "" : "s"} at this campus`}
+          </span>
+        </div>
+        {kits.length > 0 ? (
+          <div className="inline-flex w-full flex-wrap gap-1 rounded-2xl border border-border/40 bg-muted/20 p-1.5 sm:w-auto">
+            {kits.map((kit) => {
+              const tracked = kit.drum_kit_pieces.filter((piece) => getPieceMeta(piece.piece_type).hasHeads);
+              const overdue = tracked.filter((piece) => getPieceHealthSummary(piece).tone === "critical").length;
 
-                  return (
-                    <button
-                      key={kit.id}
-                      type="button"
-                      onClick={() => setSelectedKitId(kit.id)}
+              return (
+                <button
+                  key={kit.id}
+                  type="button"
+                  onClick={() => setSelectedKitId(kit.id)}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors sm:px-4",
+                    selectedKitId === kit.id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {kit.name}
+                  {overdue > 0 ? (
+                    <span
                       className={cn(
-                        "w-full rounded-2xl border p-4 text-left transition-colors",
-                        selectedKitId === kit.id
-                          ? "border-primary bg-primary/8"
-                          : "border-border bg-background hover:border-primary/40 hover:bg-muted/30",
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                        selectedKitId === kit.id ? "bg-white/20" : "bg-destructive/15 text-destructive",
                       )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-foreground">{kit.name}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {kit.drum_kit_pieces.length} pieces
-                          </p>
-                        </div>
-                        {overdue > 0 && <Badge variant="destructive">{overdue} due</Badge>}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-        </aside>
+                      {overdue}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
 
+      {!selectedKit ? (
+        <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+          <Wrench className="h-8 w-8 text-primary" />
+          <div className="space-y-2">
+            <h2 className="text-2xl font-semibold">No kit selected</h2>
+            <p className="max-w-md text-sm text-muted-foreground">
+              {kits.length === 0
+                ? "Create the first digital kit build for this campus."
+                : "Pick a kit above or create a new digital kit build for this campus."}
+            </p>
+          </div>
+          {access.canEditCampus && (
+            <Button onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create the first kit
+            </Button>
+          )}
+        </div>
+      ) : (
         <section className="space-y-6">
-          {!selectedKit ? (
-            <Card className="border-dashed border-border/70">
-              <CardContent className="flex min-h-[380px] flex-col items-center justify-center gap-4 text-center">
-                <div className="rounded-2xl bg-primary/10 p-4 text-primary">
-                  <Wrench className="h-8 w-8" />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-2xl font-semibold">No kit selected</h2>
-                  <p className="max-w-md text-sm text-muted-foreground">
-                    Pick a kit from the list or create a new digital kit build for this campus.
-                  </p>
-                </div>
-                {access.canEditCampus && (
-                  <Button onClick={openCreate}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create the first kit
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-sky-500/10 p-2 text-sky-400">
-                        <CircleGauge className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tracked heads</p>
-                        <p className="text-2xl font-semibold">{stats.headTrackedPieces.length}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-amber-500/10 p-2 text-amber-400">
-                        <AlertTriangle className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Monitor soon</p>
-                        <p className="text-2xl font-semibold">{stats.monitorCount}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-rose-500/10 p-2 text-rose-400">
-                        <CalendarClock className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Replacement due</p>
-                        <p className="text-2xl font-semibold">{stats.dueCount}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          <div className="flex flex-col gap-4 border-b border-border/40 pb-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">{selectedKit.name}</h2>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                {selectedKit.description || "No notes added for this kit yet."}
+              </p>
+            </div>
+            {access.canEditCampus && (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={openEdit}>
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Edit kit
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
               </div>
+            )}
+          </div>
 
-              <Card className="overflow-hidden">
-                <CardHeader className="border-b border-border/60 bg-muted/20">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.9fr)]">
+            <div className="min-w-0 space-y-3">
+              {access.canEditCampus && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">Kit Positioning</p>
+                    <p className="text-sm text-muted-foreground">
+                      Unlock positioning to move pieces. Lock the kit again to save the new layout.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    onClick={handleToggleLayoutLock}
+                    title={layoutUnlocked ? "Lock positioning and save layout" : "Unlock positioning"}
+                    disabled={upsertKit.isPending}
+                  >
+                    {layoutUnlocked ? (
+                      <Unlock className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              <InteractiveKitStage
+                pieces={stagePieces}
+                selectedPieceId={selectedPieceId}
+                onSelect={setSelectedPieceId}
+                editable={access.canEditCampus && layoutUnlocked}
+                onMove={handleMovePiece}
+              />
+            </div>
+
+            <div className="min-w-0">
+              {selectedPiece && pieceDraft ? (
+                <div className="space-y-5">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <CardTitle className="text-2xl">{selectedKit.name}</CardTitle>
-                      <CardDescription className="mt-1 max-w-2xl">
-                        {selectedKit.description || "No notes added for this kit yet."}
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      {access.canEditCampus && (
-                        <>
-                          <Button variant="outline" onClick={openEdit}>
-                            <Settings2 className="mr-2 h-4 w-4" />
-                            Edit kit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
-                            onClick={handleDelete}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </Button>
-                        </>
+                      <h3 className="text-xl font-semibold">{pieceDraft.piece_label}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {getPieceMeta(pieceDraft.piece_type).label} · {formatSize(pieceDraft.size_inches)}
+                      </p>
+                      {pieceDraft.layout_x != null && pieceDraft.layout_y != null && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Position: {pieceDraft.layout_x.toFixed(1)}%, {pieceDraft.layout_y.toFixed(1)}%
+                        </p>
                       )}
                     </div>
+                    <Disc3 className="h-5 w-5 text-muted-foreground" />
                   </div>
-                </CardHeader>
-                <CardContent className="grid gap-6 p-6 xl:grid-cols-[1.4fr_0.8fr]">
-                  <div className="space-y-4">
-                    {access.canEditCampus && (
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted/20 p-3">
-                        <div>
-                          <p className="font-medium text-foreground">Kit Positioning</p>
-                          <p className="text-sm text-muted-foreground">
-                            Unlock positioning to move pieces. Lock the kit again to save the new layout.
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9"
-                          onClick={handleToggleLayoutLock}
-                          title={layoutUnlocked ? "Lock positioning and save layout" : "Unlock positioning"}
-                          disabled={upsertKit.isPending}
-                        >
-                          {layoutUnlocked ? (
-                            <Unlock className="h-4 w-4 text-primary" />
-                          ) : (
-                            <Lock className="h-4 w-4 text-muted-foreground" />
+
+                  {(() => {
+                    const health = getPieceHealthSummary(pieceDraft);
+                    const meta = getPieceMeta(pieceDraft.piece_type);
+                    const batterHealth = getPieceHeadHealth(pieceDraft, "batter");
+                    const resoHealth = getPieceHeadHealth(pieceDraft, "reso");
+                    return (
+                      <>
+                        <p className={cn("inline-flex rounded-full px-3 py-1.5 text-sm", healthClasses(health.tone))}>
+                          {health.label}
+                          {health.daysRemaining !== null && (
+                            <span className="ml-2 font-medium">
+                              {health.daysRemaining > 0 ? `${health.daysRemaining} days remaining` : "replace now"}
+                            </span>
                           )}
-                        </Button>
-                      </div>
-                    )}
+                        </p>
 
-                    <InteractiveKitStage
-                      pieces={stagePieces}
-                      selectedPieceId={selectedPieceId}
-                      onSelect={setSelectedPieceId}
-                      editable={access.canEditCampus && layoutUnlocked}
-                      onMove={handleMovePiece}
-                    />
-                  </div>
-
-                  <div className="space-y-4">
-                    {selectedPiece && pieceDraft ? (
-                      <Card className="border-border/70 bg-muted/20">
-                        <CardHeader>
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <CardTitle className="text-xl">{pieceDraft.piece_label}</CardTitle>
-                              <CardDescription>
-                                {getPieceMeta(pieceDraft.piece_type).label} · {formatSize(pieceDraft.size_inches)}
-                              </CardDescription>
-                              {pieceDraft.layout_x != null && pieceDraft.layout_y != null && (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Position: {pieceDraft.layout_x.toFixed(1)}%, {pieceDraft.layout_y.toFixed(1)}%
-                                </p>
-                              )}
-                            </div>
-                            <Disc3 className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          {(() => {
-                            const health = getPieceHealthSummary(pieceDraft);
-                            const meta = getPieceMeta(pieceDraft.piece_type);
-                            const batterHealth = getPieceHeadHealth(pieceDraft, "batter");
-                            const resoHealth = getPieceHeadHealth(pieceDraft, "reso");
-                            return (
-                              <>
-                                <div className={cn("rounded-2xl border p-3 text-sm", healthClasses(health.tone))}>
-                                  {health.label}
-                                  {health.daysRemaining !== null && (
-                                    <span className="ml-2 font-medium">
-                                      {health.daysRemaining > 0 ? `${health.daysRemaining} days remaining` : "replace now"}
+                        {meta.hasHeads && (
+                          <div className="divide-y divide-border/40">
+                            {([
+                              {
+                                key: "batter",
+                                title: "Batter Head",
+                                health: batterHealth,
+                                brand: pieceDraft.batter_head_brand,
+                                model: pieceDraft.batter_head_model,
+                                installedOn: pieceDraft.batter_head_installed_on,
+                              },
+                              {
+                                key: "reso",
+                                title: "Reso Head",
+                                health: resoHealth,
+                                brand: pieceDraft.reso_head_brand,
+                                model: pieceDraft.reso_head_model,
+                                installedOn: pieceDraft.reso_head_installed_on,
+                              },
+                            ] as const).map((head) => (
+                              <div key={head.key} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-medium text-foreground">{head.title}</p>
+                                    <p className="text-sm text-muted-foreground">{head.health.label}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("rounded-full px-2 py-1 text-xs", healthClasses(head.health.tone))}>
+                                      {head.health.daysRemaining !== null
+                                        ? head.health.daysRemaining > 0
+                                          ? `${head.health.daysRemaining}d left`
+                                          : "Due"
+                                        : "No estimate"}
                                     </span>
-                                  )}
-                                </div>
-
-                                {meta.hasHeads && (
-                                  <>
-                                    <div className="grid gap-4">
-                                      {([
-                                        {
-                                          key: "batter",
-                                          title: "Batter Head",
-                                          health: batterHealth,
-                                          brand: pieceDraft.batter_head_brand,
-                                          model: pieceDraft.batter_head_model,
-                                          installedOn: pieceDraft.batter_head_installed_on,
-                                        },
-                                        {
-                                          key: "reso",
-                                          title: "Reso Head",
-                                          health: resoHealth,
-                                          brand: pieceDraft.reso_head_brand,
-                                          model: pieceDraft.reso_head_model,
-                                          installedOn: pieceDraft.reso_head_installed_on,
-                                        },
-                                      ] as const).map((head) => (
-                                        <div key={head.key} className="rounded-2xl border border-border p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                              <p className="font-medium text-foreground">{head.title}</p>
-                                              <p className="text-sm text-muted-foreground">{head.health.label}</p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                              <span className={cn("rounded-full border px-2 py-1 text-xs", healthClasses(head.health.tone))}>
-                                                {head.health.daysRemaining !== null
-                                                  ? head.health.daysRemaining > 0
-                                                    ? `${head.health.daysRemaining}d left`
-                                                    : "Due"
-                                                  : "No estimate"}
-                                              </span>
-                                              {access.canEditCampus && (
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => handleResetHeadHealth(head.key)}
-                                                  disabled={upsertKit.isPending}
-                                                >
-                                                  <RotateCcw className="mr-2 h-4 w-4" />
-                                                  Reset health
-                                                </Button>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div className="mt-3 space-y-2">
-                                            <div className="flex items-center justify-between text-sm">
-                                              <span className="text-muted-foreground">Estimated life</span>
-                                              <span className="font-medium">
-                                                {head.health.percentLeft !== null ? `${Math.round(head.health.percentLeft)}% left` : "No estimate"}
-                                              </span>
-                                            </div>
-                                            <Progress value={head.health.percentLeft ?? 0} />
-                                          </div>
-
-                                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                            <div className="rounded-xl border border-border p-3">
-                                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Head spec</p>
-                                              <p className="mt-1 font-medium">
-                                                {[head.brand, head.model].filter(Boolean).join(" ") || "Not recorded"}
-                                              </p>
-                                            </div>
-                                            <div className="rounded-xl border border-border p-3">
-                                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Installed</p>
-                                              <p className="mt-1 font-medium">
-                                                {formatInstalledDate(head.installedOn)}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </>
-                                )}
-
-                                {!meta.hasHeads && (
-                                  <div className="space-y-4">
-                                    {isCymbalPiece(pieceDraft.piece_type) ? (
-                                      <>
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                          <div className="space-y-2">
-                                            <Label>Make</Label>
-                                            <Input
-                                              value={pieceDraft.cymbal_brand || ""}
-                                              onChange={(event) =>
-                                                setPieceDraft((current) =>
-                                                  current ? { ...current, cymbal_brand: event.target.value } : current,
-                                                )
-                                              }
-                                              disabled={!access.canEditCampus}
-                                              placeholder="Zildjian"
-                                            />
-                                          </div>
-                                          <div className="space-y-2">
-                                            <Label>Model</Label>
-                                            <Input
-                                              value={pieceDraft.cymbal_model || ""}
-                                              onChange={(event) =>
-                                                setPieceDraft((current) =>
-                                                  current ? { ...current, cymbal_model: event.target.value } : current,
-                                                )
-                                              }
-                                              disabled={!access.canEditCampus}
-                                              placeholder="A Custom Mastersound Hi-Hats"
-                                            />
-                                          </div>
-                                        </div>
-                                        <div className="rounded-2xl border border-border p-4">
-                                          <div className="mb-3 flex items-center justify-between gap-3">
-                                            <div>
-                                              <p className="font-medium text-foreground">Crack Monitor</p>
-                                              <p className="text-sm text-muted-foreground">
-                                                Pin crack locations directly on the cymbal from the stage plot view.
-                                              </p>
-                                            </div>
-                                            {access.canEditCampus && (
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleSavePieceMonitor}
-                                                disabled={upsertKit.isPending}
-                                              >
-                                                <Save className="mr-2 h-4 w-4" />
-                                                Save cymbal
-                                              </Button>
-                                            )}
-                                          </div>
-                                          <CymbalCrackMonitor
-                                            markers={pieceDraft.cymbal_crack_markers || []}
-                                            editable={access.canEditCampus}
-                                            onAdd={(marker) =>
-                                              setPieceDraft((current) =>
-                                                current
-                                                  ? {
-                                                      ...current,
-                                                      cymbal_crack_markers: [...(current.cymbal_crack_markers || []), marker],
-                                                    }
-                                                  : current,
-                                              )
-                                            }
-                                            onUpdate={(markerId, description) =>
-                                              setPieceDraft((current) =>
-                                                current
-                                                  ? {
-                                                      ...current,
-                                                      cymbal_crack_markers: (current.cymbal_crack_markers || []).map((marker) =>
-                                                        marker.id === markerId ? { ...marker, description } : marker,
-                                                      ),
-                                                    }
-                                                  : current,
-                                              )
-                                            }
-                                            onRemove={(markerId) =>
-                                              setPieceDraft((current) =>
-                                                current
-                                                  ? {
-                                                      ...current,
-                                                      cymbal_crack_markers: (current.cymbal_crack_markers || []).filter(
-                                                        (marker) => marker.id !== markerId,
-                                                      ),
-                                                    }
-                                                  : current,
-                                              )
-                                            }
-                                          />
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
-                                        Hardware stays interactive here, but crack monitoring is only enabled for cymbals.
-                                      </div>
+                                    {access.canEditCampus && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleResetHeadHealth(head.key)}
+                                        disabled={upsertKit.isPending}
+                                      >
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                        Reset
+                                      </Button>
                                     )}
                                   </div>
-                                )}
+                                </div>
 
-                                {pieceDraft.notes && (
-                                  <div className="rounded-xl border border-border p-3">
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Notes</p>
-                                    <p className="mt-1 text-sm">{pieceDraft.notes}</p>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Estimated life</span>
+                                    <span className="font-medium">
+                                      {head.health.percentLeft !== null ? `${Math.round(head.health.percentLeft)}% left` : "No estimate"}
+                                    </span>
                                   </div>
-                                )}
+                                  <Progress value={head.health.percentLeft ?? 0} />
+                                </div>
 
+                                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                                  <div>
+                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Head spec</p>
+                                    <p className="mt-1 font-medium">
+                                      {[head.brand, head.model].filter(Boolean).join(" ") || "Not recorded"}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Installed</p>
+                                    <p className="mt-1 font-medium">
+                                      {formatInstalledDate(head.installedOn)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {!meta.hasHeads && (
+                          <div className="space-y-4">
+                            {isCymbalPiece(pieceDraft.piece_type) ? (
+                              <>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <Label>Make</Label>
+                                    <Input
+                                      value={pieceDraft.cymbal_brand || ""}
+                                      onChange={(event) =>
+                                        setPieceDraft((current) =>
+                                          current ? { ...current, cymbal_brand: event.target.value } : current,
+                                        )
+                                      }
+                                      disabled={!access.canEditCampus}
+                                      placeholder="Zildjian"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Model</Label>
+                                    <Input
+                                      value={pieceDraft.cymbal_model || ""}
+                                      onChange={(event) =>
+                                        setPieceDraft((current) =>
+                                          current ? { ...current, cymbal_model: event.target.value } : current,
+                                        )
+                                      }
+                                      disabled={!access.canEditCampus}
+                                      placeholder="A Custom Mastersound Hi-Hats"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-3 border-t border-border/40 pt-4">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-foreground">Crack Monitor</p>
+                                      <p className="text-sm text-muted-foreground">
+                                        Pin crack locations directly on the cymbal from the stage plot view.
+                                      </p>
+                                    </div>
+                                    {access.canEditCampus && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleSavePieceMonitor}
+                                        disabled={upsertKit.isPending}
+                                      >
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Save cymbal
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <CymbalCrackMonitor
+                                    markers={pieceDraft.cymbal_crack_markers || []}
+                                    editable={access.canEditCampus}
+                                    onAdd={(marker) =>
+                                      setPieceDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              cymbal_crack_markers: [...(current.cymbal_crack_markers || []), marker],
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    onUpdate={(markerId, description) =>
+                                      setPieceDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              cymbal_crack_markers: (current.cymbal_crack_markers || []).map((marker) =>
+                                                marker.id === markerId ? { ...marker, description } : marker,
+                                              ),
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                    onRemove={(markerId) =>
+                                      setPieceDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              cymbal_crack_markers: (current.cymbal_crack_markers || []).filter(
+                                                (marker) => marker.id !== markerId,
+                                              ),
+                                            }
+                                          : current,
+                                      )
+                                    }
+                                  />
+                                </div>
                               </>
-                            );
-                          })()}
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <Card className="border-dashed border-border/70">
-                        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                          Select a piece from the stage plot to inspect its health.
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Hardware stays interactive here, but crack monitoring is only enabled for cymbals.
+                              </p>
+                            )}
+                          </div>
+                        )}
 
-          <DrumTechCommentBoard
-            campusName={selectedCampusName}
-            comments={comments}
-            currentUserId={user?.id ?? null}
-            isLoading={isCommentsLoading}
-            isSubmitting={createComment.isPending}
-            isSubmittingReply={createCommentReply.isPending}
-            isTogglingReaction={toggleCommentReaction.isPending}
-            onSubmit={handleCommentSubmit}
-            onReplySubmit={handleReplySubmit}
-            onToggleReaction={handleToggleCommentReaction}
-          />
+                        {pieceDraft.notes && (
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Notes</p>
+                            <p className="mt-1 text-sm">{pieceDraft.notes}</p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <p className="py-10 text-sm text-muted-foreground">
+                  Select a piece from the stage plot to inspect its health.
+                </p>
+              )}
+            </div>
+          </div>
         </section>
-      </div>
+      )}
+
+      <DrumTechCommentBoard
+        campusName={selectedCampusName}
+        comments={comments}
+        currentUserId={user?.id ?? null}
+        isLoading={isCommentsLoading}
+        isSubmitting={createComment.isPending}
+        isSubmittingReply={createCommentReply.isPending}
+        isTogglingReaction={toggleCommentReaction.isPending}
+        onSubmit={handleCommentSubmit}
+        onReplySubmit={handleReplySubmit}
+        onToggleReaction={handleToggleCommentReaction}
+      />
 
       <KitBuilderDialog
         open={builderOpen}
