@@ -102,6 +102,14 @@ function isWednesdayWorshipMinistry(ministryType: string) {
   );
 }
 
+function isWednesdayScheduleMinistry(ministryType: string) {
+  return (
+    isWednesdayWorshipMinistry(ministryType) ||
+    ministryType === "ms_hs_production" ||
+    ministryType === "hs_production"
+  );
+}
+
 function normalizeScheduleMinistryFilter(ministryFilter: string | null) {
   if (!ministryFilter || ministryFilter === "all" || ministryFilter === "weekend_team") {
     return "weekend";
@@ -241,7 +249,7 @@ export function TeamScheduleWidget({
           return true;
         }
 
-        if (isWednesdayWorshipMinistry(ministryType)) {
+        if (isWednesdayScheduleMinistry(ministryType)) {
           return dayOfWeek === 3;
         }
 
