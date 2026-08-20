@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
+const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
 const CREATIVE_MINISTRY_ALIASES = ["creative", "photo_team"] as const;
 const LEGACY_CAMERA_POSITIONS = [
   "camera_1",
@@ -20,6 +21,7 @@ const LEGACY_CAMERA_POSITIONS = [
 
 const DB_POSITION_TO_UI_POSITION: Record<string, string> = {
   "Vocalist": "vocalist",
+  "Teacher": "teacher",
   "Announcements": "announcement",
   "Closing Prayer": "closing_prayer",
   "AG 1": "acoustic_1",
@@ -98,6 +100,10 @@ const UI_POSITION_TO_DB_POSITION: Record<string, string> = {
   switcher: "Switcher",
   photo_team: "Photography Team",
   art_team: "Art Team",
+  pastor_mc: "pastor_mc",
+  pastor_prayer: "pastor_prayer",
+  pastor_speaker: "pastor_speaker",
+  pastor_game_master: "pastor_game_master",
   other: "Other",
   other_instrument: "Other Instrument",
 };
@@ -281,6 +287,9 @@ export function useToggleCampusMinistryPosition() {
       queryClient.invalidateQueries({
         queryKey: ["available-members-with-positions"]
       });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update position.");
     },
   });
 }
