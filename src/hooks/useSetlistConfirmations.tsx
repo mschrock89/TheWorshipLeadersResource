@@ -5,7 +5,7 @@ import { useToast } from "./use-toast";
 import { getGlobalPriorUseCountsByDate } from "./useSongs";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { formatDateForDB, getWeekendPairDate, isWeekend } from "@/lib/utils";
-import { normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, isWeekendTeamMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterByResourceAppMinistry, filterStudentWednesdayFlows } from "@/lib/studentFlow";
 
@@ -125,6 +125,12 @@ function ministriesMatch(memberMinistry: string, setMinistry: string): boolean {
     setMinistry;
 
   if (normalizedMemberMinistry === normalizedSetMinistry) return true;
+  if (
+    isWeekendTeamMinistryType(memberMinistry) &&
+    isWeekendTeamMinistryType(setMinistry)
+  ) {
+    return true;
+  }
   if (
     WEEKEND_MINISTRY_ALIASES.has(memberMinistry) &&
     WEEKEND_MINISTRY_ALIASES.has(setMinistry)

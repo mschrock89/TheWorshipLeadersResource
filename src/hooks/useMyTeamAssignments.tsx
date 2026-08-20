@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { formatDateForDB, parseLocalDate, campusHasServiceOnDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
-import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType, isWeekendTeamMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { shouldSkipMisalignedSupportScheduleEntry } from "@/lib/teamScheduleSupport";
 
@@ -69,6 +69,13 @@ function assignmentMatchesMinistryTypes(
   // (and production on production rows), never on the team's weekend worship dates where
   // a different team is actually running video.
   return memberMinistryTypes.some((memberMinistry) => {
+    if (
+      isWeekendTeamMinistryType(memberMinistry) &&
+      isWeekendTeamMinistryType(scheduleMinistryType)
+    ) {
+      return true;
+    }
+
     const normalizedMemberMinistry =
       normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
     return normalizedMemberMinistry === normalizedScheduleMinistry;

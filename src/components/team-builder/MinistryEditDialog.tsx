@@ -30,6 +30,7 @@ const MINISTRY_EDIT_ORDER = [
   "evident",
   "er",
   "audition",
+  "speaker",
   "prayer_night",
 ] as const;
 
@@ -38,7 +39,9 @@ function getMinistryEditOption(value: (typeof MINISTRY_EDIT_ORDER)[number]) {
 }
 
 function normalizeSelectedMinistries(values: string[]) {
-  return [...new Set(values.map((value) => (value === "speaker" ? "weekend" : value)))];
+  return [...new Set(values.map((value) => (
+    value === "weekend_team" || value === "sunday_am" ? "weekend" : value
+  )))];
 }
 
 interface MinistryEditDialogProps {

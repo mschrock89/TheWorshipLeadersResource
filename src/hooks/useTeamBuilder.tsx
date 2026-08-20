@@ -2110,6 +2110,15 @@ export function useUpdateMinistryTypes() {
 const PROFILE_POSITION_TO_SLOTS: Record<string, string[]> = {
   // Vocals
   vocalist: ["vocalist_1", "vocalist_2", "vocalist_3", "vocalist_4", "vocalist_5", "vocalist_6", "vocalist_7", "vocalist_8"],
+  // Speaker
+  teacher: ["teacher"],
+  announcement: ["announcement"],
+  closing_prayer: ["closing_prayer"],
+  closer: ["closing_prayer"],
+  pastor_speaker: ["pastor_speaker"],
+  pastor_mc: ["pastor_mc"],
+  pastor_prayer: ["pastor_prayer"],
+  pastor_game_master: ["pastor_game_master"],
   // Instruments
   // Instruments
   drums: ["drums"],

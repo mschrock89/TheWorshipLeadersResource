@@ -349,6 +349,7 @@ const TEAM_BUILDER_MINISTRY_PREFERENCE_ORDER = [
   "evident",
   "er",
   "audition",
+  "speaker",
   "prayer_night",
 ] as const;
 
@@ -359,7 +360,7 @@ function normalizeTeamBuilderMinistryParam(value: string | null | undefined): st
 
   const normalized =
     normalizeSessionSetMinistryType(normalizeWeekendWorshipMinistryType(trimmed)) || trimmed;
-  if (normalized === "weekend_team" || normalized === "speaker" || normalized === "sunday_am") {
+  if (normalized === "weekend_team" || normalized === "sunday_am") {
     return "weekend";
   }
 
@@ -631,7 +632,7 @@ export default function TeamBuilder() {
       return;
     }
 
-    if (selectedMinistryType === "weekend_team" || selectedMinistryType === "speaker") {
+    if (selectedMinistryType === "weekend_team") {
       setSelectedMinistryType("weekend");
     }
   }, [isStudentTeamBuilder, selectedMinistryType]);

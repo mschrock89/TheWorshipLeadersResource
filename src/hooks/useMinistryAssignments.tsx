@@ -2,8 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { isStudentChatMinistryType } from "@/lib/chat";
+import { toast } from "sonner";
 
-const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"] as const;
+const WEEKEND_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"] as const;
 const CREATIVE_MINISTRY_ALIASES = ["creative", "photo_team"] as const;
 
 function getNormalizedMinistryType(ministryType: string) {
@@ -146,6 +147,9 @@ export function useToggleMinistryAssignment() {
       queryClient.invalidateQueries({
         queryKey: ["available-members"]
       });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unable to update ministry assignment.");
     },
   });
 }
