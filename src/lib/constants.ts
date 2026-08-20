@@ -431,7 +431,13 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
   return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);
 }
 
+const WEEKEND_WORSHIP_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+
+export function isWeekendTeamMinistryType(ministryType: string | null | undefined): boolean {
+  return !!ministryType && WEEKEND_TEAM_MINISTRY_TYPES.has(ministryType);
+}
+
 const CREATIVE_MINISTRY_TYPES = new Set(["creative", "photo_team"]);
 export const KIDS_CAMP_SET_MINISTRY_TYPES = ["kids_camp", "kids_camp_morning", "kids_camp_afternoon"] as const;
 const KIDS_CAMP_SET_MINISTRY_TYPE_SET = new Set<string>(KIDS_CAMP_SET_MINISTRY_TYPES);
@@ -556,12 +562,17 @@ export function normalizeWeekendWorshipMinistryType(
     return ministryType;
   }
 
-  return WEEKEND_TEAM_MINISTRY_TYPES.has(ministryType) ? "weekend" : ministryType;
+  return WEEKEND_WORSHIP_ALIASES.has(ministryType) ? "weekend" : ministryType;
 }
 
 export function getMinistryLabel(ministryType: string | null | undefined): string {
   if (ministryType && CREATIVE_MINISTRY_TYPES.has(ministryType)) {
     return "Creative";
+  }
+
+  const exactMatch = MINISTRY_TYPES.find((ministry) => ministry.value === ministryType);
+  if (exactMatch) {
+    return exactMatch.label;
   }
 
   const normalizedType = normalizeWeekendWorshipMinistryType(ministryType);
@@ -649,10 +660,6 @@ export function resolveTeamBuilderSlotMinistryType(
     return undefined;
   }
 
-  if (ministryFilter === "speaker") {
-    return "weekend";
-  }
-
   if (ministryFilter !== "weekend_team") {
     return ministryFilter;
   }
@@ -678,8 +685,12 @@ export function memberMatchesMinistryFilter(
     return true;
   }
 
-  if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
-    return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type) || type === "speaker");
+  if (ministryFilter === "speaker") {
+    return !!ministryTypes?.includes("speaker");
+  }
+
+  if (WEEKEND_WORSHIP_ALIASES.has(ministryFilter)) {
+    return !!ministryTypes?.some((type) => WEEKEND_TEAM_MINISTRY_TYPES.has(type));
   }
 
   if (CREATIVE_MINISTRY_TYPES.has(ministryFilter)) {
@@ -701,8 +712,12 @@ export function breakRequestMatchesMinistryFilter(
     return true;
   }
 
-  if (WEEKEND_TEAM_MINISTRY_TYPES.has(ministryFilter)) {
-    return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType) || requestMinistryType === "speaker";
+  if (ministryFilter === "speaker") {
+    return requestMinistryType === "speaker";
+  }
+
+  if (WEEKEND_WORSHIP_ALIASES.has(ministryFilter)) {
+    return WEEKEND_TEAM_MINISTRY_TYPES.has(requestMinistryType);
   }
 
   if (CREATIVE_MINISTRY_TYPES.has(ministryFilter)) {

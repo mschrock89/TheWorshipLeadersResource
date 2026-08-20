@@ -37,6 +37,7 @@ const WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER = [
   "evident",
   "er",
   "audition",
+  "speaker",
   "prayer_night",
 ] as const;
 

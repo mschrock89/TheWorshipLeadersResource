@@ -72,10 +72,6 @@ export function AssignMemberDialog({
           return false;
         }
 
-        if (normalizedValue === "speaker") {
-          return false;
-        }
-
         if ("hidden" in ministry && ministry.hidden) {
           return false;
         }
@@ -285,6 +281,7 @@ export function AssignMemberDialog({
     : effectiveMinistryFilter === 'ms_hs_production' ? 'MS/HS Production'
     : effectiveMinistryFilter === 'hs_production' ? 'HS Production'
     : effectiveMinistryFilter === 'students' ? 'Students'
+    : effectiveMinistryFilter === 'speaker' ? 'Speaker'
     : effectiveMinistryFilter || 'All';
   const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;
 
