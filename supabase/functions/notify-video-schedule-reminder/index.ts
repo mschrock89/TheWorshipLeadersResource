@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { resolveEffectiveTeamSchedulesForCampuses } from "../_shared/effectiveTeamSchedules.ts";
+import {
+  campusIdsEligibleForRosterPush,
+  resolveEffectiveTeamSchedulesForCampuses,
+} from "../_shared/effectiveTeamSchedules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +74,9 @@ serve(async (req: Request): Promise<Response> => {
         .select(`team_id, ministry_type, time_of_day, campus_id, resource_app_key, created_at`)
         .eq("schedule_date", targetDate)
         .eq("ministry_type", MINISTRY_TYPE),
-      supabase.from("campuses").select("id"),
+      supabase
+        .from("campuses")
+        .select("id, is_network_wide, has_saturday_service, has_sunday_service"),
     ]);
 
     const { data: schedules, error: scheduleError } = scheduleResult;
@@ -90,9 +95,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    const eligibleCampusIds = campusIdsEligibleForRosterPush(campuses || [], targetDate);
+    if (eligibleCampusIds.length === 0) {
+      console.log(`No campuses with service on ${targetDate}`);
+      return new Response(
+        JSON.stringify({ success: true, message: "No campuses with service", pushSent: 0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const effectiveSchedules = resolveEffectiveTeamSchedulesForCampuses(
       schedules,
-      (campuses || []).map((campus) => campus.id),
+      eligibleCampusIds,
     );
     const recipientUserIds = new Set<string>();
 

@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { resolveEffectiveTeamSchedulesForCampuses } from "../_shared/effectiveTeamSchedules.ts";
+import {
+  campusIdsEligibleForRosterPush,
+  resolveEffectiveTeamSchedulesForCampuses,
+} from "../_shared/effectiveTeamSchedules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,10 +12,10 @@ const corsHeaders = {
 
 // Invoked Saturday mornings by the pg_cron wrapper run_schedule_reminder() (see
 // migration 20260705120000). One run covers the whole weekend: it notifies the
-// effective roster for *today* (Saturday) and *tomorrow* (Sunday), across every
-// campus and ministry, using the authoritative get_roster_notifiable_assignments
-// RPC (rotation periods, service-day matching, Team Builder Splits / blanks on
-// the weekend pair, accepted swaps, and effective positions for the push body).
+// effective roster for *today* (Saturday) and *tomorrow* (Sunday), but only for
+// campuses that actually have service that day (never Network Wide). Recipients
+// come from get_roster_notifiable_assignments (active rotation period, service-day
+// matching, Team Builder Splits / blanks on the weekend pair, accepted swaps).
 
 const TIME_ZONE = "America/Chicago";
 
@@ -94,7 +97,9 @@ serve(async (req: Request): Promise<Response> => {
             `team_id, ministry_type, time_of_day, campus_id, resource_app_key, created_at, worship_teams!inner(name)`,
           )
           .eq("schedule_date", dateStr),
-        supabase.from("campuses").select("id"),
+        supabase
+          .from("campuses")
+          .select("id, is_network_wide, has_saturday_service, has_sunday_service"),
       ]);
 
       const { data: schedules, error: scheduleError } = scheduleResult;
@@ -110,11 +115,19 @@ serve(async (req: Request): Promise<Response> => {
         continue;
       }
 
-      // Shared rows are defaults. Resolve them once per campus so a campus-specific
-      // schedule suppresses the legacy shared row, matching Team Builder.
+      // Shared rows are defaults. Only expand them onto campuses that actually
+      // have service this day (Calendar's has_saturday_service / has_sunday_service),
+      // never onto Network Wide. A campus-specific row still suppresses the shared
+      // row for that campus, matching Team Builder.
+      const eligibleCampusIds = campusIdsEligibleForRosterPush(campuses || [], dateStr);
+      if (eligibleCampusIds.length === 0) {
+        console.log(`No campuses with service on ${dateStr}`);
+        continue;
+      }
+
       const effectiveSchedules = resolveEffectiveTeamSchedulesForCampuses(
         schedules,
-        (campuses || []).map((campus) => campus.id),
+        eligibleCampusIds,
       );
 
       if (effectiveSchedules.length === 0) {
