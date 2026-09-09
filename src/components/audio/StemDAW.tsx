@@ -65,7 +65,10 @@ function StemDAWInner({ session, playlistId, canManage, onUploadClick, setlistSo
 
   // Load stems into player whenever session data changes
   useEffect(() => {
-    if (session.stems.length === 0) return;
+    if (session.stems.length === 0) {
+      stop();
+      return;
+    }
 
     const tracks: StemPlayerTrack[] = session.stems.map((s) => ({
       stemType: s.stem_type,
@@ -75,7 +78,7 @@ function StemDAWInner({ session, playlistId, canManage, onUploadClick, setlistSo
     }));
 
     loadStems(tracks);
-  }, [session.stems, loadStems]);
+  }, [session.stems, loadStems, stop]);
 
   // Pause global player when DAW starts playing
   const { isPlaying } = useStemPlayer();
@@ -267,7 +270,12 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [],
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         className="bg-destructive hover:bg-destructive/90"
-                        onClick={() => deleteSession.mutate({ sessionId: session!.id, playlistId })}
+                        onClick={() => {
+                          deleteSession.mutate({ sessionId: session!.id, playlistId });
+                          window.setTimeout(() => {
+                            document.body.style.removeProperty("pointer-events");
+                          }, 0);
+                        }}
                       >
                         Delete All Stems
                       </AlertDialogAction>
@@ -394,7 +402,12 @@ export function StemDAW({ playlistId, canManage, serviceDate, setlistSongs = [],
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       className="bg-destructive hover:bg-destructive/90"
-                      onClick={() => deleteSession.mutate({ sessionId: session!.id, playlistId })}
+                      onClick={() => {
+                        deleteSession.mutate({ sessionId: session!.id, playlistId });
+                        window.setTimeout(() => {
+                          document.body.style.removeProperty("pointer-events");
+                        }, 0);
+                      }}
                     >
                       Delete All Stems
                     </AlertDialogAction>

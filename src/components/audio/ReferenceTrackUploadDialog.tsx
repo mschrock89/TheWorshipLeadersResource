@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Upload, FileAudio, Loader2, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import {
   Dialog,
@@ -46,6 +46,7 @@ export function ReferenceTrackUploadDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Extract audio duration from file
   const extractAudioDuration = useCallback((file: File): Promise<number> => {
@@ -75,6 +76,7 @@ export function ReferenceTrackUploadDialog({
     setProgress(0);
     setMarkers([]);
     setMarkersOpen(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const processSelectedFile = useCallback(async (file: File) => {
@@ -133,6 +135,7 @@ export function ReferenceTrackUploadDialog({
         variant: "destructive",
       });
     }
+    e.target.value = "";
   }, [toast, processSelectedFile]);
 
   const handleUpload = async () => {
@@ -314,10 +317,11 @@ export function ReferenceTrackUploadDialog({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => document.getElementById("reference-audio-input")?.click()}
+            onClick={() => fileInputRef.current?.click()}
           >
             <input
-              id="reference-audio-input"
+              ref={fileInputRef}
+              id={`reference-audio-input-${playlistId}`}
               type="file"
               accept="audio/mpeg,audio/mp3,.mp3"
               className="hidden"

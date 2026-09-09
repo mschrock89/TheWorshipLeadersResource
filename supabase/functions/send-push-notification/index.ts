@@ -5,6 +5,7 @@ import {
   normalizePushMinistryType,
   readPushMinistryTypesFromMetadata,
 } from "../_shared/pushMinistryPrefs.ts";
+import { getApnsConfig, sendApnsNotification } from "../_shared/apns.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -993,16 +994,46 @@ serve(async (req) => {
     const expiredEndpoints: string[] = [];
     const vapidSubject = "mailto:support@worshipleadersresource.lovable.app";
     const userDeliveryMap = new Map<string, { sent: boolean; failureReason?: string }>();
+    const apnsConfig = getApnsConfig();
+    let warnedMissingApnsConfig = false;
 
     for (const sub of subscriptions) {
       try {
-        const result = await sendPushNotification(
-          { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-          notificationPayload,
-          vapidPublicKey,
-          vapidPrivateKey,
-          vapidSubject
-        );
+        let result: { success: boolean; statusCode?: number; error?: string };
+
+        if (sub.platform === "ios" && sub.device_token) {
+          if (!apnsConfig) {
+            if (!warnedMissingApnsConfig) {
+              console.error("iOS subscriptions present but APNs secrets are not configured (APNS_KEY_P8/APNS_KEY_ID/APNS_TEAM_ID/APNS_BUNDLE_ID)");
+              warnedMissingApnsConfig = true;
+            }
+            result = { success: false, error: "APNs not configured" };
+          } else {
+            const apnsResult = await sendApnsNotification(
+              sub.device_token,
+              {
+                title: payload.title,
+                body: payload.message,
+                url: payload.url,
+                tag: payload.tag,
+              },
+              apnsConfig,
+              PUSH_DELIVERY_TIMEOUT_MS,
+            );
+            if (apnsResult.shouldRemove) {
+              expiredEndpoints.push(sub.endpoint);
+            }
+            result = apnsResult;
+          }
+        } else {
+          result = await sendPushNotification(
+            { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+            notificationPayload,
+            vapidPublicKey,
+            vapidPrivateKey,
+            vapidSubject
+          );
+        }
 
         if (result.success) {
           sent++;
@@ -1017,9 +1048,10 @@ serve(async (req) => {
             });
           }
           console.error(`Failed to send to ${sub.user_id}: status ${result.statusCode}, error: ${result.error}`);
-          
-          // Remove subscriptions that are expired or tied to an old VAPID key pair.
-          if (isInvalidSubscriptionResponse(result.statusCode, result.error)) {
+
+          // Remove web subscriptions that are expired or tied to an old VAPID
+          // key pair. (iOS token removal is decided by the APNs response above.)
+          if (sub.platform !== "ios" && isInvalidSubscriptionResponse(result.statusCode, result.error)) {
             expiredEndpoints.push(sub.endpoint);
           }
         }

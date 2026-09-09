@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
-import { CalendarClock, Home, ListChecks, MapPin, UserCheck, Users } from "lucide-react";
+import { CalendarClock, Home, Inbox, ListChecks, MapPin, UserCheck, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -263,7 +263,13 @@ export default function Auditions() {
               : "Track candidates in process and schedule upcoming pre-auditions/auditions."}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button variant="outline" asChild>
+            <Link to="/audition-inbox">
+              <Inbox className="mr-2 h-4 w-4" />
+              {isStudentApp ? "On Boarding Inbox" : "Audition Inbox"}
+            </Link>
+          </Button>
           <MapPin className="h-4 w-4 text-muted-foreground" />
           <Select value={selectedCampusId} onValueChange={setSelectedCampusId} disabled={availableCampuses.length === 0}>
             <SelectTrigger className="w-auto min-w-[220px]">

@@ -11,6 +11,8 @@ interface SavePushSubscriptionRequest {
   p256dh: string;
   auth: string;
   resourceAppKey?: string;
+  platform?: string;
+  deviceToken?: string;
 }
 
 serve(async (req) => {
@@ -51,9 +53,17 @@ serve(async (req) => {
       );
     }
 
-    const { endpoint, p256dh, auth, resourceAppKey = "worship" }: SavePushSubscriptionRequest = await req.json();
+    const {
+      endpoint,
+      p256dh,
+      auth,
+      resourceAppKey = "worship",
+      platform = "web",
+      deviceToken,
+    }: SavePushSubscriptionRequest = await req.json();
 
-    if (!endpoint || !p256dh || !auth) {
+    const isNative = platform === "ios";
+    if (!endpoint || (!isNative && (!p256dh || !auth)) || (isNative && !deviceToken)) {
       return new Response(
         JSON.stringify({ error: "endpoint, p256dh, and auth are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -66,8 +76,10 @@ serve(async (req) => {
         {
           user_id: user.id,
           endpoint,
-          p256dh,
-          auth,
+          p256dh: p256dh ?? "",
+          auth: auth ?? "",
+          platform,
+          device_token: deviceToken ?? null,
           resource_app_key: resourceAppKey,
           updated_at: new Date().toISOString(),
         },

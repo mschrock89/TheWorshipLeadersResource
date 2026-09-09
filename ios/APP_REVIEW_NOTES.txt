@@ -1,0 +1,69 @@
+APP REVIEW NOTES — Wrshp Resource
+Bundle ID: com.worshipleadersresource.app
+Paste the block below into App Store Connect → App Review Information → Notes.
+Also fill the dedicated Username and Password fields with the same demo login.
+Character limit for Notes is 4,000. Keep credentials in both places.
+
+----- COPY FROM HERE -----
+
+REVIEWER ACCESS
+This is a private church workspace for Experience Community Church / Experience Music. Please do not create a new account with Sign Up. New signups have no campus or role assignments and cannot reach the main features.
+
+Username: [ADD REVIEWER EMAIL]
+Password: [ADD REVIEWER PASSWORD]
+
+How to sign in:
+1. Launch Wrshp Resource.
+2. Tap Sign In.
+3. Enter the email and password above and tap Sign In.
+4. If iOS asks for notification permission, Allow or Don’t Allow — both are fine.
+5. You land on Home. Tap the avatar (top right) for My Schedule, Team Directory, Song Library, Swaps, DEVO, Audio Library, and Integrations.
+6. Calendar, Chat, and Feed are also available after login.
+7. Optional leader connections (Planning Center, Google Calendar, Gmail) are not required for review. Do not reconnect third-party accounts.
+8. No sample files are required.
+
+2. DEVICES AND OS TESTED
+Universal iPhone + iPad app. Minimum iOS 15.0.
+Tested before submission on:
+• iPhone 17 Pro Max simulator — iOS 26.4
+• iPad Pro 13-inch simulator — iPadOS 26
+• Physical iPhone via TestFlight
+
+3. FUNCTIONS, AUDIENCE, AND VALUE
+Wrshp Resource (Worship Resource) is a ministry operations app for worship leaders, staff, and volunteers.
+
+Problem: church teams manage serving schedules, setlists, swaps, and communication across campuses using texts, spreadsheets, and disconnected tools.
+
+Value: one signed-in hub to see when you serve, request or cover swaps, plan setlists, open songs/charts/audio, chat with your ministry, complete weekly DEVO, and get push notifications when plans change. Leaders can manage the roster, weekend flow, auditions, and church integrations.
+
+Target audience: authorized church staff, worship/production volunteers, and audition candidates. Not a public consumer social app.
+
+4. SETUP
+No special setup. Use the demo account above. Core paths after login: Home → avatar menu → My Schedule, Team Directory, Song Library, Calendar, Chat. Games (Snake, Pong, Galager) are optional signed-in extras and are not the app’s purpose.
+
+5. EXTERNAL SERVICES
+• Supabase — email/password authentication, database, file storage, backend functions
+• Apple Push Notification service (APNs) — native push
+• Google (optional, leaders only) — Calendar, Sheets, and Gmail Audition Inbox. Google is not used for sign-in.
+• Planning Center Online (optional, leaders only) — schedule and song sync
+• Resend — transactional email (welcome, password reset, swap notices)
+• Crossway ESV Bible API (api.esv.org) — licensed Bible text in the in-app reader
+• OpenAI — optional staff tools (theme/song suggestions, chapter analysis, audio transcription for charts). Not required to review the app.
+• YouTube — optional embedded rehearsal/song links
+No payment processor, in-app purchases, ads, or tracking SDKs.
+
+6. REGIONAL DIFFERENCES
+None. Features and content are the same in every region. The app is English and used by Experience Community Church in the United States. Campus differences are organizational (which campus a volunteer serves), not App Store territory variants.
+
+7. REGULATED INDUSTRY / PROTECTED MATERIAL
+Not a highly regulated industry (not healthcare, finance, gambling, or legal services).
+
+Protected material:
+• ESV Scripture is loaded through the official Crossway ESV API under our API credentials. Copyright notices from the API are shown with passages.
+• Song charts, lyrics, and audio are church-managed ministry resources for authorized team members, not a public music store or storefront.
+• Planning Center and Google data are used only when a church leader connects their own organization account.
+
+Support: mitch.schrock@gmail.com
+Privacy: https://worship.mychurchresource.com/privacy
+
+----- COPY TO HERE -----

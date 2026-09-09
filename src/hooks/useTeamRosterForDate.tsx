@@ -15,6 +15,15 @@ import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
+
+function swapMinistryValuesForRoster(ministryType?: string): string[] | null {
+  if (!ministryType || ministryType === "all") return null;
+  const normalized = normalizeSessionSetMinistryType(ministryType) || ministryType;
+  if (normalized === "weekend_team" || WEEKEND_ROSTER_MINISTRY_ALIASES.includes(normalized)) {
+    return [...WEEKEND_ROSTER_MINISTRY_ALIASES];
+  }
+  return [normalized];
+}
 const POSITION_CATEGORY_BY_VALUE = new Map(
   POSITION_SLOTS.flatMap((slot) => [
     [slot.slot.toLowerCase(), slot.category],
@@ -322,7 +331,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v20"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v21"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -778,8 +787,10 @@ export function useTeamRosterForDate(
 
       const profileMap = new Map((allAvatarProfiles || []).map(p => [p.id, p.avatar_url]));
 
+      const rosterSwapMinistries = swapMinistryValuesForRoster(ministryType);
+
       // Fetch accepted swaps where someone is covering FOR this date (original_date matches)
-      const { data: swapsForDate, error: swapsForDateError } = await supabase
+      let swapsForDateQuery = supabase
         .from("swap_requests")
         .select(`
           id,
@@ -795,6 +806,10 @@ export function useTeamRosterForDate(
         .eq("team_id", teamId)
         .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
+      if (rosterSwapMinistries) {
+        swapsForDateQuery = swapsForDateQuery.in("ministry_type", rosterSwapMinistries);
+      }
+      const { data: swapsForDate, error: swapsForDateError } = await swapsForDateQuery;
 
       if (swapsForDateError) throw swapsForDateError;
 
@@ -802,7 +817,7 @@ export function useTeamRosterForDate(
       // This handles the case where requester covers accepter's slot on swap_date
       // Don't filter by team_id here - we need to find swaps where the accepter is a member of this team
       // We'll filter by accepter's user_id being in this team's roster
-      const { data: swapsOnDate, error: swapsOnDateError } = await supabase
+      let swapsOnDateQuery = supabase
         .from("swap_requests")
         .select(`
           id,
@@ -816,6 +831,10 @@ export function useTeamRosterForDate(
         .in("swap_date", datesToCheck)
         .eq("resource_app_key", resourceAppKey)
         .eq("status", "accepted");
+      if (rosterSwapMinistries) {
+        swapsOnDateQuery = swapsOnDateQuery.in("ministry_type", rosterSwapMinistries);
+      }
+      const { data: swapsOnDate, error: swapsOnDateError } = await swapsOnDateQuery;
 
       if (swapsOnDateError) throw swapsOnDateError;
 
@@ -829,13 +848,17 @@ export function useTeamRosterForDate(
       const directSwapsOnThisDate = filteredSwapsOnDate;
 
       // Fetch pending swaps for this date (or weekend pair)
-      const { data: pendingSwaps, error: pendingSwapsError } = await supabase
+      let pendingSwapsQuery = supabase
         .from("swap_requests")
         .select("requester_id")
         .in("original_date", datesToCheck)
         .eq("team_id", teamId)
         .eq("resource_app_key", resourceAppKey)
         .eq("status", "pending");
+      if (rosterSwapMinistries) {
+        pendingSwapsQuery = pendingSwapsQuery.in("ministry_type", rosterSwapMinistries);
+      }
+      const { data: pendingSwaps, error: pendingSwapsError } = await pendingSwapsQuery;
 
       if (pendingSwapsError) throw pendingSwapsError;
 

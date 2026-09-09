@@ -20,6 +20,7 @@ import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense, useLayoutEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+import { NativePushTapHandler } from "@/components/native/NativePushTapHandler";
 
 export type RouteDefinition = {
   path: string;
@@ -239,6 +240,7 @@ export function AppShell({
                 <AudioPlayerWrapper />
                 <BottomNav />
                 <AppOnboardingTour />
+                <NativePushTapHandler />
               </AudioPlayerProvider>
             </AttendanceTrackingProvider>
           </AuthProvider>

@@ -174,7 +174,19 @@ export function useCreateStemSession() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Unique playlist_id — a session already exists (stale cache after delete).
+        if (error.code === "23505") {
+          const { data: existing, error: existingError } = await supabase
+            .from("setlist_stem_sessions")
+            .select()
+            .eq("playlist_id", playlistId)
+            .maybeSingle();
+          if (existingError) throw existingError;
+          if (existing) return existing;
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: (_, { playlistId }) => {
@@ -331,12 +343,26 @@ export function useDeleteStem() {
       const { error } = await supabase.from("setlist_stems").delete().eq("id", stemId);
       if (error) throw error;
     },
-    onSuccess: (_, { playlistId }) => {
-      queryClient.invalidateQueries({ queryKey: ["stem-session", playlistId] });
+    onMutate: async ({ stemId, playlistId }) => {
+      await queryClient.cancelQueries({ queryKey: ["stem-session", playlistId] });
+      const previous = queryClient.getQueryData<StemSession | null>(["stem-session", playlistId]);
+      queryClient.setQueryData<StemSession | null>(["stem-session", playlistId], (session) => {
+        if (!session) return session;
+        return { ...session, stems: session.stems.filter((stem) => stem.id !== stemId) };
+      });
+      return { previous, playlistId };
+    },
+    onSuccess: () => {
       toast({ title: "Stem removed" });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _vars, context) => {
+      if (context?.playlistId) {
+        queryClient.setQueryData(["stem-session", context.playlistId], context.previous);
+      }
       toast({ title: "Failed to remove stem", description: error.message, variant: "destructive" });
+    },
+    onSettled: (_data, _error, { playlistId }) => {
+      queryClient.invalidateQueries({ queryKey: ["stem-session", playlistId] });
     },
   });
 }
@@ -415,12 +441,23 @@ export function useDeleteStemSession() {
 
       if (error) throw error;
     },
-    onSuccess: (_, { playlistId }) => {
-      queryClient.invalidateQueries({ queryKey: ["stem-session", playlistId] });
+    onMutate: async ({ playlistId }) => {
+      await queryClient.cancelQueries({ queryKey: ["stem-session", playlistId] });
+      const previous = queryClient.getQueryData<StemSession | null>(["stem-session", playlistId]);
+      queryClient.setQueryData(["stem-session", playlistId], null);
+      return { previous, playlistId };
+    },
+    onSuccess: () => {
       toast({ title: "Stem session deleted" });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _vars, context) => {
+      if (context?.playlistId) {
+        queryClient.setQueryData(["stem-session", context.playlistId], context.previous);
+      }
       toast({ title: "Failed to delete stem session", description: error.message, variant: "destructive" });
+    },
+    onSettled: (_data, _error, { playlistId }) => {
+      queryClient.invalidateQueries({ queryKey: ["stem-session", playlistId] });
     },
   });
 }

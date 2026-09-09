@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
 import "@/index.css";
 import { getResourceAppForLocation } from "@/lib/resourceApps";
+import { initNativeApp, isNativeApp } from "@/lib/native";
 
 const DEV_SW_RESET_KEY = "dev-sw-reset-v1";
 const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -125,7 +126,9 @@ async function reloadIfNewAppVersionAvailable(force = false) {
 }
 
 function startProductionAppUpdateChecks() {
-  if (!import.meta.env.PROD) {
+  // The native app ships its web assets in the binary; "latest deployed
+  // version" checks against the local files would always no-op.
+  if (!import.meta.env.PROD || isNativeApp()) {
     return;
   }
 
@@ -176,6 +179,7 @@ export async function bootstrapApp(app: ReactElement) {
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   setResourceAppMetadata();
+  await initNativeApp();
   await resetDevelopmentBrowserState();
   startProductionAppUpdateChecks();
 

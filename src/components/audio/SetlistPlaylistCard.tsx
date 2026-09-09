@@ -42,7 +42,7 @@ interface SetlistPlaylistCardProps {
 }
 
 export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
-  const { setPlaylist, currentTrack, isPlaying, togglePlay, playlist: currentPlaylist, seekTo, play } = useAudioPlayer();
+  const { setPlaylist, currentTrack, isPlaying, togglePlay, playlist: currentPlaylist, seekTo, play, pause } = useAudioPlayer();
   const { isAdmin, user } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
@@ -463,9 +463,11 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   className="gap-2 text-destructive focus:text-destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setTrackToDelete(track);
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    // Wait for the dropdown to finish closing so Radix can
+                                    // restore body pointer-events before the confirm dialog opens.
+                                    window.setTimeout(() => setTrackToDelete(track), 50);
                                   }}
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -566,7 +568,14 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
 
       <AlertDialog
         open={!!trackToDelete}
-        onOpenChange={(open) => !open && setTrackToDelete(null)}
+        onOpenChange={(open) => {
+          if (open) return;
+          setTrackToDelete(null);
+          // Dropdown + alert dialog can leave the page inert until refresh.
+          window.setTimeout(() => {
+            document.body.style.removeProperty("pointer-events");
+          }, 0);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -579,8 +588,11 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (trackToDelete) deleteRefTrack.mutate(trackToDelete.referenceTrackId);
-                setTrackToDelete(null);
+                if (!trackToDelete) return;
+                if (currentTrack?.id === trackToDelete.id) {
+                  pause();
+                }
+                deleteRefTrack.mutate(trackToDelete.referenceTrackId);
               }}
               className="bg-destructive hover:bg-destructive/90"
             >

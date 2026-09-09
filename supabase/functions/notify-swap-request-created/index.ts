@@ -449,6 +449,8 @@ serve(async (req: Request): Promise<Response> => {
         swap_date,
         position,
         team_id,
+        campus_id,
+        ministry_type,
         requester_id,
         target_user_id,
         message,
@@ -482,7 +484,11 @@ serve(async (req: Request): Promise<Response> => {
     let notificationTitle = "";
     let notificationMessage = "";
     let emailSubject = "";
-    let scheduleMinistryType = resolveSwapMinistryType(swapRequest.position, null) || "weekend";
+    let scheduleMinistryType =
+      resolveSwapMinistryType(swapRequest.position, swapRequest.ministry_type || null) ||
+      swapRequest.ministry_type ||
+      "weekend";
+    let requestCampusId: string | null = swapRequest.campus_id || null;
     const inAppNotifications: Array<{
       user_id: string;
       sent_by_user_id: string;
@@ -517,101 +523,69 @@ serve(async (req: Request): Promise<Response> => {
         .maybeSingle();
 
       const preferredMinistryType = getPreferredMinistryType(normalizePosition(swapRequest.position));
-      let matchingScheduleQuery = supabase
-        .from("team_schedule")
-        .select("ministry_type")
-        .eq("team_id", swapRequest.team_id)
-        .eq("schedule_date", swapRequest.original_date)
-        .limit(1);
+      if (!requestCampusId || !swapRequest.ministry_type) {
+        let matchingScheduleQuery = supabase
+          .from("team_schedule")
+          .select("campus_id, ministry_type")
+          .eq("team_id", swapRequest.team_id)
+          .eq("schedule_date", swapRequest.original_date)
+          .limit(1);
 
-      if (preferredMinistryType) {
-        matchingScheduleQuery = matchingScheduleQuery.eq("ministry_type", preferredMinistryType);
+        if (preferredMinistryType) {
+          matchingScheduleQuery = matchingScheduleQuery.eq("ministry_type", preferredMinistryType);
+        }
+
+        const { data: matchingSchedule } = await matchingScheduleQuery.maybeSingle();
+        requestCampusId = requestCampusId || matchingSchedule?.campus_id || null;
+        scheduleMinistryType = resolveSwapMinistryType(
+          swapRequest.position,
+          matchingSchedule?.ministry_type || swapRequest.ministry_type || null,
+        ) || scheduleMinistryType;
       }
 
-      const { data: matchingSchedule } = await matchingScheduleQuery.maybeSingle();
+      console.log(`Open request campus ${requestCampusId || "none"} ministry ${scheduleMinistryType}`);
 
-      scheduleMinistryType = resolveSwapMinistryType(
-        swapRequest.position,
-        matchingSchedule?.ministry_type || null,
-      ) || scheduleMinistryType;
-      
-      // First, get the requester's campuses
-      const { data: requesterCampuses, error: campusError } = await supabase
-        .from("user_campuses")
-        .select("campus_id")
-        .eq("user_id", swapRequest.requester_id);
-
-      if (campusError) {
-        console.error("Error fetching requester campuses:", campusError);
-      }
-
-      const requesterCampusIds = requesterCampuses?.map(c => c.campus_id) || [];
-      console.log(`Requester campus IDs: ${requesterCampusIds.join(", ")}`);
-
-      if (requesterCampusIds.length === 0) {
-        console.log("Requester has no campus assignments, no users to notify");
+      if (!requestCampusId) {
+        console.log("Swap request has no campus, no users to notify");
       } else {
-        // Get users who share a campus with the requester
-        const { data: sameCampusUsers, error: sameCampusError } = await supabase
-          .from("user_campuses")
-          .select("user_id")
-          .in("campus_id", requesterCampusIds)
+        const { data: ministryAssignments, error: assignmentError } = await supabase
+          .from("user_campus_ministry_positions")
+          .select("user_id, position, ministry_type")
+          .eq("campus_id", requestCampusId)
           .neq("user_id", swapRequest.requester_id);
 
-        if (sameCampusError) {
-          console.error("Error fetching same campus users:", sameCampusError);
+        if (assignmentError) {
+          console.error("Error fetching ministry position assignments:", assignmentError);
         }
 
-        const sameCampusUserIds = [...new Set(sameCampusUsers?.map(u => u.user_id) || [])];
-        console.log(`Users sharing campus with requester: ${sameCampusUserIds.length}`);
+        const positionTokens = new Set(
+          getPositionVariants(swapRequest.position).map((position) => normalizePosition(position)),
+        );
 
-        if (sameCampusUserIds.length === 0) {
-          console.log("No other users at requester's campus");
-        } else {
-          // Get team members with the same position who are in the same campus
-          let teamMembersQuery = supabase
-            .from("team_members")
-            .select("user_id, ministry_types")
-            .not("user_id", "is", null)
-            .in("user_id", sameCampusUserIds);
+        let eligibleUserIds = [...new Set(
+          (ministryAssignments || [])
+            .filter((assignment: { user_id: string | null; position: string | null; ministry_type: string | null }) =>
+              Boolean(assignment.user_id) &&
+              positionTokens.has(normalizePosition(assignment.position || "")) &&
+              (!assignment.ministry_type || ministriesMatch(assignment.ministry_type, scheduleMinistryType))
+            )
+            .map((assignment: { user_id: string }) => assignment.user_id)
+        )];
 
-          teamMembersQuery = teamMembersQuery.in("position", getPositionVariants(swapRequest.position));
+        if (isVocalistPosition && requesterProfile?.gender && eligibleUserIds.length > 0) {
+          const { data: vocalistProfiles } = await supabase
+            .from("profiles")
+            .select("id, gender")
+            .in("id", eligibleUserIds);
 
-          const { data: teamMembers, error: membersError } = await teamMembersQuery;
-
-          if (membersError) {
-            console.error("Error fetching team members:", membersError);
-          }
-
-          let eligibleTeamMembers = teamMembers || [];
-
-          if (scheduleMinistryType) {
-            eligibleTeamMembers = eligibleTeamMembers.filter((member: any) => {
-              const ministryTypes = (member.ministry_types || []) as string[];
-              if (ministryTypes.length === 0) return false;
-              return ministryTypes.some((memberMinistryType) =>
-                ministriesMatch(memberMinistryType, scheduleMinistryType),
-              );
-            });
-          }
-
-          let eligibleUserIds = [...new Set(eligibleTeamMembers.map((member: any) => member.user_id).filter(Boolean))];
-
-          if (isVocalistPosition && requesterProfile?.gender && eligibleUserIds.length > 0) {
-            const { data: vocalistProfiles } = await supabase
-              .from("profiles")
-              .select("id, gender")
-              .in("id", eligibleUserIds);
-
-            const normalizedRequesterGender = requesterProfile.gender.trim().toLowerCase();
-            eligibleUserIds = (vocalistProfiles || [])
-              .filter((profile) => ((profile.gender || "").trim().toLowerCase() === normalizedRequesterGender))
-              .map((profile) => profile.id);
-          }
-
-          userIdsToNotify = eligibleUserIds;
-          console.log(`Position members at same campus: ${userIdsToNotify.length}`);
+          const normalizedRequesterGender = requesterProfile.gender.trim().toLowerCase();
+          eligibleUserIds = (vocalistProfiles || [])
+            .filter((profile) => ((profile.gender || "").trim().toLowerCase() === normalizedRequesterGender))
+            .map((profile) => profile.id);
         }
+
+        userIdsToNotify = eligibleUserIds;
+        console.log(`Position members assigned to this campus ministry: ${userIdsToNotify.length}`);
       }
 
       const isOpenCoverRequest = swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
@@ -656,7 +630,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const notificationRows = inAppNotifications.map((notification) => ({
       ...notification,
-      campus_id: null,
+      campus_id: requestCampusId,
     }));
 
     if (notificationRows.length > 0) {
@@ -678,6 +652,7 @@ serve(async (req: Request): Promise<Response> => {
       teamId: swapRequest.team_id,
       originalDate: swapRequest.original_date,
       swapDate: swapRequest.swap_date,
+      campusId: requestCampusId,
       ministryType: scheduleMinistryType,
       // Scope delivery to the app this swap request belongs to.
       resourceAppKey: swapRequest.resource_app_key || "worship",

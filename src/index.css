@@ -203,6 +203,12 @@
 }
 
 /* Audition planner date/time picker icon tint */
+.audition-date-input,
+.audition-time-input {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .audition-date-input::-webkit-calendar-picker-indicator,
 .audition-time-input::-webkit-calendar-picker-indicator {
   filter: invert(58%) sepia(93%) saturate(1246%) hue-rotate(169deg) brightness(95%) contrast(92%);

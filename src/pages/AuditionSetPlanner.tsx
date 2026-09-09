@@ -453,7 +453,7 @@ export default function AuditionSetPlanner() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -477,18 +477,18 @@ export default function AuditionSetPlanner() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ListMusic className="h-6 w-6" />
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <ListMusic className="h-6 w-6 shrink-0" />
             Audition Setlist Planner
           </h1>
-          <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
-            <UserRound className="h-4 w-4" />
-            {profile?.full_name || "Candidate"}
+          <p className="mt-1 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <UserRound className="h-4 w-4 shrink-0" />
+            <span className="truncate">{profile?.full_name || "Candidate"}</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2">
           <Button variant="outline" onClick={() => navigate(`/team/${candidateId}`)}>
             Back to Profile
           </Button>
@@ -512,18 +512,18 @@ export default function AuditionSetPlanner() {
         </div>
       </div>
 
-      <Card>
+      <Card className="min-w-0 overflow-hidden">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base">
             <CalendarClock className="h-4 w-4" />
             Audition Details
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-2">
+        <CardContent className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.4fr)]">
+          <div className="min-w-0 space-y-2">
             <Label>Campus</Label>
             <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
-              <SelectTrigger>
+              <SelectTrigger className="min-w-0">
                 <SelectValue placeholder="Select campus" />
               </SelectTrigger>
               <SelectContent>
@@ -536,54 +536,56 @@ export default function AuditionSetPlanner() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label>Date</Label>
             <Input
               type="date"
               value={selectedDateStr}
               onChange={(e) => setSelectedDateStr(e.target.value)}
-              className="audition-date-input"
+              className="audition-date-input min-w-0"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label>Start Time</Label>
             <Input
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="audition-time-input"
+              className="audition-time-input min-w-0"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label>End Time</Label>
             <Input
               type="time"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="audition-time-input"
+              className="audition-time-input min-w-0"
             />
           </div>
 
-          <div className="space-y-2 lg:col-span-1 md:col-span-2">
+          <div className="min-w-0 space-y-2 sm:col-span-2 xl:col-span-1">
             <Label>Candidate Notes</Label>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Audition details, prep instructions, what to focus on..."
-              className="min-h-[80px]"
+              className="min-h-[80px] min-w-0"
             />
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="min-h-[520px]">
-          <CardHeader>
+      {/* Two panels. On desktop, lock both to the viewport so My Set stays visible
+          while Song Library scrolls inside its own panel — same bounding as Set Builder. */}
+      <div className="flex min-w-0 flex-col gap-4 lg:grid lg:h-[calc(100dvh-5.5rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
+        <Card className="flex h-[70dvh] min-h-[400px] min-w-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
+          <CardHeader className="shrink-0 pb-3">
             <CardTitle className="text-base">Song Library</CardTitle>
           </CardHeader>
-          <CardContent className="h-[460px]">
+          <CardContent className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-4">
             <SongAvailabilityList
               availability={availability}
               onAddSong={handleAddSong}
@@ -594,8 +596,9 @@ export default function AuditionSetPlanner() {
           </CardContent>
         </Card>
 
-        <BuildingSet
-          songs={buildingSongs}
+        <div className="min-h-0 min-w-0 lg:h-full lg:overflow-hidden">
+          <BuildingSet
+            songs={buildingSongs}
           onRemoveSong={handleRemoveSong}
           onReorderSongs={setBuildingSongs}
           onKeyChange={(songId, key) => {
@@ -628,10 +631,11 @@ export default function AuditionSetPlanner() {
           approvalStatus={existingSet?.status === "published" ? "published" : "draft"}
           rejectionNotes={null}
         />
+        </div>
       </div>
 
       {playlistForThisSet.length > 0 && (
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3 overflow-x-hidden">
           <h2 className="text-lg font-semibold">Our Versions</h2>
           {playlistForThisSet.map((playlist) => (
             <SetlistPlaylistCard key={playlist.id} playlist={playlist} />

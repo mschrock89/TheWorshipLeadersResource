@@ -1,6 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import type { SetlistPlaylistWithTracks } from "@/hooks/useSetlistPlaylists";
+
+function removeReferenceTrackFromPlaylists(
+  playlists: SetlistPlaylistWithTracks[] | undefined,
+  trackId: string,
+) {
+  if (!playlists) return playlists;
+  return playlists.map((playlist) => ({
+    ...playlist,
+    referenceTracks: (playlist.referenceTracks || []).filter(
+      (track) => track.referenceTrackId !== trackId && track.id !== trackId,
+    ),
+  }));
+}
 
 /**
  * Hook to delete a reference track and its storage file
@@ -43,19 +57,35 @@ export function useDeleteReferenceTrack() {
 
       if (deleteError) throw deleteError;
     },
+    onMutate: async (trackId) => {
+      await queryClient.cancelQueries({ queryKey: ["setlist-playlists"] });
+      const previous = queryClient.getQueriesData<SetlistPlaylistWithTracks[]>({
+        queryKey: ["setlist-playlists"],
+      });
+      queryClient.setQueriesData<SetlistPlaylistWithTracks[]>(
+        { queryKey: ["setlist-playlists"] },
+        (playlists) => removeReferenceTrackFromPlaylists(playlists, trackId),
+      );
+      return { previous };
+    },
     onSuccess: () => {
       toast({
         title: "Reference track deleted",
         description: "The track has been removed from the playlist",
       });
-      queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _trackId, context) => {
+      context?.previous.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
       toast({
         title: "Delete failed",
         description: error.message || "Could not delete the reference track",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["setlist-playlists"] });
     },
   });
 }

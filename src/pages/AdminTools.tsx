@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, type LucideIcon } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -33,7 +33,7 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
 import { useActiveCovenant, useCovenantSignatureCount, useUploadCovenantDocument } from "@/hooks/useCovenant";
-import { getCovenantTerminology } from "@/lib/resourceApp";
+import { getCovenantTerminology, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 function getInitials(name: string | null): string {
   if (!name) return "?";
@@ -587,6 +587,7 @@ export default function AdminTools() {
   const [customServiceEndTime, setCustomServiceEndTime] = useState("");
   const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
   const covenantTerminology = getCovenantTerminology();
+  const isStudentApp = isCurrentStudentResourceApp();
 
   const adminTools: AdminToolDefinition[] = [
     {
@@ -616,6 +617,15 @@ export default function AdminTools() {
       description: "View trimester break requests and volunteer blackout dates.",
       icon: Coffee,
       href: "/breaks-admin",
+    },
+    {
+      id: "audition-inbox",
+      title: isStudentApp ? "On Boarding Inbox" : "Audition Inbox",
+      description: isStudentApp
+        ? "Review Gmail interest emails, reply, and start scheduling onboarding."
+        : "Review Gmail interest emails, reply, and start scheduling candidates.",
+      icon: Inbox,
+      href: "/audition-inbox",
     },
     {
       id: "leadership",

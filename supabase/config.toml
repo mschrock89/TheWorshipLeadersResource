@@ -200,3 +200,27 @@ entrypoint = "./functions/detect-reference-track-markers/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/cancel-push-notification/index.ts"
+
+[functions.gmail-auth-start]
+enabled = true
+verify_jwt = false
+import_map = "./functions/gmail-auth-start/deno.json"
+entrypoint = "./functions/gmail-auth-start/index.ts"
+
+[functions.gmail-disconnect]
+enabled = true
+verify_jwt = false
+import_map = "./functions/gmail-disconnect/deno.json"
+entrypoint = "./functions/gmail-disconnect/index.ts"
+
+[functions.gmail-sync-inbox]
+enabled = true
+verify_jwt = false
+import_map = "./functions/gmail-sync-inbox/deno.json"
+entrypoint = "./functions/gmail-sync-inbox/index.ts"
+
+[functions.gmail-send-reply]
+enabled = true
+verify_jwt = false
+import_map = "./functions/gmail-send-reply/deno.json"
+entrypoint = "./functions/gmail-send-reply/index.ts"

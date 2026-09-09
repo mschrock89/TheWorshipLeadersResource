@@ -262,7 +262,7 @@ export function useNotifications() {
           .eq("id", user.id)
           .maybeSingle(),
         // Direct incoming cover/swap requests for this user.
-        // Admins can observe all pending requests through RLS, so use observer wording below.
+        // Leaders can observe pending requests in ministries they are assigned to.
         (isAdmin
           ? supabase
             .from("swap_requests")
