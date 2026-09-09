@@ -9,6 +9,39 @@ export interface TeamScheduleForPrecedence {
 export type CampusEffectiveSchedule<T extends TeamScheduleForPrecedence> =
   Omit<T, "campus_id"> & { campus_id: string };
 
+export type RosterPushCampus = {
+  id: string;
+  is_network_wide?: boolean | null;
+  has_saturday_service?: boolean | null;
+  has_sunday_service?: boolean | null;
+};
+
+/** Calendar weekday for a YYYY-MM-DD service date, independent of runtime TZ. */
+function dayOfWeekForDate(dateStr: string): number {
+  return new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+}
+
+/** Whether a campus actually runs a weekend service on the given date. Weekdays are always eligible. */
+export function campusHasServiceOnDate(campus: RosterPushCampus, dateStr: string): boolean {
+  const dayOfWeek = dayOfWeekForDate(dateStr);
+  if (dayOfWeek === 6) return !!campus.has_saturday_service;
+  if (dayOfWeek === 0) return !!campus.has_sunday_service;
+  return true;
+}
+
+/**
+ * Campuses whose Calendar roster should receive serving/video reminders for a date.
+ * Network Wide is never a service campus; Sat/Sun follow has_*_service flags.
+ */
+export function campusIdsEligibleForRosterPush(
+  campuses: RosterPushCampus[],
+  dateStr: string,
+): string[] {
+  return campuses
+    .filter((campus) => Boolean(campus.id) && !campus.is_network_wide && campusHasServiceOnDate(campus, dateStr))
+    .map((campus) => campus.id);
+}
+
 function schedulePrecedenceKey(schedule: TeamScheduleForPrecedence): string {
   return [
     schedule.ministry_type || "default",
@@ -31,12 +64,11 @@ export function resolveEffectiveTeamSchedulesForCampuses<T extends TeamScheduleF
   schedules: T[],
   campusIds: string[],
 ): Array<CampusEffectiveSchedule<T>> {
-  const resolvedCampusIds = Array.from(
-    new Set([
-      ...campusIds.filter(Boolean),
-      ...schedules.map((schedule) => schedule.campus_id).filter((id): id is string => Boolean(id)),
-    ]),
-  );
+  // Only the campuses the caller asked for. Shared (campus-null) rows expand to
+  // those campuses; campus-specific rows still win per campus. Do not union in
+  // extra campus ids from the schedule rows — that previously applied Saturday
+  // shared teams to Network Wide and Sunday-only campuses.
+  const resolvedCampusIds = Array.from(new Set(campusIds.filter(Boolean)));
 
   const effectiveSchedules: Array<CampusEffectiveSchedule<T>> = [];
 

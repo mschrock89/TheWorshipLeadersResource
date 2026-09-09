@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { useNativePushNotifications } from "@/hooks/useNativePushNotifications";
+import { isNativeApp } from "@/lib/native";
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
@@ -53,6 +55,12 @@ function uint8ArraysEqual(a: Uint8Array, b: Uint8Array) {
 }
 
 export function usePushNotifications() {
+  const webPush = useWebPushNotifications();
+  const nativePush = useNativePushNotifications();
+  return isNativeApp() ? nativePush : webPush;
+}
+
+function useWebPushNotifications() {
   const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const [isSupported, setIsSupported] = useState(false);

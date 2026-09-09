@@ -17,6 +17,7 @@ const Songs = lazy(() => import("@/pages/Songs"));
 const SetPlanner = lazy(() => import("@/pages/SetPlanner"));
 const AuditionSetPlanner = lazy(() => import("@/pages/AuditionSetPlanner"));
 const Auditions = lazy(() => import("@/pages/Auditions"));
+const AuditionInbox = lazy(() => import("@/pages/AuditionInbox"));
 const ManageSets = lazy(() => import("@/pages/ManageSets"));
 const MySetlists = lazy(() => import("@/pages/MySetlists"));
 const TeamBuilder = lazy(() => import("@/pages/TeamBuilder"));
@@ -71,6 +72,7 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/weekend-rundown", WeekendRundown),
   route("/weekend-rundown/history", WeekendRundownHistory),
   route("/auditions", Auditions),
+  route("/audition-inbox", AuditionInbox),
   route("/set-planner/audition/:candidateId", AuditionSetPlanner),
   route("/manage-sets", ManageSets),
   route("/team-builder", TeamBuilder),

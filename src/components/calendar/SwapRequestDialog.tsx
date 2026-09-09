@@ -179,6 +179,8 @@ export function SwapRequestDialog({
         team_id: teamId,
         message: message || null,
         request_type: requestMode,
+        campus_id: effectiveCampusId || null,
+        ministry_type: ministryType || null,
       });
 
       const successMessage = requestMode === "fill_in"

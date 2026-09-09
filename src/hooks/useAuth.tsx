@@ -3,6 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { getAppUrl } from "@/lib/resourceApps";
 import { getCurrentResourceAppKey, hasStudentAppAdminRole } from "@/lib/resourceApp";
+import { isNativeApp } from "@/lib/native";
 
 interface AuthContextType {
   user: User | null;
@@ -148,6 +149,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Native app: remove this device's APNs registration so a signed-out
+    // device stops receiving the previous user's notifications.
+    if (isNativeApp()) {
+      try {
+        const token = localStorage.getItem("native-push-device-token");
+        if (token) {
+          await supabase.from("push_subscriptions").delete().eq("endpoint", `apns:${token}`);
+          localStorage.removeItem("native-push-device-token");
+        }
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        await PushNotifications.unregister();
+      } catch (error) {
+        console.error("Failed to clean up native push registration during sign out:", error);
+      }
+    }
+
     if ("serviceWorker" in navigator) {
       try {
         const registration = await navigator.serviceWorker.getRegistration();

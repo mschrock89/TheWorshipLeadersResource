@@ -160,7 +160,7 @@ export function BuildingSet({
   };
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
+    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-0 p-4 pb-2">
         <div className="flex flex-col gap-2">
           {/* Top row: Title and status */}
@@ -186,7 +186,7 @@ export function BuildingSet({
           </div>
           
           {/* Bottom row: Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {showEditButton ? (
               <Button
                 onClick={() => setIsEditing(true)}
@@ -289,11 +289,11 @@ export function BuildingSet({
                     onDragOver={handleDragOver}
                     onDrop={e => handleDrop(e, index)}
                     className={cn(
-                      'grid items-center gap-1.5 rounded-lg border bg-card p-1.5',
+                      'grid min-w-0 items-center gap-1.5 overflow-hidden rounded-lg border bg-card p-1.5',
                       // Grid layout: grip | number | title | controls
                       isMobile 
-                        ? 'grid-cols-[16px_24px_1fr_auto]' 
-                        : 'grid-cols-[16px_24px_1fr_auto]',
+                        ? 'grid-cols-[16px_24px_minmax(0,1fr)_auto]' 
+                        : 'grid-cols-[16px_24px_minmax(0,1fr)_auto]',
                       item.status === 'too-recent' && 'border-amber-500/30 bg-amber-500/5',
                       isReadOnly ? 'cursor-default opacity-90' : 'cursor-grab active:cursor-grabbing'
                     )}

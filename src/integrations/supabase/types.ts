@@ -427,6 +427,161 @@ export type Database = {
           },
         ]
       }
+      audition_inbox_messages: {
+        Row: {
+          audition_id: string | null
+          body_text: string | null
+          candidate_user_id: string | null
+          connected_by: string
+          created_at: string
+          from_email: string
+          from_name: string | null
+          gmail_message_id: string
+          gmail_thread_id: string | null
+          id: string
+          match_reason: string | null
+          matched_keywords: string[]
+          received_at: string
+          replied_at: string | null
+          rfc_message_id: string | null
+          snippet: string | null
+          status: string
+          subject: string | null
+          to_email: string | null
+          updated_at: string
+        }
+        Insert: {
+          audition_id?: string | null
+          body_text?: string | null
+          candidate_user_id?: string | null
+          connected_by: string
+          created_at?: string
+          from_email: string
+          from_name?: string | null
+          gmail_message_id: string
+          gmail_thread_id?: string | null
+          id?: string
+          match_reason?: string | null
+          matched_keywords?: string[]
+          received_at: string
+          replied_at?: string | null
+          rfc_message_id?: string | null
+          snippet?: string | null
+          status?: string
+          subject?: string | null
+          to_email?: string | null
+          updated_at?: string
+        }
+        Update: {
+          audition_id?: string | null
+          body_text?: string | null
+          candidate_user_id?: string | null
+          connected_by?: string
+          created_at?: string
+          from_email?: string
+          from_name?: string | null
+          gmail_message_id?: string
+          gmail_thread_id?: string | null
+          id?: string
+          match_reason?: string | null
+          matched_keywords?: string[]
+          received_at?: string
+          replied_at?: string | null
+          rfc_message_id?: string | null
+          snippet?: string | null
+          status?: string
+          subject?: string | null
+          to_email?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audition_inbox_messages_audition_id_fkey"
+            columns: ["audition_id"]
+            isOneToOne: false
+            referencedRelation: "auditions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audition_inbox_messages_candidate_user_id_fkey"
+            columns: ["candidate_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audition_inbox_replies: {
+        Row: {
+          body_text: string
+          gmail_message_id: string | null
+          id: string
+          message_id: string
+          sent_at: string
+          sent_by: string
+        }
+        Insert: {
+          body_text: string
+          gmail_message_id?: string | null
+          id?: string
+          message_id: string
+          sent_at?: string
+          sent_by: string
+        }
+        Update: {
+          body_text?: string
+          gmail_message_id?: string | null
+          id?: string
+          message_id?: string
+          sent_at?: string
+          sent_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audition_inbox_replies_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "audition_inbox_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gmail_integrations: {
+        Row: {
+          created_at: string
+          email_address: string
+          history_id: string | null
+          id: string
+          last_sync_error: string | null
+          last_synced_at: string | null
+          refresh_token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_address: string
+          history_id?: string | null
+          id?: string
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          refresh_token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_address?: string
+          history_id?: string | null
+          id?: string
+          last_sync_error?: string | null
+          last_synced_at?: string | null
+          refresh_token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       break_requests: {
         Row: {
           blackout_dates: string[] | null
@@ -2569,9 +2724,11 @@ export type Database = {
         Row: {
           auth: string
           created_at: string
+          device_token: string | null
           endpoint: string
           id: string
           p256dh: string
+          platform: string
           resource_app_key: string
           updated_at: string
           user_id: string
@@ -2579,9 +2736,11 @@ export type Database = {
         Insert: {
           auth: string
           created_at?: string
+          device_token?: string | null
           endpoint: string
           id?: string
           p256dh: string
+          platform?: string
           resource_app_key?: string
           updated_at?: string
           user_id: string
@@ -2589,9 +2748,11 @@ export type Database = {
         Update: {
           auth?: string
           created_at?: string
+          device_token?: string | null
           endpoint?: string
           id?: string
           p256dh?: string
+          platform?: string
           resource_app_key?: string
           updated_at?: string
           user_id?: string
@@ -3347,9 +3508,11 @@ export type Database = {
       swap_requests: {
         Row: {
           accepted_by_id: string | null
+          campus_id: string | null
           created_at: string
           id: string
           message: string | null
+          ministry_type: string | null
           original_date: string
           position: string
           request_type: string
@@ -3363,9 +3526,11 @@ export type Database = {
         }
         Insert: {
           accepted_by_id?: string | null
+          campus_id?: string | null
           created_at?: string
           id?: string
           message?: string | null
+          ministry_type?: string | null
           original_date: string
           position: string
           request_type?: string
@@ -3379,9 +3544,11 @@ export type Database = {
         }
         Update: {
           accepted_by_id?: string | null
+          campus_id?: string | null
           created_at?: string
           id?: string
           message?: string | null
+          ministry_type?: string | null
           original_date?: string
           position?: string
           request_type?: string
@@ -3399,6 +3566,13 @@ export type Database = {
             columns: ["accepted_by_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swap_requests_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
             referencedColumns: ["id"]
           },
           {

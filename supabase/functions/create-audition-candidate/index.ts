@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface CreateCandidateRequest {
   firstName: string;
-  lastName: string;
+  lastName?: string | null;
   email: string;
   phone?: string | null;
   campusId?: string | null;
@@ -80,12 +80,12 @@ serve(async (req) => {
 
     const body = (await req.json()) as CreateCandidateRequest;
     const firstName = body.firstName?.trim();
-    const lastName = body.lastName?.trim();
+    const lastName = body.lastName?.trim() || "";
     const email = body.email?.trim().toLowerCase();
     const phone = body.phone?.trim() || null;
     const campusId = body.campusId || null;
 
-    if (!firstName || !lastName || !email) {
+    if (!firstName || !email) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -101,7 +101,7 @@ serve(async (req) => {
       });
     }
 
-    const fullName = `${firstName} ${lastName}`;
+    const fullName = lastName ? `${firstName} ${lastName}` : firstName;
     const temporaryPassword = "123456";
 
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({

@@ -283,6 +283,14 @@ export function StemUploadDialog({
     let sessionId: string | undefined;
     try {
       sessionId = existingSession?.id;
+      if (sessionId) {
+        const { data: stillThere } = await supabase
+          .from("setlist_stem_sessions")
+          .select("id")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (!stillThere) sessionId = undefined;
+      }
       if (!sessionId) {
         const newSession = await createSession.mutateAsync({ playlistId });
         sessionId = newSession.id;

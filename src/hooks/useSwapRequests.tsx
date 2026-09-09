@@ -27,6 +27,8 @@ export interface SwapRequest {
   created_at: string;
   resolved_at: string | null;
   request_type: SwapRequestType;
+  campus_id?: string | null;
+  ministry_type?: string | null;
   resource_app_key?: string;
   requester?: {
     id: string;
@@ -148,6 +150,28 @@ export function useSwapRequests() {
             payload.new.resource_app_key === resourceAppKey
           ) {
             const isTargetedAtMe = payload.new.target_user_id === user.id;
+            const requestCampusId = payload.new.campus_id as string | null | undefined;
+            const requestMinistryType = payload.new.ministry_type as string | null | undefined;
+
+            if (!isTargetedAtMe && requestCampusId && requestMinistryType) {
+              const [{ data: ministryAssignments }, { data: positionAssignments }] = await Promise.all([
+                supabase
+                  .from("user_ministry_campuses")
+                  .select("campus_id, ministry_type")
+                  .eq("user_id", user.id)
+                  .eq("campus_id", requestCampusId),
+                supabase
+                  .from("user_campus_ministry_positions")
+                  .select("campus_id, ministry_type")
+                  .eq("user_id", user.id)
+                  .eq("campus_id", requestCampusId),
+              ]);
+              const assignedToMinistry = [...(ministryAssignments || []), ...(positionAssignments || [])]
+                .some((assignment) => ministriesMatchForSwap(assignment.ministry_type, requestMinistryType));
+              if (!assignedToMinistry) {
+                return;
+              }
+            }
             
             // Check if it's an open request for my position
             if (isTargetedAtMe || !payload.new.target_user_id) {
@@ -304,10 +328,16 @@ export function useCreateSwapRequest() {
       team_id: string;
       message?: string | null;
       request_type?: SwapRequestType;
+      campus_id?: string | null;
+      ministry_type?: string | null;
     }) => {
       // Defensive normalization: a request with a swap_date is always a direct swap.
       const normalizedRequestType: SwapRequestType =
         request.swap_date ? "swap" : (request.request_type || "swap");
+      const normalizedMinistryType =
+        resolveSwapMinistryType(request.position, request.ministry_type || undefined) ||
+        request.ministry_type ||
+        null;
 
       const { data, error } = await supabase
         .from("swap_requests")
@@ -320,6 +350,8 @@ export function useCreateSwapRequest() {
           team_id: request.team_id,
           message: request.message || null,
           request_type: normalizedRequestType,
+          campus_id: request.campus_id || null,
+          ministry_type: normalizedMinistryType,
           resource_app_key: resourceAppKey,
         })
         .select()

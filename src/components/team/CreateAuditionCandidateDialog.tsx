@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { Loader2, UserPlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,7 +25,10 @@ interface CreateAuditionCandidateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   campuses: CampusOption[];
-  onCreated: () => void;
+  initialFirstName?: string;
+  initialLastName?: string;
+  initialEmail?: string;
+  onCreated: (result?: { userId: string; email: string }) => void;
 }
 
 const getFunctionErrorMessage = async (
@@ -65,20 +68,30 @@ export function CreateAuditionCandidateDialog({
   open,
   onOpenChange,
   campuses,
+  initialFirstName = "",
+  initialLastName = "",
+  initialEmail = "",
   onCreated,
 }: CreateAuditionCandidateDialogProps) {
   const { toast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState(initialFirstName);
+  const [lastName, setLastName] = useState(initialLastName);
+  const [email, setEmail] = useState(initialEmail);
   const [phone, setPhone] = useState("");
   const [campusId, setCampusId] = useState<string>("");
 
+  useEffect(() => {
+    if (!open) return;
+    setFirstName(initialFirstName);
+    setLastName(initialLastName);
+    setEmail(initialEmail);
+  }, [open, initialFirstName, initialLastName, initialEmail]);
+
   const reset = () => {
-    setFirstName("");
-    setLastName("");
-    setEmail("");
+    setFirstName(initialFirstName);
+    setLastName(initialLastName);
+    setEmail(initialEmail);
     setPhone("");
     setCampusId("");
     setIsCreating(false);
@@ -90,10 +103,10 @@ export function CreateAuditionCandidateDialog({
   };
 
   const handleCreate = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+    if (!firstName.trim() || !email.trim()) {
       toast({
         title: "Missing details",
-        description: "First name, last name, and email are required.",
+        description: "First name and email are required.",
         variant: "destructive",
       });
       return;
@@ -112,7 +125,7 @@ export function CreateAuditionCandidateDialog({
         },
         body: {
           firstName: firstName.trim(),
-          lastName: lastName.trim(),
+          lastName: lastName.trim() || null,
           email: email.trim().toLowerCase(),
           phone: phone.trim() || null,
           campusId: campusId || null,
@@ -131,7 +144,7 @@ export function CreateAuditionCandidateDialog({
         title: "Audition candidate created",
         description: `${response.data.email} created. Temporary password is ${response.data.temporaryPassword}.`,
       });
-      onCreated();
+      onCreated({ userId: response.data.userId, email: response.data.email });
       close();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to create candidate";

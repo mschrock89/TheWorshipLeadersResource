@@ -15,6 +15,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "ios:build": "vite build && cap sync ios",
+    "ios:open": "cap open ios",
     "preview:charts": "vite preview --config vite.charts.config.ts",
     "data:export": "node scripts/export-from-supabase.mjs",
     "data:import": "node scripts/import-to-supabase.mjs",
@@ -24,6 +26,13 @@
     "test:profiles:cleanup": "node scripts/test-profile-matrix.mjs cleanup"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@giphy/js-fetch-api": "^5.7.0",
     "@giphy/react-components": "^10.1.1",
     "@hookform/resolvers": "^3.10.0",
