@@ -241,12 +241,16 @@ export function useDeleteEvent() {
 
   return useMutation({
     mutationFn: async (eventId: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("events")
         .delete()
-        .eq("id", eventId);
+        .eq("id", eventId)
+        .select("id");
 
       if (error) throw error;
+      if (!data?.length) {
+        throw new Error("This event could not be deleted. You may not have permission, or it was already removed.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });

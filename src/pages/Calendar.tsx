@@ -566,7 +566,6 @@ function StandardCalendar() {
     data: customServices = [],
   } = useCustomServiceOccurrences({
     campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
-    ministryType: ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team" ? ministryFilter : undefined,
     startDate: monthStart,
     endDate: monthEnd,
   });
@@ -1012,8 +1011,8 @@ function StandardCalendar() {
   const selectedDateStr = selectedDate ? formatDateForStorage(selectedDate) : null;
   const selectedDateOverrides = useMemo(() => {
     if (!selectedDateStr) return [];
-    return filteredServiceTimeOverrides.filter((override) => override.service_date === selectedDateStr);
-  }, [selectedDateStr, filteredServiceTimeOverrides]);
+    return serviceTimeOverrides.filter((override) => override.service_date === selectedDateStr);
+  }, [selectedDateStr, serviceTimeOverrides]);
   const { data: selectedTeachingWeek } = useTeachingWeekForDate(
     teachingCampusId,
     teachingMinistryFilter,
@@ -1253,7 +1252,7 @@ function StandardCalendar() {
   }, [activeRotationPeriodName, teamSchedule]);
 
   // Get events for a specific day
-  const getEventsForDay = (day: number): Event[] => {
+  const getEventsForDay = (day: number, options?: { ignoreMinistryFilter?: boolean }): Event[] => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     let filteredEvents = events.filter(e => e.event_date === dateStr);
     const eventMatchesCampus = (event: Event, scopedCampusId: string) => {
@@ -1292,15 +1291,24 @@ function StandardCalendar() {
       filteredEvents = filteredEvents.filter(e => eventMatchesCampus(e, campusFilter) || (e.campus_id === null && (!e.campus_ids || e.campus_ids.length === 0)));
     }
 
-    if (ministryFilter && ministryFilter !== "all") {
+    if (!options?.ignoreMinistryFilter && ministryFilter && ministryFilter !== "all") {
       filteredEvents = filteredEvents.filter((event) => eventMatchesMinistry(event, ministryFilter));
     }
 
     return filteredEvents;
   };
-  const getCustomServicesForDay = (day: number) => {
+  const getCustomServicesForDay = (day: number, options?: { ignoreMinistryFilter?: boolean }) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return customServices.filter((service) => service.occurrence_date === dateStr);
+    const dayServices = customServices.filter((service) => service.occurrence_date === dateStr);
+    if (options?.ignoreMinistryFilter || !ministryFilter || ministryFilter === "all") {
+      return dayServices;
+    }
+    return dayServices.filter((service) =>
+      serviceOverrideMatchesMinistryFilter(
+        getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
+        ministryFilter,
+      ),
+    );
   };
   const getAuditionsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -1308,7 +1316,7 @@ function StandardCalendar() {
   };
 
   // Get events for selected date
-  const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate()) : [];
+  const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate(), { ignoreMinistryFilter: true }) : [];
   const selectedDayServices = useMemo(
     () => (selectedDateStr
       ? customServices.filter((service) => service.occurrence_date === selectedDateStr)
@@ -1654,9 +1662,12 @@ function StandardCalendar() {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`;
     if (newEvent.event_type === "service") {
       if (!newEvent.campus_id) return;
+      const selectedMinistryTypes = newEvent.ministry_types.length > 0
+        ? newEvent.ministry_types
+        : [newEvent.ministry_type];
       await createCustomService.mutateAsync({
         campus_id: newEvent.campus_id,
-        ministry_type: newEvent.ministry_type,
+        ministry_types: selectedMinistryTypes,
         service_name: newEvent.title,
         service_date: dateStr,
         start_time: newEvent.start_time || undefined,
@@ -2125,8 +2136,8 @@ function StandardCalendar() {
                                 {campusName} • {getMinistryLabel(service.ministry_type)}
                               </p>
                             </div>
-                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-6 w-6 shrink-0 text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-3 w-3" />
+                            {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10" title="Delete service">
+                                <Trash2 className="h-4 w-4" />
                               </Button>}
                           </div>
                           <CustomServiceRoster
@@ -2505,23 +2516,28 @@ function StandardCalendar() {
                                     </SelectContent>
                                   </Select>
                                 </div>
-                                <div>
-                                  <Label htmlFor="service-ministry">Ministry</Label>
-                                  <Select value={newEvent.ministry_type} onValueChange={value => setNewEvent({
-                            ...newEvent,
-                            ministry_type: value
-                          })}>
-                                    <SelectTrigger id="service-ministry">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {SET_PLANNER_MINISTRY_OPTIONS
-                                        .filter(option => !appMinistryTypes || appMinistryTypes.includes(option.value))
-                                        .map(option => <SelectItem key={option.value} value={option.value}>
-                                          {option.label}
-                                        </SelectItem>)}
-                                    </SelectContent>
-                                  </Select>
+                                <div className="space-y-3">
+                                  <Label>Ministries</Label>
+                                  <div className="grid gap-2 rounded-md border border-border p-3">
+                                    {SET_PLANNER_MINISTRY_OPTIONS
+                                      .filter(option => !appMinistryTypes || appMinistryTypes.includes(option.value))
+                                      .map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
+                                        <Checkbox checked={newEvent.ministry_types.includes(option.value)} onCheckedChange={checked => {
+                                    setNewEvent(current => {
+                                      const nextMinistryTypes = checked ? Array.from(new Set([...current.ministry_types, option.value])) : current.ministry_types.filter(value => value !== option.value);
+                                      return {
+                                        ...current,
+                                        ministry_type: checked ? option.value : nextMinistryTypes[0] || current.ministry_type,
+                                        ministry_types: nextMinistryTypes
+                                      };
+                                    });
+                                  }} />
+                                        <span>{option.label}</span>
+                                      </label>)}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Select every ministry that needs this service at the same time, such as Weekend Worship and HS Worship.
+                                  </p>
                                 </div>
                               </>}
                             <div className="grid grid-cols-2 gap-4">
@@ -2548,7 +2564,7 @@ function StandardCalendar() {
                                 <Label htmlFor="repeats_weekly" className="font-normal">Repeat weekly</Label>
                               </div>}
                             <div className="flex flex-col gap-2 sm:flex-row">
-                              <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && !newEvent.campus_id) || (newEvent.event_type === "team_event" && (newEvent.campus_ids.length === 0 || newEvent.ministry_types.length === 0)) || createEvent.isPending || createCustomService.isPending || updateEvent.isPending} className="w-full">
+                              <Button onClick={handleAddEvent} disabled={!newEvent.title.trim() || (newEvent.event_type === "service" && (!newEvent.campus_id || newEvent.ministry_types.length === 0)) || (newEvent.event_type === "team_event" && (newEvent.campus_ids.length === 0 || newEvent.ministry_types.length === 0)) || createEvent.isPending || createCustomService.isPending || updateEvent.isPending} className="w-full">
                                 {createEvent.isPending || createCustomService.isPending || updateEvent.isPending ? editingEventId ? "Saving..." : "Creating..." : newEvent.event_type === "service" ? "Create Service" : editingEventId ? "Update Event" : "Create Event"}
                               </Button>
                               {editingEventId && <Button type="button" variant="outline" onClick={resetEventComposer} className="w-full">

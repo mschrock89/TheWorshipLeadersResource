@@ -203,7 +203,8 @@ export function useCreateCustomService() {
   return useMutation({
     mutationFn: async (payload: {
       campus_id: string;
-      ministry_type: string;
+      ministry_type?: string;
+      ministry_types?: string[];
       service_name: string;
       service_date: string;
       start_time?: string | null;
@@ -211,28 +212,46 @@ export function useCreateCustomService() {
       repeats_weekly?: boolean;
       repeat_until?: string | null;
     }) => {
+      const ministries = (payload.ministry_types?.length
+        ? payload.ministry_types
+        : payload.ministry_type
+          ? [payload.ministry_type]
+          : []);
+      if (ministries.length === 0) {
+        throw new Error("Select at least one ministry.");
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
+      const rows = ministries.map((ministry_type) => ({
+        service_name: payload.service_name,
+        service_date: payload.service_date,
+        start_time: payload.start_time,
+        end_time: payload.end_time,
+        repeats_weekly: payload.repeats_weekly,
+        repeat_until: payload.repeat_until,
+        ministry_type,
+        // Network-wide ministries (Student Camp) are stored with campus_id = NULL.
+        campus_id: resolveMinistryCampusId(ministry_type, payload.campus_id),
+        created_by: user?.id ?? null,
+      }));
+
       const { data, error } = await supabase
         .from("custom_services")
-        .insert({
-          ...payload,
-          // Network-wide ministries (Student Camp) are stored with campus_id = NULL.
-          campus_id: resolveMinistryCampusId(payload.ministry_type, payload.campus_id),
-          created_by: user?.id ?? null,
-        })
-        .select()
-        .single();
+        .insert(rows)
+        .select();
 
       if (error) throw error;
-      return data as CustomService;
+      return (data || []) as CustomService[];
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["custom-service-definitions"] });
       queryClient.invalidateQueries({ queryKey: ["custom-service-occurrences"] });
-      toast({ title: "Custom service created" });
+      toast({
+        title: data.length > 1 ? `Created ${data.length} services` : "Custom service created",
+      });
     },
     onError: (error) => {
       toast({ title: "Unable to create service", description: error.message, variant: "destructive" });
@@ -279,12 +298,29 @@ export function useDeleteCustomService() {
         if (resetError) throw resetError;
       }
 
-      const { error } = await supabase.from("custom_services").delete().eq("id", id);
+      // Delete scoped flows first. Leaving them to ON DELETE SET NULL can violate
+      // service_flows_standard_unique_idx when a duplicate service already has a flow
+      // for the same campus/ministry/date.
+      const { error: flowsError } = await supabase
+        .from("service_flows")
+        .delete()
+        .eq("custom_service_id", id);
+      if (flowsError) throw flowsError;
+
+      const { data: deleted, error } = await supabase
+        .from("custom_services")
+        .delete()
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!deleted?.length) {
+        throw new Error("This service could not be deleted. You may not have permission, or it was already removed.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["custom-service-definitions"] });
       queryClient.invalidateQueries({ queryKey: ["custom-service-occurrences"] });
+      queryClient.invalidateQueries({ queryKey: ["service-flows"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
       toast({ title: "Custom service deleted" });
