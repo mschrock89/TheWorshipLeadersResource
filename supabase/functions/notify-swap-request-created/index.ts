@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { canonicalSwapPosition, swapPositionsMatch } from "../_shared/swapPositions.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -36,37 +37,6 @@ const VIDEO_POSITIONS = new Set([
 ]);
 
 const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
-const VOCALIST_POSITIONS = ["vocalist", "lead_vocals", "harmony_vocals", "background_vocals"];
-const ELECTRIC_POSITION_VARIANTS = [
-  "electric_guitar",
-  "electric_1",
-  "electric_2",
-  "electric_3",
-  "electric_4",
-  "eg_1",
-  "eg_2",
-  "eg_3",
-  "eg_4",
-  "eg1",
-  "eg2",
-  "eg3",
-  "eg4",
-  "EG 1",
-  "EG 2",
-  "EG 3",
-  "EG 4",
-];
-const ACOUSTIC_POSITION_VARIANTS = [
-  "acoustic_guitar",
-  "acoustic_1",
-  "acoustic_2",
-  "ag_1",
-  "ag_2",
-  "ag1",
-  "ag2",
-  "AG 1",
-  "AG 2",
-];
 
 const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",
@@ -185,26 +155,6 @@ function getPreferredMinistryType(position: string): string | null {
 
 function normalizePosition(position: string): string {
   return position.trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-function getPositionVariants(position: string): string[] {
-  const normalized = normalizePosition(position);
-  const normalizedElectricVariants = new Set(ELECTRIC_POSITION_VARIANTS.map(normalizePosition));
-  const normalizedAcousticVariants = new Set(ACOUSTIC_POSITION_VARIANTS.map(normalizePosition));
-
-  if (VOCALIST_POSITIONS.includes(normalized)) {
-    return VOCALIST_POSITIONS;
-  }
-
-  if (normalizedElectricVariants.has(normalized)) {
-    return ELECTRIC_POSITION_VARIANTS;
-  }
-
-  if (normalizedAcousticVariants.has(normalized)) {
-    return ACOUSTIC_POSITION_VARIANTS;
-  }
-
-  return [position];
 }
 
 function resolveSwapMinistryType(position: string, ministryType: string | null): string | null {
@@ -513,8 +463,8 @@ serve(async (req: Request): Promise<Response> => {
         ? `${requesterName} asked you to cover ${formatPosition(swapRequest.position)}`
         : `${requesterName} sent you a swap request`;
     } else {
-      // Open swap request - notify team members with same position AND same campus as requester
-      const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizePosition(swapRequest.position));
+      // Open swap request - notify team members with same position family AND same campus as requester
+      const isVocalistPosition = canonicalSwapPosition(swapRequest.position) === "vocalist";
 
       const { data: requesterProfile } = await supabase
         .from("profiles")
@@ -558,15 +508,11 @@ serve(async (req: Request): Promise<Response> => {
           console.error("Error fetching ministry position assignments:", assignmentError);
         }
 
-        const positionTokens = new Set(
-          getPositionVariants(swapRequest.position).map((position) => normalizePosition(position)),
-        );
-
         let eligibleUserIds = [...new Set(
           (ministryAssignments || [])
             .filter((assignment: { user_id: string | null; position: string | null; ministry_type: string | null }) =>
               Boolean(assignment.user_id) &&
-              positionTokens.has(normalizePosition(assignment.position || "")) &&
+              swapPositionsMatch(assignment.position || "", swapRequest.position) &&
               (!assignment.ministry_type || ministriesMatch(assignment.ministry_type, scheduleMinistryType))
             )
             .map((assignment: { user_id: string }) => assignment.user_id)

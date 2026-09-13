@@ -10,6 +10,7 @@ import {
   assignmentMatchesSupportScheduleMinistry,
   shouldSkipMisalignedSupportScheduleEntry,
 } from "@/lib/teamScheduleSupport";
+import { canonicalSwapPosition } from "@/lib/swapPositions";
 
 export type SwapRequestType = "swap" | "fill_in";
 
@@ -162,13 +163,22 @@ export function useSwapRequests() {
                   .eq("campus_id", requestCampusId),
                 supabase
                   .from("user_campus_ministry_positions")
-                  .select("campus_id, ministry_type")
+                  .select("campus_id, ministry_type, position")
                   .eq("user_id", user.id)
                   .eq("campus_id", requestCampusId),
               ]);
               const assignedToMinistry = [...(ministryAssignments || []), ...(positionAssignments || [])]
                 .some((assignment) => ministriesMatchForSwap(assignment.ministry_type, requestMinistryType));
               if (!assignedToMinistry) {
+                return;
+              }
+              const requestPosition = payload.new.position as string | undefined;
+              if (
+                requestPosition &&
+                !(positionAssignments || []).some((assignment) =>
+                  canonicalSwapPosition(assignment.position) === canonicalSwapPosition(requestPosition)
+                )
+              ) {
                 return;
               }
             }
@@ -772,23 +782,94 @@ function normalizeSwapPosition(position: string): string {
 }
 
 function getSwapPositionVariants(position: string): string[] {
+  const family = canonicalSwapPosition(position);
   const normalized = normalizeSwapPosition(position);
-  const normalizedElectricVariants = new Set(ELECTRIC_POSITION_VARIANTS.map(normalizeSwapPosition));
-  const normalizedAcousticVariants = new Set(ACOUSTIC_POSITION_VARIANTS.map(normalizeSwapPosition));
 
-  if (VOCALIST_POSITIONS.includes(normalized)) {
-    return [...new Set([...VOCALIST_POSITIONS, "Vocalist"])];
+  if (family === "vocalist") {
+    const numbered = [1, 2, 3, 4, 5, 6, 7, 8].flatMap((n) => [`vocalist_${n}`, `Vocalist ${n}`]);
+    return [...new Set([...VOCALIST_POSITIONS, "Vocalist", "vocals", ...numbered])];
   }
 
-  if (normalizedElectricVariants.has(normalized)) {
+  if (family === "electric_guitar") {
     return [...new Set([...ELECTRIC_POSITION_VARIANTS, ...ELECTRIC_POSITION_VARIANTS.map(normalizeSwapPosition)])];
   }
 
-  if (normalizedAcousticVariants.has(normalized)) {
+  if (family === "acoustic_guitar") {
     return [...new Set([...ACOUSTIC_POSITION_VARIANTS, ...ACOUSTIC_POSITION_VARIANTS.map(normalizeSwapPosition)])];
   }
 
-  return [...new Set([position, normalized, ...(SWAP_POSITION_DISPLAY_VARIANTS[normalized] || [])])];
+  if (family === "tri_pod_camera") {
+    return [...new Set([
+      position,
+      normalized,
+      family,
+      ...(SWAP_POSITION_DISPLAY_VARIANTS.tri_pod_camera || []),
+      ...[1, 2, 3, 4].flatMap((n) => [`tri_pod_camera_${n}`, `Tri-Pod Camera ${n}`]),
+    ])];
+  }
+
+  if (family === "hand_held_camera") {
+    return [...new Set([
+      position,
+      normalized,
+      family,
+      "Hand-Held Camera",
+      ...[1, 2, 3, 4].flatMap((n) => [`hand_held_camera_${n}`, `Hand-Held Camera ${n}`]),
+    ])];
+  }
+
+  if (family === "director") {
+    return [...new Set([
+      position,
+      normalized,
+      family,
+      "Director",
+      "director_2",
+      "director_3",
+      "director_4",
+      "Director 2",
+      "Director 3",
+      "Director 4",
+    ])];
+  }
+
+  if (family === "graphics") {
+    return [...new Set([
+      position,
+      normalized,
+      family,
+      "Graphics",
+      "graphics_2",
+      "graphics_3",
+      "graphics_4",
+      "Graphics 2",
+      "Graphics 3",
+      "Graphics 4",
+    ])];
+  }
+
+  if (family === "switcher") {
+    return [...new Set([
+      position,
+      normalized,
+      family,
+      "Switcher",
+      "video_switcher",
+      "switcher_2",
+      "switcher_3",
+      "switcher_4",
+      "Switcher 2",
+      "Switcher 3",
+      "Switcher 4",
+    ])];
+  }
+
+  return [...new Set([
+    position,
+    normalized,
+    family,
+    ...(SWAP_POSITION_DISPLAY_VARIANTS[family] || SWAP_POSITION_DISPLAY_VARIANTS[normalized] || []),
+  ])];
 }
 
 function resolveSwapMinistryType(
@@ -975,7 +1056,7 @@ export function usePositionMembersForDate(
   ministryType?: string,
   requesterGender?: string | null
 ) {
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const isVocalistPosition = canonicalSwapPosition(position) === "vocalist";
   const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
   const resourceAppKey = getCurrentResourceAppKey();
 
@@ -1166,7 +1247,7 @@ async function hydrateAndFilterMembers(args: {
 
   // Get gender info for vocalist positions if requesterGender is provided
   let genderMap: Record<string, string | null> = {};
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const isVocalistPosition = canonicalSwapPosition(position) === "vocalist";
 
   if (isVocalistPosition && userIds.length > 0) {
     const { data: profiles } = await supabase
@@ -1213,7 +1294,7 @@ export function usePositionMembersForCover(
   ministryType?: string,
   requesterGender?: string | null
 ) {
-  const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+  const isVocalistPosition = canonicalSwapPosition(position) === "vocalist";
   const effectiveMinistryType = resolveSwapMinistryType(position, ministryType);
 
   return useQuery({
@@ -1468,7 +1549,7 @@ export function useOpenRequestRecipients(
       const sameCampusUserIds = [...new Set(sameCampusUsers?.map((u) => u.user_id) || [])];
       if (sameCampusUserIds.length === 0) return [];
 
-      const isVocalistPosition = VOCALIST_POSITIONS.includes(normalizeSwapPosition(position));
+      const isVocalistPosition = canonicalSwapPosition(position) === "vocalist";
 
       // Get team members with the same position family who are in the same campus
       let membersQuery = supabase
