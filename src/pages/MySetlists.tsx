@@ -527,6 +527,30 @@ function StandardMySetlists() {
 
     return (
       <>
+        {/* Confirm near the top so volunteers don't have to scroll past songs + roster */}
+        {showConfirmation && !isConfirmed && setlist.amIOnRoster && (
+          <Button
+            onClick={() => confirmSetlist.mutate(setlist.id)}
+            disabled={confirmSetlist.isPending}
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Check className="mr-2 h-4 w-4" />
+            Confirm I've Reviewed This Setlist
+          </Button>
+        )}
+
+        {showConfirmation && !isConfirmed && setlist.amIOnRoster === false && (
+          <p className="text-xs text-center text-muted-foreground">
+            You're not on the team roster for this service, so you can't confirm.
+          </p>
+        )}
+
+        {showConfirmation && isConfirmed && setlist.myConfirmation && (
+          <p className="text-xs text-center text-muted-foreground">
+            Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
+          </p>
+        )}
+
         <SetlistTeachingSchedule
           planDate={setlist.plan_date}
           campusId={setlist.campus_id}
@@ -670,30 +694,6 @@ function StandardMySetlists() {
             customServiceId={setlist.custom_service_id}
             getInitials={getInitials}
           />
-        )}
-
-        {/* Confirm button - only for users on the team roster for this setlist */}
-        {showConfirmation && !isConfirmed && setlist.amIOnRoster && (
-          <Button
-            onClick={() => confirmSetlist.mutate(setlist.id)}
-            disabled={confirmSetlist.isPending}
-            className="w-full bg-green-600 hover:bg-green-700 text-white"
-          >
-            <Check className="mr-2 h-4 w-4" />
-            Confirm I've Reviewed This Setlist
-          </Button>
-        )}
-
-        {showConfirmation && !isConfirmed && setlist.amIOnRoster === false && (
-          <p className="text-xs text-center text-muted-foreground">
-            You're not on the team roster for this service, so you can't confirm.
-          </p>
-        )}
-
-        {showConfirmation && isConfirmed && setlist.myConfirmation && (
-          <p className="text-xs text-center text-muted-foreground">
-            Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
-          </p>
         )}
       </>
     );
@@ -902,13 +902,36 @@ function StandardMySetlists() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    {!allConfirmed && unconfirmedSessionIds.length > 0 && (
+                      <Button
+                        onClick={() => confirmSetlists.mutate(unconfirmedSessionIds)}
+                        disabled={confirmSetlists.isPending}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Check className="mr-2 h-4 w-4" />
+                        Confirm I've Reviewed All Sessions
+                      </Button>
+                    )}
+
+                    {!allConfirmed && amINotOnRoster && (
+                      <p className="text-xs text-center text-muted-foreground">
+                        You're not on the team roster for this service, so you can't confirm.
+                      </p>
+                    )}
+
+                    {(allConfirmed || (amIOnRoster && unconfirmedSessionIds.length === 0)) && latestConfirmedAt && (
+                      <p className="text-xs text-center text-muted-foreground">
+                        Confirmed on {format(parseISO(latestConfirmedAt), "MMM d 'at' h:mm a")}
+                      </p>
+                    )}
+
                     {sessions.map((session) => {
                       const { sessionLabel } = getMinistrySession(session.ministry_type);
                       return (
                         <div
                           key={session.id}
                           ref={(el) => { cardRefs.current[session.id] = el; }}
-                          className="space-y-4 border-t border-border/40 pt-4 first:border-t-0 first:pt-0"
+                          className="space-y-4 border-t border-border/40 pt-4"
                         >
                           <Badge className="self-start rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
                             {sessionLabel ?? getMinistryLabel(session.ministry_type)}
@@ -918,7 +941,6 @@ function StandardMySetlists() {
                       );
                     })}
 
-                    {/* Shared team roster + single confirmation for the whole day */}
                     <div className="space-y-4 border-t border-border pt-4">
                       <SetlistTeamRoster
                         planDate={sessions[0].plan_date}
@@ -927,29 +949,6 @@ function StandardMySetlists() {
                         customServiceId={sessions[0].custom_service_id}
                         getInitials={getInitials}
                       />
-
-                      {!allConfirmed && unconfirmedSessionIds.length > 0 && (
-                        <Button
-                          onClick={() => confirmSetlists.mutate(unconfirmedSessionIds)}
-                          disabled={confirmSetlists.isPending}
-                          className="w-full bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <Check className="mr-2 h-4 w-4" />
-                          Confirm I've Reviewed All Sessions
-                        </Button>
-                      )}
-
-                      {!allConfirmed && amINotOnRoster && (
-                        <p className="text-xs text-center text-muted-foreground">
-                          You're not on the team roster for this service, so you can't confirm.
-                        </p>
-                      )}
-
-                      {(allConfirmed || (amIOnRoster && unconfirmedSessionIds.length === 0)) && latestConfirmedAt && (
-                        <p className="text-xs text-center text-muted-foreground">
-                          Confirmed on {format(parseISO(latestConfirmedAt), "MMM d 'at' h:mm a")}
-                        </p>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -2216,6 +2215,21 @@ function AuditionCandidateSetlists() {
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
+                {!isConfirmed ? (
+                  <Button
+                    onClick={() => confirmSetlist.mutate(setlist.id)}
+                    disabled={confirmSetlist.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Confirm I've Reviewed This Setlist
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
+                  </p>
+                )}
+
                 {setlist.songs?.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No songs assigned yet.</p>
                 ) : (
@@ -2276,21 +2290,6 @@ function AuditionCandidateSetlists() {
                   <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
                     {setlist.notes}
                   </div>
-                )}
-
-                {!isConfirmed ? (
-                  <Button
-                    onClick={() => confirmSetlist.mutate(setlist.id)}
-                    disabled={confirmSetlist.isPending}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Check className="mr-2 h-4 w-4" />
-                    Confirm I've Reviewed This Setlist
-                  </Button>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Confirmed on {format(parseISO(setlist.myConfirmation.confirmed_at), "MMM d 'at' h:mm a")}
-                  </p>
                 )}
 
                 {setlistPlaylists.length > 0 && (

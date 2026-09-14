@@ -732,6 +732,7 @@ export type Database = {
           repeats_weekly: boolean
           service_date: string
           service_name: string
+          sound_check_time: string | null
           start_time: string | null
           updated_at: string
         }
@@ -747,6 +748,7 @@ export type Database = {
           repeats_weekly?: boolean
           service_date: string
           service_name: string
+          sound_check_time?: string | null
           start_time?: string | null
           updated_at?: string
         }
@@ -762,6 +764,7 @@ export type Database = {
           repeats_weekly?: boolean
           service_date?: string
           service_name?: string
+          sound_check_time?: string | null
           start_time?: string | null
           updated_at?: string
         }

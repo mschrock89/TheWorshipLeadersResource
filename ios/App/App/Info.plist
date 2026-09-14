@@ -64,6 +64,16 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Wrshp Resource uses the camera so you can take a profile photo or attach a photo in chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wrshp Resource uses your photo library so you can choose a profile photo or attach an existing photo.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Wrshp Resource may save photos you capture for your profile or chat attachments.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Wrshp Resource uses the microphone only when you record or attach video in chat.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Wrshp Resource uses your location only if you turn on optional campus attendance check-in. Location is never used for advertising or tracking.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

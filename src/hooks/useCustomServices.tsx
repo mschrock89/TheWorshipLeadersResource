@@ -13,6 +13,7 @@ export interface CustomService {
   service_date: string;
   start_time: string | null;
   end_time: string | null;
+  sound_check_time: string | null;
   repeats_weekly: boolean;
   repeat_until: string | null;
   is_active: boolean;
@@ -209,6 +210,7 @@ export function useCreateCustomService() {
       service_date: string;
       start_time?: string | null;
       end_time?: string | null;
+      sound_check_time?: string | null;
       repeats_weekly?: boolean;
       repeat_until?: string | null;
     }) => {
@@ -230,6 +232,7 @@ export function useCreateCustomService() {
         service_date: payload.service_date,
         start_time: payload.start_time,
         end_time: payload.end_time,
+        sound_check_time: payload.sound_check_time ?? null,
         repeats_weekly: payload.repeats_weekly,
         repeat_until: payload.repeat_until,
         ministry_type,
@@ -255,6 +258,102 @@ export function useCreateCustomService() {
     },
     onError: (error) => {
       toast({ title: "Unable to create service", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useUpdateCustomService() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      id: string;
+      service_name?: string;
+      service_date?: string;
+      start_time?: string | null;
+      end_time?: string | null;
+      sound_check_time?: string | null;
+      repeats_weekly?: boolean;
+      repeat_until?: string | null;
+    }) => {
+      const { id, ...updates } = payload;
+      const { data, error } = await supabase
+        .from("custom_services")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as CustomService;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["custom-service-definitions"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-service-occurrences"] });
+      toast({ title: "Custom service updated" });
+    },
+    onError: (error) => {
+      toast({ title: "Unable to update service", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+/**
+ * Save a full roster for a custom service occurrence in one shot:
+ * upserts every (user, role) pair passed in and removes assignment ids
+ * the caller marked as deleted. Used by the one-window service builder.
+ */
+export function useSaveCustomServiceRoster() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      custom_service_id: string;
+      assignment_date: string;
+      assignments: Array<{
+        user_id: string;
+        role: Database["public"]["Enums"]["team_position"];
+      }>;
+      removeAssignmentIds?: string[];
+    }) => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (payload.removeAssignmentIds?.length) {
+        const { error: removeError } = await supabase
+          .from("custom_service_assignments")
+          .delete()
+          .in("id", payload.removeAssignmentIds);
+        if (removeError) throw removeError;
+      }
+
+      if (payload.assignments.length > 0) {
+        const rows = payload.assignments.map((assignment) => ({
+          custom_service_id: payload.custom_service_id,
+          assignment_date: payload.assignment_date,
+          user_id: assignment.user_id,
+          role: assignment.role,
+          assigned_by: user?.id ?? null,
+        }));
+
+        const { error } = await supabase
+          .from("custom_service_assignments")
+          .upsert(rows, { onConflict: "custom_service_id,assignment_date,user_id,role" });
+        if (error) throw error;
+      }
+
+      return payload;
+    },
+    onSuccess: (payload) => {
+      queryClient.invalidateQueries({
+        queryKey: ["custom-service-assignments", payload.custom_service_id, payload.assignment_date],
+      });
+    },
+    onError: (error) => {
+      toast({ title: "Unable to save team assignments", description: error.message, variant: "destructive" });
     },
   });
 }

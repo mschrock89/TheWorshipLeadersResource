@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Camera, Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { isNativeApp } from "@/lib/native";
+import { isPhotoPickerCancel, pickNativePhoto } from "@/lib/pickNativePhoto";
 
 interface AvatarUploadProps {
   userId: string;
@@ -26,11 +28,7 @@ export function AvatarUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
+  const uploadFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast({
         title: "Invalid file",
@@ -40,7 +38,6 @@ export function AvatarUpload({
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "File too large",
@@ -50,37 +47,30 @@ export function AvatarUpload({
       return;
     }
 
-    // Show preview
     const reader = new FileReader();
     reader.onload = (e) => setPreviewUrl(e.target?.result as string);
     reader.readAsDataURL(file);
 
-    // Upload to Supabase Storage
     setIsUploading(true);
     try {
-      const fileExt = file.name.split(".").pop();
+      const fileExt = file.name.split(".").pop() || "jpg";
       const fileName = `${userId}.${fileExt}`;
       const filePath = `${userId}/${fileName}`;
 
-      // Delete old avatar if exists
       await supabase.storage.from("avatars").remove([filePath]);
 
-      // Upload new avatar
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);
 
-      // Add cache-busting query param
       const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
-      // Update profile
       const { error: updateError } = await supabase
         .from("profiles")
         .update({ avatar_url: avatarUrl })
@@ -104,6 +94,41 @@ export function AvatarUpload({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await uploadFile(file);
+  };
+
+  const handlePickPhoto = async () => {
+    if (isUploading) return;
+
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto();
+        if (!file) return;
+        await uploadFile(file);
+      } catch (error) {
+        if (isPhotoPickerCancel(error)) return;
+        console.error("Camera error:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        if (/not implemented|plugin/i.test(message)) {
+          fileInputRef.current?.click();
+          return;
+        }
+        toast({
+          title: "Camera unavailable",
+          description: "Allow camera and photo access in iOS Settings, or choose a photo from your library.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    fileInputRef.current?.click();
   };
 
   const displayUrl = previewUrl || currentAvatarUrl;
@@ -134,7 +159,7 @@ export function AvatarUpload({
               "absolute -bottom-1 -right-1 h-8 w-8 rounded-full shadow-md",
               isUploading && "pointer-events-none"
             )}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handlePickPhoto}
             disabled={isUploading}
           >
             {isUploading ? (

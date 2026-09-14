@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
+import { isNativeApp } from "@/lib/native";
+import { CameraSource, isPhotoPickerCancel, pickNativePhoto } from "@/lib/pickNativePhoto";
 
 // Detect if we're on iOS
 function isIOS(): boolean {
@@ -125,8 +127,7 @@ export function MessageInput({
     return null;
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const addFiles = (files: File[]) => {
     if (files.length === 0) return;
 
     const currentCount = pendingFiles.filter(pf => !pf.error).length;
@@ -141,7 +142,7 @@ export function MessageInput({
     }
 
     const filesToAdd = files.slice(0, availableSlots);
-    
+
     const newPendingFiles: PendingFile[] = filesToAdd.map(file => {
       const error = validateFile(file);
       if (error) {
@@ -161,9 +162,33 @@ export function MessageInput({
     const validFiles = newPendingFiles.filter(pf => !pf.error);
     setPendingFiles(prev => [...prev, ...validFiles]);
     setShowAttachMenu(false);
-    
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    addFiles(files);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
+
+  const handleCameraCapture = async () => {
+    if (isNativeApp()) {
+      try {
+        const file = await pickNativePhoto({ source: CameraSource.Camera });
+        if (file) addFiles([file]);
+      } catch (error) {
+        if (isPhotoPickerCancel(error)) return;
+        console.error("Camera error:", error);
+        toast({
+          title: "Camera unavailable",
+          description: "Allow camera access in iOS Settings, or attach a photo from your library.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    cameraInputRef.current?.click();
   };
 
   const removeFile = (index: number) => {
@@ -384,7 +409,7 @@ export function MessageInput({
               <span>File</span>
             </button>
             <button
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={handleCameraCapture}
               className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
             >
               <div className="h-8 w-8 rounded-full bg-green-600 flex items-center justify-center">
@@ -489,7 +514,7 @@ export function MessageInput({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={handleCameraCapture}
             className="h-9 w-9 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0 mb-0.5"
           >
             <Camera className="h-5 w-5" />

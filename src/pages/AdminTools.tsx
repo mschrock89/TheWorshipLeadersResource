@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useNetworkWideCampus, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
-import { useCreateCustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
+import { CustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
+import { CustomServiceBuilderDialog } from "@/components/admin/CustomServiceBuilderDialog";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
 import { CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, type LucideIcon } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -512,7 +513,6 @@ export default function AdminTools() {
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
   const updateConfig = useUpdateCampusServiceConfig();
   const { data: customServiceDefinitions = [], isLoading: customServicesLoading } = useCustomServiceDefinitions();
-  const createCustomService = useCreateCustomService();
   const deleteCustomService = useDeleteCustomService();
   const { data: activeCovenant } = useActiveCovenant(user?.id);
   const { data: covenantSignatureCount = 0 } = useCovenantSignatureCount(activeCovenant?.document.id);
@@ -579,13 +579,8 @@ export default function AdminTools() {
   const [isLeadershipOpen, setIsLeadershipOpen] = useState(true);
   const [isResettingPasswords, setIsResettingPasswords] = useState(false);
   const [resetResults, setResetResults] = useState<{ successCount: number; skippedCount: number; failCount: number } | null>(null);
-  const [customServiceName, setCustomServiceName] = useState("");
-  const [customServiceCampusId, setCustomServiceCampusId] = useState("");
-  const [customServiceMinistry, setCustomServiceMinistry] = useState<string>("weekend");
-  const [customServiceDate, setCustomServiceDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [customServiceStartTime, setCustomServiceStartTime] = useState("");
-  const [customServiceEndTime, setCustomServiceEndTime] = useState("");
-  const [customServiceRepeatsWeekly, setCustomServiceRepeatsWeekly] = useState(false);
+  const [serviceBuilderOpen, setServiceBuilderOpen] = useState(false);
+  const [serviceBeingEdited, setServiceBeingEdited] = useState<CustomService | null>(null);
   const covenantTerminology = getCovenantTerminology();
   const isStudentApp = isCurrentStudentResourceApp();
 
@@ -803,12 +798,6 @@ export default function AdminTools() {
       );
     }
   }, [campuses, isEditing]);
-
-  useEffect(() => {
-    if (!customServiceCampusId && campuses[0]?.id) {
-      setCustomServiceCampusId(campuses[0].id);
-    }
-  }, [customServiceCampusId, campuses]);
 
   useEffect(() => {
     if (!teachingCampusId && campuses[0]?.id) {
@@ -1555,30 +1544,6 @@ export default function AdminTools() {
     );
   };
 
-  const handleCreateCustomService = async () => {
-    if (!customServiceCampusId || !customServiceName.trim() || !customServiceDate) {
-      toast.error("Please fill out campus, service name, and date.");
-      return;
-    }
-
-    await createCustomService.mutateAsync({
-      campus_id: customServiceCampusId,
-      ministry_type: customServiceMinistry,
-      service_name: customServiceName.trim(),
-      service_date: customServiceDate,
-      start_time: customServiceStartTime || null,
-      end_time: customServiceEndTime || null,
-      repeats_weekly: customServiceRepeatsWeekly,
-      repeat_until: null,
-    });
-
-    setCustomServiceName("");
-    setCustomServiceDate(new Date().toISOString().split("T")[0]);
-    setCustomServiceStartTime("");
-    setCustomServiceEndTime("");
-    setCustomServiceRepeatsWeekly(false);
-  };
-
   const handlePublishCovenant = async () => {
     if (!user?.id) return;
     if (!covenantFile) {
@@ -1983,108 +1948,20 @@ export default function AdminTools() {
             Custom Service Builder
           </CardTitle>
           <CardDescription>
-            Create one-off or repeating services and make them available in Set Builder.
+            Create a one-off or repeating service, set its times and sound check, and assign the team — all in one window.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Campus</Label>
-              <Select value={customServiceCampusId} onValueChange={setCustomServiceCampusId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select campus" />
-                </SelectTrigger>
-                <SelectContent>
-                  {campuses.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Ministry</Label>
-              <Select value={customServiceMinistry} onValueChange={setCustomServiceMinistry}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Service Name</Label>
-              <Input
-                value={customServiceName}
-                onChange={(e) => setCustomServiceName(e.target.value)}
-                placeholder="Night of Worship"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Input
-                type="date"
-                value={customServiceDate}
-                onChange={(e) => setCustomServiceDate(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Start Time</Label>
-              <Input
-                type="time"
-                value={customServiceStartTime}
-                onChange={(e) => setCustomServiceStartTime(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>End Time</Label>
-              <Input
-                type="time"
-                value={customServiceEndTime}
-                onChange={(e) => setCustomServiceEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="repeat-weekly"
-              checked={customServiceRepeatsWeekly}
-              onCheckedChange={(checked) => setCustomServiceRepeatsWeekly(Boolean(checked))}
-            />
-            <Label htmlFor="repeat-weekly" className="font-normal">
-              Repeat this service weekly
-            </Label>
-          </div>
-
           <div className="flex justify-end">
             <Button
-              onClick={handleCreateCustomService}
-              disabled={createCustomService.isPending}
+              onClick={() => {
+                setServiceBeingEdited(null);
+                setServiceBuilderOpen(true);
+              }}
               className="gap-2"
             >
-              {createCustomService.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Add Custom Service
-                </>
-              )}
+              <Plus className="h-4 w-4" />
+              New Custom Service
             </Button>
           </div>
 
@@ -2110,20 +1987,35 @@ export default function AdminTools() {
                         <p className="truncate text-sm font-medium">{service.service_name}</p>
                         <p className="text-xs text-muted-foreground">
                           {campus?.name || "Unknown campus"} • {ministryLabel} • {service.service_date}
+                          {service.sound_check_time ? ` • sound check ${service.sound_check_time.slice(0, 5)}` : ""}
                           {service.start_time ? ` • ${service.start_time.slice(0, 5)}` : ""}
                           {service.end_time ? `-${service.end_time.slice(0, 5)}` : ""}
                           {service.repeats_weekly ? " • repeats weekly" : ""}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteCustomService.mutate(service.id)}
-                        disabled={deleteCustomService.isPending}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground"
+                          onClick={() => {
+                            setServiceBeingEdited(service);
+                            setServiceBuilderOpen(true);
+                          }}
+                          aria-label={`Edit ${service.service_name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteCustomService.mutate(service.id)}
+                          disabled={deleteCustomService.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -2133,6 +2025,16 @@ export default function AdminTools() {
         </CardContent>
       </Card>
       )}
+
+      <CustomServiceBuilderDialog
+        open={serviceBuilderOpen}
+        onOpenChange={(open) => {
+          setServiceBuilderOpen(open);
+          if (!open) setServiceBeingEdited(null);
+        }}
+        campuses={campuses}
+        existingService={serviceBeingEdited}
+      />
 
       {/* Teaching Schedule Manager */}
       {activeTool?.id === "teaching-schedule" && (

@@ -9,6 +9,7 @@ import { useUserMinistryAssignments, useToggleMinistryAssignment } from "@/hooks
 import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from "@/hooks/useCampusMinistryPositions";
 import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
+import { DeleteAccountSection } from "@/components/profile/DeleteAccountSection";
 import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
 import { PushMinistryPreferences } from "@/components/settings/PushMinistryPreferences";
 import { TestPushNotification } from "@/components/settings/TestPushNotification";
@@ -1724,6 +1725,8 @@ export default function Profile() {
                   </div>
                 </div>
               )}
+
+              {isOwnProfile && <DeleteAccountSection />}
 
               {canEdit && (
                 <Button

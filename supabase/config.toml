@@ -42,6 +42,11 @@ verify_jwt = false
 [functions.delete-profile]
 verify_jwt = false
 
+[functions.delete-own-account]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/delete-own-account/index.ts"
+
 [functions.reset-user-password]
 verify_jwt = false
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, BookOpen, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -4393,10 +4393,9 @@ function BandRoster({
   const renderBandSection = (members: typeof roster, title?: string) => {
     const {
       vocalists,
-      speakerMembers,
       bandMembers
     } = categorizeMembers(members);
-    if (vocalists.length === 0 && speakerMembers.length === 0 && bandMembers.length === 0) {
+    if (vocalists.length === 0 && bandMembers.length === 0) {
       return null;
     }
     const sectionTitleClass = compact
@@ -4428,15 +4427,6 @@ function BandRoster({
                   {bandMembers.map(renderMember)}
                 </div>
               </div>}
-            {speakerMembers.length > 0 && <div className={`min-w-0 ${showWorshipColumns ? "col-span-2" : ""}`}>
-                <h4 className={sectionTitleClass}>
-                  <BookOpen className={iconClass} />
-                  Speaker
-                </h4>
-                <div className={listClass}>
-                  {speakerMembers.map(renderMember)}
-                </div>
-              </div>}
         </div>
       </div>;
   };
@@ -4448,6 +4438,16 @@ function BandRoster({
     const broadcastMembers = dedupeMembersForDisplay(shownVideoMembers).sort(
       (a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions),
     );
+
+    // Speaker assignments (teaching, announcements, closing prayer) display with the
+    // Production team rather than in the worship (Vocalists/Band) section.
+    const speakerMembers = dedupeMembersForDisplay(
+      roster.filter((m) => !isVocalist(m.positions) && isSpeaker(m.positions)),
+    ).sort((a, b) => getSpeakerPositionPriority(a.positions) - getSpeakerPositionPriority(b.positions));
+    const productionColumnMembers = [
+      ...audioMembers,
+      ...speakerMembers.filter((s) => !audioMembers.some((a) => a.id === s.id)),
+    ];
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)
     const selectedDayOfWeek = date.getDay();
@@ -4478,9 +4478,9 @@ function BandRoster({
       // Not a weekend day or no split days - show all
       filteredVideoMembers = broadcastMembers;
     }
-    if (supportSection === "production" && audioMembers.length === 0) return null;
+    if (supportSection === "production" && productionColumnMembers.length === 0) return null;
     if (supportSection === "video" && filteredVideoMembers.length === 0) return null;
-    if (!supportOnly && compact && audioMembers.length === 0 && filteredVideoMembers.length === 0) {
+    if (!supportOnly && compact && productionColumnMembers.length === 0 && filteredVideoMembers.length === 0) {
       return null;
     }
     const sectionTitleClass = compact
@@ -4488,7 +4488,7 @@ function BandRoster({
       : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
     const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
     const listClass = compact ? "space-y-0" : "space-y-1.5";
-    const showProduction = supportSection !== "video" && (audioMembers.length > 0 || !compact || (supportOnly && !supportSection));
+    const showProduction = supportSection !== "video" && (productionColumnMembers.length > 0 || !compact || (supportOnly && !supportSection));
     const showVideo = supportSection !== "production" && (filteredVideoMembers.length > 0 || !compact || (supportOnly && !supportSection));
     return <div className={!supportSection && (supportOnly || compact) ? "grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2" : "space-y-4"}>
         {showProduction && <div className="min-w-0">
@@ -4498,8 +4498,8 @@ function BandRoster({
             Production
           </h4>
           ) : null}
-          {audioMembers.length > 0 ? <div className={listClass}>
-              {audioMembers.map(renderMember)}
+          {productionColumnMembers.length > 0 ? <div className={listClass}>
+              {productionColumnMembers.map(renderMember)}
             </div> : <p className="text-xs text-muted-foreground italic">No production members assigned</p>}
         </div>}
 

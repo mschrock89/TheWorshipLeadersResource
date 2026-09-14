@@ -19,6 +19,9 @@ const config: CapacitorConfig = {
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
     },
+    Camera: {
+      presentationStyle: "popover",
+    },
   },
 };
 

@@ -1,0 +1,87 @@
+Do these in App Store Connect before you resubmit 1.0.1 (2).
+The reply text is in APP_STORE_CONNECT_REPLY.txt.
+
+========================================
+A. APP PRIVACY — this is why they asked for ATT
+========================================
+You must have Account Holder or Admin.
+
+1. App Store Connect → Wrshp Resource → App Privacy
+2. Click Edit
+3. Question: “Do you or your third-party partners use data from this app to track users?”
+   Answer: NO
+4. You still collect data for the app itself. Keep collection = Yes if asked.
+5. For EVERY data type already listed, open it and set:
+   • Used for Tracking Purposes = NO / unchecked
+   • Used for Third-Party Advertising = NO
+   • Used for App Functionality = YES
+6. Especially fix these three (Apple named them):
+   • Emails or Text Messages — tracking OFF
+   • Precise Location — tracking OFF
+   • Photos or Videos — tracking OFF
+7. If a type is only used in the web/students product and not this iOS app, you can remove it from this app’s privacy labels.
+8. Publish / Save the privacy answers before you resubmit.
+
+Correct intent for this iOS app:
+• Email Address — Account + App Functionality. Linked to user. Not tracking.
+• Name — App Functionality. Linked to user. Not tracking.
+• Phone Number — App Functionality. Linked to user. Not tracking.
+• Photos or Videos — profile photo and chat attachments. App Functionality. Linked to user. Not tracking.
+• Precise Location — optional campus attendance only, while that setting is on. App Functionality. Linked to user. Not tracking. Not used if the user never enables attendance.
+• Other User Content (chat) — App Functionality. Not tracking.
+• User ID — App Functionality. Not tracking.
+• Product Interaction / Crash Data — only if you actually collect it (you do not use advertising SDKs).
+
+Do NOT add App Tracking Transparency. The app does not track.
+
+========================================
+B. SCREENSHOTS — 6.7" iPhone and 13" iPad
+========================================
+Apple rejected the current shots because they are the signed-out marketing/splash page.
+
+In App Store Connect → Previews and Screenshots → View All Sizes in Media Manager.
+
+Required sizes:
+• iPhone 6.7" — 1290 x 2796 or 1320 x 2868 (portrait)
+• iPad 13" — 2048 x 2732 or 2064 x 2752 (portrait)
+
+How to capture on a physical device or simulator AFTER signing in:
+
+iPhone 16/17 Pro Max or 6.7" simulator:
+1. Sign in
+2. Screenshot Home with the signed-in dashboard / menu visible
+3. Screenshot My Schedule
+4. Screenshot Song Library or Calendar
+5. Screenshot My Profile (scroll so Delete Account is visible if it fits)
+
+iPad Pro 13" or 12.9"/13" simulator:
+Same four screens, full iPad canvas, no splash, no Sign In marketing page.
+
+Then:
+1. Delete the old splash screenshots for 6.7" iPhone and 13" iPad
+2. Upload the new signed-in screenshots
+3. Leave other sizes alone unless Apple flagged them
+
+Do not use the files currently in ios/screenshots/ — those are the rejected splash images.
+
+========================================
+C. BUILD AND RESUBMIT
+========================================
+1. Deploy the new backend function (required for Delete Account):
+   supabase functions deploy delete-own-account
+2. Deploy the website/privacy page so the live privacy policy mentions Delete Account.
+3. In Xcode: Product → Archive 1.0.1 (2) → Upload to App Store Connect
+   Open the iOS project with: npm run ios:open
+4. In App Store Connect, attach the new build to the iOS app version.
+5. Paste APP_STORE_CONNECT_REPLY.txt into the rejection thread AND into App Review Information → Notes.
+6. Fill Username and Password with the demo account. Check Sign-in required.
+7. Record a 20–40 second video on a real iPhone/iPad:
+   Sign Up (new throwaway account) → avatar → My Profile → Delete Account → type DELETE → confirm.
+   Upload that video in the reply or Notes if App Store Connect lets you attach it.
+8. Submit for review.
+
+========================================
+D. DEMO ACCOUNT
+========================================
+Do not let Review delete the shared demo account.
+The reply tells them to Sign Up a throwaway account for the deletion test.

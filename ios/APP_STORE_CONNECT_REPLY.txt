@@ -1,0 +1,50 @@
+APP STORE CONNECT — paste this as the reply to the rejection.
+Then do the App Privacy and screenshot steps in APP_STORE_FIX_CHECKLIST.txt.
+Replace [ADD REVIEWER EMAIL] and [ADD REVIEWER PASSWORD] before sending.
+
+----- COPY FROM HERE -----
+
+Hello App Review,
+
+Thank you for the detailed feedback. We have addressed every issue.
+
+1) Guideline 5.1.2(i) — Tracking / ATT
+This app does not track users. We do not link data with third-party data for advertising, and we do not share data with a data broker. Email, photos, and optional location are used only for church workspace features (account login, profile photo, chat attachments, and optional campus attendance check-in).
+
+We incorrectly marked Emails or Text Messages, Precise Location, and Photos or Videos as used for tracking in App Privacy. We have updated App Privacy so those types are App Functionality only, with Used for Tracking set to No. App Tracking Transparency is not implemented because the app does not track.
+
+2) Guideline 2.3.3 — Screenshots
+We replaced the 6.7-inch iPhone and 13-inch iPad screenshots. They now show the signed-in app in use (home, schedule, songs/resources, and profile), not the splash or marketing screen.
+
+3) Guideline 2.1(a) — Camera crash on iPad
+The crash happened because iOS camera/photo permission strings were missing, and the profile photo picker used a WKWebView file input that can crash on iPad when Take Photo is selected.
+
+Version 1.0.1 (2) adds NSCameraUsageDescription and NSPhotoLibraryUsageDescription, and uses the Capacitor Camera plugin with popover presentation on iPad. Changing the profile picture with the camera or photo library no longer crashes.
+
+4) Guideline 5.1.1(v) — Account deletion
+Version 1.0.1 (2) includes in-app account deletion.
+
+How to review it:
+• Sign in with the demo account to see the option, but please do not delete the demo account.
+• To complete the full deletion flow, tap Sign Up, create a new account, then:
+  1. After login, tap the avatar (top right)
+  2. Tap My Profile
+  3. Scroll to Delete Account
+  4. Tap Delete Account
+  5. Type DELETE
+  6. Tap Delete Account to confirm
+The account is permanently removed and you are returned to the home screen.
+
+A screen recording of this flow will be attached in App Review Information → Notes for future submissions.
+
+Demo login (also in the Username / Password fields):
+Username: [ADD REVIEWER EMAIL]
+Password: [ADD REVIEWER PASSWORD]
+
+Please do not create extra accounts except to test deletion, and please do not reconnect Planning Center or Google.
+
+Thank you,
+Mitch Schrock
+mitch.schrock@gmail.com
+
+----- COPY TO HERE -----
