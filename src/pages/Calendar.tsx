@@ -55,7 +55,6 @@ import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
-import { useServiceFlow, useServiceFlowItems, useSaveServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -4702,125 +4701,7 @@ function CustomServiceSongsPreview({
             {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
           </div>)}
       </div>
-      {!readOnly && !compact ? (
-        <CustomServiceFlowTitleEditor
-          campusId={campusId}
-          ministryType={effectiveMinistryType}
-          planDate={planDate}
-          customServiceId={customServiceId}
-          draftSetId={existingSet?.id || null}
-        />
-      ) : null}
     </div>;
-}
-
-function CustomServiceFlowTitleEditor({
-  campusId,
-  ministryType,
-  planDate,
-  customServiceId,
-  draftSetId,
-}: {
-  campusId: string;
-  ministryType: string;
-  planDate: string;
-  customServiceId: string;
-  draftSetId: string | null;
-}) {
-  const { data: flow } = useServiceFlow(campusId, ministryType, planDate, draftSetId, customServiceId);
-  const { data: flowItems = [], isLoading } = useServiceFlowItems(flow?.id || null);
-  const saveFlowItem = useSaveServiceFlowItem();
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
-
-  const beginEdit = (itemId: string, currentTitle: string) => {
-    setEditingItemId(itemId);
-    setEditingTitle(currentTitle);
-  };
-
-  const cancelEdit = () => {
-    setEditingItemId(null);
-    setEditingTitle("");
-  };
-
-  const saveTitle = async (item: any) => {
-    const trimmed = editingTitle.trim();
-    if (!trimmed || !flow?.id) return;
-
-    await saveFlowItem.mutateAsync({
-      id: item.id,
-      service_flow_id: flow.id,
-      item_type: item.item_type,
-      title: trimmed,
-      duration_seconds: item.duration_seconds,
-      sequence_order: item.sequence_order,
-      song_id: item.song_id,
-      song_key: item.song_key,
-      vocalist_id: item.vocalist_id,
-      notes: item.notes,
-    });
-
-    cancelEdit();
-  };
-
-  if (!flow?.id || isLoading) return null;
-
-  if (flowItems.length === 0) {
-    return (
-      <div className="mt-3 rounded-md border border-border/70 p-2.5 text-xs text-muted-foreground">
-        Service flow has no items yet. Open Service Flow for this service to generate/edit the flow, then titles will be editable here.
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 rounded-md border border-border/70 p-2.5">
-      <h4 className="text-xs font-medium text-muted-foreground mb-2">Service Flow Item Titles</h4>
-      <div className="space-y-1.5">
-        {flowItems.map((item) => {
-          const isEditing = editingItemId === item.id;
-          return (
-            <div key={item.id} className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5">
-              <span className="text-[11px] text-muted-foreground w-5">{item.sequence_order + 1}</span>
-              {isEditing ? (
-                <>
-                  <Input
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    className="h-8"
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-emerald-500"
-                    onClick={() => saveTitle(item)}
-                    disabled={saveFlowItem.isPending || !editingTitle.trim()}
-                  >
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={cancelEdit}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="text-sm flex-1 truncate">{item.title}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={() => beginEdit(item.id, item.title)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 // Ordering for one-off (custom service) rosters, mirroring the weekend roster
