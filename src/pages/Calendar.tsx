@@ -4823,6 +4823,47 @@ function CustomServiceFlowTitleEditor({
   );
 }
 
+// Ordering for one-off (custom service) rosters, mirroring the weekend roster
+// layout: Vocalists, Band (Drums → Bass → AG → EG → Keys), Production, Video.
+const CUSTOM_ROSTER_BAND_ORDER: Record<string, number> = {
+  drums: 0,
+  bass: 1,
+  acoustic_1: 2,
+  acoustic_2: 3,
+  electric_1: 4,
+  electric_2: 5,
+  keys: 6,
+};
+const CUSTOM_ROSTER_AUDIO_ORDER: Record<string, number> = {
+  sound_tech: 0, // FOH
+  mon: 1,
+  lighting: 2,
+  media: 3, // Lyrics
+  audio_shadow: 4,
+  broadcast: 5,
+  photo_team: 6,
+  art_team: 7,
+};
+const CUSTOM_ROSTER_VIDEO_ORDER: Record<string, number> = {
+  director: 0,
+  producer: 1,
+  switcher: 2,
+  graphics: 3,
+  tri_pod_camera: 4,
+  hand_held_camera: 5,
+};
+const CUSTOM_ROSTER_AUDIO_ROLES = new Set(Object.keys(CUSTOM_ROSTER_AUDIO_ORDER));
+const CUSTOM_ROSTER_VIDEO_ROLES = new Set(Object.keys(CUSTOM_ROSTER_VIDEO_ORDER));
+// Global order used to sort a member's role badges.
+const CUSTOM_ROSTER_ROLE_BADGE_ORDER: Record<string, number> = {
+  vocalist: 0,
+  ...Object.fromEntries(Object.entries(CUSTOM_ROSTER_BAND_ORDER).map(([role, order]) => [role, 10 + order])),
+  ...Object.fromEntries(Object.entries(CUSTOM_ROSTER_AUDIO_ORDER).map(([role, order]) => [role, 30 + order])),
+  ...Object.fromEntries(Object.entries(CUSTOM_ROSTER_VIDEO_ORDER).map(([role, order]) => [role, 50 + order])),
+};
+const customRosterRolePriority = (roles: string[], orderMap: Record<string, number>) =>
+  roles.reduce((min, role) => Math.min(min, orderMap[role] ?? 99), 99);
+
 function CustomServiceRoster({
   customServiceId,
   assignmentDate,
@@ -4887,6 +4928,70 @@ function CustomServiceRoster({
     roles: Set<string>;
   }>()).values()).sort((a, b) => a.name.localeCompare(b.name));
 
+  // Categorize like the weekend roster: vocalists first, then production
+  // (audio), then video, and everything else lands in the band column.
+  const memberRoles = (member: (typeof grouped)[number]) => Array.from(member.roles);
+  const vocalists = grouped.filter((member) => member.roles.has("vocalist"));
+  const productionMembers = grouped
+    .filter(
+      (member) =>
+        !member.roles.has("vocalist") && memberRoles(member).some((role) => CUSTOM_ROSTER_AUDIO_ROLES.has(role)),
+    )
+    .sort(
+      (a, b) =>
+        customRosterRolePriority(memberRoles(a), CUSTOM_ROSTER_AUDIO_ORDER) -
+        customRosterRolePriority(memberRoles(b), CUSTOM_ROSTER_AUDIO_ORDER),
+    );
+  const videoMembers = grouped
+    .filter(
+      (member) =>
+        !member.roles.has("vocalist") &&
+        !memberRoles(member).some((role) => CUSTOM_ROSTER_AUDIO_ROLES.has(role)) &&
+        memberRoles(member).some((role) => CUSTOM_ROSTER_VIDEO_ROLES.has(role)),
+    )
+    .sort(
+      (a, b) =>
+        customRosterRolePriority(memberRoles(a), CUSTOM_ROSTER_VIDEO_ORDER) -
+        customRosterRolePriority(memberRoles(b), CUSTOM_ROSTER_VIDEO_ORDER),
+    );
+  const bandMembers = grouped
+    .filter(
+      (member) => !vocalists.includes(member) && !productionMembers.includes(member) && !videoMembers.includes(member),
+    )
+    .sort(
+      (a, b) =>
+        customRosterRolePriority(memberRoles(a), CUSTOM_ROSTER_BAND_ORDER) -
+        customRosterRolePriority(memberRoles(b), CUSTOM_ROSTER_BAND_ORDER),
+    );
+
+  const sectionTitleClass = compact
+    ? "mb-0.5 flex items-center gap-1 text-[11px] font-medium text-blue-400"
+    : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
+  const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
+  const listClass = compact ? "space-y-0" : "space-y-1.5";
+  const showWorshipColumns = vocalists.length > 0 && bandMembers.length > 0;
+
+  const renderMemberRow = (member: (typeof grouped)[number]) => (
+    <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 -mx-2"}`}>
+      <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
+        <AvatarImage src={member.avatarUrl || undefined} />
+        <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
+          {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+        </AvatarFallback>
+      </Avatar>
+      <span className="min-w-0 flex-1 truncate text-foreground">{member.name}</span>
+      <div className="flex flex-wrap justify-end gap-1">
+        {Array.from(member.roles)
+          .sort(
+            (a, b) => (CUSTOM_ROSTER_ROLE_BADGE_ORDER[a] ?? 99) - (CUSTOM_ROSTER_ROLE_BADGE_ORDER[b] ?? 99),
+          )
+          .map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
+              {POSITION_LABELS[role] || role}
+            </Badge>)}
+      </div>
+    </div>
+  );
+
   return <div className={compact ? "" : "mb-4"}>
       <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
         <div className="ml-auto flex flex-wrap justify-end gap-1">
@@ -4909,21 +5014,43 @@ function CustomServiceRoster({
           />
         </div>
       </div>
-      <div className={compact ? "space-y-0" : "space-y-1.5"}>
-        {grouped.map((member) => <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 -mx-2"}`}>
-            <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
-              <AvatarImage src={member.avatarUrl || undefined} />
-              <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
-                {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="min-w-0 flex-1 truncate text-foreground">{member.name}</span>
-            <div className="flex flex-wrap justify-end gap-1">
-              {Array.from(member.roles).sort().map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
-                  {POSITION_LABELS[role] || role}
-                </Badge>)}
-            </div>
-          </div>)}
+      <div className={compact ? "space-y-2" : "space-y-4"}>
+        {(vocalists.length > 0 || bandMembers.length > 0) && (
+          <div className={`grid ${showWorshipColumns ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+            {vocalists.length > 0 && <div className="min-w-0">
+                <h4 className={sectionTitleClass}>
+                  <MicVocal className={iconClass} />
+                  Vocalists
+                </h4>
+                <div className={listClass}>{vocalists.map(renderMemberRow)}</div>
+              </div>}
+            {bandMembers.length > 0 && <div className="min-w-0">
+                <h4 className={sectionTitleClass}>
+                  <Guitar className={iconClass} />
+                  Band
+                </h4>
+                <div className={listClass}>{bandMembers.map(renderMemberRow)}</div>
+              </div>}
+          </div>
+        )}
+        {(productionMembers.length > 0 || videoMembers.length > 0) && (
+          <div className={`grid ${productionMembers.length > 0 && videoMembers.length > 0 ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+            {productionMembers.length > 0 && <div className="min-w-0">
+                <h4 className={sectionTitleClass}>
+                  <Volume2 className={iconClass} />
+                  Production
+                </h4>
+                <div className={listClass}>{productionMembers.map(renderMemberRow)}</div>
+              </div>}
+            {videoMembers.length > 0 && <div className="min-w-0">
+                <h4 className={sectionTitleClass}>
+                  <Video className={iconClass} />
+                  Video
+                </h4>
+                <div className={listClass}>{videoMembers.map(renderMemberRow)}</div>
+              </div>}
+          </div>
+        )}
       </div>
     </div>;
 }
