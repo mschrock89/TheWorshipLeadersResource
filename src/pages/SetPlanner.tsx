@@ -631,14 +631,20 @@ export default function SetPlanner() {
     queryClient.invalidateQueries({ queryKey: existingSetQueryKey });
   };
 
-  const availableCustomServices = useMemo(
-    () =>
-      customServiceOccurrences.filter((s) => {
-        if (!customServiceMatchesSelectedMinistry(s.ministry_type, selectedMinistry)) return false;
-        return s.occurrence_date >= planDateStr;
-      }),
-    [customServiceOccurrences, selectedMinistry, planDateStr],
-  );
+  // List every upcoming custom service, not just ones on/after the selected
+  // target weekend. Mid-week services (e.g. a Friday night of worship) fall
+  // before the weekend the planner defaults to, and the Target Weekend picker
+  // only offers weekends — so filtering by the plan date made them unreachable.
+  // Selecting a service snaps the planner to its date via applyCustomService.
+  // When viewing a past date, keep services from that date forward visible too.
+  const availableCustomServices = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const cutoff = planDateStr < todayStr ? planDateStr : todayStr;
+    return customServiceOccurrences.filter((s) => {
+      if (!customServiceMatchesSelectedMinistry(s.ministry_type, selectedMinistry)) return false;
+      return s.occurrence_date >= cutoff;
+    });
+  }, [customServiceOccurrences, selectedMinistry, planDateStr]);
 
   useEffect(() => {
     if (selectedCustomServiceKey === "none") return;
