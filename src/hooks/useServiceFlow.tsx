@@ -7,9 +7,11 @@ import {
   isSessionSetMinistryType,
   normalizeSessionSetMinistryType,
 } from "@/lib/constants";
-
-const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
-const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
+import {
+  getEffectiveCustomServiceMinistryType,
+  isSpecialtyCustomServiceMinistry,
+  isWeekendMinistryType,
+} from "@/lib/customServiceMinistry";
 
 function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
@@ -1373,31 +1375,40 @@ export async function generateServiceFlowFromTemplate(params: {
     customService = fetchedCustomService;
   }
 
-  const isPrayerNightService =
-    customService?.ministry_type === "prayer_night" ||
-    PRAYER_NIGHT_PATTERN.test(customService?.service_name || "") ||
-    params.ministryType === "prayer_night";
+  const effectiveCustomServiceMinistry = getEffectiveCustomServiceMinistryType(
+    customService?.ministry_type || params.ministryType,
+    customService?.service_name || "",
+  );
+
+  const isPrayerNightService = effectiveCustomServiceMinistry === "prayer_night";
+  const isWorshipNightService = effectiveCustomServiceMinistry === "worship_night";
   const isKidsCampService =
-    customService?.ministry_type === "kids_camp" ||
-    KIDS_CAMP_PATTERN.test(customService?.service_name || "") ||
+    effectiveCustomServiceMinistry === "kids_camp" ||
+    isKidsCampSetMinistryType(effectiveCustomServiceMinistry) ||
     isKidsCampSetMinistryType(params.ministryType);
 
   // Resolve template ministry:
   // - Specialty custom services should use their own templates only.
-  //   If missing, we'll still generate a flow from songs without applying weekend templates.
+  //   If missing, generate a flow from songs without applying weekend templates.
   // - Session variants (student_camp_morning) fall back to the base template (student_camp).
   const sessionBaseMinistry = isSessionSetMinistryType(params.ministryType)
     ? normalizeSessionSetMinistryType(params.ministryType)
-    : null;
+    : isSessionSetMinistryType(effectiveCustomServiceMinistry)
+      ? normalizeSessionSetMinistryType(effectiveCustomServiceMinistry)
+      : null;
   const templateMinistryCandidates = Array.from(
     new Set(
       [
-        ...(isPrayerNightService
-          ? ["prayer_night"]
-          : isKidsCampService
-            ? ["kids_camp"]
-            : [params.ministryType]),
-        ...(sessionBaseMinistry && sessionBaseMinistry !== params.ministryType
+        ...(isWorshipNightService
+          ? ["worship_night"]
+          : isPrayerNightService
+            ? ["prayer_night"]
+            : isKidsCampService
+              ? ["kids_camp"]
+              : [effectiveCustomServiceMinistry, params.ministryType]),
+        ...(sessionBaseMinistry &&
+        sessionBaseMinistry !== params.ministryType &&
+        sessionBaseMinistry !== effectiveCustomServiceMinistry
           ? [sessionBaseMinistry]
           : []),
       ].filter(Boolean) as string[],
@@ -1405,7 +1416,7 @@ export async function generateServiceFlowFromTemplate(params: {
   );
 
   let template: any = null;
-  let resolvedMinistryType = params.ministryType;
+  let resolvedMinistryType = effectiveCustomServiceMinistry || params.ministryType;
 
   for (const candidate of templateMinistryCandidates) {
     const candidateTemplate = await resolveTemplateForCandidate(serviceFlowCampusId, candidate);
@@ -1431,6 +1442,9 @@ export async function generateServiceFlowFromTemplate(params: {
   }
 
   // If a specialty service has no template, still classify the generated flow correctly.
+  if (!template && isWorshipNightService) {
+    resolvedMinistryType = "worship_night";
+  }
   if (!template && isPrayerNightService) {
     resolvedMinistryType = "prayer_night";
   }
@@ -1831,6 +1845,30 @@ export async function generateServiceFlowFromTemplate(params: {
     }
   }
 
+  // A custom service saved as Weekend still has a weekend-scoped flow. Reuse it so we
+  // can rebuild from the specialty template instead of leaving the weekend order in place.
+  if (
+    !existingFlow &&
+    resolvedCustomServiceId &&
+    isSpecialtyCustomServiceMinistry(resolvedMinistryType)
+  ) {
+    const legacyCustomFlow = await supabase
+      .from("service_flows")
+      .select("id, ministry_type, custom_service_id, created_from_template_id, updated_at")
+      .eq("custom_service_id", resolvedCustomServiceId)
+      .eq("service_date", params.serviceDate)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (legacyCustomFlow.error) {
+      if (!isMissingServiceFlowCustomServiceColumn(legacyCustomFlow.error)) {
+        throw legacyCustomFlow.error;
+      }
+    } else {
+      existingFlow = legacyCustomFlow.data;
+    }
+  }
+
   if (existingFlow) {
     // Update existing flow linkage and ensure it has items.
     const existingFlowMeta = existingFlow as {
@@ -1874,8 +1912,18 @@ export async function generateServiceFlowFromTemplate(params: {
 
     // A saved flow is date-specific working data. Never replace its items merely because
     // the template, ministry metadata, or linked set changed. Rebuilding is destructive
-    // and must only happen through an explicit caller such as the Rebuild button.
-    const requiresTemplateResync = !!template && params.forceTemplateResync === true;
+    // and must only happen through an explicit caller such as the Rebuild button —
+    // except when a custom service was generated from a weekend template but actually
+    // belongs to a specialty ministry (Worship Night, Prayer Night, camp).
+    const existingMinistryIsWeekend = isWeekendMinistryType(existingFlowMeta.ministry_type);
+    const resolvedMinistryIsSpecialty = isSpecialtyCustomServiceMinistry(resolvedMinistryType);
+    const wrongWeekendTemplateOnSpecialtyService =
+      !!resolvedCustomServiceId &&
+      existingMinistryIsWeekend &&
+      resolvedMinistryIsSpecialty &&
+      !!template;
+    const requiresTemplateResync =
+      !!template && (params.forceTemplateResync === true || wrongWeekendTemplateOnSpecialtyService);
 
     if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
       // Keep worship-set song rows in sync with the posted setlist (swaps, key

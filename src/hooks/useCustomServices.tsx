@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
 import { isNetworkWideMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
+import { getEffectiveCustomServiceMinistryType } from "@/lib/customServiceMinistry";
 
 export interface CustomService {
   id: string;
@@ -41,20 +42,8 @@ export interface CustomServiceAssignment {
   } | null;
 }
 
-const PRAYER_NIGHT_PATTERN = /\bprayer\s*night\b/i;
-const KIDS_CAMP_PATTERN = /\bkids\s*camp\b/i;
-const STUDENT_CAMP_PATTERN = /\bstudent\s*camp\b/i;
-
 function normalizeCustomServiceMinistry(service: Pick<CustomService, "ministry_type" | "service_name">): string {
-  if (service.ministry_type === "prayer_night") return "prayer_night";
-  if (PRAYER_NIGHT_PATTERN.test(service.service_name || "")) return "prayer_night";
-  const sessionBaseMinistry = normalizeSessionSetMinistryType(service.ministry_type);
-  if (sessionBaseMinistry === "kids_camp" || sessionBaseMinistry === "student_camp") {
-    return service.ministry_type;
-  }
-  if (KIDS_CAMP_PATTERN.test(service.service_name || "")) return "kids_camp";
-  if (STUDENT_CAMP_PATTERN.test(service.service_name || "")) return "student_camp";
-  return service.ministry_type;
+  return getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name);
 }
 
 function expandServiceOccurrences(

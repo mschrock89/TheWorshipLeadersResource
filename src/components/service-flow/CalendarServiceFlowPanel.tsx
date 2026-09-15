@@ -159,7 +159,6 @@ export function CalendarServiceFlowPanel({
       let draftSetQuery = supabase
         .from("draft_sets")
         .select("id")
-        .eq("ministry_type", effectiveMinistryType)
         .eq("plan_date", date)
         .eq("status", "published");
 
@@ -168,7 +167,11 @@ export function CalendarServiceFlowPanel({
         : draftSetQuery.eq("campus_id", campusId as string);
 
       if (customServiceId) {
+        // Custom-service setlists may still be stored under Weekend even when
+        // the service itself is a Worship Night / Prayer Night.
         draftSetQuery = draftSetQuery.eq("custom_service_id", customServiceId);
+      } else {
+        draftSetQuery = draftSetQuery.eq("ministry_type", effectiveMinistryType);
       }
 
       const { data, error } = await draftSetQuery

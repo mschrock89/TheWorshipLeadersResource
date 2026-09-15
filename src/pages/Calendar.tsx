@@ -48,6 +48,7 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { getEffectiveCustomServiceMinistryType } from "@/lib/customServiceMinistry";
 import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
@@ -298,18 +299,6 @@ const resolveSetlistPushMinistryType = (ministryType?: string) => {
   return normalizeWeekendWorshipMinistryType(ministryType) === "weekend"
     ? "weekend_team"
     : ministryType;
-};
-
-const getEffectiveCustomServiceMinistryType = (ministryType: string, serviceName: string) => {
-  if (ministryType === "prayer_night") return "prayer_night";
-  if (/\bprayer\s*night\b/i.test(serviceName || "")) return "prayer_night";
-  const sessionBaseMinistry = normalizeSessionSetMinistryType(ministryType);
-  if (sessionBaseMinistry === "kids_camp" || sessionBaseMinistry === "student_camp") {
-    return ministryType;
-  }
-  if (/\bkids\s*camp\b/i.test(serviceName || "")) return "kids_camp";
-  if (/\bstudent\s*camp\b/i.test(serviceName || "")) return "student_camp";
-  return ministryType;
 };
 
 type CalendarAudition = {
