@@ -359,10 +359,12 @@ export function useExistingSet(
         data = await runLookup({ includeMinistry: true, includeYoutubeUrl: false });
       }
 
-      // Fallback for legacy custom-service sets (e.g. old Prayer Night saved as weekend).
-      // Kids Camp Morning/Afternoon must stay isolated because they can share one
-      // Kids Camp custom service on the same date.
-      if (!data && customServiceId && ministryType === "prayer_night") {
+      // A custom-service ID is the authoritative set scope. Older custom sets can
+      // retain their original ministry (often Weekend) after the service is later
+      // classified as Worship Night or Prayer Night. Fall back across ministries
+      // so the existing set remains editable. Session variants stay isolated
+      // because multiple sessions can share one custom service on the same date.
+      if (!data && customServiceId && !isSessionSetMinistryType(ministryType)) {
         try {
           data = await runLookup({ includeMinistry: false, includeYoutubeUrl: true });
         } catch (error) {
