@@ -430,6 +430,14 @@ export function useDeleteCustomService() {
   });
 }
 
+export interface CustomServiceCampusMember {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  /** Ministries this member serves at the campus (from ministry-campus tables). Empty when only user_campuses links them. */
+  ministry_types: string[];
+}
+
 export function useCustomServiceCampusMembers(campusId?: string, ministryType?: string) {
   return useQuery({
     queryKey: ["custom-service-campus-members", campusId, ministryType || "all"],
@@ -445,7 +453,7 @@ export function useCustomServiceCampusMembers(campusId?: string, ministryType?: 
 
         if (error) throw error;
 
-        const unique = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
+        const unique = new Map<string, CustomServiceCampusMember>();
         for (const row of data || []) {
           const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
           if (!profile) continue;
@@ -453,29 +461,60 @@ export function useCustomServiceCampusMembers(campusId?: string, ministryType?: 
             id: profile.id,
             full_name: profile.full_name,
             avatar_url: profile.avatar_url,
+            ministry_types: [ministryType],
           });
         }
         return Array.from(unique.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
       }
 
-      const { data, error } = await supabase
-        .from("user_campuses")
-        .select("user_id, profiles!inner(id, full_name, avatar_url)")
-        .eq("campus_id", campusId!)
-        .order("user_id", { ascending: true });
+      // Merge every way a person can belong to a campus. Production/video users
+      // often exist only in the ministry-campus tables (ministry_type =
+      // 'production' etc.) without a user_campuses row, so querying
+      // user_campuses alone hides them from the roster picker.
+      const [campusRes, ministryCampusRes, positionsRes] = await Promise.all([
+        supabase
+          .from("user_campuses")
+          .select("user_id, profiles!inner(id, full_name, avatar_url)")
+          .eq("campus_id", campusId!),
+        supabase
+          .from("user_ministry_campuses")
+          .select("user_id, ministry_type, profiles!inner(id, full_name, avatar_url)")
+          .eq("campus_id", campusId!),
+        supabase
+          .from("user_campus_ministry_positions")
+          .select("user_id, ministry_type, profiles!inner(id, full_name, avatar_url)")
+          .eq("campus_id", campusId!),
+      ]);
 
-      if (error) throw error;
+      if (campusRes.error) throw campusRes.error;
+      if (ministryCampusRes.error) throw ministryCampusRes.error;
+      if (positionsRes.error) throw positionsRes.error;
 
-      const unique = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
-      for (const row of data || []) {
-        const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-        if (!profile) continue;
-        unique.set(profile.id, {
+      const unique = new Map<string, CustomServiceCampusMember>();
+      const upsertMember = (
+        row: { profiles: unknown },
+        rowMinistry?: string | null,
+      ) => {
+        const profile = (Array.isArray(row.profiles) ? row.profiles[0] : row.profiles) as
+          | { id: string; full_name: string | null; avatar_url: string | null }
+          | null;
+        if (!profile) return;
+        const existing = unique.get(profile.id) || {
           id: profile.id,
           full_name: profile.full_name,
           avatar_url: profile.avatar_url,
-        });
-      }
+          ministry_types: [] as string[],
+        };
+        if (rowMinistry && !existing.ministry_types.includes(rowMinistry)) {
+          existing.ministry_types.push(rowMinistry);
+        }
+        unique.set(profile.id, existing);
+      };
+
+      for (const row of campusRes.data || []) upsertMember(row);
+      for (const row of ministryCampusRes.data || []) upsertMember(row, row.ministry_type);
+      for (const row of positionsRes.data || []) upsertMember(row, row.ministry_type);
+
       return Array.from(unique.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
     },
   });
