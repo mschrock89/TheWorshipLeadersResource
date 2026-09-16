@@ -1254,3 +1254,22 @@ html.service-flow-export-mode .service-flow-print-pair {
     padding: 1rem 1.25rem;
   }
 }
+
+/* Calendar detail cards use roomier typography on full-screen browsers. */
+@media (min-width: 1024px) {
+  .calendar-day-widget .text-\[10px\] {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .calendar-day-widget .text-\[11px\],
+  .calendar-day-widget .text-xs {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .calendar-day-widget .text-sm {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}

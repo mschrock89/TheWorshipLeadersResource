@@ -15,7 +15,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
 import { useEventsForMonth, useCreateEvent, useDeleteEvent, useToggleEventRsvp, useUpdateEvent, Event } from "@/hooks/useEvents";
-import { useCreateCustomService, useCustomServiceOccurrences, useDeleteCustomService } from "@/hooks/useCustomServices";
+import {
+  useAddCustomServiceAssignment,
+  useCreateCustomService,
+  useCustomServiceCampusMembers,
+  useCustomServiceOccurrences,
+  useDeleteCustomService,
+  useRemoveCustomServiceAssignment,
+} from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -52,6 +59,7 @@ import { getEffectiveCustomServiceMinistryType } from "@/lib/customServiceMinist
 import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
+import { Database } from "@/integrations/supabase/types";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
@@ -418,7 +426,10 @@ function CalendarDayWidget({
   bodyClassName?: string;
 }) {
   return (
-    <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5", className)}>
+    <section className={cn(
+      "calendar-day-widget flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5 lg:p-4",
+      className,
+    )}>
       <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
@@ -2318,6 +2329,15 @@ function StandardCalendar() {
                               ? "Video"
                               : "Production"
                         }
+                        actions={canManageTeam ? (
+                          <CustomServiceAssignmentManager
+                            customServiceId={service.id}
+                            assignmentDate={service.occurrence_date}
+                            campusId={service.campus_id}
+                            serviceLabel={service.service_name}
+                            section={section}
+                          />
+                        ) : null}
                         className="min-w-0"
                       >
                         <CustomServiceRoster
@@ -4822,6 +4842,31 @@ const CUSTOM_ROSTER_VIDEO_ORDER: Record<string, number> = {
 };
 const CUSTOM_ROSTER_AUDIO_ROLES = new Set(Object.keys(CUSTOM_ROSTER_AUDIO_ORDER));
 const CUSTOM_ROSTER_VIDEO_ROLES = new Set(Object.keys(CUSTOM_ROSTER_VIDEO_ORDER));
+type CustomRosterSupportSection = "production" | "video";
+type CustomRosterTeamPosition = Database["public"]["Enums"]["team_position"];
+const CUSTOM_ROSTER_SUPPORT_ROLE_OPTIONS: Record<
+  CustomRosterSupportSection,
+  Array<{ value: CustomRosterTeamPosition; label: string }>
+> = {
+  production: [
+    { value: "sound_tech", label: "FOH" },
+    { value: "mon", label: "MON" },
+    { value: "lighting", label: "Lighting" },
+    { value: "media", label: "Lyrics" },
+    { value: "audio_shadow", label: "Audio Shadow" },
+    { value: "broadcast", label: "Broadcast" },
+    { value: "photo_team", label: "Photography Team" },
+    { value: "art_team", label: "Art Team" },
+  ],
+  video: [
+    { value: "director", label: "Director" },
+    { value: "producer", label: "Producer" },
+    { value: "switcher", label: "Switcher" },
+    { value: "graphics", label: "Graphics" },
+    { value: "tri_pod_camera", label: "Tri-Pod Camera" },
+    { value: "hand_held_camera", label: "Hand-Held Camera" },
+  ],
+};
 // Global order used to sort a member's role badges.
 const CUSTOM_ROSTER_ROLE_BADGE_ORDER: Record<string, number> = {
   vocalist: 0,
@@ -4831,6 +4876,161 @@ const CUSTOM_ROSTER_ROLE_BADGE_ORDER: Record<string, number> = {
 };
 const customRosterRolePriority = (roles: string[], orderMap: Record<string, number>) =>
   roles.reduce((min, role) => Math.min(min, orderMap[role] ?? 99), 99);
+
+function CustomServiceAssignmentManager({
+  customServiceId,
+  assignmentDate,
+  campusId,
+  serviceLabel,
+  section,
+}: {
+  customServiceId: string;
+  assignmentDate: string;
+  campusId: string;
+  serviceLabel: string;
+  section: CustomRosterSupportSection;
+}) {
+  const [open, setOpen] = useState(false);
+  const [memberId, setMemberId] = useState("");
+  const [roles, setRoles] = useState<CustomRosterTeamPosition[]>([]);
+  const { data: campusMembers = [], isLoading: membersLoading } = useCustomServiceCampusMembers(campusId);
+  const { data: assignments = [] } = useCustomServiceAssignments(customServiceId, assignmentDate);
+  const addAssignment = useAddCustomServiceAssignment();
+  const removeAssignment = useRemoveCustomServiceAssignment();
+  const roleOptions = CUSTOM_ROSTER_SUPPORT_ROLE_OPTIONS[section];
+  const sectionRoleValues = useMemo(() => new Set(roleOptions.map((option) => option.value)), [roleOptions]);
+  const sectionAssignments = assignments.filter((assignment) => sectionRoleValues.has(assignment.role));
+  const sectionLabel = section === "video" ? "Video" : "Production";
+
+  const toggleRole = (role: CustomRosterTeamPosition) => {
+    setRoles((current) =>
+      current.includes(role) ? current.filter((candidate) => candidate !== role) : [...current, role],
+    );
+  };
+
+  const handleAssign = async () => {
+    if (!memberId || roles.length === 0) return;
+    await Promise.all(
+      roles.map((role) =>
+        addAssignment.mutateAsync({
+          custom_service_id: customServiceId,
+          assignment_date: assignmentDate,
+          user_id: memberId,
+          role,
+        }),
+      ),
+    );
+    setMemberId("");
+    setRoles([]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          title={`Add ${sectionLabel.toLowerCase()} team member`}
+          aria-label={`Add ${sectionLabel.toLowerCase()} team member`}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add {sectionLabel} Team Members</DialogTitle>
+          <DialogDescription>
+            {serviceLabel} • {assignmentDate}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Team member</Label>
+            <Select value={memberId} onValueChange={setMemberId}>
+              <SelectTrigger>
+                <SelectValue placeholder={membersLoading ? "Loading team members..." : "Select team member"} />
+              </SelectTrigger>
+              <SelectContent>
+                {campusMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.full_name || "Unnamed Member"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Role(s)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {roleOptions.map((role) => (
+                <button
+                  key={role.value}
+                  type="button"
+                  onClick={() => toggleRole(role.value)}
+                  className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left hover:bg-muted"
+                >
+                  <Checkbox checked={roles.includes(role.value)} />
+                  <span className="text-sm">{role.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            className="w-full"
+            onClick={handleAssign}
+            disabled={!memberId || roles.length === 0 || addAssignment.isPending}
+          >
+            {addAssignment.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+            Assign to {sectionLabel}
+          </Button>
+
+          <div className="space-y-2 border-t border-border pt-4">
+            <Label>Current {sectionLabel} Team</Label>
+            {sectionAssignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No {sectionLabel.toLowerCase()} team members assigned.</p>
+            ) : (
+              <div className="space-y-2">
+                {sectionAssignments.map((assignment) => (
+                  <div key={assignment.id} className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {assignment.profiles?.full_name || "Team Member"}
+                    </span>
+                    <Badge variant="secondary" className="shrink-0 text-xs">
+                      {POSITION_LABELS[assignment.role] || assignment.role}
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-destructive"
+                      aria-label={`Remove ${assignment.profiles?.full_name || "team member"}`}
+                      onClick={() =>
+                        removeAssignment.mutate({
+                          id: assignment.id,
+                          custom_service_id: assignment.custom_service_id,
+                          assignment_date: assignment.assignment_date,
+                        })
+                      }
+                      disabled={removeAssignment.isPending}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function CustomServiceRoster({
   customServiceId,
@@ -4881,8 +5081,6 @@ function CustomServiceRoster({
       </div>;
   }
 
-  if (assignments.length === 0) return null;
-
   const grouped = Array.from(assignments.reduce((map, assignment) => {
     const existing = map.get(assignment.user_id) || {
       userId: assignment.user_id,
@@ -4920,7 +5118,6 @@ function CustomServiceRoster({
     .filter(
       (member) =>
         !member.roles.has("vocalist") &&
-        !memberRoles(member).some((role) => CUSTOM_ROSTER_AUDIO_ROLES.has(role)) &&
         memberRoles(member).some((role) => CUSTOM_ROSTER_VIDEO_ROLES.has(role)),
     )
     .sort(
@@ -4954,6 +5151,14 @@ function CustomServiceRoster({
 
   const renderMemberRow = (member: (typeof grouped)[number]) => {
     const visibleRoles = Array.from(member.roles)
+      .filter((role) => {
+        if (section === "production") return CUSTOM_ROSTER_AUDIO_ROLES.has(role);
+        if (section === "video") return CUSTOM_ROSTER_VIDEO_ROLES.has(role);
+        if (section === "worship") {
+          return !CUSTOM_ROSTER_AUDIO_ROLES.has(role) && !CUSTOM_ROSTER_VIDEO_ROLES.has(role);
+        }
+        return true;
+      })
       .sort(
         (a, b) => (CUSTOM_ROSTER_ROLE_BADGE_ORDER[a] ?? 99) - (CUSTOM_ROSTER_ROLE_BADGE_ORDER[b] ?? 99),
       );
