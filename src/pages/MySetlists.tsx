@@ -304,6 +304,31 @@ function StandardMySetlists() {
     [campuses],
   );
 
+  // Published-set notifications deep-link by set id. If that set belongs to a
+  // different ministry than the persisted page filter, move to its ministry so
+  // the target is not filtered out before the highlight/confirm logic runs.
+  useEffect(() => {
+    if (!highlightSetId || !allSetlists?.length) return;
+    const target = allSetlists.find((setlist) => setlist.id === highlightSetId);
+    if (!target || setlistMatchesMinistryFilter(target.ministry_type, selectedMinistryType)) return;
+
+    const sessionBase = normalizeSessionSetMinistryType(target.ministry_type);
+    const weekendBase = normalizeWeekendWorshipMinistryType(target.ministry_type);
+    const targetFilter = weekendBase === "weekend"
+      ? "weekend_team"
+      : sessionBase || target.ministry_type;
+
+    if (isValidViewMinistryFilter(targetFilter, appMinistryTypes)) {
+      setSelectedMinistryType(targetFilter);
+    }
+  }, [
+    allSetlists,
+    appMinistryTypes,
+    highlightSetId,
+    selectedMinistryType,
+    setSelectedMinistryType,
+  ]);
+
   // Group into one chronological list (past first, then upcoming)
   const allGroupedSetlists = useMemo(() => {
     // Convert to format expected by groupByWeekend
@@ -465,6 +490,13 @@ function StandardMySetlists() {
       .join("")
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const formatServiceTime = (time: string | null | undefined) => {
+    if (!time) return null;
+    const [hours, minutes] = time.slice(0, 5).split(":").map(Number);
+    const date = new Date(2000, 0, 1, hours, minutes);
+    return format(date, "h:mm a");
   };
 
   // Check if this is a weekend group (has both Saturday and Sunday)
@@ -967,6 +999,27 @@ function StandardMySetlists() {
                 <CardHeader className="pb-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
+                      {setlist.custom_service?.service_name && (
+                        <div className="mb-2">
+                          <CardTitle className="text-base">
+                            {setlist.custom_service.service_name}
+                          </CardTitle>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {[
+                              setlist.custom_service.sound_check_time
+                                ? `Call ${formatServiceTime(setlist.custom_service.sound_check_time)}`
+                                : null,
+                              setlist.custom_service.start_time
+                                ? `${formatServiceTime(setlist.custom_service.start_time)}${
+                                    setlist.custom_service.end_time
+                                      ? `–${formatServiceTime(setlist.custom_service.end_time)}`
+                                      : ""
+                                  }`
+                                : null,
+                            ].filter(Boolean).join(" • ")}
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant="secondary" className="text-xs font-medium">
                           {getMinistryLabel(setlist.ministry_type)}

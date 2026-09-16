@@ -1307,9 +1307,18 @@ function StandardCalendar() {
   const selectedDayEvents = selectedDate ? getEventsForDay(selectedDate.getDate(), { ignoreMinistryFilter: true }) : [];
   const selectedDayServices = useMemo(
     () => (selectedDateStr
-      ? customServices.filter((service) => service.occurrence_date === selectedDateStr)
+      ? customServices
+          .filter((service) => service.occurrence_date === selectedDateStr)
+          .filter((service) =>
+            !ministryFilter ||
+            ministryFilter === "all" ||
+            serviceOverrideMatchesMinistryFilter(
+              getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
+              ministryFilter,
+            ),
+          )
       : []),
-    [customServices, selectedDateStr],
+    [customServices, ministryFilter, selectedDateStr],
   );
   const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
   const selectedDayScheduleEntries = useMemo(
@@ -2134,6 +2143,7 @@ function StandardCalendar() {
                             campusId={service.campus_id}
                             ministryType={service.ministry_type}
                             serviceLabel={service.service_name}
+                            section="worship"
                           />
                         </div>
                       );
@@ -2296,7 +2306,34 @@ function StandardCalendar() {
                 </div>
               </CalendarDayWidget>
 
-              {selectedDayServices.length > 0 ? null : (["production", "video"] as const).map((section) => (
+              {selectedDayServices.length > 0
+                ? selectedDayServices.flatMap((service) =>
+                    (["production", "video"] as const).map((section) => (
+                      <CalendarDayWidget
+                        key={`${service.occurrence_key}-${section}`}
+                        title={
+                          selectedDayServices.length > 1
+                            ? `${service.service_name} • ${section === "video" ? "Video" : "Production"}`
+                            : section === "video"
+                              ? "Video"
+                              : "Production"
+                        }
+                        className="min-w-0"
+                      >
+                        <CustomServiceRoster
+                          customServiceId={service.id}
+                          assignmentDate={service.occurrence_date}
+                          campusId={service.campus_id}
+                          ministryType={service.ministry_type}
+                          serviceLabel={service.service_name}
+                          section={section}
+                          showActions={false}
+                          embedded
+                        />
+                      </CalendarDayWidget>
+                    )),
+                  )
+                : (["production", "video"] as const).map((section) => (
                 sessionEntries.length > 0 ? (
                   <CalendarDayWidget key={section} title={section === "video" ? "Video" : "Production"} className="min-w-0">
                     <div className="space-y-4">
@@ -4741,6 +4778,9 @@ function CustomServiceRoster({
   ministryType,
   serviceLabel,
   compact = false,
+  section = "all",
+  showActions = true,
+  embedded = false,
 }: {
   customServiceId: string;
   assignmentDate: string;
@@ -4748,6 +4788,9 @@ function CustomServiceRoster({
   ministryType: string;
   serviceLabel?: string;
   compact?: boolean;
+  section?: "all" | "worship" | "production" | "video";
+  showActions?: boolean;
+  embedded?: boolean;
 }) {
   const { user, isLoading: authLoading } = useAuth();
   const { data: assignments = [], isLoading } = useCustomServiceAssignments(customServiceId, assignmentDate);
@@ -4840,6 +4883,13 @@ function CustomServiceRoster({
   const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
   const listClass = compact ? "space-y-0" : "space-y-1.5";
   const showWorshipColumns = vocalists.length > 0 && bandMembers.length > 0;
+  const showWorship = section === "all" || section === "worship";
+  const showProduction = section === "all" || section === "production";
+  const showVideo = section === "all" || section === "video";
+  const visibleMemberCount =
+    (showWorship ? vocalists.length + bandMembers.length : 0) +
+    (showProduction ? productionMembers.length : 0) +
+    (showVideo ? videoMembers.length : 0);
 
   const renderMemberRow = (member: (typeof grouped)[number]) => (
     <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 -mx-2"}`}>
@@ -4862,8 +4912,8 @@ function CustomServiceRoster({
     </div>
   );
 
-  return <div className={compact ? "" : "mb-4"}>
-      <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
+  return <div className={compact || embedded ? "" : "mb-4"}>
+      {showActions ? <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
         <div className="ml-auto flex flex-wrap justify-end gap-1">
           <SetlistPushButton
             date={new Date(`${assignmentDate}T12:00:00`)}
@@ -4883,9 +4933,14 @@ function CustomServiceRoster({
             className={compact ? "h-6 gap-1 px-2 text-[10px]" : undefined}
           />
         </div>
-      </div>
+      </div> : null}
+      {visibleMemberCount === 0 ? (
+        <p className={compact ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
+          No {section === "all" ? "team members" : section === "worship" ? "worship team" : section} assigned.
+        </p>
+      ) : null}
       <div className={compact ? "space-y-2" : "space-y-4"}>
-        {(vocalists.length > 0 || bandMembers.length > 0) && (
+        {showWorship && (vocalists.length > 0 || bandMembers.length > 0) && (
           <div className={`grid ${showWorshipColumns ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
             {vocalists.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
@@ -4903,16 +4958,16 @@ function CustomServiceRoster({
               </div>}
           </div>
         )}
-        {(productionMembers.length > 0 || videoMembers.length > 0) && (
-          <div className={`grid ${productionMembers.length > 0 && videoMembers.length > 0 ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
-            {productionMembers.length > 0 && <div className="min-w-0">
+        {((showProduction && productionMembers.length > 0) || (showVideo && videoMembers.length > 0)) && (
+          <div className={`grid ${showProduction && showVideo && productionMembers.length > 0 && videoMembers.length > 0 ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+            {showProduction && productionMembers.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <Volume2 className={iconClass} />
                   Production
                 </h4>
                 <div className={listClass}>{productionMembers.map(renderMemberRow)}</div>
               </div>}
-            {videoMembers.length > 0 && <div className="min-w-0">
+            {showVideo && videoMembers.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <Video className={iconClass} />
                   Video

@@ -23,6 +23,12 @@ export interface PublishedSetlist {
   plan_date: string;
   ministry_type: string;
   custom_service_id: string | null;
+  custom_service?: {
+    service_name: string;
+    start_time: string | null;
+    end_time: string | null;
+    sound_check_time: string | null;
+  } | null;
   notes: string | null;
   published_at: string;
   campuses: { name: string } | null;
@@ -706,6 +712,35 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       // Fetch songs for each setlist
       const setlistIds = (setlists || []).map(s => s.id);
+      const customServiceIds = [
+        ...new Set(setlists.map((setlist) => setlist.custom_service_id).filter((id): id is string => !!id)),
+      ];
+      const customServiceById = new Map<
+        string,
+        {
+          service_name: string;
+          start_time: string | null;
+          end_time: string | null;
+          sound_check_time: string | null;
+        }
+      >();
+
+      if (customServiceIds.length > 0) {
+        const { data: customServiceDetails, error: customServiceDetailsError } = await supabase
+          .from("custom_services")
+          .select("id, service_name, start_time, end_time, sound_check_time")
+          .in("id", customServiceIds);
+
+        if (customServiceDetailsError) throw customServiceDetailsError;
+        for (const service of customServiceDetails || []) {
+          customServiceById.set(service.id, {
+            service_name: service.service_name,
+            start_time: service.start_time,
+            end_time: service.end_time,
+            sound_check_time: service.sound_check_time,
+          });
+        }
+      }
       
       let allSongs: DraftSetSongRow[] | null = null;
       const baseSongIds = setlistIds.length > 0 ? setlistIds : ["00000000-0000-0000-0000-000000000000"];
@@ -810,6 +845,9 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         const amIOnRoster = rosterEligibilityBySetId.get(setlist.id) ?? false;
         return {
           ...setlist,
+          custom_service: setlist.custom_service_id
+            ? customServiceById.get(setlist.custom_service_id) || null
+            : null,
           songs: setlistSongItems.map(s => {
             const junctionVocalistIds = songVocalistMap.get(s.id) || [];
             const vocalistIds = junctionVocalistIds.length > 0
