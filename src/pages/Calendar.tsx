@@ -1969,8 +1969,6 @@ function StandardCalendar() {
           })();
           return <>
               <CalendarDayWidget
-                className={selectedDayServices.length > 0 ? "aspect-auto overflow-visible" : undefined}
-                bodyClassName={selectedDayServices.length > 0 ? "flex-none overflow-y-visible" : undefined}
                 title={
                   <span className="flex min-w-0 items-baseline gap-2">
                     <span className="truncate">
@@ -2130,10 +2128,10 @@ function StandardCalendar() {
                       const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
                         <div key={`roster-${service.occurrence_key}`}>
-                          <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+                          <div className="mb-2 flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-base font-semibold leading-tight text-foreground">{service.service_name}</p>
-                              <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                              <p className="text-sm font-semibold leading-tight text-foreground">{service.service_name}</p>
+                              <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
                                 {campusName} • {getMinistryLabel(service.ministry_type)}
                                 {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
                               </p>
@@ -3527,6 +3525,7 @@ function RosterOutreachWidget({
   date,
   campusId,
   ministryFilter,
+  customServiceId,
   serviceLabel,
   groupTextMembers,
   supportNotificationTargets = [],
@@ -3542,6 +3541,7 @@ function RosterOutreachWidget({
   date: Date;
   campusId?: string;
   ministryFilter?: string;
+  customServiceId?: string | null;
   serviceLabel?: string;
   groupTextMembers: Array<{
     memberName: string;
@@ -3582,6 +3582,7 @@ function RosterOutreachWidget({
           date={date}
           campusId={campusId}
           ministryType={ministryFilter}
+          customServiceId={customServiceId}
           serviceLabel={serviceLabel}
           rosterScheduleDate={worshipPushScheduleDate}
           rosterTeamId={worshipPushTeamId}
@@ -4932,56 +4933,46 @@ function CustomServiceRoster({
     (showProduction ? productionMembers.length : 0) +
     (showVideo ? videoMembers.length : 0);
 
-  const renderMemberRow = (member: (typeof grouped)[number], hideVocalistRole = false) => {
+  const renderMemberRow = (member: (typeof grouped)[number]) => {
     const visibleRoles = Array.from(member.roles)
-      .filter((role) => !(hideVocalistRole && role === "vocalist"))
       .sort(
         (a, b) => (CUSTOM_ROSTER_ROLE_BADGE_ORDER[a] ?? 99) - (CUSTOM_ROSTER_ROLE_BADGE_ORDER[b] ?? 99),
       );
 
     return (
-    <div key={member.userId} className={`flex items-start rounded-md ${compact ? "gap-1.5 py-1 text-xs" : "-mx-2 gap-2.5 px-2 py-2"}`}>
+    <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "-mx-2 gap-2 px-2 py-1.5 text-sm"}`}>
       <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
         <AvatarImage src={member.avatarUrl || undefined} />
         <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
           {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <div className="min-w-0 flex-1">
-        <p className={`${compact ? "truncate" : "break-words"} leading-tight text-foreground`}>{member.name}</p>
-        {visibleRoles.length > 0 ? <div className="mt-1 flex flex-wrap gap-1">
-          {visibleRoles.map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "h-5 px-1.5 text-[10px]"}>
-              {POSITION_LABELS[role] || role}
-            </Badge>)}
-        </div> : null}
-      </div>
+      <span className="min-w-0 flex-1 break-words text-foreground">{member.name}</span>
+      <span className={`min-w-0 max-w-[50%] break-words text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
+        {visibleRoles.map((role) => role === "vocalist" ? "Vox" : POSITION_LABELS[role] || role).join(", ")}
+      </span>
     </div>
     );
   };
 
   return <div className={compact || embedded ? "" : "mb-4"}>
-      {showActions ? <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
-        <div className="ml-auto flex flex-wrap justify-end gap-1">
-          <SetlistPushButton
-            date={new Date(`${assignmentDate}T12:00:00`)}
-            campusId={campusId}
-            ministryType={effectiveMinistryType}
-            customServiceId={customServiceId}
-            serviceLabel={serviceLabel}
-            buttonLabel="Notify Team"
-            className={compact ? "h-6 gap-1 px-2 text-[10px]" : "h-8 gap-1.5 px-3 text-xs"}
-          />
-          <GroupTextButton
-            phoneNumbers={grouped.map((member) => member.phone)}
-            rosterMembers={grouped.map((member) => ({ name: member.name, phone: member.phone }))}
-            defaultMessage={buildRosterGroupTextTemplate({
-              date: new Date(`${assignmentDate}T12:00:00`),
-              serviceLabel,
-            })}
-            className={compact ? "h-6 gap-1 px-2 text-[10px]" : "h-8 gap-1.5 px-3 text-xs"}
-          />
-        </div>
-      </div> : null}
+      {showActions ? (
+        <RosterOutreachWidget
+          date={new Date(`${assignmentDate}T12:00:00`)}
+          campusId={campusId}
+          ministryFilter={effectiveMinistryType}
+          customServiceId={customServiceId}
+          serviceLabel={serviceLabel}
+          groupTextMembers={grouped.map((member) => ({
+            memberName: member.name,
+            phone: member.phone,
+            ministryTypes: [effectiveMinistryType],
+            positions: Array.from(member.roles),
+          }))}
+          supportPushMinistry={null}
+          compact={compact}
+        />
+      ) : null}
       {visibleMemberCount === 0 ? (
         <p className={compact ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>
           No {section === "all" ? "team members" : section === "worship" ? "worship team" : section} assigned.
@@ -4995,7 +4986,7 @@ function CustomServiceRoster({
                   <MicVocal className={iconClass} />
                   Vocalists
                 </h4>
-                <div className={listClass}>{vocalists.map((member) => renderMemberRow(member, true))}</div>
+                <div className={listClass}>{vocalists.map(renderMemberRow)}</div>
               </div>}
             {bandMembers.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
