@@ -2204,109 +2204,10 @@ function StandardCalendar() {
                   />
                 )}
                   </div>
-                  {selectedDayServices.length === 0 ? <div className="min-w-0">
-                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
-                      <ListMusic className="h-3.5 w-3.5" />
-                      Setlist
-                    </p>
-                    {selectedTeachingWeek ? (
-                      <div className="mb-2 rounded-md border border-emerald-600/20 bg-emerald-600/5 px-2 py-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant="secondary" className="bg-emerald-600/10 text-[10px] text-emerald-700 border-transparent">
-                            Teaching
-                          </Badge>
-                          <span className="text-sm font-medium">
-                            {formatTeachingReference(selectedTeachingWeek)}
-                          </span>
-                          {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              {selectedTeachingWeek.themes_manual.join(", ")}
-                            </span>
-                          ) : null}
-                          <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]">
-                            <Link
-                              to={buildBibleHref(
-                                formatTeachingReference(selectedTeachingWeek),
-                                selectedTeachingWeek.translation || "ESV"
-                              )}
-                            >
-                              Read Passage
-                            </Link>
-                          </Button>
-                        </div>
-                        {selectedTeachingWeek.ai_summary ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {selectedTeachingWeek.ai_summary}
-                          </p>
-                        ) : null}
-                        {(selectedTeachingWeek.psa_highlight || selectedTeachingWeek.announcer_name) ? (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {[selectedTeachingWeek.psa_highlight, selectedTeachingWeek.announcer_name].filter(Boolean).join(" • ")}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                {selectedDayServices.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedDayServices.map((service) => {
-                      return (
-                        <div key={`songs-${service.occurrence_key}`}>
-                          <CustomServiceSongsPreview
-                            customServiceId={service.id}
-                            planDate={service.occurrence_date}
-                            campusId={service.campus_id}
-                            ministryType={service.ministry_type}
-                            serviceName={service.service_name}
-                            readOnly={isCrossCampusReadOnly}
-                            showHeader={false}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : sessionEntries.length > 0 ? (
-                  <div className="space-y-2">
-                    {sessionEntries.map((entry) => {
-                      const timeOfDay = entry.time_of_day as string;
-                      const variant = `${sessionBase}_${timeOfDay}`;
-                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-                      return (
-                        <div key={`songs-${entry.id}`}>
-                          <div className="mb-1 flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent text-[10px]">
-                              {sessionLabel}
-                            </Badge>
-                            {entry.worship_teams?.name && (
-                              <span className="truncate text-[10px] text-muted-foreground">
-                                {entry.worship_teams.name}
-                              </span>
-                            )}
-                          </div>
-                          <SongsPreview
-                            date={selectedDate}
-                            campusId={sessionCampusId}
-                            ministryFilter={variant}
-                            readOnly={isCrossCampusReadOnly}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <SongsPreview
-                    date={selectedDate}
-                    campusId={sessionCampusId}
-                    ministryFilter={ministryFilter}
-                    readOnly={isCrossCampusReadOnly}
-                  />
-                )}
-                  </div>
-                  : null}
                 </div>
               </CalendarDayWidget>
 
-              {selectedDayServices.length > 0 ? (
-                <CalendarDayWidget
+              <CalendarDayWidget
                   title={
                     <span className="flex items-center gap-2">
                       <ListMusic className="h-4 w-4 text-blue-400" />
@@ -2317,7 +2218,38 @@ function StandardCalendar() {
                   bodyClassName="flex-none overflow-y-visible"
                 >
                   <div className="space-y-4 pt-1">
-                    {selectedDayServices.map((service) => (
+                    {selectedTeachingWeek ? (
+                      <div className="rounded-md border border-emerald-600/20 bg-emerald-600/5 px-2 py-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant="secondary" className="border-transparent bg-emerald-600/10 text-[10px] text-emerald-700">
+                            Teaching
+                          </Badge>
+                          <span className="text-sm font-medium">{formatTeachingReference(selectedTeachingWeek)}</span>
+                          {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              {selectedTeachingWeek.themes_manual.join(", ")}
+                            </span>
+                          ) : null}
+                          <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]">
+                            <Link to={buildBibleHref(
+                              formatTeachingReference(selectedTeachingWeek),
+                              selectedTeachingWeek.translation || "ESV",
+                            )}>
+                              Read Passage
+                            </Link>
+                          </Button>
+                        </div>
+                        {selectedTeachingWeek.ai_summary ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{selectedTeachingWeek.ai_summary}</p>
+                        ) : null}
+                        {(selectedTeachingWeek.psa_highlight || selectedTeachingWeek.announcer_name) ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {[selectedTeachingWeek.psa_highlight, selectedTeachingWeek.announcer_name].filter(Boolean).join(" • ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {selectedDayServices.length > 0 ? selectedDayServices.map((service) => (
                       <div key={`standalone-songs-${service.occurrence_key}`}>
                         {selectedDayServices.length > 1 ? (
                           <div className="mb-2">
@@ -2338,10 +2270,38 @@ function StandardCalendar() {
                           showHeader={false}
                         />
                       </div>
-                    ))}
+                    )) : sessionEntries.length > 0 ? sessionEntries.map((entry) => {
+                      const timeOfDay = entry.time_of_day as string;
+                      const variant = `${sessionBase}_${timeOfDay}`;
+                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+                      return (
+                        <div key={`standalone-songs-${entry.id}`}>
+                          <div className="mb-1 flex items-center gap-2">
+                            <Badge variant="secondary" className="border-transparent bg-teal-600/10 text-[10px] text-teal-700">
+                              {sessionLabel}
+                            </Badge>
+                            {entry.worship_teams?.name ? (
+                              <span className="truncate text-[10px] text-muted-foreground">{entry.worship_teams.name}</span>
+                            ) : null}
+                          </div>
+                          <SongsPreview
+                            date={selectedDate}
+                            campusId={sessionCampusId}
+                            ministryFilter={variant}
+                            readOnly={isCrossCampusReadOnly}
+                          />
+                        </div>
+                      );
+                    }) : (
+                      <SongsPreview
+                        date={selectedDate}
+                        campusId={sessionCampusId}
+                        ministryFilter={ministryFilter}
+                        readOnly={isCrossCampusReadOnly}
+                      />
+                    )}
                   </div>
                 </CalendarDayWidget>
-              ) : null}
 
               {selectedDayServices.length > 0
                 ? selectedDayServices.flatMap((service) =>
@@ -4807,24 +4767,18 @@ function CustomServiceSongsPreview({
       ) : null}
       <div className={compact ? "space-y-0" : "space-y-1.5"}>
         {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
-            <div className="flex min-w-0 flex-1 items-start gap-1.5">
-              <span className={`shrink-0 text-muted-foreground ${compact ? "w-3 text-[10px]" : "w-5 text-xs"}`}>{index + 1}.</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-foreground">{song.song?.title || "Untitled Song"}</p>
-                {(vocalistsBySong[song.id] || []).length > 0 ? (
-                  <p className={`mt-0.5 flex items-center gap-1 text-primary/75 ${compact ? "text-[9px]" : "text-[11px]"}`}>
-                    <MicVocal className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                    <span className="truncate">{vocalistsBySong[song.id].join(", ")}</span>
-                  </p>
-                ) : (
-                  <p className={`mt-0.5 flex items-center gap-1 text-muted-foreground ${compact ? "text-[9px]" : "text-[11px]"}`}>
-                    <MicVocal className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                    Unassigned
-                  </p>
-                )}
-              </div>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
+              <span className="truncate text-foreground">{song.song?.title || "Untitled Song"}</span>
             </div>
-            {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
+            <div className="ml-2 flex shrink-0 items-center gap-1.5">
+              <span className={`max-w-[7rem] truncate ${vocalistsBySong[song.id]?.length ? "text-primary/70" : "text-muted-foreground"} ${compact ? "text-[10px]" : "text-xs"}`}>
+                {vocalistsBySong[song.id]?.length
+                  ? vocalistsBySong[song.id].map((name) => name.split(" ")[0]).join(", ")
+                  : "Unassigned"}
+              </span>
+              {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
+            </div>
           </div>)}
       </div>
     </div>;
