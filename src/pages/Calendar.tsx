@@ -4892,6 +4892,7 @@ function CustomServiceAssignmentManager({
 }) {
   const [open, setOpen] = useState(false);
   const [memberId, setMemberId] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
   const [roles, setRoles] = useState<CustomRosterTeamPosition[]>([]);
   const { data: campusMembers = [], isLoading: membersLoading } = useCustomServiceCampusMembers(campusId);
   const { data: assignments = [] } = useCustomServiceAssignments(customServiceId, assignmentDate);
@@ -4901,6 +4902,16 @@ function CustomServiceAssignmentManager({
   const sectionRoleValues = useMemo(() => new Set(roleOptions.map((option) => option.value)), [roleOptions]);
   const sectionAssignments = assignments.filter((assignment) => sectionRoleValues.has(assignment.role));
   const sectionLabel = section === "video" ? "Video" : "Production";
+  const normalizedMemberSearch = memberSearch.trim().toLocaleLowerCase();
+  const filteredCampusMembers = useMemo(
+    () =>
+      normalizedMemberSearch
+        ? campusMembers.filter((member) =>
+            (member.full_name || "Unnamed Member").toLocaleLowerCase().includes(normalizedMemberSearch),
+          )
+        : campusMembers,
+    [campusMembers, normalizedMemberSearch],
+  );
 
   const toggleRole = (role: CustomRosterTeamPosition) => {
     setRoles((current) =>
@@ -4921,6 +4932,7 @@ function CustomServiceAssignmentManager({
       ),
     );
     setMemberId("");
+    setMemberSearch("");
     setRoles([]);
   };
 
@@ -4948,19 +4960,50 @@ function CustomServiceAssignmentManager({
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Team member</Label>
-            <Select value={memberId} onValueChange={setMemberId}>
-              <SelectTrigger>
-                <SelectValue placeholder={membersLoading ? "Loading team members..." : "Select team member"} />
-              </SelectTrigger>
-              <SelectContent>
-                {campusMembers.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.full_name || "Unnamed Member"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor={`${customServiceId}-${section}-member-search`}>Team member</Label>
+            <Input
+              id={`${customServiceId}-${section}-member-search`}
+              type="search"
+              value={memberSearch}
+              onChange={(event) => setMemberSearch(event.target.value)}
+              placeholder={membersLoading ? "Loading team members..." : "Search team members..."}
+              disabled={membersLoading}
+              autoComplete="off"
+            />
+            <div className="max-h-48 overflow-y-auto rounded-md border border-border p-1">
+              {membersLoading ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading team members...
+                </div>
+              ) : filteredCampusMembers.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No matching team members.</p>
+              ) : (
+                filteredCampusMembers.map((member) => {
+                  const selected = member.id === memberId;
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => setMemberId(member.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-muted",
+                        selected && "bg-primary/10 text-primary",
+                      )}
+                    >
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={member.avatar_url || undefined} />
+                        <AvatarFallback className="text-[9px]">
+                          {(member.full_name || "Team Member").split(" ").map((name) => name[0]).join("").slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate">{member.full_name || "Unnamed Member"}</span>
+                      {selected ? <Check className="h-4 w-4 shrink-0" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
