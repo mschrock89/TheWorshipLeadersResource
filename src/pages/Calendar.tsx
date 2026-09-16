@@ -2347,7 +2347,6 @@ function StandardCalendar() {
                           ministryType={service.ministry_type}
                           serviceLabel={service.service_name}
                           section={section}
-                          showActions={false}
                           embedded
                         />
                       </CalendarDayWidget>
@@ -3233,6 +3232,7 @@ function TeamSchedulePushButton({
   campusId,
   ministryType,
   teamId,
+  customServiceId,
   serviceLabel,
   className,
   buttonLabel = "Push",
@@ -3242,6 +3242,7 @@ function TeamSchedulePushButton({
   campusId?: string;
   ministryType: "production" | "video";
   teamId?: string | null;
+  customServiceId?: string | null;
   serviceLabel?: string;
   className?: string;
   buttonLabel?: string;
@@ -3265,8 +3266,8 @@ function TeamSchedulePushButton({
   }
 
   const ministryLabel = serviceLabel || (ministryType === "production" ? "Production" : "Video");
-  const canSend = Boolean(campusId && scheduleDate && teamId);
-  const disabledTitle = !teamId
+  const canSend = Boolean(campusId && scheduleDate && (teamId || customServiceId));
+  const disabledTitle = !teamId && !customServiceId
     ? `No ${ministryLabel} team is scheduled for this date.`
     : !scheduleDate
       ? "No schedule date is available for this push."
@@ -3288,6 +3289,7 @@ function TeamSchedulePushButton({
           campusId,
           ministryType,
           teamId,
+          customServiceId,
         },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
       });
@@ -3353,6 +3355,7 @@ function TeamSchedulePushButton({
           campusId,
           ministryType,
           teamId,
+          customServiceId,
           previewOnly: true,
         },
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
@@ -3515,6 +3518,7 @@ function RosterOutreachWidget({
   supportPushMinistry,
   supportPushScheduleDate,
   supportPushTeamId,
+  supportPushCustomServiceId,
   worshipPushScheduleDate,
   worshipPushTeamId,
   worshipPushRotationPeriodName,
@@ -3536,6 +3540,7 @@ function RosterOutreachWidget({
   supportPushMinistry: "production" | "video" | null;
   supportPushScheduleDate?: string | null;
   supportPushTeamId?: string | null;
+  supportPushCustomServiceId?: string | null;
   worshipPushScheduleDate?: string;
   worshipPushTeamId?: string;
   worshipPushRotationPeriodName?: string | null;
@@ -3579,6 +3584,7 @@ function RosterOutreachWidget({
           campusId={campusId}
           ministryType={supportPushMinistry}
           teamId={supportPushTeamId}
+          customServiceId={supportPushCustomServiceId}
           serviceLabel={serviceLabel}
           buttonLabel={`Notify ${getMinistryLabel(supportPushMinistry)}`}
           className={buttonClassName}
@@ -5187,6 +5193,14 @@ function CustomServiceRoster({
   const showWorship = section === "all" || section === "worship";
   const showProduction = section === "all" || section === "production";
   const showVideo = section === "all" || section === "video";
+  const visibleMembers =
+    section === "worship"
+      ? grouped.filter((member) => vocalists.includes(member) || bandMembers.includes(member))
+      : section === "production"
+        ? productionMembers
+        : section === "video"
+          ? videoMembers
+          : grouped;
   const visibleMemberCount =
     (showWorship ? vocalists.length + bandMembers.length : 0) +
     (showProduction ? productionMembers.length : 0) +
@@ -5230,13 +5244,17 @@ function CustomServiceRoster({
           ministryFilter={effectiveMinistryType}
           customServiceId={customServiceId}
           serviceLabel={serviceLabel}
-          groupTextMembers={grouped.map((member) => ({
+          groupTextMembers={visibleMembers.map((member) => ({
             memberName: member.name,
             phone: member.phone,
             ministryTypes: [effectiveMinistryType],
             positions: Array.from(member.roles),
           }))}
-          supportPushMinistry={null}
+          supportPushMinistry={
+            section === "production" || section === "video" ? section : null
+          }
+          supportPushScheduleDate={assignmentDate}
+          supportPushCustomServiceId={customServiceId}
           compact={compact}
         />
       ) : null}

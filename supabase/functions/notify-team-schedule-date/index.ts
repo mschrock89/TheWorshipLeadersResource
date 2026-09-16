@@ -29,8 +29,28 @@ interface NotifyScheduleRequest {
   campusId: string;
   ministryType: "production" | "video";
   teamId?: string | null;
+  customServiceId?: string | null;
   previewOnly?: boolean;
 }
+
+const CUSTOM_SERVICE_PRODUCTION_ROLES = new Set([
+  "sound_tech",
+  "mon",
+  "lighting",
+  "media",
+  "audio_shadow",
+  "broadcast",
+  "photo_team",
+  "art_team",
+]);
+const CUSTOM_SERVICE_VIDEO_ROLES = new Set([
+  "director",
+  "producer",
+  "switcher",
+  "graphics",
+  "tri_pod_camera",
+  "hand_held_camera",
+]);
 
 interface RecipientPreview {
   userId: string;
@@ -111,7 +131,14 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const { scheduleDate, campusId, ministryType, teamId, previewOnly = false }: NotifyScheduleRequest =
+    const {
+      scheduleDate,
+      campusId,
+      ministryType,
+      teamId,
+      customServiceId,
+      previewOnly = false,
+    }: NotifyScheduleRequest =
       await req.json();
 
     if (!scheduleDate || !campusId || !ministryType) {
@@ -192,50 +219,6 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const scheduleQuery = supabase
-      .from("team_schedule")
-      .select("team_id, rotation_period, resource_app_key, worship_teams(name)")
-      .eq("schedule_date", scheduleDate)
-      .eq("ministry_type", ministryType)
-      .or(`campus_id.eq.${campusId},campus_id.is.null`);
-
-    const { data: scheduleRows, error: scheduleError } = teamId
-      ? await scheduleQuery.eq("team_id", teamId)
-      : await scheduleQuery;
-
-    if (scheduleError) {
-      console.error("Failed to load schedule rows:", scheduleError);
-      return new Response(
-        JSON.stringify({ error: "Failed to load the scheduled team" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const matchedSchedules = (scheduleRows || []).filter((row) => row.team_id);
-    if (matchedSchedules.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "No scheduled team found for that date" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const teamIds = Array.from(new Set(matchedSchedules.map((row) => row.team_id)));
-    const teamName =
-      ((matchedSchedules[0]?.worship_teams as { name?: string } | null)?.name || "Team");
-    const resolvedTeamId = teamId || teamIds[0] || null;
-    const rotationPeriodName = matchedSchedules[0]?.rotation_period || null;
-
-    if (!resolvedTeamId) {
-      return new Response(
-        JSON.stringify(
-          previewOnly
-            ? { success: true, previewOnly: true, recipients: [] }
-            : { success: true, recipients: 0, pushSent: 0 },
-        ),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     const campusWeekendConfig = campusResult.data
       ? {
         has_saturday_service: campusResult.data.has_saturday_service,
@@ -243,22 +226,109 @@ serve(async (req: Request): Promise<Response> => {
       }
       : null;
 
+    let teamName = "Team";
+    let resolvedTeamId: string | null = null;
+    let resourceAppKey = "worship";
     let recipientUserIds: string[] = [];
-    try {
-      recipientUserIds = await resolveSupportTeamNotificationUserIds(supabase, {
-        scheduleDate,
-        campusId,
-        ministryType,
-        teamId: resolvedTeamId,
-        rotationPeriodName,
-        campus: campusWeekendConfig,
-      });
-    } catch (resolveError) {
-      console.error("Failed to resolve schedule notification recipients:", resolveError);
-      return new Response(
-        JSON.stringify({ error: "Failed to load scheduled team members" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+
+    if (customServiceId) {
+      const { data: customService, error: customServiceError } = await supabase
+        .from("custom_services")
+        .select("id, campus_id, service_name, is_active")
+        .eq("id", customServiceId)
+        .maybeSingle();
+
+      if (
+        customServiceError ||
+        !customService ||
+        !customService.is_active ||
+        customService.campus_id !== campusId
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Custom service not found for this campus" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const { data: assignmentRows, error: assignmentsError } = await supabase
+        .from("custom_service_assignments")
+        .select("user_id, role")
+        .eq("custom_service_id", customServiceId)
+        .eq("assignment_date", scheduleDate);
+
+      if (assignmentsError) {
+        console.error("Failed to load custom service assignments:", assignmentsError);
+        return new Response(
+          JSON.stringify({ error: "Failed to load custom service team members" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const rolesByUser = new Map<string, Set<string>>();
+      for (const assignment of assignmentRows || []) {
+        const roles = rolesByUser.get(assignment.user_id) || new Set<string>();
+        roles.add(assignment.role);
+        rolesByUser.set(assignment.user_id, roles);
+      }
+      const eligibleRoles =
+        ministryType === "production" ? CUSTOM_SERVICE_PRODUCTION_ROLES : CUSTOM_SERVICE_VIDEO_ROLES;
+      recipientUserIds = Array.from(rolesByUser.entries())
+        .filter(([, roles]) => !roles.has("vocalist") && Array.from(roles).some((role) => eligibleRoles.has(role)))
+        .map(([userId]) => userId);
+      teamName = customService.service_name || "One-off Service";
+    } else {
+      const scheduleQuery = supabase
+        .from("team_schedule")
+        .select("team_id, rotation_period, resource_app_key, worship_teams(name)")
+        .eq("schedule_date", scheduleDate)
+        .eq("ministry_type", ministryType)
+        .or(`campus_id.eq.${campusId},campus_id.is.null`);
+
+      const { data: scheduleRows, error: scheduleError } = teamId
+        ? await scheduleQuery.eq("team_id", teamId)
+        : await scheduleQuery;
+
+      if (scheduleError) {
+        console.error("Failed to load schedule rows:", scheduleError);
+        return new Response(
+          JSON.stringify({ error: "Failed to load the scheduled team" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const matchedSchedules = (scheduleRows || []).filter((row) => row.team_id);
+      if (matchedSchedules.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "No scheduled team found for that date" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const teamIds = Array.from(new Set(matchedSchedules.map((row) => row.team_id)));
+      teamName =
+        ((matchedSchedules[0]?.worship_teams as { name?: string } | null)?.name || "Team");
+      resolvedTeamId = teamId || teamIds[0] || null;
+      const rotationPeriodName = matchedSchedules[0]?.rotation_period || null;
+      resourceAppKey = matchedSchedules[0]?.resource_app_key || "worship";
+
+      if (resolvedTeamId) {
+        try {
+          recipientUserIds = await resolveSupportTeamNotificationUserIds(supabase, {
+            scheduleDate,
+            campusId,
+            ministryType,
+            teamId: resolvedTeamId,
+            rotationPeriodName,
+            campus: campusWeekendConfig,
+          });
+        } catch (resolveError) {
+          console.error("Failed to resolve schedule notification recipients:", resolveError);
+          return new Response(
+            JSON.stringify({ error: "Failed to load scheduled team members" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
     }
 
     if (recipientUserIds.length === 0) {
@@ -272,14 +342,30 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (previewOnly) {
-      const recipients = await buildRecipientPreview(supabase, recipientUserIds);
-      const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
-      const confirmLink = await resolveSetlistConfirmLink(supabase, {
+    let confirmLink: string;
+    if (customServiceId) {
+      const { data: customSet } = await supabase
+        .from("draft_sets")
+        .select("id")
+        .eq("custom_service_id", customServiceId)
+        .eq("plan_date", scheduleDate)
+        .eq("status", "published")
+        .not("published_at", "is", null)
+        .maybeSingle();
+      confirmLink = customSet?.id
+        ? `/my-setlists?setId=${customSet.id}&confirm=1`
+        : "/my-setlists?confirm=1";
+    } else {
+      confirmLink = await resolveSetlistConfirmLink(supabase, {
         campusId,
         scheduleDate,
         campus: campusWeekendConfig,
       });
+    }
+
+    if (previewOnly) {
+      const recipients = await buildRecipientPreview(supabase, recipientUserIds);
+      const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
       const pushPreview = buildSupportTeamPushContent({
         ministryType,
         teamName,
@@ -301,11 +387,6 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const confirmLink = await resolveSetlistConfirmLink(supabase, {
-      campusId,
-      scheduleDate,
-      campus: campusWeekendConfig,
-    });
     const pushContent = buildSupportTeamPushContent({
       ministryType,
       teamName,
@@ -330,11 +411,13 @@ serve(async (req: Request): Promise<Response> => {
           message,
           url: link,
           actions,
-          tag: getSupportTeamPushTag({ ministryType, campusId, scheduleDate }),
+          tag: customServiceId
+            ? `custom-service-${customServiceId}-${scheduleDate}-${ministryType}`
+            : getSupportTeamPushTag({ ministryType, campusId, scheduleDate }),
           userIds: recipientUserIds,
           contextType: "team-schedule-date",
           // Scope delivery to the app this scheduled team belongs to.
-          metadata: { resourceAppKey: matchedSchedules[0]?.resource_app_key || "worship", ministryType },
+          metadata: { resourceAppKey, ministryType, customServiceId: customServiceId || undefined },
         }),
       });
 
@@ -360,7 +443,7 @@ serve(async (req: Request): Promise<Response> => {
           sent_by_user_id: user.id,
           schedule_date: scheduleDate,
           campus_id: campusId,
-          team_id: matchedSchedules[0]?.team_id || null,
+          team_id: resolvedTeamId,
           ministry_type: ministryType,
           title,
           message,
