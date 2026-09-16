@@ -356,9 +356,13 @@ serve(async (req) => {
           .map((row: { user_id: string }) => row.user_id)
           .filter(Boolean) as string[];
 
-        // Filter to users with a recognised role (volunteer / member / leadership).
-        // This prevents notifying stale accounts that have no role in the system.
-        userIdsToNotify = await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
+        // A custom-service assignment is itself the source of truth for roster
+        // membership. Do not apply the standard team role guard here: valid one-off
+        // assignees may only carry roles such as student or speaker, which previously
+        // removed them before their push subscriptions were checked.
+        userIdsToNotify = draftSet.custom_service_id
+          ? Array.from(new Set(allRosterUserIds))
+          : await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
       }
     }
 
