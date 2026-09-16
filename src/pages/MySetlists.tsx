@@ -80,6 +80,17 @@ type SessionRenderUnit<T> =
   | { kind: "single"; setlist: T }
   | { kind: "combined"; key: string; baseMinistryType: string; sessions: T[] };
 
+function getSetlistViewMinistryType(setlist: {
+  ministry_type: string;
+  custom_service?: { ministry_type: string } | null;
+}) {
+  // Session variants must remain distinct, but ordinary custom services follow
+  // the ministry explicitly selected in Custom Service Admin.
+  return isSessionSetMinistryType(setlist.ministry_type)
+    ? setlist.ministry_type
+    : setlist.custom_service?.ministry_type || setlist.ministry_type;
+}
+
 function buildSessionRenderUnits<
   T extends { id: string; plan_date: string; campus_id: string; ministry_type: string },
 >(items: T[]): SessionRenderUnit<T>[] {
@@ -310,13 +321,15 @@ function StandardMySetlists() {
   useEffect(() => {
     if (!highlightSetId || !allSetlists?.length) return;
     const target = allSetlists.find((setlist) => setlist.id === highlightSetId);
-    if (!target || setlistMatchesMinistryFilter(target.ministry_type, selectedMinistryType)) return;
+    if (!target) return;
+    const targetMinistryType = getSetlistViewMinistryType(target);
+    if (setlistMatchesMinistryFilter(targetMinistryType, selectedMinistryType)) return;
 
-    const sessionBase = normalizeSessionSetMinistryType(target.ministry_type);
-    const weekendBase = normalizeWeekendWorshipMinistryType(target.ministry_type);
+    const sessionBase = normalizeSessionSetMinistryType(targetMinistryType);
+    const weekendBase = normalizeWeekendWorshipMinistryType(targetMinistryType);
     const targetFilter = weekendBase === "weekend"
       ? "weekend_team"
-      : sessionBase || target.ministry_type;
+      : sessionBase || targetMinistryType;
 
     if (isValidViewMinistryFilter(targetFilter, appMinistryTypes)) {
       setSelectedMinistryType(targetFilter);
@@ -333,7 +346,7 @@ function StandardMySetlists() {
   const allGroupedSetlists = useMemo(() => {
     // Convert to format expected by groupByWeekend
     const ministryFiltered = (allSetlists || []).filter((setlist) =>
-      setlistMatchesMinistryFilter(setlist.ministry_type, selectedMinistryType),
+      setlistMatchesMinistryFilter(getSetlistViewMinistryType(setlist), selectedMinistryType),
     );
     const allWithScheduleDate = ministryFiltered.map(s => ({
       ...s,
@@ -586,7 +599,7 @@ function StandardMySetlists() {
         <SetlistTeachingSchedule
           planDate={setlist.plan_date}
           campusId={setlist.campus_id}
-          ministryType={setlist.ministry_type}
+          ministryType={getSetlistViewMinistryType(setlist)}
         />
 
         {/* Songs list */}
@@ -722,7 +735,7 @@ function StandardMySetlists() {
           <SetlistTeamRoster
             planDate={setlist.plan_date}
             campusId={setlist.campus_id}
-            ministryType={setlist.ministry_type}
+            ministryType={getSetlistViewMinistryType(setlist)}
             customServiceId={setlist.custom_service_id}
             getInitials={getInitials}
           />
@@ -1022,7 +1035,7 @@ function StandardMySetlists() {
                       )}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant="secondary" className="text-xs font-medium">
-                          {getMinistryLabel(setlist.ministry_type)}
+                          {getMinistryLabel(getSetlistViewMinistryType(setlist))}
                         </Badge>
                         {setlist.campuses && (
                           <Badge variant="outline" className="text-xs font-normal">

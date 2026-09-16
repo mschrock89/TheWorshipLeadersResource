@@ -25,6 +25,7 @@ export interface PublishedSetlist {
   custom_service_id: string | null;
   custom_service?: {
     service_name: string;
+    ministry_type: string;
     start_time: string | null;
     end_time: string | null;
     sound_check_time: string | null;
@@ -719,6 +720,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         string,
         {
           service_name: string;
+          ministry_type: string;
           start_time: string | null;
           end_time: string | null;
           sound_check_time: string | null;
@@ -728,13 +730,14 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       if (customServiceIds.length > 0) {
         const { data: customServiceDetails, error: customServiceDetailsError } = await supabase
           .from("custom_services")
-          .select("id, service_name, start_time, end_time, sound_check_time")
+          .select("id, service_name, ministry_type, start_time, end_time, sound_check_time")
           .in("id", customServiceIds);
 
         if (customServiceDetailsError) throw customServiceDetailsError;
         for (const service of customServiceDetails || []) {
           customServiceById.set(service.id, {
             service_name: service.service_name,
+            ministry_type: service.ministry_type,
             start_time: service.start_time,
             end_time: service.end_time,
             sound_check_time: service.sound_check_time,
