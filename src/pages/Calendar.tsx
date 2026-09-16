@@ -409,11 +409,13 @@ function CalendarDayWidget({
   actions,
   children,
   className,
+  bodyClassName,
 }: {
   title: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  bodyClassName?: string;
 }) {
   return (
     <section className={cn("flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5", className)}>
@@ -421,7 +423,7 @@ function CalendarDayWidget({
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</div>
+      <div className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto", bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -1967,6 +1969,8 @@ function StandardCalendar() {
           })();
           return <>
               <CalendarDayWidget
+                className={selectedDayServices.length > 0 ? "aspect-auto overflow-visible" : undefined}
+                bodyClassName={selectedDayServices.length > 0 ? "flex-none overflow-y-visible" : undefined}
                 title={
                   <span className="flex min-w-0 items-baseline gap-2">
                     <span className="truncate">
@@ -2126,11 +2130,12 @@ function StandardCalendar() {
                       const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
                         <div key={`roster-${service.occurrence_key}`}>
-                          <div className="mb-1 flex items-start justify-between gap-2">
+                          <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 p-3">
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium text-foreground">{service.service_name}</p>
-                              <p className="truncate text-[10px] text-muted-foreground">
+                              <p className="text-base font-semibold leading-tight text-foreground">{service.service_name}</p>
+                              <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
                                 {campusName} • {getMinistryLabel(service.ministry_type)}
+                                {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
                               </p>
                             </div>
                             {canManageTeam && <Button variant="ghost" size="icon" onClick={() => deleteCustomService.mutate(service.id)} disabled={deleteCustomService.isPending} className="h-8 w-8 shrink-0 text-destructive hover:bg-destructive/10" title="Delete service">
@@ -2246,14 +2251,8 @@ function StandardCalendar() {
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
-                      const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
                         <div key={`songs-${service.occurrence_key}`}>
-                          <p className="truncate text-xs font-medium text-foreground">{service.service_name}</p>
-                          <p className="mb-1 truncate text-[10px] text-muted-foreground">
-                            {campusName} • {getMinistryLabel(service.ministry_type)}
-                            {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
-                          </p>
                           <CustomServiceSongsPreview
                             customServiceId={service.id}
                             planDate={service.occurrence_date}
@@ -2261,6 +2260,7 @@ function StandardCalendar() {
                             ministryType={service.ministry_type}
                             serviceName={service.service_name}
                             readOnly={isCrossCampusReadOnly}
+                            showHeader={false}
                           />
                         </div>
                       );
@@ -4672,6 +4672,7 @@ function CustomServiceSongsPreview({
   serviceName,
   readOnly = false,
   compact = false,
+  showHeader = true,
 }: {
   customServiceId: string;
   planDate: string;
@@ -4680,6 +4681,7 @@ function CustomServiceSongsPreview({
   serviceName: string;
   readOnly?: boolean;
   compact?: boolean;
+  showHeader?: boolean;
 }) {
   const effectiveMinistryType = useMemo(
     () => getEffectiveCustomServiceMinistryType(ministryType, serviceName),
@@ -4702,7 +4704,7 @@ function CustomServiceSongsPreview({
   }
 
   return <div className={compact ? "" : "mb-4"}>
-      {!compact ? (
+      {!compact && showHeader ? (
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-medium text-blue-400">
             <Music className="h-3.5 w-3.5" />
@@ -4891,26 +4893,32 @@ function CustomServiceRoster({
     (showProduction ? productionMembers.length : 0) +
     (showVideo ? videoMembers.length : 0);
 
-  const renderMemberRow = (member: (typeof grouped)[number]) => (
-    <div key={member.userId} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 -mx-2"}`}>
+  const renderMemberRow = (member: (typeof grouped)[number], hideVocalistRole = false) => {
+    const visibleRoles = Array.from(member.roles)
+      .filter((role) => !(hideVocalistRole && role === "vocalist"))
+      .sort(
+        (a, b) => (CUSTOM_ROSTER_ROLE_BADGE_ORDER[a] ?? 99) - (CUSTOM_ROSTER_ROLE_BADGE_ORDER[b] ?? 99),
+      );
+
+    return (
+    <div key={member.userId} className={`flex items-start rounded-md ${compact ? "gap-1.5 py-1 text-xs" : "-mx-2 gap-2.5 px-2 py-2"}`}>
       <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
         <AvatarImage src={member.avatarUrl || undefined} />
         <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
           {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="min-w-0 flex-1 truncate text-foreground">{member.name}</span>
-      <div className="flex flex-wrap justify-end gap-1">
-        {Array.from(member.roles)
-          .sort(
-            (a, b) => (CUSTOM_ROSTER_ROLE_BADGE_ORDER[a] ?? 99) - (CUSTOM_ROSTER_ROLE_BADGE_ORDER[b] ?? 99),
-          )
-          .map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
+      <div className="min-w-0 flex-1">
+        <p className={`${compact ? "truncate" : "break-words"} leading-tight text-foreground`}>{member.name}</p>
+        {visibleRoles.length > 0 ? <div className="mt-1 flex flex-wrap gap-1">
+          {visibleRoles.map((role) => <Badge key={`${member.userId}-${role}`} variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "h-5 px-1.5 text-[10px]"}>
               {POSITION_LABELS[role] || role}
             </Badge>)}
+        </div> : null}
       </div>
     </div>
-  );
+    );
+  };
 
   return <div className={compact || embedded ? "" : "mb-4"}>
       {showActions ? <div className={compact ? "mb-1 flex items-center gap-1" : "mb-2 flex items-center gap-2"}>
@@ -4921,7 +4929,8 @@ function CustomServiceRoster({
             ministryType={effectiveMinistryType}
             customServiceId={customServiceId}
             serviceLabel={serviceLabel}
-            className={compact ? "h-6 gap-1 px-2 text-[10px]" : undefined}
+            buttonLabel="Notify Team"
+            className={compact ? "h-6 gap-1 px-2 text-[10px]" : "h-8 gap-1.5 px-3 text-xs"}
           />
           <GroupTextButton
             phoneNumbers={grouped.map((member) => member.phone)}
@@ -4930,7 +4939,7 @@ function CustomServiceRoster({
               date: new Date(`${assignmentDate}T12:00:00`),
               serviceLabel,
             })}
-            className={compact ? "h-6 gap-1 px-2 text-[10px]" : undefined}
+            className={compact ? "h-6 gap-1 px-2 text-[10px]" : "h-8 gap-1.5 px-3 text-xs"}
           />
         </div>
       </div> : null}
@@ -4947,7 +4956,7 @@ function CustomServiceRoster({
                   <MicVocal className={iconClass} />
                   Vocalists
                 </h4>
-                <div className={listClass}>{vocalists.map(renderMemberRow)}</div>
+                <div className={listClass}>{vocalists.map((member) => renderMemberRow(member, true))}</div>
               </div>}
             {bandMembers.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
