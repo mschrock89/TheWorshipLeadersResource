@@ -3573,7 +3573,7 @@ function RosterOutreachWidget({
 
   const buttonClassName = compact
     ? "h-6 w-auto justify-center gap-1 px-2 text-[10px]"
-    : "h-8 w-full justify-center gap-1.5 px-3 text-xs sm:w-auto";
+    : "h-7 w-full justify-center gap-1 px-2 text-[11px]";
 
   const buttons = (
     <>
@@ -3642,11 +3642,11 @@ function RosterOutreachWidget({
   }
 
   return (
-    <div className="mb-3 rounded-lg border border-border/70 bg-muted/15 p-3">
-      <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+    <div className="mb-2 rounded-lg border border-border/70 bg-muted/15 p-2">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Team Outreach
       </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-1.5">
         {buttons}
       </div>
     </div>
@@ -4730,8 +4730,53 @@ function CustomServiceSongsPreview({
 
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
+  const { data: vocalistsBySong = {}, isLoading: areVocalistsLoading } = useQuery({
+    queryKey: ["custom-service-song-vocalists", existingSet?.id],
+    enabled: !!existingSet?.id && draftSongs.length > 0,
+    queryFn: async () => {
+      const songRows = draftSongs as Array<{ id: string; vocalist_id?: string | null }>;
+      const songIds = songRows.map((song) => song.id);
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from("draft_set_song_vocalists")
+        .select("draft_set_song_id, vocalist_id")
+        .in("draft_set_song_id", songIds);
 
-  if (isSetLoading || isSongsLoading) {
+      if (assignmentsError) throw assignmentsError;
+
+      const assignedIdsBySong = new Map<string, string[]>();
+      for (const assignment of assignments || []) {
+        const current = assignedIdsBySong.get(assignment.draft_set_song_id) || [];
+        current.push(assignment.vocalist_id);
+        assignedIdsBySong.set(assignment.draft_set_song_id, current);
+      }
+
+      const vocalistIds = Array.from(new Set(
+        songRows.flatMap((song) => {
+          const junctionIds = assignedIdsBySong.get(song.id) || [];
+          return junctionIds.length > 0 ? junctionIds : song.vocalist_id ? [song.vocalist_id] : [];
+        }),
+      ));
+      if (vocalistIds.length === 0) return {} as Record<string, string[]>;
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", vocalistIds);
+
+      if (profilesError) throw profilesError;
+      const nameById = new Map((profiles || []).map((profile) => [profile.id, profile.full_name || "Team Member"]));
+
+      return Object.fromEntries(
+        songRows.map((song) => {
+          const junctionIds = assignedIdsBySong.get(song.id) || [];
+          const ids = junctionIds.length > 0 ? junctionIds : song.vocalist_id ? [song.vocalist_id] : [];
+          return [song.id, ids.map((id) => nameById.get(id)).filter((name): name is string => !!name)];
+        }),
+      ) as Record<string, string[]>;
+    },
+  });
+
+  if (isSetLoading || isSongsLoading || areVocalistsLoading) {
     return <div className="mb-4">
         <div className="animate-pulse space-y-2">
           {[1, 2].map(i => <div key={i} className="h-6 bg-muted rounded" />)}
@@ -4762,9 +4807,22 @@ function CustomServiceSongsPreview({
       ) : null}
       <div className={compact ? "space-y-0" : "space-y-1.5"}>
         {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <div className="flex min-w-0 flex-1 items-start gap-1.5">
               <span className={`shrink-0 text-muted-foreground ${compact ? "w-3 text-[10px]" : "w-5 text-xs"}`}>{index + 1}.</span>
-              <span className="truncate text-foreground">{song.song?.title || "Untitled Song"}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-foreground">{song.song?.title || "Untitled Song"}</p>
+                {(vocalistsBySong[song.id] || []).length > 0 ? (
+                  <p className={`mt-0.5 flex items-center gap-1 text-primary/75 ${compact ? "text-[9px]" : "text-[11px]"}`}>
+                    <MicVocal className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                    <span className="truncate">{vocalistsBySong[song.id].join(", ")}</span>
+                  </p>
+                ) : (
+                  <p className={`mt-0.5 flex items-center gap-1 text-muted-foreground ${compact ? "text-[9px]" : "text-[11px]"}`}>
+                    <MicVocal className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                    Unassigned
+                  </p>
+                )}
+              </div>
             </div>
             {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
           </div>)}
