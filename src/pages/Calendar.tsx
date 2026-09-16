@@ -2209,28 +2209,28 @@ function StandardCalendar() {
 
               <CalendarDayWidget
                   title={
-                    <span className="flex items-center gap-2">
-                      <ListMusic className="h-4 w-4 text-blue-400" />
+                    <span className="flex items-center gap-2 text-blue-400 lg:text-xl">
+                      <ListMusic className="h-4 w-4 lg:h-5 lg:w-5" />
                       Setlist
                     </span>
                   }
-                  className="aspect-auto overflow-visible lg:col-start-2"
+                  className="aspect-auto overflow-visible border-blue-500/30 bg-gradient-to-br from-card to-blue-500/[0.04] shadow-lg shadow-blue-500/5 lg:col-span-2 lg:col-start-1 lg:p-5"
                   bodyClassName="flex-none overflow-y-visible"
                 >
-                  <div className="space-y-4 pt-1">
+                  <div className="space-y-4 pt-1 lg:space-y-6">
                     {selectedTeachingWeek ? (
-                      <div className="rounded-md border border-emerald-600/20 bg-emerald-600/5 px-2 py-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant="secondary" className="border-transparent bg-emerald-600/10 text-[10px] text-emerald-700">
+                      <div className="rounded-md border border-emerald-600/20 bg-emerald-600/5 px-2 py-1.5 lg:rounded-lg lg:p-4">
+                        <div className="flex flex-wrap items-center gap-1.5 lg:gap-3">
+                          <Badge variant="secondary" className="border-transparent bg-emerald-600/10 text-[10px] text-emerald-700 lg:h-7 lg:px-3 lg:text-sm">
                             Teaching
                           </Badge>
-                          <span className="text-sm font-medium">{formatTeachingReference(selectedTeachingWeek)}</span>
+                          <span className="text-sm font-medium lg:text-lg">{formatTeachingReference(selectedTeachingWeek)}</span>
                           {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 ? (
                             <span className="text-xs text-muted-foreground">
                               {selectedTeachingWeek.themes_manual.join(", ")}
                             </span>
                           ) : null}
-                          <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]">
+                          <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] lg:h-8 lg:px-3 lg:text-sm">
                             <Link to={buildBibleHref(
                               formatTeachingReference(selectedTeachingWeek),
                               selectedTeachingWeek.translation || "ESV",
@@ -2268,6 +2268,7 @@ function StandardCalendar() {
                           serviceName={service.service_name}
                           readOnly={isCrossCampusReadOnly}
                           showHeader={false}
+                          prominent
                         />
                       </div>
                     )) : sessionEntries.length > 0 ? sessionEntries.map((entry) => {
@@ -2289,6 +2290,7 @@ function StandardCalendar() {
                             campusId={sessionCampusId}
                             ministryFilter={variant}
                             readOnly={isCrossCampusReadOnly}
+                            prominent
                           />
                         </div>
                       );
@@ -2298,6 +2300,7 @@ function StandardCalendar() {
                         campusId={sessionCampusId}
                         ministryFilter={ministryFilter}
                         readOnly={isCrossCampusReadOnly}
+                        prominent
                       />
                     )}
                   </div>
@@ -4604,12 +4607,14 @@ function SongsPreview({
   ministryFilter,
   readOnly = false,
   compact = false,
+  prominent = false,
 }: {
   date: Date;
   campusId?: string | null;
   ministryFilter?: string;
   readOnly?: boolean;
   compact?: boolean;
+  prominent?: boolean;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
@@ -4634,8 +4639,8 @@ function SongsPreview({
           </Badge>
         </div>
       ) : null}
-      <div className={compact ? "space-y-0" : "space-y-1.5"}>
-        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
+      <div className={compact ? "space-y-0" : prominent ? "space-y-2 lg:space-y-3" : "space-y-1.5"}>
+        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "py-1 text-sm lg:py-2 lg:text-lg" : "py-1 text-sm"}`}>
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
               <span className="truncate text-foreground">{song.title}</span>
@@ -4653,9 +4658,9 @@ function SongsPreview({
                   .map((v: any) => (v?.name || "").split(" ")[0])
                   .filter(Boolean)
                   .join(", ");
-                return <span className={`text-primary/70 ${compact ? "max-w-[4.5rem] truncate text-[10px]" : "text-xs"}`}>{label}</span>;
+                return <span className={`text-primary/70 ${compact ? "max-w-[4.5rem] truncate text-[10px]" : prominent ? "max-w-[12rem] truncate text-xs lg:max-w-[18rem] lg:text-base" : "text-xs"}`}>{label}</span>;
               })()}
-              {song.key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>
+              {song.key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : prominent ? "text-xs lg:h-8 lg:px-3 lg:text-base" : "text-xs"}>
                   {song.key}
                 </Badge>}
             </div>
@@ -4673,6 +4678,7 @@ function CustomServiceSongsPreview({
   readOnly = false,
   compact = false,
   showHeader = true,
+  prominent = false,
 }: {
   customServiceId: string;
   planDate: string;
@@ -4682,6 +4688,7 @@ function CustomServiceSongsPreview({
   readOnly?: boolean;
   compact?: boolean;
   showHeader?: boolean;
+  prominent?: boolean;
 }) {
   const effectiveMinistryType = useMemo(
     () => getEffectiveCustomServiceMinistryType(ministryType, serviceName),
@@ -4765,19 +4772,19 @@ function CustomServiceSongsPreview({
           </div>
         </div>
       ) : null}
-      <div className={compact ? "space-y-0" : "space-y-1.5"}>
-        {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : "py-1 text-sm"}`}>
+      <div className={compact ? "space-y-0" : prominent ? "space-y-2 lg:space-y-3" : "space-y-1.5"}>
+        {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "py-1 text-sm lg:py-2 lg:text-lg" : "py-1 text-sm"}`}>
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
               <span className="truncate text-foreground">{song.song?.title || "Untitled Song"}</span>
             </div>
             <div className="ml-2 flex shrink-0 items-center gap-1.5">
-              <span className={`max-w-[7rem] truncate ${vocalistsBySong[song.id]?.length ? "text-primary/70" : "text-muted-foreground"} ${compact ? "text-[10px]" : "text-xs"}`}>
+              <span className={`truncate ${vocalistsBySong[song.id]?.length ? "text-primary/70" : "text-muted-foreground"} ${compact ? "max-w-[7rem] text-[10px]" : prominent ? "max-w-[12rem] text-xs lg:max-w-[18rem] lg:text-base" : "max-w-[7rem] text-xs"}`}>
                 {vocalistsBySong[song.id]?.length
                   ? vocalistsBySong[song.id].map((name) => name.split(" ")[0]).join(", ")
                   : "Unassigned"}
               </span>
-              {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs"}>{song.song_key}</Badge>}
+              {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : prominent ? "text-xs lg:h-8 lg:px-3 lg:text-base" : "text-xs"}>{song.song_key}</Badge>}
             </div>
           </div>)}
       </div>
