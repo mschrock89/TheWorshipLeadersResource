@@ -2206,7 +2206,7 @@ function StandardCalendar() {
                   />
                 )}
                   </div>
-                  <div className="min-w-0">
+                  {selectedDayServices.length === 0 ? <div className="min-w-0">
                     <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400">
                       <ListMusic className="h-3.5 w-3.5" />
                       Setlist
@@ -2303,8 +2303,47 @@ function StandardCalendar() {
                   />
                 )}
                   </div>
+                  : null}
                 </div>
               </CalendarDayWidget>
+
+              {selectedDayServices.length > 0 ? (
+                <CalendarDayWidget
+                  title={
+                    <span className="flex items-center gap-2">
+                      <ListMusic className="h-4 w-4 text-blue-400" />
+                      Setlist
+                    </span>
+                  }
+                  className="aspect-auto overflow-visible lg:col-start-2"
+                  bodyClassName="flex-none overflow-y-visible"
+                >
+                  <div className="space-y-4 pt-1">
+                    {selectedDayServices.map((service) => (
+                      <div key={`standalone-songs-${service.occurrence_key}`}>
+                        {selectedDayServices.length > 1 ? (
+                          <div className="mb-2">
+                            <p className="text-sm font-semibold text-foreground">{service.service_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {getMinistryLabel(service.ministry_type)}
+                              {service.start_time ? ` • ${formatTime(service.start_time)}` : ""}
+                            </p>
+                          </div>
+                        ) : null}
+                        <CustomServiceSongsPreview
+                          customServiceId={service.id}
+                          planDate={service.occurrence_date}
+                          campusId={service.campus_id}
+                          ministryType={service.ministry_type}
+                          serviceName={service.service_name}
+                          readOnly={isCrossCampusReadOnly}
+                          showHeader={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CalendarDayWidget>
+              ) : null}
 
               {selectedDayServices.length > 0
                 ? selectedDayServices.flatMap((service) =>
