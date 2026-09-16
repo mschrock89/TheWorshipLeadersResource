@@ -133,14 +133,19 @@ export default function Team() {
   const roleFilter = searchParams.get("role") ?? "all";
   const scrollStorageKey = `team-directory-scroll:${location.search || "default"}`;
 
-  const updateDirectoryParam = useCallback((key: string, value: string, fallback = "all") => {
+  const updateDirectoryParam = useCallback((
+    key: string,
+    value: string,
+    fallback = "all",
+    preserveWhitespace = false,
+  ) => {
     const nextParams = new URLSearchParams(searchParams);
     const trimmedValue = value.trim();
 
     if (!trimmedValue || trimmedValue === fallback) {
       nextParams.delete(key);
     } else {
-      nextParams.set(key, trimmedValue);
+      nextParams.set(key, preserveWhitespace ? value : trimmedValue);
     }
 
     setSearchParams(nextParams, { replace: true });
@@ -712,7 +717,7 @@ export default function Team() {
       <div className="mb-6">
         <TeamFilters
           search={search}
-          onSearchChange={(value) => updateDirectoryParam("search", value, "")}
+          onSearchChange={(value) => updateDirectoryParam("search", value, "", true)}
           sortBy={sortBy}
           onSortByChange={(value) => updateDirectoryParam("sort", value, "name")}
           positionFilter={positionFilter}
