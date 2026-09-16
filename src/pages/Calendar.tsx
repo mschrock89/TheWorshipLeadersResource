@@ -4400,7 +4400,7 @@ function BandRoster({
       bandMembers
     };
   };
-  const renderMember = (member: typeof roster[0]) => <div key={member.id} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 text-sm px-2 py-1.5 -mx-2"} ${member.isSwapped ? "bg-green-500/10 border border-green-500/30" : member.hasPendingSwap ? "bg-ecc-yellow/10 border border-ecc-yellow/30" : ""}`}>
+  const renderMember = (member: typeof roster[0]) => <div key={member.id} className={`flex items-center rounded-md ${compact ? "gap-1.5 py-px text-xs" : "gap-2 px-2 py-1.5 text-sm"} ${member.isSwapped ? "border border-green-500/30 bg-green-500/10" : member.hasPendingSwap ? "border border-ecc-yellow/30 bg-ecc-yellow/10" : ""}`}>
       <Avatar className={compact ? "h-4 w-4" : "h-6 w-6"}>
         <AvatarImage src={member.avatarUrl || undefined} />
         <AvatarFallback className={compact ? "text-[8px]" : "text-[10px]"}>
