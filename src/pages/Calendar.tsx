@@ -133,7 +133,7 @@ const SERVICE_OVERRIDE_MINISTRY_OPTIONS = MINISTRY_TYPES.filter(
   label: ministry.label,
 }));
 
-const WEEKEND_TEAM_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team", "production", "video"]);
+const WEEKEND_TEAM_OVERRIDE_MINISTRIES = new Set(["weekend", "sunday_am", "weekend_team", "production", "video", "speaker"]);
 const CALENDAR_WEEKEND_MINISTRY_FILTERS = new Set(["weekend", "sunday_am", "weekend_team"]);
 const WEEKEND_SERVICE_MINISTRY_FILTERS = new Set([
   "weekend",
@@ -3811,6 +3811,7 @@ function BandRoster({
       : undefined;
   const isProductionMinistryFilter = effectiveMinistryFilter === "production";
   const isVideoMinistryFilter = effectiveMinistryFilter === "video";
+  const isSpeakerMinistryFilter = effectiveMinistryFilter === "speaker";
   // Student Camp carries its production crew (FOH/MON/Lyrics) on the camp team itself rather
   // than a separately scheduled Production team, so those members live in the main roster.
   const isStudentCampRosterFilter =
@@ -3841,6 +3842,7 @@ function BandRoster({
   );
   const productionEntry = useMemo(() => pickSupportEntry("production"), [pickSupportEntry]);
   const videoEntry = useMemo(() => pickSupportEntry("video"), [pickSupportEntry]);
+  const speakerEntry = useMemo(() => pickSupportEntry("speaker"), [pickSupportEntry]);
 
   // Pick the schedule row that matches the active ministry filter. Weekend worship is the
   // default, but production/video views must key off their own schedule entry — otherwise
@@ -3882,6 +3884,14 @@ function BandRoster({
       );
     }
 
+    if (isSpeakerMinistryFilter) {
+      return (
+        effectiveScheduledEntries.find((entry) => entry.ministry_type === "speaker") ??
+        directScheduleEntries[0] ??
+        null
+      );
+    }
+
     if (isWeekendTeamFilter) {
       return (
         directScheduleEntries.find((entry) => weekendMinistryAliases.has(entry.ministry_type ?? "")) ??
@@ -3900,6 +3910,7 @@ function BandRoster({
     effectiveScheduledEntries,
     isProductionMinistryFilter,
     isVideoMinistryFilter,
+    isSpeakerMinistryFilter,
     isWeekendTeamFilter,
     weekendMinistryAliases,
     timeOfDay,
@@ -3909,11 +3920,13 @@ function BandRoster({
   const effectiveTeamId =
     (isProductionMinistryFilter && (productionEntry?.team_id ?? teamId)) ||
     (isVideoMinistryFilter && (videoEntry?.team_id ?? teamId)) ||
+    (isSpeakerMinistryFilter && (speakerEntry?.team_id ?? teamId)) ||
     directTeamEntry?.team_id ||
     teamId;
   const effectiveRotationPeriodName =
     (isProductionMinistryFilter && (productionEntry?.rotation_period ?? rotationPeriodName)) ||
     (isVideoMinistryFilter && (videoEntry?.rotation_period ?? rotationPeriodName)) ||
+    (isSpeakerMinistryFilter && (speakerEntry?.rotation_period ?? rotationPeriodName)) ||
     directTeamEntry?.rotation_period ||
     rotationPeriodName;
 
@@ -3956,6 +3969,7 @@ function BandRoster({
   );
   const productionTeamId = productionEntry?.team_id;
   const videoTeamId = videoEntry?.team_id;
+  const speakerTeamId = speakerEntry?.team_id;
   const productionRosterDate = useMemo(
     () => (productionEntry?.schedule_date ? parseLocalDate(productionEntry.schedule_date) : effectiveRosterDate),
     [productionEntry?.schedule_date, effectiveRosterDate],
@@ -3963,6 +3977,10 @@ function BandRoster({
   const videoRosterDate = useMemo(
     () => (videoEntry?.schedule_date ? parseLocalDate(videoEntry.schedule_date) : effectiveRosterDate),
     [videoEntry?.schedule_date, effectiveRosterDate],
+  );
+  const speakerRosterDate = useMemo(
+    () => (speakerEntry?.schedule_date ? parseLocalDate(speakerEntry.schedule_date) : effectiveRosterDate),
+    [speakerEntry?.schedule_date, effectiveRosterDate],
   );
   const { data: productionRosterRaw = [] } = useTeamRosterForDate(
     productionRosterDate,
@@ -3978,6 +3996,13 @@ function BandRoster({
     campusId,
     videoEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
+  const { data: speakerRosterRaw = [] } = useTeamRosterForDate(
+    speakerRosterDate,
+    speakerTeamId,
+    "speaker",
+    campusId,
+    speakerEntry?.rotation_period ?? effectiveRotationPeriodName,
+  );
   const normalizedProductionRoster = useMemo(
     () => normalizeRosterMembers(productionRosterRaw),
     [normalizeRosterMembers, productionRosterRaw],
@@ -3985,6 +4010,10 @@ function BandRoster({
   const normalizedVideoRoster = useMemo(
     () => normalizeRosterMembers(videoRosterRaw),
     [normalizeRosterMembers, videoRosterRaw],
+  );
+  const normalizedSpeakerRoster = useMemo(
+    () => normalizeRosterMembers(speakerRosterRaw),
+    [normalizeRosterMembers, speakerRosterRaw],
   );
 
   // Assignment overrides the profile-based scope: whatever sections the viewer
@@ -4059,9 +4088,10 @@ function BandRoster({
 
   // If we're in "All" mode or "weekend_team" mode, constrain to appropriate ministries
   const roster = useMemo(() => {
-    // For "weekend_team" filter, include weekend aliases plus the shared speaker roster and production/video.
+    // For "weekend_team" filter, include weekend aliases plus production/video.
+    // Speakers have their own independent schedule and are fetched separately.
     if (isWeekendTeamFilter) {
-      const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "speaker", "production", "video"]);
+      const weekendTeamMinistries = new Set(["weekend", "weekend_team", "sunday_am", "production", "video"]);
       // Members with no ministry tags are generic team members (typically the weekend
       // band/vocals) and must be kept — the roster hook and is_user_on_setlist_roster
       // both treat an empty ministry_types as "matches any ministry". Using .some() alone
@@ -4121,7 +4151,13 @@ function BandRoster({
         </div>
       </div>;
   }
-  if (!supportOnly && roster.length === 0 && !(showSupportSections && (isProductionMinistryFilter || isVideoMinistryFilter || isWeekendTeamFilter))) {
+  if (
+    !supportOnly &&
+    roster.length === 0 &&
+    !(showSupportSections && (isProductionMinistryFilter || isVideoMinistryFilter)) &&
+    !isWeekendTeamFilter &&
+    !isSpeakerMinistryFilter
+  ) {
     return null;
   }
   if (supportOnly && !showSupportSections) return null;
@@ -4131,7 +4167,7 @@ function BandRoster({
   const isWeekendDay = dayOfWeek === 0 || dayOfWeek === 6;
 
   // Get unique ministry types from roster (excluding production/video ministry types)
-  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'ms_hs', 'speaker'];
+  const bandMinistryTypes = ['weekend', 'weekend_team', 'worship_night', 'kids_camp', 'student_camp', 'encounter', 'eon', 'sunday_am', 'eon_weekend', 'ms_hs'];
   const productionMinistryTypes = ['production', 'video'];
   const allMinistryTypes = new Set<string>();
   roster.forEach(m => m.ministryTypes.forEach(mt => {
@@ -4186,7 +4222,7 @@ function BandRoster({
       order: 5
     },
     speaker: {
-      label: "Speaker",
+      label: "Speakers",
       order: 6
     }
   };
@@ -4287,6 +4323,14 @@ function BandRoster({
     : normalizedVideoRoster.length > 0
       ? directVideoMembers
       : fallbackVideoMembers;
+  const fallbackSpeakerMembers = roster.filter((member) =>
+    !isVocalist(member.positions) && isSpeaker(member.positions),
+  );
+  const shownSpeakerMembers = isSpeakerMinistryFilter
+    ? roster.filter((member) => isSpeaker(member.positions) || member.ministryTypes.includes("speaker"))
+    : normalizedSpeakerRoster.length > 0
+      ? normalizedSpeakerRoster.filter((member) => isSpeaker(member.positions) || member.ministryTypes.includes("speaker"))
+      : fallbackSpeakerMembers;
 
   // Band/vocal/speaker members come from the main roster minus any prod/video members that
   // are surfaced in their own columns. Combine those with the displayed prod/video crew so
@@ -4317,7 +4361,10 @@ function BandRoster({
     };
 
     if (showWorshipSections) {
-      roster.filter((m) => !fallbackProductionVideoMembers.includes(m)).forEach(add);
+      roster.filter((m) => !fallbackProductionVideoMembers.includes(m) && !isSpeaker(m.positions)).forEach(add);
+    }
+    if (shownSpeakerMembers.length > 0 && !supportOnly) {
+      shownSpeakerMembers.forEach(add);
     }
     if (showSupportSections) {
       if (supportSection !== "video") shownProductionMembers.forEach(add);
@@ -4517,15 +4564,7 @@ function BandRoster({
       (a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions),
     );
 
-    // Speaker assignments (teaching, announcements, closing prayer) display with the
-    // Production team rather than in the worship (Vocalists/Band) section.
-    const speakerMembers = dedupeMembersForDisplay(
-      roster.filter((m) => !isVocalist(m.positions) && isSpeaker(m.positions)),
-    ).sort((a, b) => getSpeakerPositionPriority(a.positions) - getSpeakerPositionPriority(b.positions));
-    const productionColumnMembers = [
-      ...audioMembers,
-      ...speakerMembers.filter((s) => !audioMembers.some((a) => a.id === s.id)),
-    ];
+    const productionColumnMembers = audioMembers;
 
     // Determine the selected day of week (0 = Sunday, 6 = Saturday)
     const selectedDayOfWeek = date.getDay();
@@ -4608,7 +4647,38 @@ function BandRoster({
     );
   };
 
+  const renderSpeakersSection = () => {
+    if (supportOnly) return null;
+    const speakerMembers = dedupeMembersForDisplay(shownSpeakerMembers).sort(
+      (a, b) => getSpeakerPositionPriority(a.positions) - getSpeakerPositionPriority(b.positions),
+    );
+    if (speakerMembers.length === 0 && !isSpeakerMinistryFilter) return null;
+
+    const sectionTitleClass = compact
+      ? "mb-0.5 flex items-center gap-1 text-[11px] font-medium text-amber-500"
+      : "mb-2 flex items-center gap-1.5 text-sm font-medium text-amber-500";
+    const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
+    const listClass = compact ? "space-y-0" : "space-y-1.5";
+
+    return (
+      <div className="min-w-0">
+        <h4 className={sectionTitleClass}>
+          <Megaphone className={iconClass} />
+          Speakers
+        </h4>
+        {speakerMembers.length > 0 ? (
+          <div className={listClass}>
+            {speakerMembers.map(renderMember)}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">No speakers assigned</p>
+        )}
+      </div>
+    );
+  };
+
   const supportContent = renderProductionVideoSection();
+  const speakersContent = renderSpeakersSection();
   if (supportOnly && supportSection && !supportContent) return null;
 
   // Render grouped by ministry or flat if only one ministry
@@ -4628,6 +4698,7 @@ function BandRoster({
           })}
           </div>}
 
+          {speakersContent}
           {supportContent}
         </div>
       </div>);
@@ -4642,9 +4713,11 @@ function BandRoster({
       {outreachWidget}
       <div className={compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 gap-4"}>
         {/* Left Column: Vocalists + Band */}
-        {showWorshipSections && <div>
+        {showWorshipSections && !isSpeakerMinistryFilter && <div>
           {renderBandSection(membersToShow)}
         </div>}
+
+        {speakersContent}
 
         {supportContent}
       </div>

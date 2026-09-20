@@ -1450,7 +1450,7 @@ export default function Profile() {
 
                                         {showSpeakerPositions && (
                                           renderMinistryPositionGroup(
-                                            "Speaker:",
+                                            "Speakers:",
                                             ministryType,
                                             campus.id,
                                             ministryPositions,

@@ -52,6 +52,7 @@ import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+const WEEKEND_INDEPENDENT_MINISTRY_TYPES = new Set(["production", "video", "speaker"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
 const TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME = "Empty";
 const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
@@ -1223,7 +1224,7 @@ function SetlistTeamRoster({
         .or(`campus_id.eq.${campusId},campus_id.is.null`);
 
       if (rosterMinistryType === "weekend" || rosterMinistryType === "weekend_team" || rosterMinistryType === "sunday_am") {
-        query = query.in("ministry_type", [...weekendAliases, ...WEEKEND_SUPPORT_MINISTRY_TYPES]);
+        query = query.in("ministry_type", [...weekendAliases, ...WEEKEND_INDEPENDENT_MINISTRY_TYPES]);
       } else if (isSessionSet) {
         // Camp sessions (Student Camp / Kids Camp) can have their own Production/Video crew
         // scheduled alongside the worship team, keyed off the session's time_of_day.
@@ -1317,6 +1318,11 @@ function SetlistTeamRoster({
     [pickSupportTeamEntry]
   );
 
+  const speakerTeamEntry = useMemo(
+    () => pickSupportTeamEntry("speaker"),
+    [pickSupportTeamEntry]
+  );
+
   const productionPairTeamEntry = useMemo(
     () =>
       isWeekendSetlist && weekendPairDate
@@ -1354,6 +1360,10 @@ function SetlistTeamRoster({
   const videoRosterDate = useMemo(
     () => parseLocalDate(videoTeamEntry?.schedule_date || planDate),
     [planDate, videoTeamEntry?.schedule_date]
+  );
+  const speakerRosterDate = useMemo(
+    () => parseLocalDate(speakerTeamEntry?.schedule_date || planDate),
+    [planDate, speakerTeamEntry?.schedule_date]
   );
   const productionPairRosterDate = useMemo(
     () => parseLocalDate(productionPairTeamEntry?.schedule_date || planDate),
@@ -1430,6 +1440,14 @@ function SetlistTeamRoster({
     videoTeamEntry?.rotation_period || null
   );
 
+  const { data: speakerRoster = [] } = useTeamRosterForDate(
+    speakerRosterDate,
+    speakerTeamEntry?.team_id,
+    "speaker",
+    campusId,
+    speakerTeamEntry?.rotation_period || null
+  );
+
   const { data: productionPairRoster = [], isLoading: loadingProductionPairRoster } = useTeamRosterForDate(
     productionPairRosterDate,
     productionPairTeamEntry &&
@@ -1501,7 +1519,9 @@ function SetlistTeamRoster({
         ministryTypes.add("production");
       } else if (category === "Video") {
         ministryTypes.add("video");
-      } else if (category === "Vocalists" || category === "Band" || category === "Speaker") {
+      } else if (category === "Speaker") {
+        ministryTypes.add("speaker");
+      } else if (category === "Vocalists" || category === "Band") {
         ministryTypes.add("weekend");
       }
     });
@@ -1649,15 +1669,18 @@ function SetlistTeamRoster({
       ...roster.filter((member) => {
         const hasProductionRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Production") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Production" && (slot.position === position || slot.slot === position)));
         const hasVideoRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Video") || member.positions.some((position) => POSITION_SLOTS.some((slot) => slot.category === "Video" && (slot.position === position || slot.slot === position)));
+        const hasSpeakerRole = member.positionSlots.some((slot) => slotCategoryBySlot.get(slot) === "Speaker") || member.positions.some((position) => speakerPositions.has(position));
 
         if (productionRoster.length > 0 && hasProductionRole) return false;
         if (videoRoster.length > 0 && hasVideoRole) return false;
+        if (speakerRoster.length > 0 && hasSpeakerRole) return false;
         return true;
       }),
       ...productionRoster,
       ...productionPairRoster,
       ...videoRoster,
       ...videoPairRoster,
+      ...speakerRoster,
     ];
     for (const member of allMembers) {
       const key = member.memberName.trim().toLowerCase();
@@ -1716,7 +1739,7 @@ function SetlistTeamRoster({
         ministryTypes: Array.from(member.ministryTypes),
       };
     });
-  }, [effectiveCustomServiceId, ministryType, customAssignments, auditionCandidates, roster, productionRoster, productionPairRoster, videoRoster, videoPairRoster, slotCategoryBySlot, bandFallbackPositions, speakerPositions, getPositionMinistryTypes, safePhoneMap]);
+  }, [effectiveCustomServiceId, ministryType, customAssignments, auditionCandidates, roster, productionRoster, productionPairRoster, videoRoster, videoPairRoster, speakerRoster, slotCategoryBySlot, bandFallbackPositions, speakerPositions, getPositionMinistryTypes, safePhoneMap]);
 
   const vocalistRows = useMemo(
     () => rosterRows.filter((member) => member.hasVocalistRole),
@@ -2017,7 +2040,7 @@ function SetlistTeamRoster({
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-primary">
             <BookOpen className="h-4 w-4" />
-            <p className="text-sm font-medium">Speaker</p>
+            <p className="text-sm font-medium">Speakers</p>
           </div>
           <div className="divide-y divide-border/30">
             {speakerRows.map((member) => (

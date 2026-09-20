@@ -294,7 +294,7 @@ export const MINISTRY_TYPES = [
   { value: "evident", label: "Evident", shortLabel: "EV", color: "bg-zinc-900 ring-1 ring-zinc-500" },
   { value: "er", label: "ER", shortLabel: "ER", color: "bg-red-500" },
   { value: "audition", label: "Audition", shortLabel: "AUD", color: "bg-sky-600" },
-  { value: "speaker", label: "Speaker", shortLabel: "SPK", color: "bg-amber-600" },
+  { value: "speaker", label: "Speakers", shortLabel: "SPK", color: "bg-amber-600" },
   { value: "production", label: "Production", shortLabel: "PROD", color: "bg-emerald-500" },
   { value: "ms_hs_production", label: "MS/HS Production", shortLabel: "M/HP", color: "bg-emerald-600" },
   { value: "hs_production", label: "HS Production", shortLabel: "HSP", color: "bg-teal-600" },
@@ -319,8 +319,8 @@ export const SET_PLANNER_MINISTRY_OPTIONS = [
 // Which slot categories are available for each ministry type
 // Production and Video only show when those specific ministries are selected
 export const MINISTRY_SLOT_CATEGORIES: Record<string, string[]> = {
-  weekend_team: ["Vocalists", "Speaker", "Band"],
-  weekend: ["Vocalists", "Speaker", "Band"],
+  weekend_team: ["Vocalists", "Band"],
+  weekend: ["Vocalists", "Band"],
   worship_night: ["Vocalists", "Band"],
   kids_camp: ["Vocalists", "Band"],
   // Student Camp teams carry their own production crew (FOH, MON, Lyrics) instead of a
@@ -377,7 +377,7 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   ms_hs: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for combined MS/HS Worship
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
-  speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speaker rotations follow campus team structure and include the special 5th Sunday team
+  speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speakers rotate independently from Weekend Worship and include the special 5th Sunday team
   production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
   ms_hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for MS/HS Production
   hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Production
@@ -432,7 +432,7 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
 }
 
 const WEEKEND_WORSHIP_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
-const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+const WEEKEND_TEAM_MINISTRY_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 export function isWeekendTeamMinistryType(ministryType: string | null | undefined): boolean {
   return !!ministryType && WEEKEND_TEAM_MINISTRY_TYPES.has(ministryType);
@@ -656,6 +656,14 @@ export function resolveTeamBuilderSlotMinistryType(
   ministryFilter: string | null | undefined,
   slot: string | null | undefined,
 ): string | undefined {
+  const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
+
+  // Speaker slots always belong to the independent Speakers ministry, even if
+  // they were historically assigned from a Weekend Worship team card.
+  if (slotConfig?.category === "Speaker") {
+    return "speaker";
+  }
+
   if (!ministryFilter || ministryFilter === "all") {
     return undefined;
   }
@@ -663,8 +671,6 @@ export function resolveTeamBuilderSlotMinistryType(
   if (ministryFilter !== "weekend_team") {
     return ministryFilter;
   }
-
-  const slotConfig = POSITION_SLOTS.find((positionSlot) => positionSlot.slot === slot);
 
   if (slotConfig?.category === "Production") {
     return "production";

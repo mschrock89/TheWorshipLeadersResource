@@ -163,7 +163,7 @@ function CondensedTeamCard({
         {showPastors && renderSection("Pastors", Church, pastorSlots)}
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
-        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
+        {showSpeaker && renderSection("Speakers", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
         {showCreative && renderSection("Creative", Palette, creativeSlots)}
@@ -301,7 +301,7 @@ function FullTeamCard({
         {showPastors && renderSection("Pastors", Church, pastorSlots)}
         {showVocalists && renderSection("Vocalists", Mic, vocalSlots)}
         {showBand && renderSection("Band", Guitar, bandSlots)}
-        {showSpeaker && renderSection("Speaker", BookOpen, speakerSlots)}
+        {showSpeaker && renderSection("Speakers", BookOpen, speakerSlots)}
         {showProduction && renderSection("Production", Volume2, productionSlots)}
         {showVideo && renderSection("Video", Video, videoSlots)}
         {showCreative && renderSection("Creative", Palette, creativeSlots)}

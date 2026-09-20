@@ -61,7 +61,7 @@ export function TeamFilters({
 
   const positionGroups = [
     { label: "Vocals", positions: POSITION_CATEGORIES.vocals },
-    { label: "Speaker", positions: POSITION_CATEGORIES.speaker },
+    { label: "Speakers", positions: POSITION_CATEGORIES.speaker },
     { label: "Instruments", positions: POSITION_CATEGORIES.instruments },
     { label: "Audio", positions: POSITION_CATEGORIES.audio },
     { label: "Video", positions: POSITION_CATEGORIES.video },

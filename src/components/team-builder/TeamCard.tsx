@@ -350,7 +350,7 @@ export function TeamCard({
 
         {showSpeaker && (
           renderSlotGroup({
-            title: "Speaker",
+            title: "Speakers",
             icon: <BookOpen className="h-4 w-4 text-muted-foreground" />,
             slots: speakerSlots,
             slotReadOnly: effectiveReadOnly,

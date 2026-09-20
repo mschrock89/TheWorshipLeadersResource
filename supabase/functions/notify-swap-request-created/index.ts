@@ -36,7 +36,7 @@ const VIDEO_POSITIONS = new Set([
   "other",
 ]);
 
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 
 const POSITION_LABELS: Record<string, string> = {
   vocalist: "Vocalist",

@@ -206,6 +206,35 @@ export function CalendarServiceFlowPanel({
     effectiveMinistryType,
     flowCampusId,
   );
+  const { data: speakerTeam } = useScheduledTeamForDate(
+    serviceDate,
+    flowCampusId,
+    "speaker",
+  );
+  const { data: speakerRoster = [] } = useTeamRosterForDate(
+    serviceDate,
+    speakerTeam?.teamId,
+    "speaker",
+    flowCampusId,
+  );
+  const combinedScheduledRoster = useMemo(() => {
+    if (effectiveMinistryType === "speaker" || speakerRoster.length === 0) {
+      return scheduledRoster;
+    }
+
+    const seen = new Set(
+      scheduledRoster.map((member) => member.userId || member.memberName.toLowerCase()),
+    );
+    return [
+      ...scheduledRoster,
+      ...speakerRoster.filter((member) => {
+        const key = member.userId || member.memberName.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    ];
+  }, [effectiveMinistryType, scheduledRoster, speakerRoster]);
 
   // Start flow lookup as soon as campus is ready — don't wait on draft-set resolution.
   const {
@@ -539,8 +568,8 @@ export function CalendarServiceFlowPanel({
   );
 
   const scheduledRoleNames = useMemo(
-    () => buildScheduledRoleNames(scheduledRoster),
-    [scheduledRoster],
+    () => buildScheduledRoleNames(combinedScheduledRoster),
+    [combinedScheduledRoster],
   );
 
   const resolvedItemTitlesById = useMemo(

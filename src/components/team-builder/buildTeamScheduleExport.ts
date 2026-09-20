@@ -163,7 +163,7 @@ function getSlotGroupsForTeam(
 
   if (allowedCategories.includes("Speaker")) {
     pushGroup(
-      "Speaker",
+      "Speakers",
       POSITION_SLOTS.filter((slot) => slot.category === "Speaker"),
     );
   }

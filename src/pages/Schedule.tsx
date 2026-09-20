@@ -132,7 +132,7 @@ function formatMinistryTypes(ministryTypes: string[]): string {
     ms_hs: "MS/HS Worship",
     evident: "Evident",
     er: "ER",
-    speaker: "Speaker",
+    speaker: "Speakers",
     production: "Production",
     ms_hs_production: "MS/HS Production",
     hs_production: "HS Production",

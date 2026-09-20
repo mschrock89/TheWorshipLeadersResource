@@ -1,5 +1,6 @@
 export const WEEKEND_ANCHOR_MINISTRY_TYPES = new Set(["weekend", "sunday_am", "weekend_team"]);
 export const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
+export const WEEKEND_INDEPENDENT_MINISTRY_TYPES = new Set(["production", "video", "speaker"]);
 
 export interface TeamScheduleRowLike {
   team_id: string;

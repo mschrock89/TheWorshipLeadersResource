@@ -14,7 +14,7 @@ import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
-const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
+const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 
 function swapMinistryValuesForRoster(ministryType?: string): string[] | null {
   if (!ministryType || ministryType === "all") return null;
@@ -83,7 +83,7 @@ const ministryMatchesRosterFilter = (memberMinistries: string[] | null | undefin
   if (!memberMinistries || memberMinistries.length === 0) return true;
 
   if (normalizedMinistryType === "weekend_team") {
-    const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am", "speaker"];
+    const weekendTeamMinistries = ["weekend", "production", "video", "sunday_am"];
     return memberMinistries.some((mt) => weekendTeamMinistries.includes(normalizeSessionSetMinistryType(mt) || mt));
   }
 
@@ -1241,8 +1241,8 @@ export function useTeamRosterForDate(
         }
       }
 
-      // Group by member identity plus normalized ministry family so legacy speaker/weekend
-      // aliases collapse into a single roster entry.
+      // Group by member identity plus normalized ministry family so legacy
+      // weekend aliases collapse into a single roster entry.
       const memberMap = new Map<string, RosterMember>();
       
       for (const entry of intermediateRoster) {

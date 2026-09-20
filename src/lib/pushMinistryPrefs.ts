@@ -3,7 +3,6 @@ const WEEKEND_PUSH_MINISTRY_ALIASES = new Set([
   "weekend",
   "weekend_team",
   "sunday_am",
-  "speaker",
 ]);
 
 const CREATIVE_PUSH_MINISTRY_ALIASES = new Set(["creative", "photo_team"]);

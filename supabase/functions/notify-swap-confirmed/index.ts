@@ -58,7 +58,7 @@ const VIDEO_POSITIONS = new Set([
   "other",
 ]);
 
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);

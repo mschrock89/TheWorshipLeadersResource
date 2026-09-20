@@ -130,6 +130,7 @@ const MINISTRY_COLORS: Record<string, string> = {
   student: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   student_camp: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
   kids_camp: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
+  speaker: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 };
 
 const MINISTRY_LABELS: Record<string, string> = {
@@ -143,6 +144,7 @@ const MINISTRY_LABELS: Record<string, string> = {
   encounter: "HS Worship",
   eon: "MS Worship",
   student: "Student",
+  speaker: "Speakers",
 };
 
 export function TeamScheduleWidget({

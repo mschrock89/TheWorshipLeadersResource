@@ -74,7 +74,7 @@ const POSITION_GROUPS = [
     positions: ["Acoustic", "Acoustic 1", "Acoustic 2", "acoustic_guitar", "acoustic_1", "acoustic_2"]
   },
   {
-    category: "Speaker",
+    category: "Speakers",
     icon: <BookOpen className="h-4 w-4" />,
     positions: ["teacher", "announcement", "annoucement", "closing_prayer", "closer"]
   },

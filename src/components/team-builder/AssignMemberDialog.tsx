@@ -281,7 +281,7 @@ export function AssignMemberDialog({
     : effectiveMinistryFilter === 'ms_hs_production' ? 'MS/HS Production'
     : effectiveMinistryFilter === 'hs_production' ? 'HS Production'
     : effectiveMinistryFilter === 'students' ? 'Students'
-    : effectiveMinistryFilter === 'speaker' ? 'Speaker'
+    : effectiveMinistryFilter === 'speaker' ? 'Speakers'
     : effectiveMinistryFilter || 'All';
   const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;
 

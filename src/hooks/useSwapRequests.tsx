@@ -652,7 +652,7 @@ export interface PositionMember {
 
 // Define vocalist positions for gender-based swap filtering
 const VOCALIST_POSITIONS = ['vocalist', 'lead_vocals', 'harmony_vocals', 'background_vocals'];
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team", "speaker"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "sunday_am", "weekend_team"]);
 const SWAP_POSITION_ALIASES: Record<string, string> = {
   foh: "sound_tech",
   lyrics: "media",

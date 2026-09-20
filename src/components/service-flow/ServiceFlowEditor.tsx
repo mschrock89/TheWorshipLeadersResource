@@ -457,6 +457,35 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     ministryType,
     effectiveCampusId
   );
+  const { data: speakerTeam } = useScheduledTeamForDate(
+    selectedDate,
+    effectiveCampusId,
+    "speaker",
+  );
+  const { data: speakerRoster = [] } = useTeamRosterForDate(
+    selectedDate,
+    speakerTeam?.teamId,
+    "speaker",
+    effectiveCampusId,
+  );
+  const combinedScheduledRoster = useMemo(() => {
+    if (ministryType === "speaker" || speakerRoster.length === 0) {
+      return scheduledRoster;
+    }
+
+    const seen = new Set(
+      scheduledRoster.map((member) => member.userId || member.memberName.toLowerCase()),
+    );
+    return [
+      ...scheduledRoster,
+      ...speakerRoster.filter((member) => {
+        const key = member.userId || member.memberName.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    ];
+  }, [ministryType, scheduledRoster, speakerRoster]);
   const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
     campusId: effectiveCampusId || undefined,
     startDate: serviceDateStr,
@@ -1016,18 +1045,18 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
 
   const scheduledRoleNames = useMemo(() => ({
     announcements: formatRosterRoleNames(
-      scheduledRoster,
+      combinedScheduledRoster,
       new Set(["announcement", "announcements", "anncouncement", "anncouncements", "annoucement", "annoucements"])
     ),
     closingPrayer: formatRosterRoleNames(
-      scheduledRoster,
+      combinedScheduledRoster,
       new Set(["closingprayer", "closer"])
     ),
     teacher: formatRosterRoleNames(
-      scheduledRoster,
+      combinedScheduledRoster,
       new Set(["teacher", "speaker", "pastor speaker", "pastorspeaker"])
     ),
-  }), [scheduledRoster]);
+  }), [combinedScheduledRoster]);
 
   const resolvePlaceholderTitle = useCallback((
     item: ServiceFlowItemType,

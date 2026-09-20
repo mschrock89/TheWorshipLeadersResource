@@ -29,7 +29,7 @@ interface ScheduledTeam {
   campusId: string | null;
 }
 
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 function ministryMatchesScheduleEntry(
   entryMinistryType: string | null | undefined,

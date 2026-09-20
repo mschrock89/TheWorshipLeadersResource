@@ -5,7 +5,7 @@ import {
   isWeekend,
 } from "./supportTeamPushContent.ts";
 
-const WEEKEND_ROSTER_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+const WEEKEND_ROSTER_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 // Keep in sync with POSITION_SLOTS in src/lib/constants.ts so support-team push
 // recipients match the Calendar production/video roster columns.
@@ -110,7 +110,6 @@ function ministryMatchesRosterFilter(
       "production",
       "video",
       "sunday_am",
-      "speaker",
     ]);
     return memberMinistries.some((ministry) => weekendTeamMinistries.has(ministry));
   }

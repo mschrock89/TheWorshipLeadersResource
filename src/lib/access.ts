@@ -166,7 +166,6 @@ const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
   "weekend",
   "weekend_team",
   "sunday_am",
-  "speaker",
 ]);
 const ROSTER_SUPPORT_MINISTRY_TYPES = new Set([
   "production",
