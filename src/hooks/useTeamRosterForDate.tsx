@@ -367,7 +367,7 @@ export function useTeamRosterForDate(
           await Promise.all([
             supabase
               .from("rotation_periods")
-              .select("id, name, year, trimester, is_active")
+              .select("id, name, year, trimester, is_active, start_date, end_date")
               .eq("campus_id", campusId),
             supabase
               .from("team_schedule")

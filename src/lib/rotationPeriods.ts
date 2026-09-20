@@ -6,6 +6,8 @@ export interface RotationPeriodLike {
   year: number;
   trimester: number;
   is_active: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 export interface TeamSchedulePeriodLike {
@@ -41,6 +43,35 @@ export function buildFirstScheduledDateByRotationName(
   return firstScheduledDateByRotationName;
 }
 
+function formatLocalDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysToDateString(dateStr: string, days: number) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
+function periodCoversDate(period: RotationPeriodLike, dateStr: string) {
+  if (!period.start_date || !period.end_date) return false;
+  return period.start_date <= dateStr && dateStr <= period.end_date;
+}
+
+function getPeriodAdvanceDate(
+  period: RotationPeriodLike,
+  firstScheduledDateByRotationName: Map<string, string>,
+) {
+  const firstSchedule = firstScheduledDateByRotationName.get(period.name) ?? null;
+  const startDate = period.start_date ?? null;
+
+  if (firstSchedule && startDate) {
+    return firstSchedule < startDate ? firstSchedule : startDate;
+  }
+
+  return firstSchedule ?? startDate;
+}
+
 export function getEffectiveActiveRotationPeriodId<T extends RotationPeriodLike>(
   periods: T[],
   firstScheduledDateByRotationName: Map<string, string>,
@@ -49,8 +80,13 @@ export function getEffectiveActiveRotationPeriodId<T extends RotationPeriodLike>
   if (periods.length === 0) return null;
 
   const sortedPeriods = [...periods].sort(compareRotationPeriods);
+  const referenceDateStr = formatLocalDate(referenceDate);
+  const coveringPeriods = sortedPeriods.filter((period) => periodCoversDate(period, referenceDateStr));
   const configuredActivePeriod =
-    sortedPeriods.find((period) => period.is_active) ?? sortedPeriods[sortedPeriods.length - 1] ?? null;
+    coveringPeriods[coveringPeriods.length - 1] ??
+    sortedPeriods.find((period) => period.is_active) ??
+    sortedPeriods[sortedPeriods.length - 1] ??
+    null;
 
   if (!configuredActivePeriod) return null;
 
@@ -61,15 +97,14 @@ export function getEffectiveActiveRotationPeriodId<T extends RotationPeriodLike>
     return configuredActivePeriod.id;
   }
 
-  const nextPeriodFirstSchedule = firstScheduledDateByRotationName.get(nextPeriod.name);
-  if (!nextPeriodFirstSchedule) {
+  const nextPeriodStart = getPeriodAdvanceDate(nextPeriod, firstScheduledDateByRotationName);
+  if (!nextPeriodStart) {
     return configuredActivePeriod.id;
   }
 
-  const thresholdDate = new Date(`${nextPeriodFirstSchedule}T00:00:00`);
-  thresholdDate.setDate(thresholdDate.getDate() - ROTATION_ADVANCE_DAYS);
+  const thresholdDate = addDaysToDateString(nextPeriodStart, -ROTATION_ADVANCE_DAYS);
 
-  return referenceDate >= thresholdDate ? nextPeriod.id : configuredActivePeriod.id;
+  return referenceDateStr >= thresholdDate ? nextPeriod.id : configuredActivePeriod.id;
 }
 
 export function applyEffectiveActiveRotationPeriods<T extends RotationPeriodLike>(
