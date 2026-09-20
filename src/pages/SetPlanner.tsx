@@ -657,6 +657,13 @@ export default function SetPlanner() {
     [customServiceOccurrences, selectedMinistry, planDateStr],
   );
 
+  useEffect(() => {
+    if (isSessionSetMinistry) return;
+    if (servicesOnSelectedDate.length !== 1) return;
+    const onlyKey = servicesOnSelectedDate[0].occurrence_key;
+    setSelectedCustomServiceKey((current) => (current === "none" ? onlyKey : current));
+  }, [isSessionSetMinistry, servicesOnSelectedDate]);
+
   const applyCustomService = (serviceKey: string) => {
     if (serviceKey === "none") {
       setSelectedCustomServiceKey("none");
@@ -679,6 +686,10 @@ export default function SetPlanner() {
     () => customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey) || null,
     [customServiceOccurrences, selectedCustomServiceKey],
   );
+
+  // Kids Camp / Student Camp sessions may be linked to a custom service for
+  // date/flow scoping, but their roster still comes from Team Builder.
+  const usesCustomServiceRoster = Boolean(selectedCustomService) && !isSessionSetMinistry;
 
   const { data: customServiceAssignments = [] } = useCustomServiceAssignments(
     selectedCustomService?.id,
@@ -1255,8 +1266,9 @@ export default function SetPlanner() {
           </CardContent>
         </Card>
 
-        {/* Team Roster - full width */}
-        {!isPrayerNightMinistry && (
+        {/* Team Roster - full width. Custom services use the builder-assigned
+            roster only; do not also surface the Team Builder rotation (e.g. T3). */}
+        {!isPrayerNightMinistry && !usesCustomServiceRoster && (
           <ScheduledTeamRoster targetDate={selectedDate} ministryType={selectedMinistry} campusId={queryCampusId} />
         )}
 

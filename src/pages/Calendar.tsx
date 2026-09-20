@@ -1549,6 +1549,18 @@ function StandardCalendar() {
       return entries;
     };
 
+    const dayCustomServices = getCustomServicesForDay(day);
+    // A custom service for this ministry replaces the Team Builder rotation
+    // (e.g. HS Worship Prayer & Worship Night should not also show T3).
+    if (
+      dayCustomServices.length > 0 &&
+      ministryFilter &&
+      ministryFilter !== "all" &&
+      ministryFilter !== "weekend_team"
+    ) {
+      return null;
+    }
+
     // There can be multiple schedule entries per date (different ministries)
     let entries = getScheduleEntriesForDate(dateStr);
 
@@ -1571,6 +1583,17 @@ function StandardCalendar() {
       return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
     })[0];
     if (!teamEntry) return null;
+
+    if (dayCustomServices.length > 0) {
+      const teamMinistry = teamEntry.ministry_type || "";
+      const customReplacesTeam = dayCustomServices.some((service) =>
+        serviceOverrideMatchesMinistryFilter(
+          getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
+          teamMinistry,
+        ),
+      );
+      if (customReplacesTeam) return null;
+    }
 
     // If no campus filter or network-wide, show the team entry
     if (!campusFilter || campusFilter === "network-wide") {
@@ -1978,6 +2001,7 @@ function StandardCalendar() {
                   (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
               );
           })();
+          const showScheduledTeamLabel = selectedDayServices.length === 0;
           return <>
               <CalendarDayWidget
                 title={
@@ -1985,12 +2009,12 @@ function StandardCalendar() {
                     <span className="truncate">
                       {`${MONTHS[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`}
                     </span>
-                    {effectiveTeam ? (
+                    {showScheduledTeamLabel && effectiveTeam ? (
                       <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium" style={{ color: effectiveTeam.teamColor }}>
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: effectiveTeam.teamColor }} />
                         <span className="truncate">{hasSwappedIn ? `Covering ${effectiveTeam.teamName}` : effectiveTeam.teamName}</span>
                       </span>
-                    ) : selectedDayTeam?.worship_teams ? (
+                    ) : showScheduledTeamLabel && selectedDayTeam?.worship_teams ? (
                       <span className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium" style={{ color: selectedDayTeam.worship_teams.color }}>
                         {(() => {
                           const TeamIcon = teamIcons[selectedDayTeam.worship_teams.icon];
@@ -2010,7 +2034,7 @@ function StandardCalendar() {
                 }
                 actions={
                   <>
-                    {effectiveTeam && !hasSwappedIn ? (
+                    {showScheduledTeamLabel && effectiveTeam && !hasSwappedIn ? (
                       <>
                         <SwapButton onClick={() => setIsSwapOpen(true)} />
                         <CoverButton onClick={() => setIsCoverOpen(true)} />
