@@ -344,25 +344,58 @@ serve(async (req) => {
         .filter(Boolean) as string[];
       userIdsToNotify = await filterNotifiableRosterUserIds(supabase, worshipUserIds);
     } else {
-      const { data: rosterRows, error: rosterError } = await supabase.rpc(
-        "get_setlist_notifiable_user_ids",
-        { p_draft_set_id: draftSetId },
-      );
+      const isCustomServiceSet =
+        Boolean(draftSet.custom_service_id) &&
+        !["kids_camp", "kids_camp_morning", "kids_camp_afternoon", "student_camp", "student_camp_morning", "student_camp_evening"].includes(
+          draftSet.ministry_type || "",
+        );
 
-      if (rosterError) {
-        console.error("Error fetching setlist notifiable user IDs:", rosterError);
+      if (isCustomServiceSet) {
+        const [{ data: assignments, error: assignmentError }, { data: customService, error: customServiceError }] =
+          await Promise.all([
+            supabase
+              .from("custom_service_assignments")
+              .select("user_id, assignment_date")
+              .eq("custom_service_id", draftSet.custom_service_id!),
+            supabase
+              .from("custom_services")
+              .select("service_date")
+              .eq("id", draftSet.custom_service_id!)
+              .maybeSingle(),
+          ]);
+
+        if (assignmentError) {
+          console.error("Error fetching custom service assignments:", assignmentError);
+        }
+        if (customServiceError) {
+          console.error("Error fetching custom service:", customServiceError);
+        }
+
+        const rows = assignments || [];
+        const forPlanDate = rows.filter((row) => row.assignment_date === draftSet.plan_date);
+        const forServiceDate = customService?.service_date
+          ? rows.filter((row) => row.assignment_date === customService.service_date)
+          : [];
+        const effectiveRows =
+          forPlanDate.length > 0 ? forPlanDate : forServiceDate.length > 0 ? forServiceDate : rows;
+        userIdsToNotify = Array.from(
+          new Set(effectiveRows.map((row) => row.user_id).filter(Boolean) as string[]),
+        );
       } else {
-        const allRosterUserIds = (rosterRows || [])
-          .map((row: { user_id: string }) => row.user_id)
-          .filter(Boolean) as string[];
+        const { data: rosterRows, error: rosterError } = await supabase.rpc(
+          "get_setlist_notifiable_user_ids",
+          { p_draft_set_id: draftSetId },
+        );
 
-        // A custom-service assignment is itself the source of truth for roster
-        // membership. Do not apply the standard team role guard here: valid one-off
-        // assignees may only carry roles such as student or speaker, which previously
-        // removed them before their push subscriptions were checked.
-        userIdsToNotify = draftSet.custom_service_id
-          ? Array.from(new Set(allRosterUserIds))
-          : await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
+        if (rosterError) {
+          console.error("Error fetching setlist notifiable user IDs:", rosterError);
+        } else {
+          const allRosterUserIds = (rosterRows || [])
+            .map((row: { user_id: string }) => row.user_id)
+            .filter(Boolean) as string[];
+
+          userIdsToNotify = await filterNotifiableRosterUserIds(supabase, allRosterUserIds);
+        }
       }
     }
 

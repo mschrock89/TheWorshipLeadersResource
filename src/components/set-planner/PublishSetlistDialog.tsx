@@ -28,6 +28,8 @@ interface PublishSetlistDialogProps {
   ministryType: string;
   campusId: string | null;
   customServiceId?: string;
+  customServiceName?: string;
+  assignedMemberCount?: number;
   onPublished?: () => void;
 }
 
@@ -38,6 +40,8 @@ export function PublishSetlistDialog({
   ministryType,
   campusId,
   customServiceId,
+  customServiceName,
+  assignedMemberCount,
   onPublished,
 }: PublishSetlistDialogProps) {
   const [open, setOpen] = useState(false);
@@ -48,29 +52,58 @@ export function PublishSetlistDialog({
   const withdrawSubmission = useWithdrawSetlistSubmission();
   const { data: canPublishDirectly = false } = useCanPublishSetlistDirectly(ministryType);
   const rosterMinistryType = normalizeSessionSetMinistryType(ministryType) || ministryType;
-  const useScheduledRosterForNotifications = !customServiceId || isSessionSetMinistryType(ministryType);
+  const usesCustomServiceRoster = Boolean(customServiceId) && !isSessionSetMinistryType(ministryType);
 
-  // Get scheduled team for this date (campus-specific)
-  const { data: scheduledTeam } = useScheduledTeamForDate(targetDate, campusId, rosterMinistryType);
+  // Scheduled Team Builder rotation is only for regular services / camp sessions.
+  const { data: scheduledTeam } = useScheduledTeamForDate(
+    usesCustomServiceRoster ? null : targetDate,
+    usesCustomServiceRoster ? null : campusId,
+    usesCustomServiceRoster ? null : rosterMinistryType,
+  );
   const { data: roster } = useTeamRosterForDate(
-    targetDate,
-    scheduledTeam?.teamId,
-    rosterMinistryType,
-    campusId
+    usesCustomServiceRoster ? null : targetDate,
+    usesCustomServiceRoster ? undefined : scheduledTeam?.teamId,
+    usesCustomServiceRoster ? undefined : rosterMinistryType,
+    usesCustomServiceRoster ? undefined : campusId
   );
   const planDate = format(targetDate, "yyyy-MM-dd");
+  const { data: customServiceMeta } = useQuery({
+    queryKey: ["publish-custom-service-meta", customServiceId],
+    enabled: usesCustomServiceRoster && !!customServiceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_services")
+        .select("service_name, service_date, repeats_weekly")
+        .eq("id", customServiceId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
   const { data: customAssignedCount = 0 } = useQuery({
-    queryKey: ["custom-service-assignment-count", customServiceId, planDate],
-    enabled: !!customServiceId,
+    queryKey: [
+      "custom-service-assignment-count",
+      customServiceId,
+      planDate,
+      customServiceMeta?.service_date ?? null,
+    ],
+    enabled: usesCustomServiceRoster && !!customServiceId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("custom_service_assignments")
-        .select("user_id")
-        .eq("custom_service_id", customServiceId!)
-        .eq("assignment_date", planDate);
+        .select("user_id, assignment_date")
+        .eq("custom_service_id", customServiceId!);
 
       if (error) throw error;
-      return new Set((data || []).map((row) => row.user_id)).size;
+      const rows = data || [];
+      const forPlanDate = rows.filter((row) => row.assignment_date === planDate);
+      const fallbackDate = customServiceMeta?.service_date;
+      const forServiceDate = fallbackDate
+        ? rows.filter((row) => row.assignment_date === fallbackDate)
+        : [];
+      const effectiveRows =
+        forPlanDate.length > 0 ? forPlanDate : forServiceDate.length > 0 ? forServiceDate : rows;
+      return new Set(effectiveRows.map((row) => row.user_id)).size;
     },
   });
 
@@ -92,8 +125,13 @@ export function PublishSetlistDialog({
     }
   }, [draftSetId]);
 
-  const teamMemberCount = useScheduledRosterForNotifications ? (roster?.length || 0) : customAssignedCount;
-  const recipientLabel = useScheduledRosterForNotifications ? "scheduled team members" : "assigned custom service members";
+  const teamMemberCount = usesCustomServiceRoster
+    ? Math.max(customAssignedCount, assignedMemberCount ?? 0)
+    : (roster?.length || 0);
+  const recipientLabel = usesCustomServiceRoster ? "assigned custom service members" : "scheduled team members";
+  const teamLabel = usesCustomServiceRoster
+    ? (customServiceName || customServiceMeta?.service_name || "Custom service team")
+    : scheduledTeam?.teamName;
 
   // Check for existing in-progress draft sets when dialog opens
   useEffect(() => {
@@ -130,6 +168,16 @@ export function PublishSetlistDialog({
 
   const handleSubmit = async () => {
     if (!draftSetId) return;
+
+    if (usesCustomServiceRoster && customServiceId) {
+      const { error: linkError } = await supabase
+        .from("draft_sets")
+        .update({ custom_service_id: customServiceId })
+        .eq("id", draftSetId);
+      if (linkError) {
+        console.error("Failed to link draft set to custom service:", linkError);
+      }
+    }
     
     const result = await submitForApproval.mutateAsync(draftSetId);
     setIsPendingApproval(!result?.autoPublished);
@@ -256,9 +304,9 @@ export function PublishSetlistDialog({
                   <span className="font-medium">{songs.length} songs</span> in this set
                 </div>
                 
-                {scheduledTeam && (
+                {teamLabel && (
                   <div className="text-sm text-muted-foreground">
-                    Team: <span className="font-medium">{scheduledTeam.teamName}</span>
+                    Team: <span className="font-medium">{teamLabel}</span>
                   </div>
                 )}
               </div>

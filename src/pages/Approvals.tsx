@@ -10,6 +10,8 @@ import {
 } from "@/hooks/useSetlistApprovals";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
+import { isSessionSetMinistryType } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,17 +75,29 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
   const rejectSetlist = useRejectSetlist();
 
   const planDate = parseLocalDate(approval.draft_set.plan_date);
+  const usesCustomServiceRoster =
+    Boolean(approval.draft_set.custom_service_id) &&
+    !isSessionSetMinistryType(approval.draft_set.ministry_type);
   const { data: scheduledTeam } = useScheduledTeamForDate(
-    planDate,
-    approval.draft_set.campus_id,
-    approval.draft_set.ministry_type,
+    usesCustomServiceRoster ? null : planDate,
+    usesCustomServiceRoster ? null : approval.draft_set.campus_id,
+    usesCustomServiceRoster ? null : approval.draft_set.ministry_type,
   );
   const { data: roster } = useTeamRosterForDate(
-    planDate,
-    scheduledTeam?.teamId,
-    approval.draft_set.ministry_type,
-    approval.draft_set.campus_id
+    usesCustomServiceRoster ? null : planDate,
+    usesCustomServiceRoster ? undefined : scheduledTeam?.teamId,
+    usesCustomServiceRoster ? undefined : approval.draft_set.ministry_type,
+    usesCustomServiceRoster ? undefined : approval.draft_set.campus_id
   );
+  const { data: customAssignments = [] } = useCustomServiceAssignments(
+    usesCustomServiceRoster ? approval.draft_set.custom_service_id || undefined : undefined,
+    usesCustomServiceRoster ? approval.draft_set.plan_date : undefined,
+  );
+  const customMemberCount = new Set(customAssignments.map((assignment) => assignment.user_id)).size;
+  const teamLabel = usesCustomServiceRoster
+    ? (approval.draft_set.custom_services?.service_name || "Custom service team")
+    : scheduledTeam?.teamName;
+  const teamMemberCount = usesCustomServiceRoster ? customMemberCount : (roster?.length || 0);
 
   const handleApprove = () => {
     approveSetlist.mutate({
@@ -267,14 +281,14 @@ function ApprovalCard({ approval }: { approval: PendingApproval }) {
           </div>
 
           {/* Team info */}
-          {scheduledTeam && (
+          {teamLabel && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Users className="h-4 w-4" />
               <span>
-                Team: <span className="font-medium">{scheduledTeam.teamName}</span>
+                Team: <span className="font-medium">{teamLabel}</span>
               </span>
               <span className="text-xs">
-                ({roster?.length || 0} members will be notified)
+                ({teamMemberCount} members will be notified)
               </span>
             </div>
           )}

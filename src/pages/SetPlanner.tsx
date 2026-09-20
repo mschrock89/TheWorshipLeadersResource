@@ -1590,7 +1590,9 @@ export default function SetPlanner() {
                     targetDate={selectedDate}
                     ministryType={selectedMinistry}
                     campusId={queryCampusId}
-                    customServiceId={selectedCustomService?.id || undefined}
+                    customServiceId={selectedCustomService?.id || existingSet?.custom_service_id || undefined}
+                    customServiceName={selectedCustomService?.service_name}
+                    assignedMemberCount={groupedCustomServiceAssignments.length}
                     onPublished={handlePublished}
                   />
                 ) : null
