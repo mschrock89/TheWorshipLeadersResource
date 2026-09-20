@@ -291,11 +291,14 @@ export function useExistingSet(
         )
       `;
 
-      const runLookup = async (options: { includeMinistry: boolean; includeYoutubeUrl: boolean }) => {
+      const runLookup = async (options: { includeMinistry: boolean; includeYoutubeUrl: boolean; ignorePlanDate?: boolean }) => {
         let query = supabase
           .from('draft_sets')
-          .select(options.includeYoutubeUrl ? baseSelect : legacyBaseSelect)
-          .in('plan_date', lookupDates);
+          .select(options.includeYoutubeUrl ? baseSelect : legacyBaseSelect);
+
+        if (!options.ignorePlanDate) {
+          query = query.in('plan_date', lookupDates);
+        }
 
         query = networkWide ? query.is('campus_id', null) : query.eq('campus_id', campusId as string);
 
@@ -370,6 +373,18 @@ export function useExistingSet(
         } catch (error) {
           if (!isMissingYoutubeUrlColumnError(error)) throw error;
           data = await runLookup({ includeMinistry: false, includeYoutubeUrl: false });
+        }
+      }
+
+      // Custom-service sets must use the service date. Older rows were snapped
+      // to the nearest Wednesday / weekend, so look up by custom_service_id
+      // when the requested occurrence date has no match.
+      if (!data && customServiceId && !isSessionSetMinistryType(ministryType)) {
+        try {
+          data = await runLookup({ includeMinistry: false, includeYoutubeUrl: true, ignorePlanDate: true });
+        } catch (error) {
+          if (!isMissingYoutubeUrlColumnError(error)) throw error;
+          data = await runLookup({ includeMinistry: false, includeYoutubeUrl: false, ignorePlanDate: true });
         }
       }
 

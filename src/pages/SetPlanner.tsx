@@ -298,14 +298,16 @@ export default function SetPlanner() {
     startDate: rangeStart,
     endDate: rangeEnd,
   });
-  const selectedCustomServiceIdForQuery = useMemo(() => {
-    if (selectedCustomServiceKey === "none") return null;
-    return customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey)?.id || null;
-  }, [selectedCustomServiceKey, customServiceOccurrences]);
+  const selectedCustomService = useMemo(
+    () => customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey) || null,
+    [customServiceOccurrences, selectedCustomServiceKey],
+  );
+  const selectedCustomServiceIdForQuery = selectedCustomService?.id || null;
+  const effectivePlanDateStr = selectedCustomService?.occurrence_date || planDateStr;
   const { data: existingSet, isLoading: existingSetLoading } = useExistingSet(
     queryCampusId,
     selectedMinistry,
-    planDateStr,
+    effectivePlanDateStr,
     selectedCustomServiceIdForQuery
   );
 
@@ -356,10 +358,10 @@ export default function SetPlanner() {
     () => [
       queryCampusId || (isNetworkWideCampus || isNetworkWideMinistry ? "network-wide" : "none"),
       selectedMinistry,
-      planDateStr,
+      effectivePlanDateStr,
       selectedCustomServiceIdForQuery || "none",
     ].join("|"),
-    [queryCampusId, isNetworkWideCampus, isNetworkWideMinistry, selectedMinistry, planDateStr, selectedCustomServiceIdForQuery],
+    [queryCampusId, isNetworkWideCampus, isNetworkWideMinistry, selectedMinistry, effectivePlanDateStr, selectedCustomServiceIdForQuery],
   );
 
   // Track the full set scope to prevent Morning/Afternoon variants from sharing local songs.
@@ -457,14 +459,22 @@ export default function SetPlanner() {
     window.scrollTo(0, 0);
   }, []);
 
-  // When ministry changes, update the selected date
+  // Regular Encounter / Weekend sets snap to their weekday. Custom services
+  // keep the actual service date (e.g. Friday Prayer & Worship Night).
   useEffect(() => {
+    if (selectedCustomService) return;
     if (isMidweekMinistry && !isWednesday(selectedDate)) {
       setSelectedDate(nextWednesday(new Date()));
     } else if (isWeekendStyleMinistry && isWednesday(selectedDate)) {
       setSelectedDate(nextSaturday(new Date()));
     }
-  }, [selectedMinistry, isMidweekMinistry, isWeekendStyleMinistry, selectedDate]);
+  }, [selectedMinistry, isMidweekMinistry, isWeekendStyleMinistry, selectedDate, selectedCustomService]);
+
+  useEffect(() => {
+    if (!selectedCustomService) return;
+    if (planDateStr === selectedCustomService.occurrence_date) return;
+    setSelectedDate(new Date(`${selectedCustomService.occurrence_date}T12:00:00`));
+  }, [selectedCustomService, planDateStr]);
 
   // When campus changes, reset the loaded date to force reload
   useEffect(() => {
@@ -530,6 +540,10 @@ export default function SetPlanner() {
   // For midweek ministries (HS/MS Worship), only allow Wednesdays
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
+
+    if (selectedCustomServiceKey !== "none") {
+      setSelectedCustomServiceKey("none");
+    }
     
     if (isMidweekMinistry) {
       // For HS/MS Worship, snap to nearest Wednesday
@@ -568,8 +582,14 @@ export default function SetPlanner() {
   
   // Disable dates based on ministry type (allow today and past dates for viewing)
   const isDateDisabled = (date: Date) => {
+    if (
+      selectedCustomService &&
+      format(date, "yyyy-MM-dd") === selectedCustomService.occurrence_date
+    ) {
+      return false;
+    }
     if (isMidweekMinistry) {
-      // Only allow Wednesdays for HS/MS Worship
+      // Only allow Wednesdays for regular HS/MS Worship
       return !isWednesday(date);
     }
     
@@ -593,7 +613,7 @@ export default function SetPlanner() {
         // Prefer updating the set we found for this campus/ministry/date
         id: existingSet?.id || lastSavedSetId || undefined,
         campus_id: queryCampusId,
-        plan_date: format(selectedDate, 'yyyy-MM-dd'),
+        plan_date: selectedCustomService?.occurrence_date || format(selectedDate, 'yyyy-MM-dd'),
         ministry_type: selectedMinistry,
         custom_service_id: selectedCustomServiceIdForQuery,
         created_by: user.id,
@@ -621,7 +641,7 @@ export default function SetPlanner() {
       "existing-set",
       isNetworkWideMinistry || isNetworkWideCampus ? "network-wide" : queryCampusId,
       selectedMinistry,
-      planDateStr,
+      effectivePlanDateStr,
       selectedCustomServiceIdForQuery || null,
     ];
 
@@ -681,11 +701,6 @@ export default function SetPlanner() {
     );
     setSelectedDate(new Date(`${service.occurrence_date}T12:00:00`));
   };
-
-  const selectedCustomService = useMemo(
-    () => customServiceOccurrences.find((s) => s.occurrence_key === selectedCustomServiceKey) || null,
-    [customServiceOccurrences, selectedCustomServiceKey],
-  );
 
   // Kids Camp / Student Camp sessions may be linked to a custom service for
   // date/flow scoping, but their roster still comes from Team Builder.
@@ -976,7 +991,7 @@ export default function SetPlanner() {
               {/* Date picker */}
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Target {isMidweekMinistry ? 'Wednesday' : isWeekendStyleMinistry && isWeekendCampus ? 'Weekend' : 'Date'}
+                  Target {selectedCustomService ? 'Service Date' : isMidweekMinistry ? 'Wednesday' : isWeekendStyleMinistry && isWeekendCampus ? 'Weekend' : 'Date'}
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>

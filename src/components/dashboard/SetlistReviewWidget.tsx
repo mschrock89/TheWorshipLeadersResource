@@ -34,6 +34,7 @@ interface ApprovedSetlist {
   campus_id: string;
   plan_date: string;
   ministry_type: string;
+  custom_service_id?: string | null;
   notes: string | null;
   status: string;
   published_at: string | null;
@@ -104,6 +105,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
           campus_id,
           plan_date,
           ministry_type,
+          custom_service_id,
           notes,
           status,
           published_at,
@@ -133,22 +135,23 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
         const legacyQuery = supabase
           .from("draft_sets")
           .select(`
+          id,
+          campus_id,
+          plan_date,
+          ministry_type,
+          custom_service_id,
+          notes,
+          status,
+          published_at,
+          campuses(name),
+          draft_set_songs(
             id,
-            campus_id,
-            plan_date,
-            ministry_type,
-            notes,
-            status,
-            published_at,
-            campuses(name),
-            draft_set_songs(
-              id,
-              song_id,
-              sequence_order,
-              song_key,
-              songs(title, author),
-              vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
-            )
+            song_id,
+            sequence_order,
+            song_key,
+            songs(title, author),
+            vocalist:profiles!draft_set_songs_vocalist_id_fkey(id, full_name, avatar_url)
+          )
           `)
           .eq("status", "published")
           .gte("plan_date", today)
@@ -176,6 +179,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
       if (
         isStudentApp &&
         !isStudentFlowExemptMinistryType(approval.draft_set.ministry_type) &&
+        !approval.draft_set.custom_service_id &&
         !isWednesdayFlowDate(approval.draft_set.plan_date)
       )
         return false;
@@ -189,6 +193,7 @@ export function SetlistReviewWidget({ selectedCampusId }: SetlistReviewWidgetPro
         ? approvedSetlists.filter(
             (setlist) =>
               isStudentFlowExemptMinistryType(setlist.ministry_type) ||
+              Boolean(setlist.custom_service_id) ||
               isWednesdayFlowDate(setlist.plan_date),
           )
         : approvedSetlists,

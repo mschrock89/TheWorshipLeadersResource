@@ -380,7 +380,14 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       // currently selected home campus. We will roster-filter these later.
       let setlistsFromCustomAssignments: PublishedSetlistRow[] = [];
       const customAssignmentDateList = Array.from(customAssignmentDates);
-      if (customAssignmentDateList.length > 0) {
+      const assignedCustomServiceIds = [
+        ...new Set(
+          (customAssignments || [])
+            .map((row) => row.custom_service_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      if (customAssignmentDateList.length > 0 || assignedCustomServiceIds.length > 0) {
         let query = supabase
           .from("draft_sets")
           .select(`
@@ -394,8 +401,17 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
             campuses(name)
           `)
           .eq("status", "published")
-          .not("published_at", "is", null)
-          .in("plan_date", customAssignmentDateList);
+          .not("published_at", "is", null);
+
+        if (customAssignmentDateList.length > 0 && assignedCustomServiceIds.length > 0) {
+          query = query.or(
+            `plan_date.in.(${customAssignmentDateList.join(",")}),custom_service_id.in.(${assignedCustomServiceIds.join(",")})`,
+          );
+        } else if (assignedCustomServiceIds.length > 0) {
+          query = query.in("custom_service_id", assignedCustomServiceIds);
+        } else {
+          query = query.in("plan_date", customAssignmentDateList);
+        }
 
         query = query.gte("plan_date", minPlanDate);
 

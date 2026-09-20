@@ -52,7 +52,7 @@ export function isStudentFlowExemptMinistryType(ministryType: string | null | un
 }
 
 export function filterStudentWednesdayFlows<
-  T extends { plan_date: string; ministry_type?: string | null },
+  T extends { plan_date: string; ministry_type?: string | null; custom_service_id?: string | null },
 >(
   sets: T[],
   resourceAppKey: string | null | undefined,
@@ -61,6 +61,7 @@ export function filterStudentWednesdayFlows<
     ? sets.filter(
         (set) =>
           isStudentFlowExemptMinistryType(set.ministry_type) ||
+          Boolean(set.custom_service_id) ||
           isWednesdayFlowDate(set.plan_date),
       )
     : sets;

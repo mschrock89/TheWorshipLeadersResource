@@ -264,7 +264,8 @@ serve(async (req) => {
         plan_date,
         ministry_type,
         notes,
-        campuses(name)
+        campuses(name),
+        custom_services(service_date, repeats_weekly)
       `)
       .eq("id", draftSetId)
       .single();
@@ -446,7 +447,16 @@ serve(async (req) => {
 
     if (userIdsToNotify.length > 0) {
       const campusName = (draftSet.campuses as { name?: string } | null)?.name || "";
-      const formattedDate = new Date(draftSet.plan_date).toLocaleDateString("en-US", {
+      const customService = draftSet.custom_services as
+        | { service_date?: string; repeats_weekly?: boolean }
+        | { service_date?: string; repeats_weekly?: boolean }[]
+        | null;
+      const customServiceRow = Array.isArray(customService) ? customService[0] : customService;
+      const notificationDate =
+        customServiceRow?.service_date && !customServiceRow.repeats_weekly
+          ? customServiceRow.service_date
+          : draftSet.plan_date;
+      const formattedDate = new Date(`${notificationDate}T12:00:00`).toLocaleDateString("en-US", {
         weekday: "short",
         month: "short",
         day: "numeric",
@@ -465,7 +475,7 @@ serve(async (req) => {
         metadata: {
           draftSetId,
           campusId: draftSet.campus_id,
-          planDate: draftSet.plan_date,
+          planDate: notificationDate,
           ministryType: draftSet.ministry_type,
           manual,
           // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
