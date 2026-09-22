@@ -326,7 +326,7 @@ type CalendarAudition = {
 type ScheduleNotificationTarget = {
   campusId: string;
   campusName: string;
-  ministryType: "production" | "video";
+  ministryType: "production" | "video" | "speaker";
   teamId: string;
   teamName: string;
 };
@@ -1621,7 +1621,7 @@ function StandardCalendar() {
     let entries = teamSchedule.filter((entry) =>
       entry.schedule_date === selectedDateStr &&
       (entry.campus_id === campusFilter || entry.campus_id == null) &&
-      (entry.ministry_type === "production" || entry.ministry_type === "video"),
+      (entry.ministry_type === "production" || entry.ministry_type === "video" || entry.ministry_type === "speaker"),
     );
 
     if (activeRotationPeriodName) {
@@ -1650,6 +1650,16 @@ function StandardCalendar() {
         entry.ministry_type === "video" &&
         !roleNames.includes("video_director") &&
         !roleNames.includes("production_manager")
+      ) {
+        return [];
+      }
+
+      if (
+        entry.ministry_type === "speaker" &&
+        !isAdmin &&
+        !roleNames.includes("campus_worship_pastor") &&
+        !roleNames.includes("network_worship_pastor") &&
+        !roleNames.includes("network_worship_leader")
       ) {
         return [];
       }
@@ -3264,7 +3274,7 @@ function TeamSchedulePushButton({
 }: {
   scheduleDate?: string | null;
   campusId?: string;
-  ministryType: "production" | "video";
+  ministryType: "production" | "video" | "speaker";
   teamId?: string | null;
   customServiceId?: string | null;
   serviceLabel?: string;
@@ -3272,7 +3282,7 @@ function TeamSchedulePushButton({
   buttonLabel?: string;
   compact?: boolean;
 }) {
-  const { isAdmin, isProductionManager, isVideoDirector } = useAuth();
+  const { isAdmin, isProductionManager, isVideoDirector, canManageTeam } = useAuth();
   const [isSending, setIsSending] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -3283,13 +3293,14 @@ function TeamSchedulePushButton({
   const canManageMinistry =
     isAdmin ||
     (ministryType === "production" && isProductionManager) ||
-    (ministryType === "video" && (isVideoDirector || isProductionManager));
+    (ministryType === "video" && (isVideoDirector || isProductionManager)) ||
+    (ministryType === "speaker" && canManageTeam);
 
   if (!canManageMinistry) {
     return null;
   }
 
-  const ministryLabel = serviceLabel || (ministryType === "production" ? "Production" : "Video");
+  const ministryLabel = serviceLabel || getMinistryLabel(ministryType);
   const canSend = Boolean(campusId && scheduleDate && (teamId || customServiceId));
   const disabledTitle = !teamId && !customServiceId
     ? `No ${ministryLabel} team is scheduled for this date.`
@@ -3561,7 +3572,7 @@ function RosterOutreachWidget({
     positions: string[];
   }>;
   supportNotificationTargets?: ScheduleNotificationTarget[];
-  supportPushMinistry: "production" | "video" | null;
+  supportPushMinistry: "production" | "video" | "speaker" | null;
   supportPushScheduleDate?: string | null;
   supportPushTeamId?: string | null;
   supportPushCustomServiceId?: string | null;
@@ -4380,9 +4391,29 @@ function BandRoster({
   });
   const supportPushMinistry =
     supportSection ??
-    (ministryFilter === "production" ? "production" : ministryFilter === "video" ? "video" : null);
-  const supportPushEntry = supportPushMinistry === "production" ? productionEntry : videoEntry;
-  const supportPushTeamId = supportPushMinistry === "production" ? productionTeamId : videoTeamId;
+    (ministryFilter === "production"
+      ? "production"
+      : ministryFilter === "video"
+        ? "video"
+        : ministryFilter === "speaker"
+          ? "speaker"
+          : null);
+  const supportPushEntry =
+    supportPushMinistry === "production"
+      ? productionEntry
+      : supportPushMinistry === "video"
+        ? videoEntry
+        : supportPushMinistry === "speaker"
+          ? speakerEntry
+          : null;
+  const supportPushTeamId =
+    supportPushMinistry === "production"
+      ? productionTeamId
+      : supportPushMinistry === "video"
+        ? videoTeamId
+        : supportPushMinistry === "speaker"
+          ? speakerTeamId
+          : undefined;
   const outreachWidget = (
     <RosterOutreachWidget
       date={date}

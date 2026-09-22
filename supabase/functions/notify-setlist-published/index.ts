@@ -16,7 +16,7 @@ interface NotifyRequest {
   ministryType?: string;
 }
 
-const WEEKEND_WORSHIP_MINISTRIES = new Set(["weekend", "weekend_team", "sunday_am", "speaker"]);
+const WEEKEND_WORSHIP_MINISTRIES = new Set(["weekend", "weekend_team", "sunday_am"]);
 
 function isWeekendWorshipRosterContext(
   ministryType?: string | null,
@@ -313,8 +313,9 @@ serve(async (req) => {
 
     // 3. Build notification recipient list.
     // Manual Weekend Worship pushes from Calendar resolve the scheduled worship team
-    // roster (band/vocal/speaker) with worship-scoped swaps and covers — matching the
-    // Calendar Band column. Automatic publish keeps the broader setlist roster RPC.
+    // roster (band/vocal) with worship-scoped swaps and covers — matching the
+    // Calendar Band column. Speakers have their own schedule notify path.
+    // Automatic publish keeps the broader setlist roster RPC.
     let userIdsToNotify: string[] = [];
     const useWeekendWorshipRoster =
       (manual || previewOnly) &&

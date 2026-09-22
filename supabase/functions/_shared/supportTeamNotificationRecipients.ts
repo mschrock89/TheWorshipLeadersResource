@@ -121,6 +121,8 @@ function ministryMatchesRosterFilter(
   return memberMinistries.includes(ministryType);
 }
 
+type SupportScheduleMinistry = "production" | "video" | "speaker";
+
 function getInferredPositionCategory(
   position?: string | null,
   positionSlot?: string | null,
@@ -215,7 +217,7 @@ function assignmentMatchesRosterFilter(
 
   if (
     (inferredPositionCategory === "Band" || inferredPositionCategory === "Vocalists") &&
-    (ministryType === "production" || ministryType === "video")
+    (ministryType === "production" || ministryType === "video" || ministryType === "speaker")
   ) {
     return false;
   }
@@ -233,7 +235,7 @@ function assignmentMatchesRosterFilter(
     return ministryMatchesRosterFilter([inferredMinistryType], ministryType);
   }
 
-  // Support-team pushes should only reach explicit production/video roles.
+  // Support-team pushes should only reach explicit production/video/speaker roles.
   return false;
 }
 
@@ -292,9 +294,9 @@ function memberMatchesRotationPeriod(
 function assignmentMatchesServiceDayForMinistry(
   assignment: Pick<TeamMemberLike, "service_day">,
   dateStr: string,
-  ministryType: "production" | "video",
+  ministryType: SupportScheduleMinistry,
 ): boolean {
-  if (ministryType === "production") {
+  if (ministryType === "production" || ministryType === "speaker") {
     return true;
   }
 
@@ -306,7 +308,7 @@ async function resolveSupportTeamNotificationUserIdsForDate(
   params: {
     scheduleDate: string;
     campusId: string;
-    ministryType: "production" | "video";
+    ministryType: SupportScheduleMinistry;
     teamId: string;
     rotationPeriodName?: string | null;
   },
@@ -443,7 +445,7 @@ export async function resolveSupportTeamNotificationUserIds(
   params: {
     scheduleDate: string;
     campusId: string;
-    ministryType: "production" | "video";
+    ministryType: SupportScheduleMinistry;
     teamId: string;
     rotationPeriodName?: string | null;
     campus?: CampusWeekendServiceConfig | null;
@@ -451,7 +453,7 @@ export async function resolveSupportTeamNotificationUserIds(
 ): Promise<string[]> {
   const { scheduleDate, ministryType, campus } = params;
   const scheduleDates =
-    ministryType === "production" && isWeekend(scheduleDate)
+    (ministryType === "production" || ministryType === "speaker") && isWeekend(scheduleDate)
       ? getWeekendScheduleDates(scheduleDate, campus)
       : [scheduleDate];
 

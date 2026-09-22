@@ -210,10 +210,12 @@ function VolunteerScheduleView() {
       if (dayOfWeek === 0 || dayOfWeek === 6) {
         // Use Saturday as the key for the weekend group
         const saturdayDate = dayOfWeek === 0 ? addDays(entry.date, -1) : entry.date;
-        const weekendKey = `${format(saturdayDate, "yyyy-MM-dd")}-${entry.teamId}`;
+        const weekendKey = `${format(saturdayDate, "yyyy-MM-dd")}-${entry.teamId}-${entry.ministryType}`;
 
         if (!weekendMap.has(weekendKey)) {
-          const displayMinistryTypes = getMinistryTypeForDate(entry.date, entry.ministryTypes);
+          const displayMinistryTypes = entry.ministryType === "speaker"
+            ? ["speaker"]
+            : getMinistryTypeForDate(entry.date, entry.ministryTypes);
           weekendMap.set(weekendKey, {
             teamId: entry.teamId,
             teamName: entry.teamName,

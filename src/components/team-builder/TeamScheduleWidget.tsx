@@ -511,6 +511,7 @@ export function TeamScheduleWidget({
                 <SelectItem value="ms_hs">MS/HS Worship</SelectItem>
                 <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                 <SelectItem value="student">Student</SelectItem>
+                <SelectItem value="speaker">Speakers</SelectItem>
               </SelectContent>
             </Select>
             {showPublishNetworkWide && (
@@ -623,6 +624,7 @@ export function TeamScheduleWidget({
                         <SelectItem value="ms_hs">MS/HS Worship</SelectItem>
                         <SelectItem value={ENCOUNTER_EON_COMBINED}>Combined (HS + MS Worship)</SelectItem>
                         <SelectItem value="student">Student</SelectItem>
+                        <SelectItem value="speaker">Speakers</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

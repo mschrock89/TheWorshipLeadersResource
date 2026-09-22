@@ -7,9 +7,12 @@ export interface CampusWeekendServiceConfig {
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
+export type SupportTeamScheduleMinistry = "production" | "video" | "speaker";
+
 const MINISTRY_LABELS: Record<string, string> = {
   production: "Production",
   video: "Video",
+  speaker: "Speakers",
 };
 
 function parseLocalDate(dateStr: string): Date {
@@ -191,7 +194,7 @@ export async function resolveSetlistConfirmLink(
 }
 
 export function buildSupportTeamPushContent(params: {
-  ministryType: "production" | "video";
+  ministryType: SupportTeamScheduleMinistry;
   teamName: string;
   scheduleDate: string;
   campus?: CampusWeekendServiceConfig | null;
@@ -242,11 +245,14 @@ export function buildSupportTeamPushContent(params: {
 }
 
 export function getSupportTeamPushTag(params: {
-  ministryType: "production" | "video";
+  ministryType: SupportTeamScheduleMinistry;
   campusId: string;
   scheduleDate: string;
 }): string {
-  if (params.ministryType === "production" && isWeekend(params.scheduleDate)) {
+  if (
+    (params.ministryType === "production" || params.ministryType === "speaker") &&
+    isWeekend(params.scheduleDate)
+  ) {
     return `schedule-date-${params.ministryType}-${params.campusId}-${getWeekendKey(params.scheduleDate)}`;
   }
   return `schedule-date-${params.ministryType}-${params.campusId}-${params.scheduleDate}`;

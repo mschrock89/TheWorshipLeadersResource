@@ -27,7 +27,7 @@ const ADMIN_LIKE_ROLES = new Set([
 interface NotifyScheduleRequest {
   scheduleDate: string;
   campusId: string;
-  ministryType: "production" | "video";
+  ministryType: "production" | "video" | "speaker";
   teamId?: string | null;
   customServiceId?: string | null;
   previewOnly?: boolean;
@@ -148,9 +148,9 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (ministryType !== "production" && ministryType !== "video") {
+    if (ministryType !== "production" && ministryType !== "video" && ministryType !== "speaker") {
       return new Response(
-        JSON.stringify({ error: "Only production or video schedule notifications are supported" }),
+        JSON.stringify({ error: "Only production, video, or speaker schedule notifications are supported" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }

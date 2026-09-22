@@ -3,9 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { formatDateForDB, parseLocalDate, campusHasServiceOnDate } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
-import { normalizeWeekendWorshipMinistryType, isWeekendTeamMinistryType } from "@/lib/constants";
+import { normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
-import { shouldSkipMisalignedSupportScheduleEntry } from "@/lib/teamScheduleSupport";
+import {
+  assignmentMatchesSupportScheduleMinistry,
+  inferAssignmentMinistryTypes,
+  shouldSkipMisalignedSupportScheduleEntry,
+} from "@/lib/teamScheduleSupport";
 
 export interface MyTeamAssignment {
   teamId: string;
@@ -56,30 +60,13 @@ interface MyTeamDateOverride {
 function assignmentMatchesMinistryTypes(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
+  position?: string | null,
+  positionSlot?: string | null,
 ): boolean {
-  if (memberMinistryTypes.length === 0 || !scheduleMinistryType) {
-    return true;
-  }
-
-  const normalizedScheduleMinistry =
-    normalizeWeekendWorshipMinistryType(scheduleMinistryType) || scheduleMinistryType;
-
-  // Video/production teams rotate on their own Team Builder schedule, independent of the
-  // weekend worship team. A video member must only light up on their team's video rows
-  // (and production on production rows), never on the team's weekend worship dates where
-  // a different team is actually running video.
-  return memberMinistryTypes.some((memberMinistry) => {
-    if (
-      isWeekendTeamMinistryType(memberMinistry) &&
-      isWeekendTeamMinistryType(scheduleMinistryType)
-    ) {
-      return true;
-    }
-
-    const normalizedMemberMinistry =
-      normalizeWeekendWorshipMinistryType(memberMinistry) || memberMinistry;
-    return normalizedMemberMinistry === normalizedScheduleMinistry;
-  });
+  return assignmentMatchesSupportScheduleMinistry(
+    inferAssignmentMinistryTypes(memberMinistryTypes, position, positionSlot),
+    scheduleMinistryType,
+  );
 }
 
 /** Weekend-family schedule rows should respect each campus's Sat/Sun service config. */
@@ -438,7 +425,12 @@ export function useMyTeamAssignments() {
           if (entry.schedule_date !== override.scheduleDate) return false;
           if (entry.team_id !== override.teamId) return false;
           const scheduleMinistryType = entry.ministry_type || "weekend";
-          return assignmentMatchesMinistryTypes(override.ministryTypes, scheduleMinistryType);
+          return assignmentMatchesMinistryTypes(
+            override.ministryTypes,
+            scheduleMinistryType,
+            override.position,
+            override.positionSlot,
+          );
         });
 
         for (const entry of matchingEntries) {
@@ -508,6 +500,8 @@ export function useMyTeamAssignments() {
               return assignmentMatchesMinistryTypes(
                 override.ministry_types || [],
                 scheduleMinistryType,
+                a.position,
+                a.positionSlot,
               );
             })
           ) {
@@ -544,7 +538,12 @@ export function useMyTeamAssignments() {
           // Get the user's ministry types for this assignment
           const userMinistryTypes = (a as any)?.ministryTypes || [];
 
-          return assignmentMatchesMinistryTypes(userMinistryTypes, scheduleMinistryType);
+          return assignmentMatchesMinistryTypes(
+            userMinistryTypes,
+            scheduleMinistryType,
+            a.position,
+            a.positionSlot,
+          );
         });
         
         // Skip this schedule entry if no matching assignments

@@ -63,9 +63,41 @@ export function assignmentMatchesServiceDay(
   return assignmentBelongsOnServiceDay(serviceDay, dateServiceDay);
 }
 
-// Group the interchangeable weekend worship aliases, but keep video/production distinct:
-// support teams rotate on their own schedule, so a video member is only "scheduled" on
-// their team's video rows, never on the team's weekend worship dates.
+const SPEAKER_POSITION_TOKENS = new Set([
+  "teacher",
+  "announcement",
+  "announcements",
+  "closing_prayer",
+  "closer",
+]);
+
+export function isSpeakerAssignmentPosition(
+  position?: string | null,
+  positionSlot?: string | null,
+): boolean {
+  return [positionSlot, position].some((value) =>
+    SPEAKER_POSITION_TOKENS.has((value || "").trim().toLowerCase()),
+  );
+}
+
+/** When ministry tags are missing, infer Speakers from the Teacher / Announcement / Closer slot. */
+export function inferAssignmentMinistryTypes(
+  ministryTypes: string[] | null | undefined,
+  position?: string | null,
+  positionSlot?: string | null,
+): string[] {
+  if (Array.isArray(ministryTypes) && ministryTypes.length > 0) {
+    return ministryTypes;
+  }
+  if (isSpeakerAssignmentPosition(position, positionSlot)) {
+    return ["speaker"];
+  }
+  return [];
+}
+
+// Group the interchangeable weekend worship aliases, but keep video/production/speaker
+// distinct: those ministries rotate on their own Team Builder schedule, so a speaker
+// is only "scheduled" on speaker rows, never leftover weekend worship dates.
 const normalizeScheduleMinistryGroup = (ministryType: string) =>
   WEEKEND_ANCHOR_MINISTRY_TYPES.has(ministryType) ? "weekend" : ministryType;
 
@@ -73,12 +105,26 @@ export function assignmentMatchesSupportScheduleMinistry(
   memberMinistryTypes: string[],
   scheduleMinistryType: string,
 ): boolean {
-  if (memberMinistryTypes.length === 0 || !scheduleMinistryType) {
-    return true;
+  if (!scheduleMinistryType) {
+    return memberMinistryTypes.length === 0;
   }
 
   const normalizedSchedule = normalizeScheduleMinistryGroup(scheduleMinistryType);
-  return memberMinistryTypes.some(
-    (memberMinistry) => normalizeScheduleMinistryGroup(memberMinistry) === normalizedSchedule,
-  );
+  const normalizedMemberMinistries = memberMinistryTypes.map(normalizeScheduleMinistryGroup);
+
+  if (WEEKEND_INDEPENDENT_MINISTRY_TYPES.has(normalizedSchedule)) {
+    return normalizedMemberMinistries.includes(normalizedSchedule);
+  }
+
+  if (normalizedMemberMinistries.length === 0) {
+    return true;
+  }
+
+  // Speaker-only (or production/video-only) people must not inherit leftover
+  // weekend worship dates just because they sit on the same Team 1/2/3/4.
+  if (normalizedMemberMinistries.every((ministry) => WEEKEND_INDEPENDENT_MINISTRY_TYPES.has(ministry))) {
+    return normalizedMemberMinistries.includes(normalizedSchedule);
+  }
+
+  return normalizedMemberMinistries.includes(normalizedSchedule);
 }
