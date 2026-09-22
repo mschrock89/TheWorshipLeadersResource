@@ -993,6 +993,9 @@ export function useConfirmSetlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
       queryClient.invalidateQueries({ queryKey: ["setlist-confirmation-status"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-confirmations"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-confirmations-combined"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-setlist-confirmations"] });
       toast({
         title: "Setlist confirmed",
         description: "You've confirmed that you've reviewed this setlist.",
@@ -1065,6 +1068,9 @@ export function useConfirmSetlists() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["published-setlists"] });
       queryClient.invalidateQueries({ queryKey: ["setlist-confirmation-status"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-confirmations"] });
+      queryClient.invalidateQueries({ queryKey: ["setlist-confirmations-combined"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-setlist-confirmations"] });
       toast({
         title: "Setlist confirmed",
         description: "You've confirmed that you've reviewed this setlist.",

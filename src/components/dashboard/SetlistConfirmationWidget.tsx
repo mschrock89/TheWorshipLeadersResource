@@ -57,6 +57,12 @@ interface SetlistDetails {
   audition_end_time?: string | null;
 }
 
+interface SpecialSetRoster {
+  members: SetlistMember[];
+  audition_start_time?: string | null;
+  audition_end_time?: string | null;
+}
+
 interface PublishedSetlist {
   id: string;
   campus_id: string;
@@ -562,9 +568,11 @@ function SetlistRow({
     },
   });
 
-  const { data: specialSetDetails, isLoading: isSpecialDetailsLoading } = useQuery({
-    queryKey: ["setlist-special-details", setlist.id, targetRosterMinistry, setlist.custom_service_id],
-    queryFn: async (): Promise<SetlistDetails | null> => {
+  // Roster-only fetch. Confirmations are merged later so this query never
+  // snapshots an empty confirmation list from a still-loading sibling query.
+  const { data: specialRoster, isLoading: isSpecialRosterLoading } = useQuery({
+    queryKey: ["setlist-special-roster", setlist.id, targetRosterMinistry, setlist.custom_service_id],
+    queryFn: async (): Promise<SpecialSetRoster | null> => {
       if (!isAudition && !isCustomServiceSet) {
         return null;
       }
@@ -599,32 +607,46 @@ function SetlistRow({
 
         if (auditionRowsError) throw auditionRowsError;
 
-        const scheduledMembers = userIds.map((userId) => ({
-          userId,
-          name: profileMap.get(userId)?.full_name || "Unknown",
-          avatarUrl: profileMap.get(userId)?.avatar_url || null,
-          isSwappedIn: false,
-        }));
-
-        const details = buildConfirmationDetails(scheduledMembers, confirmations);
         const primaryAudition = (auditionRows || [])[0] || null;
 
         return {
-          ...details,
+          members: userIds.map((userId) => ({
+            userId,
+            name: profileMap.get(userId)?.full_name || "Unknown",
+            avatarUrl: profileMap.get(userId)?.avatar_url || null,
+            isSwappedIn: false,
+          })),
           audition_start_time: primaryAudition?.start_time || null,
           audition_end_time: primaryAudition?.end_time || null,
         };
       }
 
-      const { data: assignments, error: assignmentsError } = await supabase
-        .from("custom_service_assignments")
-        .select("user_id, role")
-        .eq("custom_service_id", setlist.custom_service_id!)
-        .eq("assignment_date", setlist.plan_date);
+      const [{ data: customService, error: customServiceError }, { data: assignments, error: assignmentsError }] =
+        await Promise.all([
+          supabase
+            .from("custom_services")
+            .select("service_date, repeats_weekly")
+            .eq("id", setlist.custom_service_id!)
+            .maybeSingle(),
+          supabase
+            .from("custom_service_assignments")
+            .select("user_id, role, assignment_date")
+            .eq("custom_service_id", setlist.custom_service_id!),
+        ]);
 
+      if (customServiceError) throw customServiceError;
       if (assignmentsError) throw assignmentsError;
 
-      const profileIds = [...new Set((assignments || []).map((assignment) => assignment.user_id).filter(Boolean))];
+      const matchingAssignments = (assignments || []).filter((assignment) => {
+        if (assignment.assignment_date === setlist.plan_date) return true;
+        return (
+          !!customService &&
+          !customService.repeats_weekly &&
+          assignment.assignment_date === customService.service_date
+        );
+      });
+
+      const profileIds = [...new Set(matchingAssignments.map((assignment) => assignment.user_id).filter(Boolean))];
       const { data: basicProfiles, error: profilesError } = await supabase.rpc("get_basic_profiles");
       if (profilesError) throw profilesError;
 
@@ -642,7 +664,7 @@ function SetlistRow({
       };
 
       const membersByUser = new Map<string, SetlistMember>();
-      for (const assignment of assignments || []) {
+      for (const assignment of matchingAssignments) {
         if (!assignment.user_id || !customRoleMatchesFilter(assignment.role)) continue;
         if (!membersByUser.has(assignment.user_id)) {
           const profile = profileMap.get(assignment.user_id);
@@ -655,20 +677,25 @@ function SetlistRow({
         }
       }
 
-      return buildConfirmationDetails(Array.from(membersByUser.values()), confirmations);
+      return { members: Array.from(membersByUser.values()) };
     },
     enabled: isAudition || isCustomServiceSet,
   });
 
   const details = useMemo(() => {
     if (isAudition || isCustomServiceSet) {
-      return specialSetDetails;
+      if (!specialRoster) return null;
+      return {
+        ...buildConfirmationDetails(specialRoster.members, confirmations),
+        audition_start_time: specialRoster.audition_start_time,
+        audition_end_time: specialRoster.audition_end_time,
+      };
     }
 
     return buildConfirmationDetails(buildMembersFromRoster(roster), confirmations);
-  }, [confirmations, isAudition, isCustomServiceSet, roster, specialSetDetails]);
+  }, [confirmations, isAudition, isCustomServiceSet, roster, specialRoster]);
 
-  const isLoading = isConfirmationsLoading || isSpecialDetailsLoading || (usesScheduledRoster && (isScheduledTeamLoading || isRosterLoading));
+  const isLoading = isConfirmationsLoading || isSpecialRosterLoading || (usesScheduledRoster && (isScheduledTeamLoading || isRosterLoading));
 
   return (
     <ConfirmationRowView
