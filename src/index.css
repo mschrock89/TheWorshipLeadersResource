@@ -679,20 +679,9 @@ html.service-flow-export-mode .service-flow-print-pair {
   height: 7.9in !important;
 }
 
-@page service-flow-portrait {
-  margin: 0.25in;
-  size: letter portrait;
-}
-
-html.service-flow-print-portrait,
-.service-flow-print-single {
-  page: service-flow-portrait;
-}
-
 @media print {
   @page {
     margin: 0.25in;
-    size: letter landscape;
   }
 
   /* Hide navigation, header, sidebar, footer */

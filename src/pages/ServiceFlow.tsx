@@ -16,7 +16,7 @@ import type { ServiceFlowPrintLayout } from "@/components/service-flow/printServ
 import { cn } from "@/lib/cn";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
-const PORTRAIT_PRINT_CLASS = "service-flow-print-portrait";
+const PRINT_PAGE_STYLE_ID = "service-flow-print-page-size";
 
 function ServiceFlowOutputMenu({
   label,
@@ -54,7 +54,18 @@ function ServiceFlowOutputMenu({
 }
 
 function clearServiceFlowExportMode() {
-  document.documentElement.classList.remove(EXPORT_MODE_CLASS, PORTRAIT_PRINT_CLASS);
+  document.documentElement.classList.remove(EXPORT_MODE_CLASS);
+  document.getElementById(PRINT_PAGE_STYLE_ID)?.remove();
+}
+
+function setPrintPageOrientation(layout: ServiceFlowPrintLayout) {
+  document.getElementById(PRINT_PAGE_STYLE_ID)?.remove();
+  const style = document.createElement("style");
+  style.id = PRINT_PAGE_STYLE_ID;
+  // Chrome's print preview uses the unnamed @page size. A named page does not
+  // turn the sheet, so this rule is injected last and is the only page size.
+  style.textContent = `@page { size: letter ${layout === "full" ? "portrait" : "landscape"}; margin: 0.25in; }`;
+  document.head.appendChild(style);
 }
 
 export default function ServiceFlow() {
@@ -151,7 +162,7 @@ export default function ServiceFlow() {
 
     document.title = "Service Flow Print";
     html.classList.add(EXPORT_MODE_CLASS);
-    if (layout === "full") html.classList.add(PORTRAIT_PRINT_CLASS);
+    setPrintPageOrientation(layout);
     window.addEventListener("afterprint", cleanup);
 
     window.setTimeout(() => {
