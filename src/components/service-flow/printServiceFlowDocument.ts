@@ -62,8 +62,8 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
               ${item.notes ? `<span class="item-notes">${escapeHtml(item.notes)}</span>` : ""}
             </div>
             <span class="item-times">
-              ${item.clockTime ? `<span class="item-clock">${escapeHtml(item.clockTime)}</span>` : ""}
               <span class="item-duration">${escapeHtml(item.duration || "")}</span>
+              ${item.clockTime ? `<span class="item-clock">${escapeHtml(item.clockTime)}</span>` : ""}
             </span>
           </li>`;
         })
@@ -332,9 +332,10 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
 
     .item-times {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 0.03in;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.08in;
       flex-shrink: 0;
     }
 

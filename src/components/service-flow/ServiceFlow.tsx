@@ -327,14 +327,14 @@ export const ServiceFlow = memo(function ServiceFlow({
                                   </p>
                                 ) : null}
                                 <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-1">
-                                  {item.clockTime ? (
-                                    <div className="service-flow-print-item-time print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
-                                      {item.clockTime}
-                                    </div>
-                                  ) : null}
                                   <div className="service-flow-print-item-time print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
                                     {item.duration}
                                   </div>
+                                  {item.clockTime ? (
+                                    <div className="service-flow-print-item-time print:border-0 print:px-0 print:py-0 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
+                                      {item.clockTime}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </div>
                             ) : (
@@ -360,14 +360,14 @@ export const ServiceFlow = memo(function ServiceFlow({
                                   </div>
 
                                   <div className="flex shrink-0 items-center gap-2">
-                                    {item.clockTime ? (
-                                      <div className="rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-800">
-                                        {item.clockTime}
-                                      </div>
-                                    ) : null}
                                     <div className="rounded-lg border-2 border-slate-200 bg-white px-3 py-1 text-sm font-semibold tabular-nums text-slate-900">
                                       {item.duration}
                                     </div>
+                                    {item.clockTime ? (
+                                      <div className="text-sm font-semibold tabular-nums text-slate-800">
+                                        {item.clockTime}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </div>
 
