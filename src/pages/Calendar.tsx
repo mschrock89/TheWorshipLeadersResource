@@ -55,7 +55,7 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
-import { getEffectiveCustomServiceMinistryType } from "@/lib/customServiceMinistry";
+import { getEffectiveCustomServiceMinistryType, getServiceFlowMinistryType } from "@/lib/customServiceMinistry";
 import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
 import { supabase } from "@/integrations/supabase/client";
@@ -1400,7 +1400,7 @@ function StandardCalendar() {
         id: `calendar-service-flow-${service.id}`,
         date: service.occurrence_date || selectedDateStr,
         campusId: service.campus_id,
-        ministryType: getEffectiveCustomServiceMinistryType(
+        ministryType: getServiceFlowMinistryType(
           service.ministry_type,
           service.service_name,
         ),

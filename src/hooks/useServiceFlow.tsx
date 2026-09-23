@@ -8,7 +8,7 @@ import {
   normalizeSessionSetMinistryType,
 } from "@/lib/constants";
 import {
-  getEffectiveCustomServiceMinistryType,
+  getServiceFlowMinistryType,
   isSpecialtyCustomServiceMinistry,
   isWeekendMinistryType,
 } from "@/lib/customServiceMinistry";
@@ -1375,7 +1375,7 @@ export async function generateServiceFlowFromTemplate(params: {
     customService = fetchedCustomService;
   }
 
-  const effectiveCustomServiceMinistry = getEffectiveCustomServiceMinistryType(
+  const effectiveCustomServiceMinistry = getServiceFlowMinistryType(
     customService?.ministry_type || params.ministryType,
     customService?.service_name || "",
   );

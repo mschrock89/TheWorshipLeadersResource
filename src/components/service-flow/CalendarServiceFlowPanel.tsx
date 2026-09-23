@@ -19,6 +19,7 @@ import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { isKidsCampSetMinistryType, isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
+import { isSpecialtyCustomServiceMinistry, isWeekendMinistryType } from "@/lib/customServiceMinistry";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -365,7 +366,12 @@ export function CalendarServiceFlowPanel({
       if (!activeFlowId && !draftSetId && draftSetLoading) return;
       if (isNetworkWide && !networkWideCampus) return;
       if (!flowCampusId || !user?.id) return;
-      if (activeFlowId) return;
+      // A Weekend-saved flow for a Worship Night / Prayer Night still has the weekend
+      // order. Rebuild it from the specialty template even though a flow row exists.
+      const needsSpecialtyTemplate =
+        isWeekendMinistryType(serviceFlow?.ministry_type) &&
+        isSpecialtyCustomServiceMinistry(effectiveMinistryType);
+      if (activeFlowId && !needsSpecialtyTemplate) return;
       if (hasAttemptedGenerate.current || isGenerating) return;
 
       hasAttemptedGenerate.current = true;
@@ -384,8 +390,10 @@ export function CalendarServiceFlowPanel({
     void run();
   }, [
     activeFlowId,
+    serviceFlow?.ministry_type,
     draftSetId,
     draftSetLoading,
+    effectiveMinistryType,
     flowLoading,
     flowCampusId,
     generateFromTemplate,
