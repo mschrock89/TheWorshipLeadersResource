@@ -99,7 +99,7 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     @page {
-      size: letter landscape;
+      size: letter ${layout === "full" ? "portrait" : "landscape"};
       margin: 0;
     }
 
@@ -119,8 +119,8 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
       font-size: 14px;
       line-height: 1.45;
       padding: 0.2in;
-      /* Exactly one landscape-letter page; anything taller is scaled down to fit. */
-      height: 8.5in;
+      /* Exactly one letter page; anything taller is scaled down to fit. */
+      height: ${layout === "full" ? "11in" : "8.5in"};
       overflow: hidden;
     }
 
@@ -352,10 +352,12 @@ export function printServiceFlowDocument(
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "Service Flow Print");
   iframe.setAttribute("aria-hidden", "true");
-  // Match the printed page size (letter landscape at 96dpi) so on-screen layout
-  // measurements agree with the print layout. Kept invisible and inert.
+  // Match the printed page size at 96dpi so on-screen layout measurements agree
+  // with the print layout. Kept invisible and inert.
+  const pageWidth = layout === "full" ? "8.5in" : "11in";
+  const pageHeight = layout === "full" ? "11in" : "8.5in";
   iframe.style.cssText =
-    "position:fixed;right:0;bottom:0;width:11in;height:8.5in;border:0;opacity:0;visibility:hidden;pointer-events:none;";
+    `position:fixed;right:0;bottom:0;width:${pageWidth};height:${pageHeight};border:0;opacity:0;visibility:hidden;pointer-events:none;`;
   document.body.appendChild(iframe);
 
   const frameWindow = iframe.contentWindow;

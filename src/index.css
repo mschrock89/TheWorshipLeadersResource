@@ -679,6 +679,16 @@ html.service-flow-export-mode .service-flow-print-pair {
   height: 7.9in !important;
 }
 
+@page service-flow-portrait {
+  margin: 0.25in;
+  size: letter portrait;
+}
+
+html.service-flow-print-portrait,
+.service-flow-print-single {
+  page: service-flow-portrait;
+}
+
 @media print {
   @page {
     margin: 0.25in;
@@ -1212,12 +1222,12 @@ html.service-flow-export-mode .service-flow-print-pair {
     grid-template-columns: minmax(0, 1fr) !important;
     gap: 0 !important;
     align-items: stretch !important;
-    min-height: 7.9in !important;
-    height: 7.9in !important;
+    min-height: 10.4in !important;
+    height: 10.4in !important;
   }
 }
 
-/* One service-flow rendering per landscape sheet, filling the page. */
+/* One service-flow rendering per portrait letter sheet, filling the page. */
 html.service-flow-export-mode .service-flow-page .service-flow-print-single,
 .service-flow-page .service-flow-print-single {
   width: 100% !important;
@@ -1226,8 +1236,8 @@ html.service-flow-export-mode .service-flow-page .service-flow-print-single,
   grid-template-columns: minmax(0, 1fr) !important;
   gap: 0 !important;
   align-items: stretch !important;
-  min-height: 7.9in !important;
-  height: 7.9in !important;
+  min-height: 10.4in !important;
+  height: 10.4in !important;
 }
 
 html.service-flow-export-mode .service-flow-page .service-flow-print-single {

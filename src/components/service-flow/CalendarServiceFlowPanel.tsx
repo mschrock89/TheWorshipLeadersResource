@@ -739,7 +739,7 @@ export function CalendarServiceFlowPanel({
               className="flex flex-col items-start gap-0.5"
             >
               <span>One per page</span>
-              <span className="text-xs text-muted-foreground">Full sheet</span>
+              <span className="text-xs text-muted-foreground">Portrait, full sheet</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

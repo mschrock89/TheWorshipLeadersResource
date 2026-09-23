@@ -16,6 +16,7 @@ import type { ServiceFlowPrintLayout } from "@/components/service-flow/printServ
 import { cn } from "@/lib/cn";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
+const PORTRAIT_PRINT_CLASS = "service-flow-print-portrait";
 
 function ServiceFlowOutputMenu({
   label,
@@ -45,7 +46,7 @@ function ServiceFlowOutputMenu({
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onSelect("full")} className="flex flex-col items-start gap-0.5">
           <span>One per page</span>
-          <span className="text-xs text-muted-foreground">Full sheet</span>
+          <span className="text-xs text-muted-foreground">Portrait, full sheet</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -53,7 +54,7 @@ function ServiceFlowOutputMenu({
 }
 
 function clearServiceFlowExportMode() {
-  document.documentElement.classList.remove(EXPORT_MODE_CLASS);
+  document.documentElement.classList.remove(EXPORT_MODE_CLASS, PORTRAIT_PRINT_CLASS);
 }
 
 export default function ServiceFlow() {
@@ -150,6 +151,7 @@ export default function ServiceFlow() {
 
     document.title = "Service Flow Print";
     html.classList.add(EXPORT_MODE_CLASS);
+    if (layout === "full") html.classList.add(PORTRAIT_PRINT_CLASS);
     window.addEventListener("afterprint", cleanup);
 
     window.setTimeout(() => {
