@@ -98,7 +98,7 @@ import {
   isBlankTeamBuilderAssignment,
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
-import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
+import { assignmentBelongsOnServiceDay, defaultMinistryTypesForAssignment } from "@/lib/teamScheduleSupport";
 import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
@@ -1459,7 +1459,11 @@ export default function TeamBuilder() {
       existingAssignments.push({
         teamId: member.team_id,
         positionSlot: member.position_slot,
-        ministryTypes: member.ministry_types?.length ? member.ministry_types : ["weekend"],
+        ministryTypes: defaultMinistryTypesForAssignment(
+          member.ministry_types,
+          member.position,
+          member.position_slot,
+        ),
         serviceDay: member.service_day,
         scheduleDate: null,
       });
@@ -1473,7 +1477,11 @@ export default function TeamBuilder() {
       existingAssignments.push({
         teamId: override.team_id,
         positionSlot: override.position_slot,
-        ministryTypes: override.ministry_types?.length ? override.ministry_types : ["weekend"],
+        ministryTypes: defaultMinistryTypesForAssignment(
+          override.ministry_types,
+          override.position,
+          override.position_slot,
+        ),
         serviceDay: null,
         scheduleDate: override.schedule_date,
       });

@@ -80,19 +80,37 @@ export function isSpeakerAssignmentPosition(
   );
 }
 
-/** When ministry tags are missing, infer Speakers from the Teacher / Announcement / Closer slot. */
+/**
+ * Teacher / Announcement / Closer slots belong to Speakers even when the row
+ * still carries leftover weekend tags from before the ministry split.
+ */
 export function inferAssignmentMinistryTypes(
   ministryTypes: string[] | null | undefined,
   position?: string | null,
   positionSlot?: string | null,
 ): string[] {
-  if (Array.isArray(ministryTypes) && ministryTypes.length > 0) {
-    return ministryTypes;
-  }
   if (isSpeakerAssignmentPosition(position, positionSlot)) {
     return ["speaker"];
   }
+  if (Array.isArray(ministryTypes) && ministryTypes.length > 0) {
+    return ministryTypes;
+  }
   return [];
+}
+
+/** Persist/display default: speaker slots are Speakers, everything else falls back to Weekend. */
+export function defaultMinistryTypesForAssignment(
+  ministryTypes: string[] | null | undefined,
+  position?: string | null,
+  positionSlot?: string | null,
+): string[] {
+  if (isSpeakerAssignmentPosition(position, positionSlot)) {
+    return ["speaker"];
+  }
+  if (Array.isArray(ministryTypes) && ministryTypes.length > 0) {
+    return ministryTypes;
+  }
+  return ["weekend"];
 }
 
 // Group the interchangeable weekend worship aliases, but keep video/production/speaker

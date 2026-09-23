@@ -40,7 +40,7 @@ import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
 } from "@/lib/constants";
-import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
+import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import {
   useDeleteServiceTimeOverride,
   useServiceTimeOverrides,
@@ -4109,7 +4109,10 @@ function BandRoster({
       // would silently drop every untagged band/vocalist, which is why the Calendar roster
       // looked emptier than My Setlists.
       const filteredRoster = normalizedRosterRaw.filter(
-        m => m.ministryTypes.length === 0 || m.ministryTypes.some(mt => weekendTeamMinistries.has(mt)),
+        m =>
+          !m.positions.some((position) => isSpeakerAssignmentPosition(position)) &&
+          !m.positionSlots?.some((slot) => isSpeakerAssignmentPosition(null, slot)) &&
+          (m.ministryTypes.length === 0 || m.ministryTypes.some(mt => weekendTeamMinistries.has(mt))),
       );
       const mergedRoster = new Map<string, typeof filteredRoster[number]>();
 
@@ -4334,14 +4337,9 @@ function BandRoster({
     : normalizedVideoRoster.length > 0
       ? directVideoMembers
       : fallbackVideoMembers;
-  const fallbackSpeakerMembers = roster.filter((member) =>
-    !isVocalist(member.positions) && isSpeaker(member.positions),
-  );
   const shownSpeakerMembers = isSpeakerMinistryFilter
     ? roster.filter((member) => isSpeaker(member.positions) || member.ministryTypes.includes("speaker"))
-    : normalizedSpeakerRoster.length > 0
-      ? normalizedSpeakerRoster.filter((member) => isSpeaker(member.positions) || member.ministryTypes.includes("speaker"))
-      : fallbackSpeakerMembers;
+    : normalizedSpeakerRoster.filter((member) => isSpeaker(member.positions) || member.ministryTypes.includes("speaker"));
 
   // Band/vocal/speaker members come from the main roster minus any prod/video members that
   // are surfaced in their own columns. Combine those with the displayed prod/video crew so

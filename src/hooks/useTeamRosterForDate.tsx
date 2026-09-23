@@ -11,9 +11,9 @@ import {
   buildFirstScheduledDateByRotationName,
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
-import { assignmentBelongsOnServiceDay } from "@/lib/teamScheduleSupport";
+import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 
-const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
+const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 
 function swapMinistryValuesForRoster(ministryType?: string): string[] | null {
@@ -119,6 +119,12 @@ const assignmentMatchesRosterFilter = (
   ministryType?: string,
 ) => {
   if (!ministryType) return true;
+
+  // Teacher / Announcements / Closing Prayer belong only to Speakers, even when
+  // leftover Weekend tags are still sitting on the row.
+  if (isSpeakerAssignmentPosition(assignment.position, assignment.position_slot)) {
+    return ministryType === "speaker";
+  }
 
   const inferredPositionCategory = getInferredPositionCategoryForAssignment(
     assignment.position,
