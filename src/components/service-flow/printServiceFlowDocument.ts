@@ -39,7 +39,9 @@ function splitServiceTitle(title: string) {
   return { primary: title.trim(), secondary: null as string | null };
 }
 
-export function buildPrintHtml(service: Service) {
+export type ServiceFlowPrintLayout = "half" | "full";
+
+export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout = "half") {
   const { primary, secondary } = splitServiceTitle(service.title);
   const formattedDate = formatServiceDate(service.date);
 
@@ -131,6 +133,25 @@ export function buildPrintHtml(service: Service) {
       height: 100%;
       min-width: 0;
     }
+
+    .pair-single {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    body.layout-full .sheet-title-primary { font-size: 40px; }
+    body.layout-full .sheet-title-secondary { font-size: 22px; }
+    body.layout-full .sheet-date { font-size: 18px; }
+    body.layout-full .sheet-kicker { font-size: 13px; }
+    body.layout-full .sheet-total-label { font-size: 13px; }
+    body.layout-full .sheet-total-value { font-size: 32px; }
+    body.layout-full .sheet-header { padding: 0.28in 0.32in 0.22in; }
+    body.layout-full .sheet-body { padding: 0.22in 0.32in 0.28in; gap: 0.2in; }
+    body.layout-full .section-title { font-size: 16px; padding: 0.08in 0.14in; }
+    body.layout-full .item { padding: 0.12in 0; }
+    body.layout-full .item-title { font-size: 22px; }
+    body.layout-full .item-meta { font-size: 16px; }
+    body.layout-full .item-duration { font-size: 16px; min-width: 0.7in; padding: 0.06in 0.1in; }
 
     .sheet {
       border: 1px solid ${BRAND.line};
@@ -310,10 +331,9 @@ export function buildPrintHtml(service: Service) {
     }
   </style>
 </head>
-<body>
-  <div class="pair">
-    ${sheet}
-    ${sheet}
+<body class="${layout === "full" ? "layout-full" : "layout-half"}">
+  <div class="pair${layout === "full" ? " pair-single" : ""}">
+    ${layout === "full" ? sheet : `${sheet}${sheet}`}
   </div>
 </body>
 </html>`;
@@ -324,8 +344,11 @@ export function buildPrintHtml(service: Service) {
  * Uses a detached iframe so we never run window.print() against the live app document
  * (which can freeze Electron / Cursor when the Calendar DOM is huge).
  */
-export function printServiceFlowDocument(service: Service) {
-  const html = buildPrintHtml(service);
+export function printServiceFlowDocument(
+  service: Service,
+  layout: ServiceFlowPrintLayout = "half",
+) {
+  const html = buildPrintHtml(service, layout);
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "Service Flow Print");
   iframe.setAttribute("aria-hidden", "true");

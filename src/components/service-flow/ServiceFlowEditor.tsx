@@ -53,6 +53,7 @@ import {
 } from "@/hooks/useServiceFlow";
 import { ServiceFlowItem } from "./ServiceFlowItem";
 import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewData } from "./ServiceFlow";
+import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { cn } from "@/lib/cn";
@@ -69,7 +70,7 @@ interface ServiceFlowEditorProps {
 }
 
 export type ServiceFlowEditorHandle = {
-  preparePrint: () => Promise<void>;
+  preparePrint: (layout?: ServiceFlowPrintLayout) => Promise<void>;
   releasePrint: () => void;
 };
 
@@ -246,6 +247,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const [localItems, setLocalItems] = useState<ServiceFlowItemType[]>([]);
   const [isAutoGenerating, setIsAutoGenerating] = useState(false);
   const [printMounted, setPrintMounted] = useState(false);
+  const [printLayout, setPrintLayout] = useState<ServiceFlowPrintLayout>("half");
   const hasAttemptedAutoGenerate = useRef(false);
   const hasAttemptedEmptyBackfill = useRef(false);
   const hasSyncedSetlist = useRef(false);
@@ -263,30 +265,31 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const cameFromLive = !!(initialDate && (initialCampusId || initialMinistryType));
 
   useImperativeHandle(ref, () => ({
-    preparePrint: () =>
+    preparePrint: (layout: ServiceFlowPrintLayout = "half") =>
       new Promise<void>((resolve) => {
-        if (printMounted) {
+        if (printMounted && printLayout === layout) {
           resolve();
           return;
         }
         printReadyResolveRef.current = resolve;
+        setPrintLayout(layout);
         setPrintMounted(true);
       }),
     releasePrint: () => {
       printReadyResolveRef.current = null;
       setPrintMounted(false);
     },
-  }), [printMounted]);
+  }), [printLayout, printMounted]);
 
   useEffect(() => {
     if (!printMounted || !printReadyResolveRef.current) return;
     const resolve = printReadyResolveRef.current;
     printReadyResolveRef.current = null;
-    // Wait for React commit + browser paint so print CSS sees the dual half-sheets.
+    // Wait for React commit + browser paint so print CSS sees the sheet layout.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => resolve());
     });
-  }, [printMounted]);
+  }, [printLayout, printMounted]);
 
   // Sync initial campus from URL to context on mount
   useEffect(() => {
@@ -1395,7 +1398,8 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   // Must run after servicePreview is defined so the dependency array does not TDZ-crash render.
   useLayoutEffect(() => {
     const pair = printPairRef.current;
-    if (!printMounted || !pair) {
+    if (!printMounted || !pair || printLayout !== "half") {
+      printCloneRef.current?.remove();
       printCloneRef.current = null;
       return;
     }
@@ -1417,7 +1421,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       printCloneRef.current?.remove();
       printCloneRef.current = null;
     };
-  }, [printMounted, servicePreview]);
+  }, [printLayout, printMounted, servicePreview]);
 
   return (
     <div className="service-flow-editor space-y-4">
@@ -1600,13 +1604,18 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       {printMounted && !isLoading && localItems.length > 0 ? (
         <div
           ref={printPairRef}
-          className="service-flow-print-render service-flow-print-pair hidden print:grid print:grid-cols-2 print:gap-[0.2in]"
+          className={cn(
+            "service-flow-print-render hidden print:grid",
+            printLayout === "full"
+              ? "service-flow-print-single print:grid-cols-1"
+              : "service-flow-print-pair print:grid-cols-2 print:gap-[0.2in]",
+          )}
         >
           <ServiceFlowPreview
             service={servicePreview}
             compactMode
             showProgressBar={false}
-            printFitHalfSheet
+            printLayout={printLayout}
           />
         </div>
       ) : null}

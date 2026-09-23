@@ -1204,6 +1204,129 @@ html.service-flow-export-mode .service-flow-print-pair {
     margin-top: auto !important;
     padding-top: 0.01in !important;
   }
+
+  .service-flow-page .service-flow-print-single {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0 !important;
+    align-items: stretch !important;
+    min-height: 7.9in !important;
+    height: 7.9in !important;
+  }
+}
+
+/* One service-flow rendering per landscape sheet, filling the page. */
+html.service-flow-export-mode .service-flow-page .service-flow-print-single,
+.service-flow-page .service-flow-print-single {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  align-items: stretch !important;
+  min-height: 7.9in !important;
+  height: 7.9in !important;
+}
+
+html.service-flow-export-mode .service-flow-page .service-flow-print-single {
+  display: grid !important;
+  visibility: visible !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-full-sheet-card,
+.service-flow-page .service-flow-print-single .service-flow-half-sheet-card {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-card-header {
+  padding: 0.18in 0.28in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-kicker {
+  display: block !important;
+  font-size: 11pt !important;
+  letter-spacing: 0.18em !important;
+  line-height: 1.2 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-heading {
+  font-size: 26pt !important;
+  line-height: 1.05 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-date {
+  font-size: 13pt !important;
+  line-height: 1.2 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-total-label {
+  font-size: 10pt !important;
+  line-height: 1.1 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-total-value {
+  font-size: 22pt !important;
+  line-height: 1.05 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-half-sheet-body {
+  padding: 0.16in 0.24in 0.18in !important;
+  gap: 0.1in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-section-title {
+  font-size: 13pt !important;
+  letter-spacing: 0.16em !important;
+  line-height: 1.15 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-section-runtime {
+  display: block !important;
+  font-size: 11pt !important;
+  line-height: 1.15 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-half-sheet-item {
+  min-height: 0 !important;
+  padding: 0.07in 0.16in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-row {
+  gap: 0.12in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-title {
+  font-size: 16pt !important;
+  line-height: 1.2 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-meta {
+  font-size: 12pt !important;
+  line-height: 1.2 !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-time {
+  font-size: 13pt !important;
+  line-height: 1.1 !important;
+  padding: 0.04in 0.08in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-icon {
+  width: 0.38in !important;
+  height: 0.38in !important;
+  min-width: 0.38in !important;
+  min-height: 0.38in !important;
+}
+
+.service-flow-page .service-flow-print-single .service-flow-print-item-icon-glyph {
+  width: 0.22in !important;
+  height: 0.22in !important;
 }
 
 /* Inline Service Flow preview on Calendar — compact, mobile-safe */

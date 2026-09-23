@@ -1,20 +1,56 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Printer, Download } from "lucide-react";
+import { ArrowLeft, ChevronDown, Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ServiceFlowEditor,
   type ServiceFlowEditorHandle,
 } from "@/components/service-flow/ServiceFlowEditor";
+import type { ServiceFlowPrintLayout } from "@/components/service-flow/printServiceFlowDocument";
 import { cn } from "@/lib/cn";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
+
+function ServiceFlowOutputMenu({
+  label,
+  icon,
+  onSelect,
+}: {
+  label: string;
+  icon: ReactNode;
+  onSelect: (layout: ServiceFlowPrintLayout) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          aria-label={label}
+          className="h-9 gap-0.5 rounded-md px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {icon}
+          <ChevronDown className="h-3 w-3 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={() => onSelect("half")} className="flex flex-col items-start gap-0.5">
+          <span>Two per page</span>
+          <span className="text-xs text-muted-foreground">Half sheets, side by side</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onSelect("full")} className="flex flex-col items-start gap-0.5">
+          <span>One per page</span>
+          <span className="text-xs text-muted-foreground">Full sheet</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function clearServiceFlowExportMode() {
   document.documentElement.classList.remove(EXPORT_MODE_CLASS);
@@ -88,8 +124,8 @@ export default function ServiceFlow() {
     navigate(params.toString() ? `/calendar?${params.toString()}` : "/calendar");
   };
 
-  const printWithExportMode = async () => {
-    await editorRef.current?.preparePrint();
+  const printWithExportMode = async (layout: ServiceFlowPrintLayout) => {
+    await editorRef.current?.preparePrint(layout);
 
     const printableNode = document.querySelector(".service-flow-print-render");
     if (!printableNode || !(printableNode instanceof HTMLElement)) {
@@ -123,13 +159,8 @@ export default function ServiceFlow() {
     }, 50);
   };
 
-  const handlePrint = () => {
-    void printWithExportMode();
-  };
-
-  const handleExport = () => {
-    // Trigger print/share flow which allows saving as PDF
-    void printWithExportMode();
+  const handlePrint = (layout: ServiceFlowPrintLayout) => {
+    void printWithExportMode(layout);
   };
 
   return (
@@ -201,38 +232,18 @@ export default function ServiceFlow() {
               Edit
             </button>
           </div>
-          <TooltipProvider delayDuration={150}>
-            <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/50 p-1 shadow-sm">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleExport}
-                    aria-label="Export service flow"
-                    className="h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Export</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handlePrint}
-                    aria-label="Print service flow"
-                    className="h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Print</TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
+          <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/50 p-1 shadow-sm">
+            <ServiceFlowOutputMenu
+              label="Export"
+              icon={<Download className="h-4 w-4" />}
+              onSelect={handlePrint}
+            />
+            <ServiceFlowOutputMenu
+              label="Print"
+              icon={<Printer className="h-4 w-4" />}
+              onSelect={handlePrint}
+            />
+          </div>
         </div>
       </div>
 

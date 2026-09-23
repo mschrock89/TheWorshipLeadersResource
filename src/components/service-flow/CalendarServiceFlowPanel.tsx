@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Printer } from "lucide-react";
+import { ChevronDown, Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
@@ -22,12 +22,18 @@ import { isKidsCampSetMinistryType, isNetworkWideMinistryType, MINISTRY_TYPES } 
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { ServiceFlowItem } from "./ServiceFlowItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
-import { printServiceFlowDocument } from "./printServiceFlowDocument";
+import { printServiceFlowDocument, type ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 import {
   buildResolvedServiceFlowTitles,
   buildScheduledRoleNames,
@@ -641,7 +647,7 @@ export function CalendarServiceFlowPanel({
     })();
   }, [activeFlowId, localItems, readOnly, resolvedItemTitlesById, saveItem]);
 
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback((layout: ServiceFlowPrintLayout) => {
     if (localItems.length === 0 || isPrinting) return;
 
     setIsPrinting(true);
@@ -660,7 +666,7 @@ export function CalendarServiceFlowPanel({
           item.title ||
           sectionTitle,
       });
-      printServiceFlowDocument(preview);
+      printServiceFlowDocument(preview, layout);
     } catch (error) {
       console.error("Failed to print calendar service flow:", error);
     } finally {
@@ -706,17 +712,37 @@ export function CalendarServiceFlowPanel({
             {ministryLabel}
           </h3>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
-          onClick={handlePrint}
-          disabled={!canPrint || isPrinting}
-        >
-          <Printer className="h-3.5 w-3.5" />
-          Print
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+              disabled={!canPrint || isPrinting}
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Print
+              <ChevronDown className="h-3 w-3 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem
+              onClick={() => handlePrint("half")}
+              className="flex flex-col items-start gap-0.5"
+            >
+              <span>Two per page</span>
+              <span className="text-xs text-muted-foreground">Half sheets, side by side</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handlePrint("full")}
+              className="flex flex-col items-start gap-0.5"
+            >
+              <span>One per page</span>
+              <span className="text-xs text-muted-foreground">Full sheet</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {isInitialLoading ? (

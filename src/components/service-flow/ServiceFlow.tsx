@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { Music4, Video, Megaphone, Mic2, Circle, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 
 export type ServiceItem = {
   id: string;
@@ -35,7 +36,7 @@ interface ServiceFlowProps {
   showProgressBar?: boolean;
   highlightSectionId?: string;
   highlightItemId?: string;
-  printFitHalfSheet?: boolean;
+  printLayout?: ServiceFlowPrintLayout;
 }
 
 const itemIconMap = {
@@ -133,8 +134,10 @@ export const ServiceFlow = memo(function ServiceFlow({
   showProgressBar = true,
   highlightSectionId,
   highlightItemId,
-  printFitHalfSheet = false,
+  printLayout,
 }: ServiceFlowProps) {
+  const isPrintSheet = printLayout === "half" || printLayout === "full";
+  const isFullSheet = printLayout === "full";
   const sectionDurations = useMemo(
     () =>
       service.sections.map((section) => ({
@@ -158,7 +161,9 @@ export const ServiceFlow = memo(function ServiceFlow({
     <section
       className={cn(
         "mx-auto w-full max-w-5xl print:max-w-none",
-        printFitHalfSheet && "service-flow-half-sheet-card print:mx-auto print:max-w-[5.35in]",
+        isPrintSheet && "service-flow-half-sheet-card print:mx-auto",
+        isPrintSheet && !isFullSheet && "print:max-w-[5.35in]",
+        isFullSheet && "service-flow-full-sheet-card",
         className,
       )}
       aria-label={`${service.title} service flow`}
@@ -166,40 +171,40 @@ export const ServiceFlow = memo(function ServiceFlow({
       <div
         className={cn(
           "rounded-[28px] border-2 border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] print:rounded-none print:border-[1.5px] print:border-black/35 print:bg-white print:shadow-none",
-          printFitHalfSheet && "print:border-black/40",
+          isPrintSheet && "print:border-black/40",
         )}
       >
         <header
           className={cn(
             "service-flow-card-header border-b-2 border-slate-200 bg-slate-100 px-5 py-5 sm:px-7 sm:py-6 print:border-black/30 print:bg-slate-100",
-            printFitHalfSheet && "print:px-2.5 print:py-1.5",
+            isPrintSheet && "print:px-2.5 print:py-1.5",
           )}
         >
-          <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", printFitHalfSheet && "print:flex-row print:items-center print:gap-2")}>
-            <div className={cn("space-y-1", printFitHalfSheet && "print:space-y-0")}>
-              <p className={cn("text-xs font-bold uppercase tracking-[0.24em] text-primary print:text-black", printFitHalfSheet && "print:hidden")}>
+          <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", isPrintSheet && "print:flex-row print:items-center print:gap-2")}>
+            <div className={cn("space-y-1", isPrintSheet && "print:space-y-0")}>
+              <p className={cn("service-flow-print-kicker text-xs font-bold uppercase tracking-[0.24em] text-primary print:text-black", isPrintSheet && !isFullSheet && "print:hidden")}>
                 Service Flow
               </p>
-              <h2 className={cn("text-2xl font-bold tracking-tight text-slate-950 sm:text-[1.75rem] print:text-black", printFitHalfSheet && "print:text-[18px] print:leading-tight")}>
+              <h2 className={cn("service-flow-print-heading text-2xl font-bold tracking-tight text-slate-950 sm:text-[1.75rem] print:text-black", isPrintSheet && "print:text-[18px] print:leading-tight")}>
                 {service.title}
               </h2>
-              <p className={cn("text-[15px] font-medium text-slate-600 print:text-black/80", printFitHalfSheet && "print:text-[11px] print:leading-tight")}>
+              <p className={cn("service-flow-print-date text-[15px] font-medium text-slate-600 print:text-black/80", isPrintSheet && "print:text-[11px] print:leading-tight")}>
                 {formatServiceDate(service.date)}
               </p>
             </div>
 
-            <div className={cn("rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-left shadow-sm print:border-0 print:bg-transparent print:px-0 print:py-0 print:shadow-none sm:min-w-[160px] sm:text-right", printFitHalfSheet && "print:min-w-0")}>
-              <p className={cn("text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 print:text-black/70", printFitHalfSheet && "print:text-[10px] print:leading-none")}>
+            <div className={cn("rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-left shadow-sm print:border-0 print:bg-transparent print:px-0 print:py-0 print:shadow-none sm:min-w-[160px] sm:text-right", isPrintSheet && "print:min-w-0")}>
+              <p className={cn("service-flow-print-total-label text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 print:text-black/70", isPrintSheet && "print:text-[10px] print:leading-none")}>
                 Total Time
               </p>
-              <p className={cn("mt-1 text-xl font-bold tracking-tight text-slate-950 print:text-black", printFitHalfSheet && "print:mt-0 print:text-[15px] print:leading-none")}>
+              <p className={cn("service-flow-print-total-value mt-1 text-xl font-bold tracking-tight text-slate-950 print:text-black", isPrintSheet && "print:mt-0 print:text-[15px] print:leading-none")}>
                 {service.totalTime}
               </p>
             </div>
           </div>
 
           {showProgressBar && totalRuntimeSeconds > 0 ? (
-            <div className={cn("mt-5 flex h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-200 print:bg-black/10", printFitHalfSheet && "print:mt-1 print:h-1")}>
+            <div className={cn("mt-5 flex h-3 overflow-hidden rounded-full border border-slate-200 bg-slate-200 print:bg-black/10", isPrintSheet && "print:mt-1 print:h-1")}>
               {sectionDurations.map((section) => (
                 <div
                   key={section.id}
@@ -219,7 +224,7 @@ export const ServiceFlow = memo(function ServiceFlow({
           ) : null}
         </header>
 
-        <div className={cn("px-5 py-5 sm:px-7 sm:py-7", compactMode ? "space-y-6" : "space-y-8", printFitHalfSheet && "service-flow-half-sheet-body print:space-y-0 print:px-1.5 print:py-0.5")}>
+        <div className={cn("px-5 py-5 sm:px-7 sm:py-7", compactMode ? "space-y-6" : "space-y-8", isPrintSheet && "service-flow-half-sheet-body print:space-y-0 print:px-1.5 print:py-0.5")}>
           {service.sections.map((section) => {
             const sectionRuntime = sectionRuntimeById.get(section.id) ?? 0;
             const isHighlightedSection = section.id === highlightSectionId;
@@ -227,42 +232,42 @@ export const ServiceFlow = memo(function ServiceFlow({
             return (
               <section
                 key={section.id}
-                className={cn("space-y-3", compactMode ? "scroll-mt-20" : "scroll-mt-24", printFitHalfSheet && "service-flow-half-sheet-section print:space-y-0")}
+                className={cn("space-y-3", compactMode ? "scroll-mt-20" : "scroll-mt-24", isPrintSheet && "service-flow-half-sheet-section print:space-y-0")}
                 aria-labelledby={`service-flow-section-${section.id}`}
               >
-                <div className={cn("flex items-center gap-3", printFitHalfSheet && "service-flow-half-sheet-section-label print:gap-1 print:py-0.5")}>
+                <div className={cn("flex items-center gap-3", isPrintSheet && "service-flow-half-sheet-section-label print:gap-1 print:py-0.5")}>
                   <div
                     className={cn(
                       "h-0.5 flex-1 bg-slate-300 print:bg-black/25",
-                      printFitHalfSheet && "print:h-px",
+                      isPrintSheet && "print:h-px",
                       isHighlightedSection && "bg-primary/60 print:bg-black/35",
                     )}
                   />
-                  <div className={cn("shrink-0 rounded-lg border-2 border-slate-200 bg-slate-50 px-4 py-1.5 text-center print:border-black/30 print:bg-slate-100", printFitHalfSheet && "print:rounded-sm print:border print:px-1.5 print:py-0")}>
+                  <div className={cn("shrink-0 rounded-lg border-2 border-slate-200 bg-slate-50 px-4 py-1.5 text-center print:border-black/30 print:bg-slate-100", isPrintSheet && "print:rounded-sm print:border print:px-1.5 print:py-0")}>
                     <p
                       id={`service-flow-section-${section.id}`}
                       className={cn(
-                        "text-sm font-extrabold uppercase tracking-[0.2em] text-slate-800 print:text-black",
-                        printFitHalfSheet && "print:text-[10.5px] print:leading-none print:tracking-[0.14em]",
+                        "service-flow-print-section-title text-sm font-extrabold uppercase tracking-[0.2em] text-slate-800 print:text-black",
+                        isPrintSheet && "print:text-[10.5px] print:leading-none print:tracking-[0.14em]",
                         isHighlightedSection && "text-primary print:text-black",
                       )}
                     >
                       {section.title}
                     </p>
-                    <p className={cn("mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", printFitHalfSheet && "print:hidden")}>
+                    <p className={cn("service-flow-print-section-runtime mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", isPrintSheet && !isFullSheet && "print:hidden")}>
                       {formatSeconds(sectionRuntime)}
                     </p>
                   </div>
                   <div
                     className={cn(
                       "h-0.5 flex-1 bg-slate-300 print:bg-black/25",
-                      printFitHalfSheet && "print:h-px",
+                      isPrintSheet && "print:h-px",
                       isHighlightedSection && "bg-primary/60 print:bg-black/35",
                     )}
                   />
                 </div>
 
-                <div className={cn(compactMode ? "space-y-2.5" : "space-y-3.5", printFitHalfSheet && "service-flow-half-sheet-items print:space-y-0")}>
+                <div className={cn(compactMode ? "space-y-2.5" : "space-y-3.5", isPrintSheet && "service-flow-half-sheet-items print:space-y-0")}>
                   {section.items.map((item) => {
                     const Icon = getItemIcon(item);
                     const isSong = item.type === "song";
@@ -275,47 +280,47 @@ export const ServiceFlow = memo(function ServiceFlow({
                         className={cn(
                           "rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-base shadow-sm print:rounded-xl print:border-[1.5px] print:border-black/30 print:bg-white print:shadow-none",
                           compactMode ? "px-3.5 py-3" : "px-4 py-4",
-                          printFitHalfSheet && "service-flow-half-sheet-item print:rounded-md print:border print:border-black/25 print:px-2 print:py-1",
+                          isPrintSheet && "service-flow-half-sheet-item print:rounded-md print:border print:border-black/25 print:px-2 print:py-1",
                           isSong && "border-primary/25 bg-white",
                           isHighlightedItem && "border-primary/50 ring-2 ring-primary/20 print:border-black/35",
                         )}
                       >
-                        <div className={cn("flex items-start gap-3", printFitHalfSheet && "print:items-center print:gap-1")}>
+                        <div className={cn("flex items-start gap-3", isPrintSheet && "print:items-center print:gap-1")}>
                           {showIcons ? (
                             <div
                               className={cn(
-                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 print:border-[1.5px] print:border-black/30 print:bg-white print:text-black/80",
-                                printFitHalfSheet && "print:mt-0 print:h-5 print:w-5 print:rounded print:border",
+                                "service-flow-print-item-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 print:border-[1.5px] print:border-black/30 print:bg-white print:text-black/80",
+                                isPrintSheet && "print:mt-0 print:h-5 print:w-5 print:rounded print:border",
                                 isSong && "border-primary/30 bg-primary/10 text-primary print:border-black/35 print:text-black",
                               )}
                             >
-                              <Icon className={cn("h-[18px] w-[18px]", printFitHalfSheet && "print:h-3 print:w-3")} />
+                              <Icon className={cn("service-flow-print-item-icon-glyph h-[18px] w-[18px]", isPrintSheet && "print:h-3 print:w-3")} />
                             </div>
                           ) : null}
 
                           <div className="min-w-0 flex-1">
-                            {printFitHalfSheet ? (
-                              <div className="print:flex print:items-center print:gap-1">
-                                <p className="print:min-w-0 print:shrink print:truncate print:text-[13px] print:font-semibold print:leading-tight print:text-black">
+                            {isPrintSheet ? (
+                              <div className="service-flow-print-item-row print:flex print:items-center print:gap-1">
+                                <p className="service-flow-print-item-title print:min-w-0 print:shrink print:truncate print:text-[13px] print:font-semibold print:leading-tight print:text-black">
                                   {item.title}
                                 </p>
                                 {songMeta ? (
-                                  <p className="print:shrink-0 print:whitespace-nowrap print:text-[10px] print:leading-tight print:text-black/75">
+                                  <p className="service-flow-print-item-meta print:shrink-0 print:whitespace-nowrap print:text-[10px] print:leading-tight print:text-black/75">
                                     {songMeta}
                                   </p>
                                 ) : null}
                                 {!isSong && item.leader ? (
-                                  <p className="print:shrink-0 print:text-[10px] print:leading-tight print:text-black/80">
+                                  <p className="service-flow-print-item-meta print:shrink-0 print:text-[10px] print:leading-tight print:text-black/80">
                                     {item.leader}
                                   </p>
                                 ) : null}
                                 <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-1">
                                   {item.clockTime ? (
-                                    <div className="print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
+                                    <div className="service-flow-print-item-time print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
                                       {item.clockTime}
                                     </div>
                                   ) : null}
-                                  <div className="print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
+                                  <div className="service-flow-print-item-time print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
                                     {item.duration}
                                   </div>
                                 </div>
