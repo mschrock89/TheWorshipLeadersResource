@@ -59,14 +59,19 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
             <div class="item-main">
               <span class="item-title">${escapeHtml(item.title)}</span>
               ${metaParts.length > 0 ? `<span class="item-meta">${metaParts.join(" · ")}</span>` : ""}
+              ${item.notes ? `<span class="item-notes">${escapeHtml(item.notes)}</span>` : ""}
             </div>
-            <span class="item-duration">${escapeHtml(item.duration || "")}</span>
+            <span class="item-times">
+              ${item.clockTime ? `<span class="item-clock">${escapeHtml(item.clockTime)}</span>` : ""}
+              <span class="item-duration">${escapeHtml(item.duration || "")}</span>
+            </span>
           </li>`;
         })
         .join("");
 
       return `<section class="section">
         <h2 class="section-title">${escapeHtml(section.title)}</h2>
+        ${section.notes ? `<p class="section-notes">${escapeHtml(section.notes)}</p>` : ""}
         <ul class="items">${itemsHtml}</ul>
       </section>`;
     })
@@ -150,8 +155,11 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
     body.layout-full .section-title { font-size: 16px; padding: 0.08in 0.14in; }
     body.layout-full .item { padding: 0.12in 0; }
     body.layout-full .item-title { font-size: 22px; }
-    body.layout-full .item-meta { font-size: 16px; }
+    body.layout-full .item-meta,
+    body.layout-full .item-notes,
+    body.layout-full .section-notes { font-size: 16px; }
     body.layout-full .item-duration { font-size: 16px; min-width: 0.7in; padding: 0.06in 0.1in; }
+    body.layout-full .item-clock { font-size: 16px; }
 
     .sheet {
       border: 1px solid ${BRAND.line};
@@ -308,11 +316,36 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
       color: ${BRAND.ink};
     }
 
-    .item-meta {
+    .item-meta,
+    .item-notes,
+    .section-notes {
       font-size: 13px;
       font-weight: 500;
       line-height: 1.35;
       color: ${BRAND.muted};
+      white-space: pre-wrap;
+    }
+
+    .section-notes {
+      margin: 0.02in 0 0.06in;
+    }
+
+    .item-times {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.03in;
+      flex-shrink: 0;
+    }
+
+    .item-clock {
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+      color: ${BRAND.ink};
+      white-space: nowrap;
     }
 
     .item-duration {

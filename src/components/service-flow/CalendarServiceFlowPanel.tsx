@@ -13,7 +13,8 @@ import {
   useServiceFlowItems,
   type ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
-import { useNetworkWideCampus } from "@/hooks/useCampuses";
+import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
+import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { useAuth } from "@/hooks/useAuth";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -23,6 +24,7 @@ import { isSpecialtyCustomServiceMinistry, isWeekendMinistryType } from "@/lib/c
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +43,11 @@ import {
   isLessonPlaceholderTitle,
   isNamePlaceholderTitle,
 } from "./resolveServiceFlowPlaceholders";
+import {
+  buildServiceFlowClockTimes,
+  normalizeClockSource,
+  resolveScheduledServiceStartTime,
+} from "./serviceFlowClock";
 
 export type CalendarServiceFlowPanelProps = {
   date: string;
@@ -243,6 +250,26 @@ export function CalendarServiceFlowPanel({
     ];
   }, [effectiveMinistryType, scheduledRoster, speakerRoster]);
 
+  const { data: campuses = [] } = useCampuses();
+  const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
+    campusId: flowCampusId || undefined,
+    startDate: date,
+    endDate: date,
+  });
+  const { data: customServiceStartTime = null } = useQuery({
+    queryKey: ["custom-service-start-time", customServiceId],
+    enabled: !!customServiceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_services")
+        .select("start_time")
+        .eq("id", customServiceId!)
+        .maybeSingle();
+      if (error) throw error;
+      return normalizeClockSource(data?.start_time) || null;
+    },
+  });
+
   // Start flow lookup as soon as campus is ready — don't wait on draft-set resolution.
   const {
     data: serviceFlow,
@@ -275,6 +302,8 @@ export function CalendarServiceFlowPanel({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [startTime, setStartTime] = useState("");
+  const editingStartTime = useRef(false);
   const hasAttemptedGenerate = useRef(false);
   const hasSyncedSetlist = useRef(false);
   const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
@@ -297,10 +326,56 @@ export function CalendarServiceFlowPanel({
     hasAttemptedGenerate.current = false;
     hasSyncedSetlist.current = false;
     syncedPlaceholderIdsRef.current = new Set();
+    editingStartTime.current = false;
     setGenerateError(null);
     setBoundFlowId(null);
     setDraggedItem(null);
   }, [contextKey]);
+
+  const suggestedStartTime = useMemo(
+    () =>
+      resolveScheduledServiceStartTime({
+        customServiceStartTime,
+        serviceDate: date,
+        ministryType: effectiveMinistryType,
+        campusId: flowCampusId,
+        campus: campuses.find((campus) => campus.id === flowCampusId),
+        overrides: serviceTimeOverrides,
+      }),
+    [campuses, customServiceStartTime, date, effectiveMinistryType, flowCampusId, serviceTimeOverrides],
+  );
+  const savedStartTime = normalizeClockSource(serviceFlow?.start_time);
+
+  useEffect(() => {
+    if (editingStartTime.current) return;
+    setStartTime(savedStartTime || suggestedStartTime || "");
+  }, [savedStartTime, suggestedStartTime, contextKey]);
+
+  const handleStartTimeChange = useCallback(
+    async (value: string) => {
+      editingStartTime.current = true;
+      setStartTime(value);
+      if (!activeFlowId || readOnly) return;
+
+      const normalized = normalizeClockSource(value);
+      const { error } = await supabase
+        .from("service_flows")
+        .update({ start_time: normalized })
+        .eq("id", activeFlowId);
+
+      if (error) {
+        console.error("Failed to save service flow start time:", error);
+        return;
+      }
+
+      queryClient.setQueriesData({ queryKey: ["service-flow"] }, (current) => {
+        if (!current || typeof current !== "object" || !("id" in current)) return current;
+        if ((current as { id?: string }).id !== activeFlowId) return current;
+        return { ...current, start_time: normalized };
+      });
+    },
+    [activeFlowId, queryClient, readOnly],
+  );
 
   // Reset setlist sync when the linked draft set changes (e.g. republish / song swap).
   useEffect(() => {
@@ -469,17 +544,49 @@ export function CalendarServiceFlowPanel({
       const item = localItemsRef.current.find((entry) => entry.id === itemId);
       if (!item || !activeFlowId || readOnly) return;
 
+      const nextTitle = updates.title !== undefined ? updates.title : item.title;
+      const nextNotes = updates.notes !== undefined ? updates.notes : item.notes;
+      if (
+        updates.title !== undefined &&
+        !isNamePlaceholderTitle(nextTitle) &&
+        !isLessonPlaceholderTitle(nextTitle)
+      ) {
+        syncedPlaceholderIdsRef.current.add(itemId);
+      }
+
+      const nextItems = localItemsRef.current.map((entry) =>
+        entry.id === itemId
+          ? {
+              ...entry,
+              item_type: updates.item_type || entry.item_type,
+              title: nextTitle,
+              duration_seconds:
+                updates.duration_seconds !== undefined
+                  ? updates.duration_seconds
+                  : entry.duration_seconds,
+              sequence_order: updates.sequence_order ?? entry.sequence_order,
+              song_id: updates.song_id !== undefined ? updates.song_id : entry.song_id,
+              song_key: updates.song_key !== undefined ? updates.song_key : entry.song_key,
+              vocalist_id:
+                updates.vocalist_id !== undefined ? updates.vocalist_id : entry.vocalist_id,
+              notes: nextNotes,
+            }
+          : entry,
+      );
+      localItemsRef.current = nextItems;
+      setLocalItems(nextItems);
+
       await saveItem.mutateAsync({
         id: item.id,
         service_flow_id: activeFlowId,
         item_type: updates.item_type || item.item_type,
-        title: updates.title || item.title,
+        title: nextTitle,
         duration_seconds: updates.duration_seconds ?? item.duration_seconds,
         sequence_order: updates.sequence_order ?? item.sequence_order,
-        song_id: updates.song_id ?? item.song_id,
-        song_key: updates.song_key ?? item.song_key,
-        vocalist_id: updates.vocalist_id ?? item.vocalist_id,
-        notes: updates.notes ?? item.notes,
+        song_id: updates.song_id !== undefined ? updates.song_id : item.song_id,
+        song_key: updates.song_key !== undefined ? updates.song_key : item.song_key,
+        vocalist_id: updates.vocalist_id !== undefined ? updates.vocalist_id : item.vocalist_id,
+        notes: nextNotes,
       });
     },
     [activeFlowId, readOnly, saveItem],
@@ -606,7 +713,7 @@ export function CalendarServiceFlowPanel({
   useEffect(() => {
     if (readOnly || !activeFlowId || localItems.length === 0) return;
 
-    const updates: Array<{ id: string; title: string }> = [];
+    const updates: Array<{ id: string; title: string; fromTitle: string }> = [];
     for (const item of localItems) {
       if (item.item_type === "header") continue;
       if (syncedPlaceholderIdsRef.current.has(item.id)) continue;
@@ -615,7 +722,7 @@ export function CalendarServiceFlowPanel({
       if (!isNamePlaceholderTitle(item.title) && !isLessonPlaceholderTitle(item.title)) {
         continue;
       }
-      updates.push({ id: item.id, title: resolved });
+      updates.push({ id: item.id, title: resolved, fromTitle: item.title });
     }
 
     if (updates.length === 0) return;
@@ -625,9 +732,13 @@ export function CalendarServiceFlowPanel({
     }
 
     void (async () => {
+      const appliedIds = new Set<string>();
       for (const update of updates) {
         const item = localItemsRef.current.find((entry) => entry.id === update.id);
-        if (!item) continue;
+        if (!item || item.title !== update.fromTitle) {
+          syncedPlaceholderIdsRef.current.delete(update.id);
+          continue;
+        }
         try {
           await saveItem.mutateAsync({
             id: item.id,
@@ -641,19 +752,27 @@ export function CalendarServiceFlowPanel({
             vocalist_id: item.vocalist_id,
             notes: item.notes,
           });
+          appliedIds.add(update.id);
         } catch (error) {
           console.error("Failed to sync placeholder title:", error);
           syncedPlaceholderIdsRef.current.delete(update.id);
         }
       }
+      if (appliedIds.size === 0) return;
       setLocalItems((current) =>
         current.map((item) => {
-          const nextTitle = updates.find((update) => update.id === item.id)?.title;
-          return nextTitle ? { ...item, title: nextTitle } : item;
+          const update = updates.find((entry) => entry.id === item.id);
+          if (!update || !appliedIds.has(item.id) || item.title !== update.fromTitle) return item;
+          return { ...item, title: update.title };
         }),
       );
     })();
   }, [activeFlowId, localItems, readOnly, resolvedItemTitlesById, saveItem]);
+
+  const clockTimesByItemId = useMemo(
+    () => buildServiceFlowClockTimes(localItems, startTime),
+    [localItems, startTime],
+  );
 
   const handlePrint = useCallback((layout: ServiceFlowPrintLayout) => {
     if (localItems.length === 0 || isPrinting) return;
@@ -673,6 +792,7 @@ export function CalendarServiceFlowPanel({
           item.song?.title ||
           item.title ||
           sectionTitle,
+        clockTimesByItemId,
       });
       printServiceFlowDocument(preview, layout);
     } catch (error) {
@@ -686,6 +806,7 @@ export function CalendarServiceFlowPanel({
     effectiveMinistryType,
     isPrinting,
     localItems,
+    clockTimesByItemId,
     ministryLabel,
     resolvedItemTitlesById,
   ]);
@@ -720,7 +841,21 @@ export function CalendarServiceFlowPanel({
             {ministryLabel}
           </h3>
         </div>
-        <DropdownMenu>
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            Start
+            <Input
+              type="time"
+              value={startTime}
+              onChange={(event) => {
+                void handleStartTimeChange(event.target.value);
+              }}
+              disabled={readOnly || !activeFlowId}
+              className="h-8 w-[7.25rem] px-2 text-xs"
+              aria-label="Service start time"
+            />
+          </label>
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               type="button"
@@ -750,7 +885,8 @@ export function CalendarServiceFlowPanel({
               <span className="text-xs text-muted-foreground">Portrait, full sheet</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        </div>
       </div>
 
       {isInitialLoading ? (
@@ -806,6 +942,7 @@ export function CalendarServiceFlowPanel({
                   onUpdate={handleUpdateItem}
                   onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
+                  clockTime={clockTimesByItemId.get(item.id)}
                   isDragging={draggedItem?.id === item.id}
                 />
               </div>

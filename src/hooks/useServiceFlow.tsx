@@ -33,6 +33,7 @@ export interface ServiceFlow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  start_time?: string | null;
 }
 
 export interface ServiceFlowItem {
@@ -1070,8 +1071,11 @@ async function syncServiceFlowSongItemsFromSongs(
     const songChanged = (flow.song_id ?? null) !== nextSongId;
     const titleChanged = (flow.title || "") !== (nextTitle || "");
     const keyChanged = (flow.song_key ?? null) !== nextKey;
+    // A renamed line on this service stays put while the same song is still in the slot.
+    const keepCustomTitle =
+      !songChanged && titleChanged && !/^song\s*\d+\b/i.test((flow.title || "").trim());
 
-    if (!songChanged && !titleChanged && !keyChanged) continue;
+    if (!songChanged && (!titleChanged || keepCustomTitle) && !keyChanged) continue;
 
     const updatePayload: {
       song_id: string | null;
@@ -1080,7 +1084,7 @@ async function syncServiceFlowSongItemsFromSongs(
       duration_seconds?: null;
     } = {
       song_id: nextSongId,
-      title: nextTitle,
+      title: keepCustomTitle ? flow.title : nextTitle,
       song_key: nextKey,
     };
     // Old marker lengths belong to the previous song; clear so duration sync

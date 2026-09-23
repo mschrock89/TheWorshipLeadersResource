@@ -3035,6 +3035,7 @@ export type Database = {
           id: string
           ministry_type: string
           service_date: string
+          start_time: string | null
           updated_at: string
         }
         Insert: {
@@ -3047,6 +3048,7 @@ export type Database = {
           id?: string
           ministry_type?: string
           service_date: string
+          start_time?: string | null
           updated_at?: string
         }
         Update: {
@@ -3059,6 +3061,7 @@ export type Database = {
           id?: string
           ministry_type?: string
           service_date?: string
+          start_time?: string | null
           updated_at?: string
         }
         Relationships: [

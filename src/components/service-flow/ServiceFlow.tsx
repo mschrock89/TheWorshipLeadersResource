@@ -13,11 +13,13 @@ export type ServiceItem = {
   bpm?: number;
   key?: string;
   leader?: string;
+  notes?: string;
 };
 
 export type ServiceSection = {
   id: string;
   title: string;
+  notes?: string;
   items: ServiceItem[];
 };
 
@@ -257,6 +259,11 @@ export const ServiceFlow = memo(function ServiceFlow({
                     <p className={cn("service-flow-print-section-runtime mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", isPrintSheet && !isFullSheet && "print:hidden")}>
                       {formatSeconds(sectionRuntime)}
                     </p>
+                    {section.notes ? (
+                      <p className="mt-1 whitespace-pre-wrap text-xs font-medium text-slate-600 print:text-[10px] print:text-black/75">
+                        {section.notes}
+                      </p>
+                    ) : null}
                   </div>
                   <div
                     className={cn(
@@ -314,6 +321,11 @@ export const ServiceFlow = memo(function ServiceFlow({
                                     {item.leader}
                                   </p>
                                 ) : null}
+                                {item.notes ? (
+                                  <p className="service-flow-print-item-notes print:min-w-0 print:truncate print:text-[10px] print:leading-tight print:text-black/70">
+                                    {item.notes}
+                                  </p>
+                                ) : null}
                                 <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-1">
                                   {item.clockTime ? (
                                     <div className="service-flow-print-item-time print:rounded print:border print:border-black/30 print:px-1.5 print:py-0.5 print:text-[11px] print:font-semibold print:leading-none print:tabular-nums print:text-black">
@@ -340,6 +352,11 @@ export const ServiceFlow = memo(function ServiceFlow({
                                     <p className="mt-0.5 text-sm capitalize text-slate-600">
                                       {item.type}
                                     </p>
+                                    {item.notes ? (
+                                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                                        {item.notes}
+                                      </p>
+                                    ) : null}
                                   </div>
 
                                   <div className="flex shrink-0 items-center gap-2">

@@ -141,6 +141,7 @@ export function buildServiceFlowPreview(params: {
       currentSection = {
         id: item.id,
         title: item.title,
+        notes: item.notes?.trim() || undefined,
         items: [],
       };
       sections.push(currentSection);
@@ -163,6 +164,7 @@ export function buildServiceFlowPreview(params: {
       bpm: item.song?.bpm || undefined,
       key: item.song_key || undefined,
       leader: formatLeader(item),
+      notes: item.notes?.trim() || undefined,
     });
   }
 

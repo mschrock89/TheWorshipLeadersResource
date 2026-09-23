@@ -56,6 +56,13 @@ import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewDa
 import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
+import {
+  buildServiceFlowClockTimes,
+  clockSourceToSeconds,
+  formatClockTime,
+  normalizeClockSource,
+  resolveScheduledServiceStartTime,
+} from "./serviceFlowClock";
 import { cn } from "@/lib/cn";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -74,51 +81,7 @@ export type ServiceFlowEditorHandle = {
   releasePrint: () => void;
 };
 
-const WEEKEND_SERVICE_TYPES = new Set(["weekend", "weekend_team", "sunday_am"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
-
-function normalizeClockSource(value?: string | null): string | null {
-  const normalized = value?.trim().slice(0, 5) || "";
-  return /^\d{2}:\d{2}$/.test(normalized) ? normalized : null;
-}
-
-function clockSourceToSeconds(value?: string | null): number | null {
-  const normalized = normalizeClockSource(value);
-  if (!normalized) return null;
-
-  const [hours, minutes] = normalized.split(":").map(Number);
-  if (hours > 23 || minutes > 59) return null;
-  return hours * 3600 + minutes * 60;
-}
-
-function formatClockTime(totalSeconds: number): string {
-  const secondsInDay = 24 * 60 * 60;
-  const normalizedSeconds = ((Math.round(totalSeconds / 60) * 60) % secondsInDay + secondsInDay) % secondsInDay;
-  const hours24 = Math.floor(normalizedSeconds / 3600);
-  const minutes = Math.floor((normalizedSeconds % 3600) / 60);
-  const period = hours24 >= 12 ? "PM" : "AM";
-  const hours12 = hours24 % 12 || 12;
-
-  return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
-}
-
-function getDefaultCampusServiceTimes(
-  campus: { saturday_service_time: string[] | null; sunday_service_time: string[] | null } | undefined,
-  date: Date,
-  ministryType: string
-): string[] {
-  if (!campus || !WEEKEND_SERVICE_TYPES.has(ministryType)) return [];
-
-  const dayOfWeek = date.getDay();
-  if (dayOfWeek === 6) return campus.saturday_service_time || [];
-  if (dayOfWeek === 0) return campus.sunday_service_time || [];
-  return [];
-}
-
-function serviceTimeOverrideMatches(overrideMinistryType: string, ministryType: string): boolean {
-  if (overrideMinistryType === ministryType) return true;
-  return WEEKEND_SERVICE_TYPES.has(overrideMinistryType) && WEEKEND_SERVICE_TYPES.has(ministryType);
-}
 
 function normalizeRoleText(value?: string | null): string {
   return (value || "")
@@ -972,79 +935,27 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   }, [localItems]);
 
   const scheduledStartTime = useMemo(() => {
-    if (customServiceStartTime) return customServiceStartTime;
-
-    const matchingOverride = serviceTimeOverrides
-      .filter((override) => {
-        if (!effectiveCampusId || override.campus_id !== effectiveCampusId) return false;
-        if (override.service_date !== serviceDateStr) return false;
-        return serviceTimeOverrideMatches(override.ministry_type || "weekend", ministryType);
-      })
-      .sort((a, b) => {
-        const aExact = (a.ministry_type || "weekend") === ministryType ? 0 : 1;
-        const bExact = (b.ministry_type || "weekend") === ministryType ? 0 : 1;
-        return aExact - bExact || (a.ministry_type || "").localeCompare(b.ministry_type || "");
-      })[0];
-
-    const overrideTime = matchingOverride?.service_times
-      ?.map(normalizeClockSource)
-      .filter((time): time is string => Boolean(time))
-      .sort()[0];
-    if (overrideTime) return overrideTime;
-
-    const campus = serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId);
-    const defaultTime = getDefaultCampusServiceTimes(campus, selectedDate, ministryType)
-      .map(normalizeClockSource)
-      .filter((time): time is string => Boolean(time))
-      .sort()[0];
-
-    return defaultTime || null;
+    return resolveScheduledServiceStartTime({
+      customServiceStartTime,
+      serviceDate: serviceDateStr,
+      ministryType,
+      campusId: effectiveCampusId,
+      campus: serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId),
+      overrides: serviceTimeOverrides,
+    });
   }, [
     serviceFlowCampuses,
     customServiceStartTime,
     effectiveCampusId,
     ministryType,
-    selectedDate,
     serviceDateStr,
     serviceTimeOverrides,
   ]);
 
-  const clockTimesByItemId = useMemo(() => {
-    const startSeconds = clockSourceToSeconds(scheduledStartTime);
-    const clockMap = new Map<string, string>();
-    if (startSeconds === null) return clockMap;
-
-    let currentSectionTitle = "";
-    let secondsBeforeServiceStart = 0;
-    let hasServiceStartAnchor = false;
-
-    for (const item of localItems) {
-      if (item.item_type === "header") {
-        currentSectionTitle = item.title;
-        continue;
-      }
-
-      const title = item.song?.title || item.title;
-      if (isAnnouncementsContext(title, currentSectionTitle)) {
-        hasServiceStartAnchor = true;
-        break;
-      }
-
-      secondsBeforeServiceStart += item.duration_seconds || 0;
-    }
-
-    let runningSeconds = hasServiceStartAnchor
-      ? startSeconds - secondsBeforeServiceStart
-      : startSeconds;
-
-    localItems.forEach((item) => {
-      if (item.item_type === "header") return;
-      clockMap.set(item.id, formatClockTime(runningSeconds));
-      runningSeconds += item.duration_seconds || 0;
-    });
-
-    return clockMap;
-  }, [localItems, scheduledStartTime]);
+  const clockTimesByItemId = useMemo(
+    () => buildServiceFlowClockTimes(localItems, scheduledStartTime),
+    [localItems, scheduledStartTime],
+  );
 
   const scheduledRoleNames = useMemo(() => ({
     announcements: formatRosterRoleNames(
@@ -1188,17 +1099,35 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       const item = localItems.find((i) => i.id === itemId);
       if (!item || !activeServiceFlowId) return;
 
+      const nextTitle = updates.title !== undefined ? updates.title : item.title;
+      const nextNotes = updates.notes !== undefined ? updates.notes : item.notes;
+      setLocalItems((current) =>
+        current.map((entry) =>
+          entry.id === itemId
+            ? {
+                ...entry,
+                title: nextTitle,
+                notes: nextNotes,
+                duration_seconds:
+                  updates.duration_seconds !== undefined
+                    ? updates.duration_seconds
+                    : entry.duration_seconds,
+              }
+            : entry,
+        ),
+      );
+
       await saveItem.mutateAsync({
         id: item.id,
         service_flow_id: activeServiceFlowId,
         item_type: updates.item_type || item.item_type,
-        title: updates.title || item.title,
+        title: nextTitle,
         duration_seconds: updates.duration_seconds ?? item.duration_seconds,
         sequence_order: updates.sequence_order ?? item.sequence_order,
-        song_id: updates.song_id ?? item.song_id,
-        song_key: updates.song_key ?? item.song_key,
-        vocalist_id: updates.vocalist_id ?? item.vocalist_id,
-        notes: updates.notes ?? item.notes,
+        song_id: updates.song_id !== undefined ? updates.song_id : item.song_id,
+        song_key: updates.song_key !== undefined ? updates.song_key : item.song_key,
+        vocalist_id: updates.vocalist_id !== undefined ? updates.vocalist_id : item.vocalist_id,
+        notes: nextNotes,
       });
     },
     [localItems, activeServiceFlowId, saveItem]
@@ -1356,6 +1285,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         currentSection = {
           id: item.id,
           title: item.title,
+          notes: item.notes?.trim() || undefined,
           items: [],
         };
         sections.push(currentSection);
@@ -1371,6 +1301,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         bpm: item.song?.bpm || undefined,
         key: item.song_key || undefined,
         leader: formatLeader(item),
+        notes: item.notes?.trim() || undefined,
       });
     });
 

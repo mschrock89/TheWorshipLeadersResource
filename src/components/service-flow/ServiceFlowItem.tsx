@@ -1,10 +1,11 @@
 import { memo, useEffect, useState } from "react";
-import { GripVertical, X, Music } from "lucide-react";
+import { GripVertical, X, Music, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
 
 interface ServiceFlowItemProps {
@@ -15,6 +16,88 @@ interface ServiceFlowItemProps {
   clockTime?: string | null;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
+}
+
+function FlowItemNotes({
+  notes,
+  onCommit,
+}: {
+  notes: string | null;
+  onCommit: (notes: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(notes || "");
+  const savedNotes = notes?.trim() || "";
+
+  useEffect(() => {
+    if (!editing) setDraft(notes || "");
+  }, [editing, notes]);
+
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== savedNotes) onCommit(next || null);
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    setDraft(notes || "");
+    setEditing(false);
+  };
+
+  return (
+    <div className="contents">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={cn(
+          "h-6 w-6 text-muted-foreground hover:text-foreground",
+          savedNotes && "text-foreground",
+        )}
+        onClick={() => {
+          setDraft(notes || "");
+          setEditing(true);
+        }}
+        title={savedNotes ? "Edit note" : "Add note"}
+        aria-label={savedNotes ? "Edit note" : "Add note"}
+      >
+        <StickyNote className="h-3.5 w-3.5" />
+      </Button>
+      {editing || savedNotes ? (
+        <div className="order-last basis-full pl-6">
+          {editing ? (
+            <Textarea
+              value={draft}
+              autoFocus
+              rows={2}
+              placeholder="Note for this service only"
+              className="min-h-[2.5rem] py-1.5 text-xs"
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancel();
+                } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  (event.currentTarget as HTMLTextAreaElement).blur();
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="w-full whitespace-pre-wrap text-left text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setEditing(true)}
+              title="Edit note"
+            >
+              {savedNotes}
+            </button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export const ServiceFlowItem = memo(function ServiceFlowItem({
@@ -28,30 +111,45 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
 }: ServiceFlowItemProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(item.title || "");
+  const visibleTitle = displayTitle || item.song?.title || item.title || "";
 
   useEffect(() => {
-    setTitleDraft(item.title || "");
-  }, [item.title]);
+    if (!isEditingTitle) setTitleDraft(visibleTitle);
+  }, [isEditingTitle, visibleTitle]);
+  const canEditTitle = item.item_type !== "song" || !item.song_id;
+
+  const beginTitleEdit = () => {
+    if (!canEditTitle) return;
+    setTitleDraft(visibleTitle);
+    setIsEditingTitle(true);
+  };
 
   const commitTitle = () => {
     const trimmed = titleDraft.trim();
     if (!trimmed) {
-      setTitleDraft(item.title || "");
+      setTitleDraft(visibleTitle);
       setIsEditingTitle(false);
       return;
     }
-    if (trimmed !== (item.title || "")) {
+    // Saving a different title stores it on this service flow only.
+    // Leaving the schedule-filled name unchanged keeps that fill in place.
+    if (trimmed !== visibleTitle) {
       onUpdate(item.id, { title: trimmed });
     }
     setIsEditingTitle(false);
   };
 
   const cancelTitleEdit = () => {
-    setTitleDraft(item.title || "");
+    setTitleDraft(visibleTitle);
     setIsEditingTitle(false);
   };
 
-  const resolvedTitle = displayTitle || item.song?.title || item.title;
+  const commitNotes = (notes: string | null) => {
+    if ((notes || "") === (item.notes?.trim() || "")) return;
+    onUpdate(item.id, { notes });
+  };
+
+  const resolvedTitle = visibleTitle;
 
   const printTitleSlug = (resolvedTitle || "")
     .trim()
@@ -72,7 +170,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
         data-flow-item-type={item.item_type}
         data-flow-item-title={printTitleSlug}
         className={cn(
-          "service-flow-header flex items-center gap-2 px-3 py-2 bg-muted rounded-md",
+          "service-flow-header flex flex-wrap items-center gap-2 px-3 py-2 bg-muted rounded-md",
           isDragging && "opacity-50"
         )}
       >
@@ -100,12 +198,13 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
           <button
             type="button"
             className="flex-1 text-left font-semibold text-sm uppercase tracking-wide text-muted-foreground hover:text-foreground"
-            onClick={() => setIsEditingTitle(true)}
+            onClick={beginTitleEdit}
             title="Click to edit title"
           >
             {item.title}
           </button>
         )}
+        <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
         <Button
           variant="ghost"
           size="icon"
@@ -141,9 +240,37 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
           </span>
         ) : null}
         <Music className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <span className="service-flow-song-title flex-1 min-w-0 font-medium text-sm truncate">
-          {resolvedTitle}
-        </span>
+        {isEditingTitle ? (
+          <Input
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTitle();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelTitleEdit();
+              }
+            }}
+            autoFocus
+            className="h-8 min-w-0 flex-1 text-sm"
+          />
+        ) : canEditTitle ? (
+          <button
+            type="button"
+            className="service-flow-song-title min-w-0 flex-1 truncate text-left text-sm font-medium hover:text-foreground"
+            onClick={beginTitleEdit}
+            title="Click to edit title"
+          >
+            {resolvedTitle}
+          </button>
+        ) : (
+          <span className="service-flow-song-title min-w-0 flex-1 truncate text-sm font-medium">
+            {resolvedTitle}
+          </span>
+        )}
         {(item.song?.bpm || item.song_key || vocalistDisplay) && (
           <div className="service-flow-song-meta order-last flex w-full min-w-0 items-center gap-2 pl-6 sm:order-none sm:ml-auto sm:w-auto sm:justify-end sm:pl-0 sm:text-right">
             {item.song?.bpm && (
@@ -166,6 +293,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
             )}
           </div>
         )}
+        <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
         <Button
           variant="ghost"
           size="icon"
@@ -184,7 +312,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
       data-flow-item-type={item.item_type}
       data-flow-item-title={printTitleSlug}
       className={cn(
-        "flex items-center gap-2 px-3 py-2 bg-card border rounded-md",
+        "flex flex-wrap items-center gap-2 px-3 py-2 bg-card border rounded-md",
         isDragging && "opacity-50 shadow-lg"
       )}
     >
@@ -221,12 +349,13 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
         <button
           type="button"
           className="flex-1 text-left text-sm hover:text-foreground"
-          onClick={() => setIsEditingTitle(true)}
-          title="Click to edit title"
+          onClick={beginTitleEdit}
+          title="Click to edit speaker, placeholder, or title"
         >
           {resolvedTitle}
         </button>
       )}
+      <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
       <Button
         variant="ghost"
         size="icon"
