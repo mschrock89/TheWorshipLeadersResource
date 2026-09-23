@@ -21,21 +21,40 @@ test("item clocks run forward from the entered start time", () => {
   assert.equal(clocks.get("message"), "9:09 AM");
 });
 
-test("announcements stay on the start time and earlier lines count backward", () => {
+test("the first item under Start is the service start and pre-service lines count backward", () => {
   const clocks = buildServiceFlowClockTimes(
     [
+      { id: "pre", item_type: "header", title: "Pre-Service", duration_seconds: null },
       { id: "countdown", item_type: "item", title: "Countdown", duration_seconds: 300 },
-      { id: "header", item_type: "header", title: "Announcements", duration_seconds: null },
-      { id: "host", item_type: "item", title: "Name Place Holder", duration_seconds: 180 },
+      { id: "opener", item_type: "item", title: "Opener", duration_seconds: 180 },
+      { id: "start", item_type: "header", title: "Start", duration_seconds: null },
+      { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 120 },
       { id: "song", item_type: "song", title: "Song", duration_seconds: 240 },
     ],
     "09:00",
   );
 
-  assert.equal(clocks.get("countdown"), "8:55 AM");
-  assert.equal(clocks.has("header"), false);
-  assert.equal(clocks.get("host"), "9:00 AM");
-  assert.equal(clocks.get("song"), "9:03 AM");
+  assert.equal(clocks.has("pre"), false);
+  assert.equal(clocks.has("start"), false);
+  assert.equal(clocks.get("countdown"), "8:52 AM");
+  assert.equal(clocks.get("opener"), "8:57 AM");
+  assert.equal(clocks.get("welcome"), "9:00 AM");
+  assert.equal(clocks.get("song"), "9:02 AM");
+});
+
+test("an announcements line before the Start header stays in pre-service", () => {
+  const clocks = buildServiceFlowClockTimes(
+    [
+      { id: "pre", item_type: "header", title: "Pre-Service", duration_seconds: null },
+      { id: "host", item_type: "item", title: "Announcements", duration_seconds: 60 },
+      { id: "start", item_type: "header", title: "Start", duration_seconds: null },
+      { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 120 },
+    ],
+    "18:30",
+  );
+
+  assert.equal(clocks.get("host"), "6:29 PM");
+  assert.equal(clocks.get("welcome"), "6:30 PM");
 });
 
 test("an empty start time leaves the clock off", () => {

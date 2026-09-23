@@ -50,30 +50,15 @@ export function formatClockTime(totalSeconds: number): string {
   return `${hours12}:${String(minutes).padStart(2, "0")} ${period}`;
 }
 
-function compactRoleText(value?: string | null): string {
-  return (value || "")
+function isServiceStartHeader(title: string) {
+  const normalized = title
     .trim()
     .toLowerCase()
     .replace(/[_-]+/g, " ")
     .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, "");
-}
-
-function isAnnouncementsContext(title: string, sectionTitle: string) {
-  const compactTitle = compactRoleText(title);
-  const compactSectionTitle = compactRoleText(sectionTitle);
-  return (
-    compactSectionTitle.includes("announcement") ||
-    compactSectionTitle.includes("anncouncement") ||
-    compactSectionTitle.includes("annoucement") ||
-    compactSectionTitle.includes("annoucnemt") ||
-    compactSectionTitle.includes("annoucnemtn") ||
-    compactTitle.includes("announcement") ||
-    compactTitle.includes("anncouncement") ||
-    compactTitle.includes("annoucement") ||
-    compactTitle.includes("annoucnemt") ||
-    compactTitle.includes("annoucnemtn")
-  );
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized === "start" || normalized === "service start" || normalized === "start header";
 }
 
 function serviceTimeOverrideMatches(overrideMinistryType: string, ministryType: string): boolean {
@@ -122,10 +107,10 @@ export function resolveScheduledServiceStartTime(source: ScheduledServiceStartSo
 }
 
 /**
- * Clock for each rundown line. The entered time is when announcements begin.
- * Lines before that section count backward from it. With no announcements
- * section, the first line starts at the entered time and each later line
- * starts after the previous duration.
+ * Clock for each rundown line. The entered time is the first item under the
+ * Start header. Pre-service lines before that header count backward by their
+ * durations. Later lines count forward. With no Start header, the first line
+ * starts at the entered time.
  */
 export function buildServiceFlowClockTimes(
   items: ServiceFlowClockItem[],
@@ -135,26 +120,30 @@ export function buildServiceFlowClockTimes(
   const startSeconds = clockSourceToSeconds(startTime);
   if (startSeconds === null) return clockMap;
 
-  let currentSectionTitle = "";
-  let secondsBeforeServiceStart = 0;
-  let hasServiceStartAnchor = false;
-
-  for (const item of items) {
+  let seenStartHeader = false;
+  let startItemIndex = -1;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
     if (item.item_type === "header") {
-      currentSectionTitle = item.title;
+      if (isServiceStartHeader(item.title)) seenStartHeader = true;
       continue;
     }
-
-    const title = item.song?.title || item.title;
-    if (isAnnouncementsContext(title, currentSectionTitle)) {
-      hasServiceStartAnchor = true;
+    if (seenStartHeader) {
+      startItemIndex = index;
       break;
     }
-
-    secondsBeforeServiceStart += item.duration_seconds || 0;
   }
 
-  let runningSeconds = hasServiceStartAnchor
+  let secondsBeforeServiceStart = 0;
+  if (startItemIndex >= 0) {
+    for (let index = 0; index < startItemIndex; index += 1) {
+      const item = items[index];
+      if (item.item_type === "header") continue;
+      secondsBeforeServiceStart += item.duration_seconds || 0;
+    }
+  }
+
+  let runningSeconds = startItemIndex >= 0
     ? startSeconds - secondsBeforeServiceStart
     : startSeconds;
 
