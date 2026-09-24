@@ -31,18 +31,9 @@ function formatServiceDate(date: string) {
   }).format(parsed);
 }
 
-function splitServiceTitle(title: string) {
-  const match = title.match(/^(.+?)\s+(Worship|Service|Night)$/i);
-  if (match) {
-    return { primary: match[1].trim(), secondary: match[2] };
-  }
-  return { primary: title.trim(), secondary: null as string | null };
-}
-
 export type ServiceFlowPrintLayout = "half" | "full";
 
 export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout = "half") {
-  const { primary, secondary } = splitServiceTitle(service.title);
   const formattedDate = formatServiceDate(service.date);
 
   const sectionsHtml = service.sections
@@ -81,9 +72,7 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
     <header class="sheet-header">
       <div class="sheet-heading">
         <p class="sheet-kicker">Service Flow</p>
-        <h1 class="sheet-title">
-          <span class="sheet-title-primary">${escapeHtml(primary)}</span>${secondary ? `<span class="sheet-title-secondary">${escapeHtml(secondary)}</span>` : ""}
-        </h1>
+        <h1 class="sheet-title">${escapeHtml(service.title)}</h1>
         <p class="sheet-date">${escapeHtml(formattedDate)}</p>
       </div>
       <div class="sheet-total">
@@ -144,8 +133,7 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
       gap: 0;
     }
 
-    body.layout-full .sheet-title-primary { font-size: 40px; }
-    body.layout-full .sheet-title-secondary { font-size: 22px; }
+    body.layout-full .sheet-title { font-size: 40px; }
     body.layout-full .sheet-date { font-size: 18px; }
     body.layout-full .sheet-kicker { font-size: 13px; }
     body.layout-full .sheet-total-label { font-size: 13px; }
@@ -194,26 +182,11 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
     .sheet-title {
       margin: 0;
       font-family: "Montserrat", "Nunito Sans", sans-serif;
-      font-size: 0;
-      line-height: 1.08;
-    }
-
-    .sheet-title-primary {
-      display: block;
       font-size: 28px;
       font-weight: 800;
       letter-spacing: -0.02em;
+      line-height: 1.08;
       color: ${BRAND.blueDark};
-    }
-
-    .sheet-title-secondary {
-      display: block;
-      margin-top: 4px;
-      font-size: 17px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: ${BRAND.teal};
     }
 
     .sheet-date {
