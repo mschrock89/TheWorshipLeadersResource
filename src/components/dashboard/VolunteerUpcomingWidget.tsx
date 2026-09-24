@@ -8,10 +8,11 @@ import { usePublishedSetlists } from "@/hooks/useSetlistConfirmations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, Music, Clock, MapPin, ChevronRight } from "lucide-react";
+import { CalendarDays, Music, Clock, MapPin, ChevronRight, ScrollText } from "lucide-react";
 import { format } from "date-fns";
 import { POSITION_LABELS } from "@/lib/constants";
 import { getWeekendKey, getWeekendPairDate, isWeekend, formatWeekendGroupDateLabel } from "@/lib/utils";
+import { monthStartForDate, scriptKindForPosition, SERVICE_SCRIPT_KIND_LABELS, weekendKeyForDate } from "@/lib/serviceScripts";
 
 export function VolunteerUpcomingWidget() {
   const { user } = useAuth();
@@ -86,6 +87,10 @@ export function VolunteerUpcomingWidget() {
   const { data: setSongs = [], isLoading: songsLoading } = useDraftSetSongs(upcomingSet?.id || null);
 
   const isLoading = scheduleLoading || campusLoading || setsLoading;
+  const nextScriptKind = nextWeekend ? scriptKindForPosition(nextWeekend.position) : null;
+  const nextScriptWeekend = nextWeekend
+    ? weekendKeyForDate(format(nextWeekend.date, "yyyy-MM-dd"))
+    : null;
 
   // Format position label
   const getPositionLabel = (position: string) => {
@@ -176,6 +181,15 @@ export function VolunteerUpcomingWidget() {
                   <MapPin className="h-3.5 w-3.5" />
                   {upcomingCampusName}
                 </p>
+              )}
+              {nextScriptKind && nextScriptWeekend && nextWeekend.campusId && (
+                <Link
+                  to={`/my-scripts?campus=${nextWeekend.campusId}&kind=${nextScriptKind}&weekend=${nextScriptWeekend}&month=${monthStartForDate(nextScriptWeekend)}`}
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  <ScrollText className="h-3.5 w-3.5" />
+                  {SERVICE_SCRIPT_KIND_LABELS[nextScriptKind]} script
+                </Link>
               )}
             </div>
             <Link 

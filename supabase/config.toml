@@ -229,3 +229,6 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/gmail-send-reply/deno.json"
 entrypoint = "./functions/gmail-send-reply/index.ts"
+
+[functions.notify-service-script]
+verify_jwt = false

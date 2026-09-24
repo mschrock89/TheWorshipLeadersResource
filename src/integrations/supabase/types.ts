@@ -3102,6 +3102,68 @@ export type Database = {
           },
         ]
       }
+      service_scripts: {
+        Row: {
+          body: string
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          ministry_type: string
+          month_start: string
+          resource_app_key: string
+          script_kind: string
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+          weekend_date: string | null
+        }
+        Insert: {
+          body?: string
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ministry_type?: string
+          month_start: string
+          resource_app_key?: string
+          script_kind: string
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          weekend_date?: string | null
+        }
+        Update: {
+          body?: string
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ministry_type?: string
+          month_start?: string
+          resource_app_key?: string
+          script_kind?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          weekend_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_scripts_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_plans: {
         Row: {
           campus_id: string | null

@@ -24,6 +24,8 @@ const TeamBuilder = lazy(() => import("@/pages/TeamBuilder"));
 const LifeGroups = lazy(() => import("@/pages/LifeGroups"));
 const Approvals = lazy(() => import("@/pages/Approvals"));
 const AdminTools = lazy(() => import("@/pages/AdminTools"));
+const ServiceScriptsAdmin = lazy(() => import("@/pages/ServiceScriptsAdmin"));
+const MyServiceScripts = lazy(() => import("@/pages/MyServiceScripts"));
 const PermissionsAdmin = lazy(() => import("@/pages/PermissionsAdmin"));
 const PushNotificationsAdmin = lazy(() => import("@/pages/PushNotificationsAdmin"));
 const Resources = lazy(() => import("@/pages/Resources"));
@@ -79,6 +81,8 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/life-groups", LifeGroups),
   route("/approvals", Approvals),
   route("/admin-tools", AdminTools),
+  route("/service-scripts", ServiceScriptsAdmin),
+  route("/my-scripts", MyServiceScripts),
   route("/permissions", PermissionsAdmin),
   route("/push-notifications", PushNotificationsAdmin),
   route("/resources", Resources),

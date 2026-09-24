@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, type LucideIcon } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -664,6 +664,13 @@ export default function AdminTools() {
       title: "Teaching Schedule Manager",
       description: "Sync teacher and book info from the Google Sheet or a CSV import.",
       icon: CalendarClock,
+    },
+    {
+      id: "service-scripts",
+      title: "Service Scripts",
+      description: "Write monthly announcements and closing prayer scripts, and tweak a single week when needed.",
+      icon: ScrollText,
+      href: "/service-scripts",
     },
     {
       id: "service-schedule",

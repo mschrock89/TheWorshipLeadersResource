@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
+import { ServiceScriptWidget } from "@/components/dashboard/ServiceScriptWidget";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 export default function Dashboard() {
   const {
@@ -197,7 +198,7 @@ export default function Dashboard() {
     return canManageTeam;
   });
 
-  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"], ["active-covenant"]]}>
+  return <RefreshableContainer queryKeys={[["profiles"], ["upcoming-birthdays"], ["upcoming-anniversaries"], ["leadership-roles"], ["my-team-assignments"], ["my-scheduled-dates"], ["draft-sets"], ["swap-requests"], ["active-covenant"], ["service-scripts"]]}>
       {/* Push Notification Banner */}
       <PushNotificationBanner />
 
@@ -228,6 +229,8 @@ export default function Dashboard() {
       </div>
 
       <CovenantCard />
+
+      <ServiceScriptWidget />
 
       {/* Volunteer view - show upcoming weekend and song set first */}
       {isVolunteer && <section className="mb-8">
