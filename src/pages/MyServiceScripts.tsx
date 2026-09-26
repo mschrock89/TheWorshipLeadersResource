@@ -2,7 +2,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useEffect } from "react";
 import { ArrowLeft, Heart, MapPin, Megaphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMyServiceScriptGroups } from "@/hooks/useServiceScripts";
 import { getMinistryLabel } from "@/lib/constants";
@@ -45,43 +44,42 @@ function ScriptAssignmentCard({
       });
 
   return (
-    <Card id={`script-${group.key}`} className={highlighted ? "border-primary/50" : undefined}>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Icon className="h-5 w-5 text-primary" />
-              {SERVICE_SCRIPT_KIND_LABELS[group.kind]}
-            </CardTitle>
-            <p className="mt-1 text-lg font-medium text-foreground">{dateLabel}</p>
-          </div>
-          <Badge variant="secondary">
-            {resolved.source === "week" ? "This weekend" : resolved.source === "month" ? "Monthly script" : "Not sent yet"}
-          </Badge>
+    <article
+      id={`script-${group.key}`}
+      className={`border-b border-border/40 py-6 last:border-b-0 ${highlighted ? "-mx-3 rounded-lg bg-primary/5 px-3" : ""}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+            <Icon className="h-5 w-5 text-primary" />
+            {SERVICE_SCRIPT_KIND_LABELS[group.kind]}
+          </h2>
+          <p className="mt-1 text-lg font-medium text-foreground">{dateLabel}</p>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {group.campusName && (
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5" />
-              {group.campusName}
-            </span>
-          )}
-          <span>{getMinistryLabel(group.ministryType)}</span>
-          {group.teamNames.length > 0 && <span>{group.teamNames.join(", ")}</span>}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {resolved.script ? (
-          <div className="whitespace-pre-wrap rounded-lg border border-border/70 bg-muted/30 p-4 text-base leading-7 text-foreground">
-            {resolved.script.body}
-          </div>
-        ) : (
-          <p className="text-muted-foreground">
-            Your admin hasn't sent the {SERVICE_SCRIPT_KIND_LABELS[group.kind].toLowerCase()} script for this date yet.
-          </p>
+        <Badge variant="secondary">
+          {resolved.source === "week" ? "This weekend" : resolved.source === "month" ? "Monthly script" : "Not sent yet"}
+        </Badge>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        {group.campusName && (
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-3.5 w-3.5" />
+            {group.campusName}
+          </span>
         )}
-      </CardContent>
-    </Card>
+        <span>{getMinistryLabel(group.ministryType)}</span>
+        {group.teamNames.length > 0 && <span>{group.teamNames.join(", ")}</span>}
+      </div>
+      {resolved.script ? (
+        <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-foreground">
+          {resolved.script.body}
+        </p>
+      ) : (
+        <p className="mt-4 text-muted-foreground">
+          Your admin hasn't sent the {SERVICE_SCRIPT_KIND_LABELS[group.kind].toLowerCase()} script for this date yet.
+        </p>
+      )}
+    </article>
   );
 }
 
@@ -125,19 +123,15 @@ export default function MyServiceScripts() {
           <Skeleton className="h-48 w-full" />
         </div>
       ) : error ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Scripts couldn't be loaded. Pull to refresh, or check back in a moment.
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">
+          Scripts couldn't be loaded. Pull to refresh, or check back in a moment.
+        </p>
       ) : groups.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-muted-foreground">
-            You're not scheduled for announcements or closing prayer on an upcoming date.
-          </CardContent>
-        </Card>
+        <p className="text-muted-foreground">
+          You're not scheduled for announcements or closing prayer on an upcoming date.
+        </p>
       ) : (
-        <div className="space-y-4">
+        <div>
           {groups.map((group) => (
             <ScriptAssignmentCard
               key={group.key}

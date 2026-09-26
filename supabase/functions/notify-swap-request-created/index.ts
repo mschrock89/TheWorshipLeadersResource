@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { formatServingPosition } from "../_shared/positionLabels.ts";
 import { canonicalSwapPosition, swapPositionsMatch } from "../_shared/swapPositions.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
@@ -132,10 +133,7 @@ function getFirstName(fullName?: string | null): string {
 }
 
 function formatPosition(position: string): string {
-  return POSITION_LABELS[position] ||
-    position
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (part) => part.toUpperCase());
+  return POSITION_LABELS[position] || formatServingPosition(position);
 }
 
 function escapeHtml(value: string): string {
@@ -457,8 +455,8 @@ serve(async (req: Request): Promise<Response> => {
       userIdsToNotify = [swapRequest.target_user_id];
       notificationTitle = isDirectCoverRequest ? "Cover Request" : "Swap Request";
       notificationMessage = isDirectCoverRequest
-        ? `${requesterName} asked you to cover ${swapRequest.position} on ${dateStr} for ${teamName}`
-        : `${requesterName} wants to swap ${swapRequest.position} with you on ${dateStr}`;
+        ? `${requesterName} asked you to cover ${formatPosition(swapRequest.position)} on ${dateStr} for ${teamName}`
+        : `${requesterName} wants to swap ${formatPosition(swapRequest.position)} with you on ${dateStr}`;
       emailSubject = isDirectCoverRequest
         ? `${requesterName} asked you to cover ${formatPosition(swapRequest.position)}`
         : `${requesterName} sent you a swap request`;
@@ -537,8 +535,8 @@ serve(async (req: Request): Promise<Response> => {
       const isOpenCoverRequest = swapRequest.request_type === "fill_in" || !swapRequest.swap_date;
       notificationTitle = isOpenCoverRequest ? "Open Cover Request" : "Open Swap Request";
       notificationMessage = isOpenCoverRequest
-        ? `${requesterName} is looking for someone to cover ${swapRequest.position} on ${dateStr} for ${teamName}`
-        : `${requesterName} posted a swap request for ${swapRequest.position} on ${dateStr} for ${teamName}`;
+        ? `${requesterName} is looking for someone to cover ${formatPosition(swapRequest.position)} on ${dateStr} for ${teamName}`
+        : `${requesterName} posted a swap request for ${formatPosition(swapRequest.position)} on ${dateStr} for ${teamName}`;
       emailSubject = isOpenCoverRequest
         ? `Open cover request for ${formatPosition(swapRequest.position)}`
         : `Open swap request for ${formatPosition(swapRequest.position)}`;

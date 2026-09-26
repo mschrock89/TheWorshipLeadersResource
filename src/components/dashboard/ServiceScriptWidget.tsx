@@ -32,7 +32,7 @@ export function ServiceScriptWidget() {
           </Link>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="divide-y divide-border/40 border-t border-border/40 p-0">
         {upcoming.map((group) => {
           const Icon = KIND_ICONS[group.kind];
           const resolved = resolveEffectiveScript(
@@ -51,7 +51,7 @@ export function ServiceScriptWidget() {
             <Link
               key={group.key}
               to={`/my-scripts?campus=${group.campusId}&kind=${group.kind}&weekend=${group.weekendKey}&month=${monthStartForDate(group.weekendKey)}`}
-              className="block rounded-lg border border-border/70 p-3 transition-colors hover:bg-muted/40"
+              className="block px-6 py-4 transition-colors hover:bg-muted/40"
             >
               <div className="flex items-center gap-2 font-medium">
                 <Icon className="h-4 w-4 text-primary" />

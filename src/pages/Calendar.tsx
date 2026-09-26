@@ -166,10 +166,14 @@ const scheduleEntryMatchesCalendarFilter = (
   if (ministryFilter === "all") return true;
 
   if (ministryFilter === "weekend_team") {
+    // Speakers rotate on their own rows, same as Production and Video. Those
+    // dates still have to highlight on the Weekend Worship calendar so the
+    // person scheduled (for example Announcements) can swap.
     return (
       normalizedEntryMinistry === "weekend" ||
       entryMinistryType === "production" ||
-      entryMinistryType === "video"
+      entryMinistryType === "video" ||
+      entryMinistryType === "speaker"
     );
   }
 

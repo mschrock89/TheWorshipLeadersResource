@@ -1,0 +1,346 @@
+import type { Service } from "./ServiceFlow";
+
+const BRAND = {
+  blue: "#35B0E5",
+  blueDark: "#27749D",
+  teal: "#008DB3",
+  yellow: "#FFB838",
+  ink: "#0f172a",
+  muted: "#64748b",
+  line: "#e2e8f0",
+  sectionBg: "#f1f5f9",
+} as const;
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatServiceDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function splitServiceTitle(title: string) {
+  const match = title.match(/^(.+?)\s+(Worship|Service|Night)$/i);
+  if (match) {
+    return { primary: match[1].trim(), secondary: match[2] };
+  }
+  return { primary: title.trim(), secondary: null as string | null };
+}
+
+function buildPrintHtml(service: Service) {
+  const { primary, secondary } = splitServiceTitle(service.title);
+  const formattedDate = formatServiceDate(service.date);
+
+  const sectionsHtml = service.sections
+    .map((section) => {
+      const itemsHtml = section.items
+        .map((item) => {
+          const metaParts = [
+            typeof item.bpm === "number" ? `${item.bpm} BPM` : "",
+            item.key ? `Key ${escapeHtml(item.key)}` : "",
+            item.leader ? escapeHtml(item.leader) : "",
+          ].filter(Boolean);
+
+          return `<li class="item">
+            <div class="item-main">
+              <span class="item-title">${escapeHtml(item.title)}</span>
+              ${metaParts.length > 0 ? `<span class="item-meta">${metaParts.join(" · ")}</span>` : ""}
+            </div>
+            <span class="item-duration">${escapeHtml(item.duration || "")}</span>
+          </li>`;
+        })
+        .join("");
+
+      return `<section class="section">
+        <h2 class="section-title">${escapeHtml(section.title)}</h2>
+        <ul class="items">${itemsHtml}</ul>
+      </section>`;
+    })
+    .join("");
+
+  const sheet = `<article class="sheet">
+    <header class="sheet-header">
+      <div class="sheet-heading">
+        <p class="sheet-kicker">Service Flow</p>
+        <h1 class="sheet-title">
+          <span class="sheet-title-primary">${escapeHtml(primary)}</span>${secondary ? `<span class="sheet-title-secondary">${escapeHtml(secondary)}</span>` : ""}
+        </h1>
+        <p class="sheet-date">${escapeHtml(formattedDate)}</p>
+      </div>
+      <div class="sheet-total">
+        <p class="sheet-total-label">Total</p>
+        <p class="sheet-total-value">${escapeHtml(service.totalTime)}</p>
+      </div>
+    </header>
+    <div class="sheet-body">${sectionsHtml}</div>
+  </article>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(service.title)} Service Flow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    @page {
+      size: letter landscape;
+      margin: 0;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: ${BRAND.ink};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    body {
+      font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 10.5px;
+      line-height: 1.3;
+      padding: 0.28in;
+    }
+
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.22in;
+      align-items: start;
+    }
+
+    .sheet {
+      border: 1px solid ${BRAND.line};
+      border-radius: 10px;
+      overflow: hidden;
+      min-height: 7.35in;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.12in;
+      padding: 0.14in 0.16in 0.12in;
+      background: linear-gradient(135deg, ${BRAND.sectionBg} 0%, #fff 100%);
+      border-bottom: 2px solid ${BRAND.blueDark};
+    }
+
+    .sheet-kicker {
+      margin: 0 0 2px;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: ${BRAND.blue};
+    }
+
+    .sheet-title {
+      margin: 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 0;
+      line-height: 1.05;
+    }
+
+    .sheet-title-primary {
+      display: block;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: ${BRAND.blueDark};
+    }
+
+    .sheet-title-secondary {
+      display: block;
+      margin-top: 1px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: ${BRAND.teal};
+    }
+
+    .sheet-date {
+      margin: 4px 0 0;
+      font-size: 10px;
+      font-weight: 600;
+      color: ${BRAND.muted};
+    }
+
+    .sheet-total {
+      flex-shrink: 0;
+      text-align: right;
+      padding-top: 2px;
+    }
+
+    .sheet-total-label {
+      margin: 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: ${BRAND.muted};
+    }
+
+    .sheet-total-value {
+      margin: 2px 0 0;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: ${BRAND.ink};
+    }
+
+    .sheet-body {
+      flex: 1 1 auto;
+      padding: 0.1in 0.14in 0.14in;
+      display: flex;
+      flex-direction: column;
+      gap: 0.08in;
+    }
+
+    .section-title {
+      margin: 0 0 0.03in;
+      padding: 0.03in 0.06in;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: ${BRAND.blueDark};
+      background: ${BRAND.sectionBg};
+      border-left: 3px solid ${BRAND.blue};
+      border-radius: 0 4px 4px 0;
+    }
+
+    .items {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.08in;
+      padding: 0.045in 0;
+      border-bottom: 1px solid ${BRAND.line};
+    }
+
+    .item:last-child {
+      border-bottom: none;
+    }
+
+    .item-main {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.04in 0.06in;
+    }
+
+    .item-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: ${BRAND.ink};
+    }
+
+    .item-meta {
+      font-size: 9.5px;
+      font-weight: 500;
+      color: ${BRAND.muted};
+    }
+
+    .item-duration {
+      flex-shrink: 0;
+      min-width: 0.42in;
+      padding: 0.02in 0.05in;
+      border: 1px solid ${BRAND.line};
+      border-radius: 999px;
+      background: #fff;
+      font-family: "Montserrat", "Nunito Sans", sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      color: ${BRAND.ink};
+    }
+  </style>
+</head>
+<body>
+  <div class="pair">
+    ${sheet}
+    ${sheet}
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Print a service flow without touching the Calendar React tree.
+ * Uses a detached iframe so we never run window.print() against the live app document
+ * (which can freeze Electron / Cursor when the Calendar DOM is huge).
+ */
+export function printServiceFlowDocument(service: Service) {
+  const html = buildPrintHtml(service);
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Service Flow Print");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+  document.body.appendChild(iframe);
+
+  const frameWindow = iframe.contentWindow;
+  const frameDocument = iframe.contentDocument;
+  if (!frameWindow || !frameDocument) {
+    iframe.remove();
+    throw new Error("Couldn't open print frame.");
+  }
+
+  frameDocument.open();
+  frameDocument.write(html);
+  frameDocument.close();
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    frameWindow.removeEventListener("afterprint", cleanup);
+    iframe.remove();
+  };
+
+  frameWindow.addEventListener("afterprint", cleanup);
+
+  // Wait one frame so the iframe document paints before the print dialog.
+  frameWindow.requestAnimationFrame(() => {
+    try {
+      frameWindow.focus();
+      frameWindow.print();
+    } finally {
+      // Fallback if afterprint never fires (some WebViews).
+      window.setTimeout(cleanup, 2000);
+    }
+  });
+}

@@ -4,6 +4,7 @@ import {
   campusIdsEligibleForRosterPush,
   resolveEffectiveTeamSchedulesForCampuses,
 } from "../_shared/effectiveTeamSchedules.ts";
+import { formatServingPosition } from "../_shared/positionLabels.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -162,12 +163,20 @@ serve(async (req: Request): Promise<Response> => {
 
         const positionsByUser: Record<string, string[]> = {};
         for (const row of teamRosterRows || []) {
-          const userId = (row as { user_id?: string }).user_id;
-          const position = (row as { assignment_position?: string | null }).assignment_position;
+          const rosterRow = row as {
+            user_id?: string;
+            assignment_position?: string | null;
+            assignment_slot?: string | null;
+          };
+          const userId = rosterRow.user_id;
           if (!userId) continue;
+          const label = formatServingPosition(
+            rosterRow.assignment_position,
+            rosterRow.assignment_slot,
+          );
           const positions = (positionsByUser[userId] ??= []);
-          if (position && !positions.includes(position)) {
-            positions.push(position);
+          if (label && !positions.includes(label)) {
+            positions.push(label);
           }
         }
 

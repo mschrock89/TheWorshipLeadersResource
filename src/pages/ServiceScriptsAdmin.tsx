@@ -4,7 +4,6 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Loader2, Megaphone, Send }
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -167,24 +166,22 @@ function ScriptKindCard({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Icon className="h-5 w-5 text-primary" />
-              {label}
-            </CardTitle>
-            <CardDescription className="mt-1">
-              This is the script for the whole month. Open a weekend below when that week needs different wording.
-            </CardDescription>
-          </div>
-          <Badge variant={monthly.status === "sent" ? "default" : "secondary"}>
-            {monthly.status === "sent" ? "Sent" : "Draft"}
-          </Badge>
+    <section className="border-b border-border/40 pb-8 last:border-b-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+            <Icon className="h-5 w-5 text-primary" />
+            {label}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This is the script for the whole month. Open a weekend below when that week needs different wording.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+        <Badge variant={monthly.status === "sent" ? "default" : "secondary"}>
+          {monthly.status === "sent" ? "Sent" : "Draft"}
+        </Badge>
+      </div>
+      <div className="mt-5 space-y-5">
         <Textarea
           value={monthly.body}
           onChange={(event) => setMonthly((current) => ({ ...current, body: event.target.value }))}
@@ -220,18 +217,19 @@ function ScriptKindCard({
           </p>
         )}
 
-        <div className="space-y-3 border-t border-border pt-4">
+        <div className="border-t border-border/40 pt-4">
           <div>
             <h3 className="font-medium text-foreground">Weekly tweaks</h3>
             <p className="text-sm text-muted-foreground">
               A tweak replaces the monthly script for that weekend only.
             </p>
           </div>
+          <div className="mt-2 divide-y divide-border/40">
           {weekends.map((weekend) => {
             const draft = weeks[weekend] || draftFromRow();
             const isOpen = openWeeks.has(weekend) || Boolean(draft.body.trim());
             return (
-              <div key={weekend} className="rounded-lg border border-border/70 p-3">
+              <div key={weekend} className="py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <p className="font-medium">{formatScriptWeekendLabel(weekend)}</p>
@@ -303,9 +301,10 @@ function ScriptKindCard({
               </div>
             );
           })}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -427,11 +426,9 @@ export default function ServiceScriptsAdmin() {
       </p>
 
       {scriptsQuery.isError && (
-        <Card className="mb-6 border-destructive/40">
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Scripts couldn't be loaded. Apply the latest database migration, then refresh this page.
-          </CardContent>
-        </Card>
+        <p className="mb-6 text-sm text-muted-foreground">
+          Scripts couldn't be loaded. Apply the latest database migration, then refresh this page.
+        </p>
       )}
 
       {scriptsQuery.isLoading ? (
@@ -440,7 +437,7 @@ export default function ServiceScriptsAdmin() {
           <Skeleton className="h-72 w-full" />
         </div>
       ) : selectedCampusId ? (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {SERVICE_SCRIPT_KINDS.map((kind) => (
             <ScriptKindCard
               key={`${selectedCampusId}-${ministryType}-${monthStart}-${kind}`}
