@@ -347,6 +347,65 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
 }
 
 /**
+ * Keep a print document mounted until the dialog closes.
+ * Chrome does not pause timers while print preview is open, and it re-reads the
+ * document when the user confirms. Removing the sheet on a short timeout leaves
+ * the preview looking correct and sends the printer a blank page.
+ */
+export function holdUntilPrintCloses(target: Window, cleanup: () => void) {
+  let settled = false;
+  let sawDialog = false;
+  const printMedia =
+    typeof target.matchMedia === "function" ? target.matchMedia("print") : null;
+  const timers = new Set<number>();
+  const armedAt = performance.now();
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    target.removeEventListener("beforeprint", onBeforePrint);
+    target.removeEventListener("afterprint", onAfterPrint);
+    printMedia?.removeEventListener("change", onPrintMedia);
+    for (const timer of timers) target.clearTimeout(timer);
+    timers.clear();
+    // The spooler can still be reading the document right after the dialog closes.
+    target.setTimeout(cleanup, 1000);
+  };
+
+  const onBeforePrint = () => {
+    sawDialog = true;
+  };
+
+  const onAfterPrint = () => {
+    // Ignore an afterprint that fires in the same turn as print(), before the
+    // dialog is actually on screen.
+    if (performance.now() - armedAt < 200) return;
+    sawDialog = true;
+    if (printMedia?.matches) return;
+    finish();
+  };
+
+  const onPrintMedia = (event: MediaQueryListEvent) => {
+    if (performance.now() - armedAt < 200) return;
+    if (event.matches) {
+      sawDialog = true;
+      return;
+    }
+    if (sawDialog) finish();
+  };
+
+  target.addEventListener("beforeprint", onBeforePrint);
+  target.addEventListener("afterprint", onAfterPrint);
+  printMedia?.addEventListener("change", onPrintMedia);
+
+  timers.add(
+    target.setTimeout(() => {
+      if (!printMedia?.matches) finish();
+    }, 120_000),
+  );
+}
+
+/**
  * Print a service flow without touching the Calendar React tree.
  * Uses a detached iframe so we never run window.print() against the live app document
  * (which can freeze Electron / Cursor when the Calendar DOM is huge).
@@ -360,11 +419,12 @@ export function printServiceFlowDocument(
   iframe.setAttribute("title", "Service Flow Print");
   iframe.setAttribute("aria-hidden", "true");
   // Match the printed page size at 96dpi so on-screen layout measurements agree
-  // with the print layout. Kept invisible and inert.
+  // with the print layout. The frame stays in the viewport: Chrome's print preview
+  // paints a visibility:hidden / opacity:0 frame, then prints that frame blank.
   const pageWidth = layout === "full" ? "8.5in" : "11in";
   const pageHeight = layout === "full" ? "11in" : "8.5in";
   iframe.style.cssText =
-    `position:fixed;right:0;bottom:0;width:${pageWidth};height:${pageHeight};border:0;opacity:0;visibility:hidden;pointer-events:none;`;
+    `position:fixed;left:0;top:0;width:${pageWidth};height:${pageHeight};border:0;z-index:-1;pointer-events:none;opacity:1;visibility:visible;`;
   document.body.appendChild(iframe);
 
   const frameWindow = iframe.contentWindow;
@@ -382,11 +442,8 @@ export function printServiceFlowDocument(
   const cleanup = () => {
     if (cleanedUp) return;
     cleanedUp = true;
-    frameWindow.removeEventListener("afterprint", cleanup);
     iframe.remove();
   };
-
-  frameWindow.addEventListener("afterprint", cleanup);
 
   // If the sheets are taller than one page, shrink them uniformly so the whole
   // flow always prints on a single landscape-letter page. `zoom` (unlike
@@ -447,12 +504,13 @@ export function printServiceFlowDocument(
     frameWindow.requestAnimationFrame(() => {
       fitSheetsToOnePage();
       frameWindow.requestAnimationFrame(() => {
+        holdUntilPrintCloses(frameWindow, cleanup);
         try {
           frameWindow.focus();
           frameWindow.print();
-        } finally {
-          // Fallback if afterprint never fires (some WebViews).
-          window.setTimeout(cleanup, 2000);
+        } catch (error) {
+          cleanup();
+          throw error;
         }
       });
     });

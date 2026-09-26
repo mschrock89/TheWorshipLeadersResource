@@ -12,7 +12,10 @@ import {
   ServiceFlowEditor,
   type ServiceFlowEditorHandle,
 } from "@/components/service-flow/ServiceFlowEditor";
-import type { ServiceFlowPrintLayout } from "@/components/service-flow/printServiceFlowDocument";
+import {
+  holdUntilPrintCloses,
+  type ServiceFlowPrintLayout,
+} from "@/components/service-flow/printServiceFlowDocument";
 import { cn } from "@/lib/cn";
 
 const EXPORT_MODE_CLASS = "service-flow-export-mode";
@@ -157,18 +160,20 @@ export default function ServiceFlow() {
       clearServiceFlowExportMode();
       document.title = previousTitle;
       editorRef.current?.releasePrint();
-      window.removeEventListener("afterprint", cleanup);
     };
 
     document.title = "Service Flow Print";
     html.classList.add(EXPORT_MODE_CLASS);
     setPrintPageOrientation(layout);
-    window.addEventListener("afterprint", cleanup);
 
     window.setTimeout(() => {
-      window.print();
-      // Fallback if afterprint does not fire in this browser.
-      window.setTimeout(cleanup, 1500);
+      holdUntilPrintCloses(window, cleanup);
+      try {
+        window.print();
+      } catch (error) {
+        cleanup();
+        throw error;
+      }
     }, 50);
   };
 

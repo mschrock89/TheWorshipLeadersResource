@@ -721,6 +721,12 @@ html.service-flow-export-mode .service-flow-print-pair {
   .service-flow-print-pair {
     display: grid !important;
     visibility: visible !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+    width: 100% !important;
+    opacity: 1 !important;
   }
 
   .service-flow-print-pair {

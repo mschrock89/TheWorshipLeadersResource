@@ -1536,10 +1536,12 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         <div
           ref={printPairRef}
           className={cn(
-            "service-flow-print-render hidden print:grid",
+            // Laid out, but parked behind the app. display:none (Tailwind `hidden`)
+            // previews correctly in Chrome and then prints a blank page.
+            "service-flow-print-render pointer-events-none fixed left-0 top-0 z-[-1] grid print:pointer-events-auto print:static print:left-auto print:top-auto print:z-auto",
             printLayout === "full"
-              ? "service-flow-print-single print:grid-cols-1"
-              : "service-flow-print-pair print:grid-cols-2 print:gap-[0.2in]",
+              ? "service-flow-print-single w-[8.5in] grid-cols-1 print:w-full"
+              : "service-flow-print-pair w-[11in] grid-cols-2 gap-[0.2in] print:w-full",
           )}
         >
           <ServiceFlowPreview
