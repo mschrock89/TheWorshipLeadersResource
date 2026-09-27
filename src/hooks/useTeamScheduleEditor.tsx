@@ -158,7 +158,10 @@ export function useTeamScheduleForCampus(
         } else if (ministryFilter === "encounter_eon_combined") {
           query = query.in("ministry_type", ["encounter", "eon"]);
         } else if (ministryFilter === "production") {
-          query = query.in("ministry_type", ["weekend", "sunday_am"]);
+          // Production rotates on its own rows. Reading weekend worship here
+          // made the Production schedule look filled while My Schedule and
+          // Calendar (which match ministry_type = production) stayed empty.
+          query = query.eq("ministry_type", "production");
         } else if (ministryFilter === "video") {
           query = query.eq("ministry_type", "video");
         } else {

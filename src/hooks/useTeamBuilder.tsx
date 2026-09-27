@@ -1694,11 +1694,11 @@ function resolveConflictScheduleMinistries(ministryType: string) {
     return ["video"];
   }
 
-  if (
-    ministryType === "weekend" ||
-    ministryType === "weekend_team" ||
-    ministryType === "production"
-  ) {
+  if (ministryType === "production") {
+    return ["production"];
+  }
+
+  if (ministryType === "weekend" || ministryType === "weekend_team") {
     return ["weekend", "sunday_am"];
   }
 
