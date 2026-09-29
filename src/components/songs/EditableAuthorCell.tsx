@@ -57,7 +57,7 @@ export function EditableAuthorCell({
 
   if (!canEdit) {
     return (
-      <span className={cn("text-muted-foreground", className)}>
+      <span className={cn("block truncate text-muted-foreground", className)} title={currentAuthor || "Unknown"}>
         {currentAuthor || "Unknown"}
       </span>
     );
@@ -93,7 +93,7 @@ export function EditableAuthorCell({
         currentAuthor ? "text-muted-foreground" : "text-muted-foreground/80 italic",
         className,
       )}
-      title="Click to edit author"
+      title={currentAuthor ? `${currentAuthor} — click to edit` : "Click to add author"}
     >
       {currentAuthor || "Add author"}
     </button>

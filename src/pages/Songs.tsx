@@ -117,11 +117,6 @@ export default function Songs() {
   const mergeSongs = useMergeSongs();
   const [mergeSourceSong, setMergeSourceSong] = useState<{ id: string; title: string } | null>(null);
   const [chartSong, setChartSong] = useState<{ id: string; title: string; author: string | null; originalKey?: string | null; openInRawEdit?: boolean } | null>(null);
-  const newSongsCutoffDate = useMemo(() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
-    return d;
-  }, []);
 
   // Permission checks - leaders/admins can sync, only org admins can delete
   const leaderRoles = ['admin', 'campus_admin', 'campus_worship_pastor', 'network_student_pastor', 'student_pastor', 'student_worship_pastor', 'childrens_pastor'];
@@ -303,9 +298,14 @@ export default function Songs() {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
+    const currentYear = new Date().getFullYear();
+    const yearStart = `${currentYear}-01-01`;
+    const nextYearStart = `${currentYear + 1}-01-01`;
+    const wasIntroducedThisYear = (firstScheduled: string | null) =>
+      !!firstScheduled && firstScheduled >= yearStart && firstScheduled < nextYearStart;
 
     // Build a map of song_id -> campus-filtered usage count (ALL TIME for display, last 52 weeks for rotation stats)
-    const usageMap = new Map<string, { count: number; lastUsed: string | null; upcomingCount: number; lastScheduled: string | null }>();
+    const usageMap = new Map<string, { count: number; lastUsed: string | null; upcomingCount: number; lastScheduled: string | null; firstScheduled: string | null; introducedThisYear: boolean }>();
 
     // Filter each song's usages by campus and ministry
     const songsWithCampusStats = songs?.map(song => {
@@ -323,6 +323,15 @@ export default function Songs() {
       const firstUsedEver = allTimeSortedDates[0] || null;
       const allScheduledSortedDates = scheduledUsages.map(u => u.plan_date).sort();
       const lastScheduledAt = allScheduledSortedDates[allScheduledSortedDates.length - 1] || null;
+      const firstScheduledEver = allScheduledSortedDates[0]?.slice(0, 10) || null;
+      // first_used is the all-time first service. Recent usage rows only cover
+      // about 24 months, so a returning song can look new if we trust those alone.
+      const globalFirstUsed = song.first_used?.slice(0, 10) || null;
+      const libraryIntroducedThisYear = globalFirstUsed
+        ? wasIntroducedThisYear(globalFirstUsed)
+        : wasIntroducedThisYear(firstScheduledEver);
+      const introducedThisYear =
+        libraryIntroducedThisYear && wasIntroducedThisYear(firstScheduledEver);
       const hasAdventWeekendUsage = scheduledUsages.some((u) => isAdventWeekendDate(u.plan_date));
 
       // Store in map for table display - use ALL TIME count and last used
@@ -331,6 +340,8 @@ export default function Songs() {
         lastUsed: lastUsedAllTime, // All-time last used
         upcomingCount: upcomingUsages.length,
         lastScheduled: lastScheduledAt,
+        firstScheduled: firstScheduledEver,
+        introducedThisYear,
       });
 
       return {
@@ -339,6 +350,8 @@ export default function Songs() {
         usagesAllTime: pastUsages.length,
         scheduledCount: scheduledUsages.length,
         lastScheduledAt,
+        firstScheduledEver,
+        introducedThisYear,
         hasAdventWeekendUsage,
         lastUsedAllTime: lastUsedAllTime,
         firstUsedEver: firstUsedEver,
@@ -351,7 +364,7 @@ export default function Songs() {
       .sort((a, b) => b.usagesAllTime - a.usagesAllTime);
     const top10 = sortedByUsage.slice(0, 10);
 
-    // New songs: scheduled 1-3 times ALL TIME at this campus/ministry
+    // Advent list still uses songs heard only a handful of times.
     const candidateNewSongs = songsWithCampusStats.filter(song => {
       const scheduledCount = song.scheduledCount ?? 0;
       return scheduledCount > 0 &&
@@ -362,15 +375,12 @@ export default function Songs() {
       .filter((song) => song.hasAdventWeekendUsage)
       .sort((a, b) => (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0));
 
-    // Always keep Advent-weekend songs out of "New Songs".
-    // The dedicated Advent list is shown only during Advent season in the UI.
-    const newSongs = candidateNewSongs.filter((song) => {
-      return !song.hasAdventWeekendUsage;
-    }).sort((a, b) => {
-      const aDate = a.lastScheduledAt || "";
-      const bDate = b.lastScheduledAt || "";
+    // New songs: first scheduled appearance for this campus/ministry is this calendar year.
+    const newSongs = songsWithCampusStats.filter((song) => song.introducedThisYear).sort((a, b) => {
+      const aDate = a.firstScheduledEver || "";
+      const bDate = b.firstScheduledEver || "";
       if (bDate !== aDate) return bDate.localeCompare(aDate);
-      return (b.scheduledCount ?? 0) - (a.scheduledCount ?? 0);
+      return a.title.localeCompare(b.title);
     });
 
     // Regular rotation: 4+ total scheduled times and used within the last year
@@ -422,7 +432,7 @@ export default function Songs() {
       case "mostUsed":
         return { title: "Most Used Songs", subtitle: "Top 10 most played songs", songs: mostUsedTop10 };
       case "newSongs":
-        return { title: "New Songs", subtitle: "Songs scheduled 1-3 times for this campus/ministry", songs: newSongsList };
+        return { title: "New Songs", subtitle: "Songs first introduced this year", songs: newSongsList };
       case "adventSongs":
         return { title: "Advent Songs", subtitle: "Songs scheduled for Advent weekend", songs: adventSongsList };
       default:
@@ -700,6 +710,7 @@ export default function Songs() {
                 <p className="mt-2 text-2xl font-bold">
                   {campusFilteredStats.newSongsCount}
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">Introduced this year</p>
               </CardContent>
             </Card>
           </div>
@@ -838,20 +849,11 @@ export default function Songs() {
                                         canEdit={canManageSongs}
                                         className="min-w-0 flex-1 truncate font-medium"
                                       />
-                                      {(() => {
-                                        const scheduledCount = (song as any).scheduledCount ?? 0;
-                                        const lastScheduledAt = (song as any).lastScheduledAt ? new Date((song as any).lastScheduledAt) : null;
-                                        const isNew =
-                                          scheduledCount > 0 &&
-                                          scheduledCount < 4 &&
-                                          !!lastScheduledAt &&
-                                          lastScheduledAt >= newSongsCutoffDate;
-                                        return isNew ? (
-                                          <Badge variant="outline" className="text-xs h-5 px-2 shrink-0 border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
-                                            NEW
-                                          </Badge>
-                                        ) : null;
-                                      })()}
+                                      {(song as { introducedThisYear?: boolean }).introducedThisYear ? (
+                                        <Badge variant="outline" className="text-xs h-5 px-2 shrink-0 border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
+                                          NEW
+                                        </Badge>
+                                      ) : null}
                                     </div>
                                     <EditableAuthorCell
                                       songId={song.id}
@@ -900,14 +902,14 @@ export default function Songs() {
                 <Card>
                   <CardContent className="p-0">
                     {songsLoading ? (
-                    <Table>
+                    <Table className="table-fixed">
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead className="hidden md:table-cell">Author</TableHead>
-                            <TableHead className="text-center">Times Used</TableHead>
-                            <TableHead className="hidden sm:table-cell">Last Used</TableHead>
-                            <TableHead className="text-center">Upcoming</TableHead>
+                            <TableHead className="h-10 px-2">Title</TableHead>
+                            <TableHead className="hidden h-10 w-[22%] px-2 md:table-cell">Author</TableHead>
+                            <TableHead className="h-10 w-14 px-1 text-center">Times Used</TableHead>
+                            <TableHead className="hidden h-10 w-[6.75rem] px-2 sm:table-cell">Last Used</TableHead>
+                            <TableHead className="h-10 w-16 px-1 text-center">Upcoming</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -941,70 +943,60 @@ export default function Songs() {
                         <p>No songs found. Sync from Planning Center to get started.</p>
                       </div>
                     ) : (
-                      <Table>
+                      <Table className="table-fixed">
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead className="hidden md:table-cell">Author</TableHead>
-                            <TableHead className="text-center hidden sm:table-cell">BPM</TableHead>
-                            <TableHead className="text-center">Times Used</TableHead>
-                            <TableHead className="hidden sm:table-cell">Last Used</TableHead>
-                            <TableHead className="text-center">Upcoming</TableHead>
-                            <TableHead className="w-24"></TableHead>
+                            <TableHead className="h-10 px-2">Title</TableHead>
+                            <TableHead className="hidden h-10 w-[22%] px-2 md:table-cell lg:w-[28%]">Author</TableHead>
+                            <TableHead className="hidden h-10 w-12 whitespace-nowrap px-1 text-center text-xs sm:table-cell">BPM</TableHead>
+                            <TableHead className="h-10 w-20 whitespace-nowrap px-1 text-center text-xs">Times Used</TableHead>
+                            <TableHead className="hidden h-10 w-[6.75rem] whitespace-nowrap px-1 text-xs sm:table-cell">Last Used</TableHead>
+                            <TableHead className="h-10 w-20 whitespace-nowrap px-1 text-center text-xs">Upcoming</TableHead>
+                            <TableHead className="h-10 w-[8.5rem] px-1"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {filteredSongs?.map((song) => (
                             <TableRow key={song.id}>
-                              <TableCell className="font-medium">
-                                <div className="flex items-center justify-between gap-2">
+                              <TableCell className="overflow-hidden px-2 py-2 font-medium">
+                                <div className="flex min-w-0 items-center gap-1.5">
                                   <EditableTitleCell
                                     songId={song.id}
                                     currentTitle={song.title}
                                     canEdit={canManageSongs}
-                                    className="min-w-0 flex-1 truncate"
+                                    className="min-w-0 flex-1 truncate px-1 py-0.5"
                                   />
-                                  {(() => {
-                                    const usage = songCampusUsage.get(song.id);
-                                    const scheduledCount = (usage?.count ?? 0) + (usage?.upcomingCount ?? 0);
-                                    const lastScheduledAt = usage?.lastScheduled ? new Date(usage.lastScheduled) : null;
-                                    const isNew =
-                                      scheduledCount > 0 &&
-                                      scheduledCount < 4 &&
-                                      !!lastScheduledAt &&
-                                      lastScheduledAt >= newSongsCutoffDate;
-                                    return isNew ? (
-                                      <Badge variant="outline" className="text-xs h-5 px-2 border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
-                                        NEW
-                                      </Badge>
-                                    ) : null;
-                                  })()}
+                                  {songCampusUsage.get(song.id)?.introducedThisYear ? (
+                                    <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] border-[#35B0E5]/50 text-[#35B0E5] bg-[#35B0E5]/10">
+                                      NEW
+                                    </Badge>
+                                  ) : null}
                                 </div>
                                 <div className="text-sm text-muted-foreground md:hidden">
                                   <EditableAuthorCell
                                     songId={song.id}
                                     currentAuthor={song.author}
                                     canEdit={canManageSongs}
-                                    className="max-w-full truncate px-0 py-0 hover:bg-transparent"
+                                    className="max-w-full truncate px-1 py-0 hover:bg-transparent"
                                   />
                                 </div>
                               </TableCell>
-                              <TableCell className="hidden md:table-cell text-muted-foreground">
+                              <TableCell className="hidden overflow-hidden px-2 py-2 text-muted-foreground md:table-cell">
                                 <EditableAuthorCell
                                   songId={song.id}
                                   currentAuthor={song.author}
                                   canEdit={canManageSongs}
-                                  className="max-w-full truncate"
+                                  className="max-w-full truncate px-1 py-0.5"
                                 />
                               </TableCell>
-                              <TableCell className="text-center hidden sm:table-cell">
+                              <TableCell className="hidden px-1 py-2 text-center sm:table-cell">
                                 <EditableBpmCell
                                   songId={song.id}
                                   currentBpm={song.bpm}
                                   canEdit={canManageSongs}
                                 />
                               </TableCell>
-                              <TableCell className="text-center">
+                              <TableCell className="px-1 py-2 text-center">
                                 {(() => {
                                   const usage = songCampusUsage.get(song.id);
                                   const count = usage?.count ?? 0;
@@ -1015,7 +1007,7 @@ export default function Songs() {
                                   );
                                 })()}
                               </TableCell>
-                              <TableCell className="hidden sm:table-cell text-muted-foreground">
+                              <TableCell className="hidden whitespace-nowrap px-1 py-2 text-xs text-muted-foreground sm:table-cell">
                                 {(() => {
                                   const usage = songCampusUsage.get(song.id);
                                   return usage?.lastUsed
@@ -1023,7 +1015,7 @@ export default function Songs() {
                                     : "Never";
                                 })()}
                               </TableCell>
-                              <TableCell className="text-center">
+                              <TableCell className="px-1 py-2 text-center">
                                 {(() => {
                                   const usage = songCampusUsage.get(song.id);
                                   const upcoming = usage?.upcomingCount ?? 0;
@@ -1036,35 +1028,35 @@ export default function Songs() {
                                   );
                                 })()}
                               </TableCell>
-                              <TableCell>
-                                <div className="flex items-center justify-end gap-1">
+                              <TableCell className="px-1 py-2">
+                                <div className="flex items-center justify-end gap-0.5">
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
                                     onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null, openInRawEdit: false })}
                                     title="View chord chart"
                                   >
-                                    <FileText className="h-4 w-4" />
+                                    <FileText className="h-3.5 w-3.5" />
                                   </Button>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                    className="h-7 w-7 text-muted-foreground hover:text-primary"
                                     onClick={() => setChartSong({ id: song.id, title: song.title, author: song.author || null, openInRawEdit: true })}
                                     title="Review/edit chart"
                                   >
-                                    <Pencil className="h-4 w-4" />
+                                    <Pencil className="h-3.5 w-3.5" />
                                   </Button>
                                   {canManageSongs && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                      className="h-7 w-7 text-muted-foreground hover:text-primary"
                                       onClick={() => setMergeSourceSong({ id: song.id, title: song.title })}
                                       title="Merge into another song"
                                     >
-                                      <GitMerge className="h-4 w-4" />
+                                      <GitMerge className="h-3.5 w-3.5" />
                                     </Button>
                                   )}
                                   {canDeleteSongs && (
@@ -1073,9 +1065,9 @@ export default function Songs() {
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
                                         >
-                                          <Trash2 className="h-4 w-4" />
+                                          <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
                                       </AlertDialogTrigger>
                                       <AlertDialogContent>

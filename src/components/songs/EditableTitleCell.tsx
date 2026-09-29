@@ -61,7 +61,11 @@ export function EditableTitleCell({
   };
 
   if (!canEdit) {
-    return <span className={cn("font-medium", className)}>{currentTitle}</span>;
+    return (
+      <span className={cn("font-medium", className)} title={currentTitle}>
+        {currentTitle}
+      </span>
+    );
   }
 
   if (isEditing) {
@@ -93,7 +97,7 @@ export function EditableTitleCell({
         "block w-full truncate rounded px-2 py-1 text-left text-sm font-medium transition-colors hover:bg-muted",
         className,
       )}
-      title="Click to edit title"
+      title={`${currentTitle} — click to edit`}
     >
       {currentTitle}
     </button>
