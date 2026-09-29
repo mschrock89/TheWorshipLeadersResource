@@ -1991,6 +1991,18 @@ function StandardCalendar() {
             position: userSchedule.position,
             teamId: userSchedule.teamId
           } : null;
+          // A date received in an earlier swap can be swapped again. Offer the
+          // date they hold now, on the team that is actually scheduled that day.
+          const holdingSwappedDate = Boolean((hasSwappedIn || userSchedule?.isSwappedIn) && !hasSwappedOut);
+          const canOfferThisDate = Boolean(holdingSwappedDate || (userSchedule && !hasSwappedOut && !userSchedule.isSwappedIn));
+          const swapOffer = canOfferThisDate ? {
+            position: (holdingSwappedDate ? swapInDetails?.position : null) || userSchedule?.position || "",
+            teamId: (holdingSwappedDate && selectedDayTeam?.team_id) || userSchedule?.teamId || swapInDetails?.team_id || "",
+            teamName: (holdingSwappedDate && selectedDayTeam?.worship_teams?.name) || userSchedule?.teamName || swapInDetails?.worship_teams?.name || "",
+            campusId: userSchedule?.campusId || (campusFilter !== "network-wide" ? campusFilter : null),
+            ministryType: userSchedule?.ministryType || selectedDayTeam?.ministry_type || null,
+            rotationPeriodId: userSchedule?.rotationPeriodId || null,
+          } : null;
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
           const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
           const sessionBase =
@@ -2048,7 +2060,7 @@ function StandardCalendar() {
                 }
                 actions={
                   <>
-                    {showScheduledTeamLabel && effectiveTeam && !hasSwappedIn ? (
+                    {showScheduledTeamLabel && swapOffer ? (
                       <>
                         <SwapButton onClick={() => setIsSwapOpen(true)} />
                         <CoverButton onClick={() => setIsCoverOpen(true)} />
@@ -2749,32 +2761,32 @@ function StandardCalendar() {
                     </div>)}
                 </CalendarDayWidget>
 
-            {/* Swap/Cover dialogs - only available for home team (not when covering/swapped in) */}
-                {userSchedule && !hasSwappedOut && !hasSwappedIn && (
+            {/* Swap/Cover dialogs use the date this person currently holds, including a date they received in an earlier swap. */}
+                {swapOffer && (
                   <div className="hidden">
                     <SwapRequestDialog
                       open={isSwapOpen}
                       onOpenChange={setIsSwapOpen}
                       requestMode="swap"
                       originalDate={selectedDate}
-                      position={userSchedule.position || ""}
-                      teamId={userSchedule.teamId}
-                      teamName={userSchedule.teamName}
-                      campusId={userSchedule.campusId}
-                      ministryType={userSchedule.ministryType}
-                      rotationPeriodId={userSchedule.rotationPeriodId}
+                      position={swapOffer.position}
+                      teamId={swapOffer.teamId}
+                      teamName={swapOffer.teamName}
+                      campusId={swapOffer.campusId}
+                      ministryType={swapOffer.ministryType}
+                      rotationPeriodId={swapOffer.rotationPeriodId}
                     />
                     <SwapRequestDialog
                       open={isCoverOpen}
                       onOpenChange={setIsCoverOpen}
                       requestMode="fill_in"
                       originalDate={selectedDate}
-                      position={userSchedule.position || ""}
-                      teamId={userSchedule.teamId}
-                      teamName={userSchedule.teamName}
-                      campusId={userSchedule.campusId}
-                      ministryType={userSchedule.ministryType}
-                      rotationPeriodId={userSchedule.rotationPeriodId}
+                      position={swapOffer.position}
+                      teamId={swapOffer.teamId}
+                      teamName={swapOffer.teamName}
+                      campusId={swapOffer.campusId}
+                      ministryType={swapOffer.ministryType}
+                      rotationPeriodId={swapOffer.rotationPeriodId}
                     />
                   </div>
                 )}

@@ -10,7 +10,8 @@ import {
   assignmentMatchesSupportScheduleMinistry,
   shouldSkipMisalignedSupportScheduleEntry,
 } from "@/lib/teamScheduleSupport";
-import { canonicalSwapPosition } from "@/lib/swapPositions";
+import { applySwapsToScheduleDates, applySwapsToUserIds } from "@/lib/effectiveSwapSchedule";
+import { canonicalSwapPosition, swapPositionsMatch } from "@/lib/swapPositions";
 
 export type SwapRequestType = "swap" | "fill_in";
 
@@ -1039,13 +1040,180 @@ async function getCampusAssignmentEligibleUserIds(args: {
   return eligibleUserIds;
 }
 
+function expandSwapWeekend(date: string): string[] {
+  const pair = getWeekendPairDate(date);
+  return pair ? [date, pair] : [date];
+}
+
+async function applyAcceptedSwapsToPositionMembers(args: {
+  members: any[];
+  dates: string[];
+  position: string;
+  ministryType?: string;
+  excludeUserId?: string;
+  resourceAppKey: string;
+}): Promise<any[]> {
+  const { members, dates, position, ministryType, excludeUserId, resourceAppKey } = args;
+  if (dates.length === 0) return members;
+
+  const swapSelect = "id, requester_id, accepted_by_id, original_date, swap_date, request_type, position, ministry_type, created_at";
+  const [originalResult, swapDateResult] = await Promise.all([
+    supabase
+      .from("swap_requests")
+      .select(swapSelect)
+      .eq("status", "accepted")
+      .eq("resource_app_key", resourceAppKey)
+      .in("original_date", dates),
+    supabase
+      .from("swap_requests")
+      .select(swapSelect)
+      .eq("status", "accepted")
+      .eq("resource_app_key", resourceAppKey)
+      .in("swap_date", dates),
+  ]);
+
+  if (originalResult.error) throw originalResult.error;
+  if (swapDateResult.error) throw swapDateResult.error;
+
+  const swapsById = new Map<string, any>();
+  for (const swap of [...(originalResult.data || []), ...(swapDateResult.data || [])]) {
+    swapsById.set(swap.id, swap);
+  }
+
+  const relevantSwaps = [...swapsById.values()].filter((swap) => {
+    if (swap.position && !swapPositionsMatch(swap.position, position)) return false;
+    if (
+      ministryType &&
+      swap.ministry_type &&
+      !ministriesMatchForSwap(swap.ministry_type, ministryType)
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const effectiveIds = applySwapsToUserIds(
+    members.map((member) => member.user_id),
+    dates,
+    relevantSwaps.map((swap) => ({
+      requesterId: swap.requester_id,
+      acceptedById: swap.accepted_by_id,
+      originalDate: swap.original_date,
+      swapDate: swap.swap_date,
+      requestType: swap.request_type,
+      createdAt: swap.created_at,
+    })),
+  );
+  const effectiveIdSet = new Set(effectiveIds);
+  const kept = members.filter((member) => member.user_id && effectiveIdSet.has(member.user_id));
+  const presentIds = new Set(kept.map((member) => member.user_id));
+  const missingIds = effectiveIds.filter(
+    (userId) => userId && !presentIds.has(userId) && userId !== excludeUserId,
+  );
+
+  if (missingIds.length === 0) return kept;
+
+  const { data: incomingMembers, error: incomingError } = await supabase
+    .from("team_members")
+    .select(
+      `
+      id,
+      user_id,
+      member_name,
+      position,
+      team_id,
+      rotation_period_id,
+      ministry_types,
+      worship_teams(id, name)
+    `,
+    )
+    .in("user_id", missingIds)
+    .in("position", getSwapPositionVariants(position));
+
+  if (incomingError) throw incomingError;
+
+  const incomingByUser = new Map<string, any>();
+  for (const member of incomingMembers || []) {
+    if (!member.user_id) continue;
+    const existing = incomingByUser.get(member.user_id);
+    if (!existing) {
+      incomingByUser.set(member.user_id, member);
+      continue;
+    }
+    const existingMatches = ministryType
+      ? ((existing.ministry_types as string[] | null) || []).some((memberMinistry) =>
+          ministriesMatchForSwap(memberMinistry, ministryType),
+        )
+      : false;
+    const nextMatches = ministryType
+      ? ((member.ministry_types as string[] | null) || []).some((memberMinistry) =>
+          ministriesMatchForSwap(memberMinistry, ministryType),
+        )
+      : false;
+    if (!existingMatches && nextMatches) {
+      incomingByUser.set(member.user_id, member);
+    }
+  }
+
+  return [...kept, ...incomingByUser.values()];
+}
+
+async function applyAcceptedSwapsToUserDates(
+  results: Array<{
+    schedule_date: string;
+    team_id: string;
+    worship_teams: { id: string; name: string } | null;
+  }>,
+  userId: string,
+  resourceAppKey: string,
+) {
+  const { data: swaps, error } = await supabase
+    .from("swap_requests")
+    .select("requester_id, accepted_by_id, original_date, swap_date, request_type, created_at")
+    .eq("status", "accepted")
+    .eq("resource_app_key", resourceAppKey)
+    .or(`requester_id.eq.${userId},accepted_by_id.eq.${userId}`);
+
+  if (error) throw error;
+  if (!swaps || swaps.length === 0) return results;
+
+  const effectiveDates = applySwapsToScheduleDates(
+    results.map((entry) => entry.schedule_date),
+    swaps.map((swap) => ({
+      requesterId: swap.requester_id,
+      acceptedById: swap.accepted_by_id || "",
+      originalDate: swap.original_date,
+      swapDate: swap.swap_date,
+      requestType: swap.request_type,
+      createdAt: swap.created_at,
+    })),
+    userId,
+    expandSwapWeekend,
+  );
+  const effectiveDateSet = new Set(effectiveDates);
+  const kept = results.filter((entry) => effectiveDateSet.has(entry.schedule_date));
+  const keptDates = new Set(kept.map((entry) => entry.schedule_date));
+
+  for (const scheduleDate of effectiveDates) {
+    if (keptDates.has(scheduleDate)) continue;
+    kept.push({
+      schedule_date: scheduleDate,
+      team_id: "",
+      worship_teams: null,
+    });
+  }
+
+  return kept.sort((a, b) => a.schedule_date.localeCompare(b.schedule_date));
+}
+
 /**
  * Returns members for a position that are eligible to swap for a specific date.
  *
  * Logic:
  * 1) Find teams scheduled on the requested date (and weekend pair) for the given ministry
  * 2) Return members in those teams with the given position
- * 3) Apply campus/rotation/ministry/gender/break filters
+ * 3) Replace anyone who already swapped that date with the person who holds it now
+ * 4) Apply campus/rotation/ministry/gender/break filters
  */
 export function usePositionMembersForDate(
   position: string,
@@ -1134,8 +1302,17 @@ export function usePositionMembersForDate(
       const { data: members, error: membersError } = await membersQuery;
       if (membersError) throw membersError;
 
-      return await hydrateAndFilterMembers({
+      const adjustedMembers = await applyAcceptedSwapsToPositionMembers({
         members: (members as any[]) || [],
+        dates,
+        position,
+        ministryType: effectiveMinistryType,
+        excludeUserId,
+        resourceAppKey,
+      });
+
+      return await hydrateAndFilterMembers({
+        members: adjustedMembers,
         campusId,
         rotationPeriodId: undefined,
         ministryType: effectiveMinistryType,
@@ -1496,7 +1673,7 @@ export function useUserScheduledDates(userId: string | undefined, teamId?: strin
         });
       }
 
-      return results;
+      return await applyAcceptedSwapsToUserDates(results, userId!, resourceAppKey);
     },
     enabled: !!userId,
   });
