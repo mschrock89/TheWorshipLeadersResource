@@ -30,6 +30,7 @@ const PermissionsAdmin = lazy(() => import("@/pages/PermissionsAdmin"));
 const PushNotificationsAdmin = lazy(() => import("@/pages/PushNotificationsAdmin"));
 const Resources = lazy(() => import("@/pages/Resources"));
 const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
+const LiveMode = lazy(() => import("@/pages/LiveMode"));
 const DrumTech = lazy(() => import("@/pages/DrumTech"));
 const Bible = lazy(() => import("@/pages/Bible"));
 const Feed = lazy(() => import("@/pages/Feed"));
@@ -93,6 +94,7 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/drum-tech", DrumTech),
   route("/bible", Bible),
   route("/service-flow", ServiceFlow),
+  route("/live", LiveMode),
   route("/snake", Snake),
   route("/pong", Pong),
   route("/galaga", Galaga),

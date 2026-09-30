@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Plus, Printer } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronDown, Plus, Printer, Radio } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
@@ -16,6 +17,7 @@ import {
 import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { useAuth } from "@/hooks/useAuth";
+import { useCanOpenLiveMode } from "@/hooks/useCanOpenLiveMode";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
@@ -36,6 +38,7 @@ import { ServiceFlowItem } from "./ServiceFlowItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
+import { buildLiveModeHref } from "@/lib/liveMode";
 import { printServiceFlowDocument, type ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 import {
   buildResolvedServiceFlowTitles,
@@ -138,6 +141,7 @@ export function CalendarServiceFlowPanel({
 }: CalendarServiceFlowPanelProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const canOpenLiveMode = useCanOpenLiveMode();
   const effectiveMinistryType = normalizeMinistryType(ministryType);
   const isNetworkWide =
     isNetworkWideMinistryType(effectiveMinistryType) ||
@@ -822,6 +826,13 @@ export function CalendarServiceFlowPanel({
     !isInitialLoading && (!activeFlowId || localItems.length === 0 || itemsError);
 
   const canPrint = !isInitialLoading && !showEmpty && localItems.length > 0;
+  const liveHref = buildLiveModeHref({
+    date,
+    campusId: campusId && campusId !== "network-wide" ? campusId : flowCampusId,
+    ministryType: effectiveMinistryType,
+    draftSetId,
+    customServiceId,
+  });
 
   return (
     <section
@@ -855,6 +866,14 @@ export function CalendarServiceFlowPanel({
               aria-label="Service start time"
             />
           </label>
+          {canOpenLiveMode ? (
+            <Button asChild variant="default" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5 text-xs">
+              <Link to={liveHref}>
+                <Radio className="h-3.5 w-3.5" />
+                Live
+              </Link>
+            </Button>
+          ) : null}
           <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

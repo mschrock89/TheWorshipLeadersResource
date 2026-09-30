@@ -2357,6 +2357,171 @@ export type Database = {
           },
         ]
       }
+      live_sessions: {
+        Row: {
+          campus_id: string
+          channels_initialized: boolean
+          created_at: string
+          created_by: string | null
+          current_item_id: string | null
+          custom_service_id: string | null
+          draft_set_id: string | null
+          id: string
+          listener_client_id: string | null
+          listener_heartbeat: string | null
+          listener_station: string | null
+          ministry_type: string
+          resource_app_key: string
+          service_date: string
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          channels_initialized?: boolean
+          created_at?: string
+          created_by?: string | null
+          current_item_id?: string | null
+          custom_service_id?: string | null
+          draft_set_id?: string | null
+          id?: string
+          listener_client_id?: string | null
+          listener_heartbeat?: string | null
+          listener_station?: string | null
+          ministry_type: string
+          resource_app_key?: string
+          service_date: string
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          channels_initialized?: boolean
+          created_at?: string
+          created_by?: string | null
+          current_item_id?: string | null
+          custom_service_id?: string | null
+          draft_set_id?: string | null
+          id?: string
+          listener_client_id?: string | null
+          listener_heartbeat?: string | null
+          listener_station?: string | null
+          ministry_type?: string
+          resource_app_key?: string
+          service_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_sessions_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_talkback_channels: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          position_slot: string | null
+          session_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          position_slot?: string | null
+          session_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          position_slot?: string | null
+          session_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_talkback_channels_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "live_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_talkback_lines: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          session_id: string
+          transcript: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          session_id: string
+          transcript: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          session_id?: string
+          transcript?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_talkback_lines_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "live_talkback_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_talkback_lines_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "live_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_session_notes: {
+        Row: {
+          body: string
+          session_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          body?: string
+          session_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          body?: string
+          session_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_session_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "live_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_read_status: {
         Row: {
           created_at: string
@@ -4502,6 +4667,17 @@ export type Database = {
       }
       cleanup_expired_setlist_playlists: { Args: never; Returns: undefined }
       cleanup_old_notification_reads: { Args: never; Returns: undefined }
+      ensure_live_session: {
+        Args: {
+          _campus_id: string
+          _ministry_type: string
+          _service_date: string
+          _custom_service_id?: string | null
+          _draft_set_id?: string | null
+          _resource_app_key?: string
+        }
+        Returns: Database["public"]["Tables"]["live_sessions"]["Row"][]
+      }
       get_basic_profiles: {
         Args: never
         Returns: {

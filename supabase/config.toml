@@ -201,6 +201,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/detect-reference-track-markers/index.ts"
 
+[functions.transcribe-talkback]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/transcribe-talkback/index.ts"
+
 [functions.cancel-push-notification]
 enabled = true
 verify_jwt = true

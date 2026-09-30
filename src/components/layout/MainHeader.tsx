@@ -7,13 +7,14 @@ import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
+import { useCanOpenLiveMode } from "@/hooks/useCanOpenLiveMode";
 
 export function MainHeader() {
   const {
@@ -40,6 +41,7 @@ export function MainHeader() {
     data: incompleteDevoCount = 0
   } = useMyIncompleteDevoCount();
   const drumTechAccess = useDrumTechAccess();
+  const canOpenLiveMode = useCanOpenLiveMode();
   const isStudentApp = isCurrentStudentResourceApp();
   const isOnChatPage = location.pathname === "/chat";
 
@@ -183,6 +185,14 @@ export function MainHeader() {
                   <Link to="/drum-tech" className="flex items-center gap-2">
                     <Wrench className="h-4 w-4" />
                     Drum Tech
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isStudentApp && !isAuditionCandidate && !isStudentBase && canOpenLiveMode && (
+                <DropdownMenuItem asChild>
+                  <Link to="/live" className="flex items-center gap-2">
+                    <Radio className="h-4 w-4" />
+                    Live Mode
                   </Link>
                 </DropdownMenuItem>
               )}

@@ -167,6 +167,7 @@ export function ProtectedLayout({
   ]);
 
   const isOnChatPage = location.pathname === "/chat";
+  const isLiveMode = location.pathname === "/live";
   
   // Check if audio player is active to add extra padding
   const audioPlayer = useAudioPlayerSafe();
@@ -185,12 +186,16 @@ export function ProtectedLayout({
     <CampusSelectionProvider value={campusSelectionValue}>
       <MinistrySelectionProvider value={ministrySelectionValue}>
         <div className="min-h-full bg-background">
-          <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
-            <MainHeader />
-          </Suspense>
+          {!isLiveMode && (
+            <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
+              <MainHeader />
+            </Suspense>
+          )}
           <main
             className={
-              isOnChatPage
+              isLiveMode
+                ? "p-0"
+                : isOnChatPage
                 ? ""
                 : `container px-4 py-5 sm:px-6 sm:py-7 ${hasActivePlayer ? "pb-20" : "pb-5"}`
             }

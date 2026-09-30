@@ -21,7 +21,7 @@ import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useKeyboardOffset } from "@/hooks/useKeyboardOffset";
 
-export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms"]);
+export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms", "/live"]);
 
 type NavItem = {
   to: string;
