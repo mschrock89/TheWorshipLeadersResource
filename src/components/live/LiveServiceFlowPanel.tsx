@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
+import { formatDuration } from "@/components/service-flow/DurationInput";
 
 type LiveServiceFlowPanelProps = {
   items: ServiceFlowItem[];
@@ -11,6 +12,21 @@ type LiveServiceFlowPanelProps = {
 
 function itemTitle(item: ServiceFlowItem) {
   return item.song?.title || item.title;
+}
+
+function vocalistNames(item: ServiceFlowItem) {
+  if (item.vocalists && item.vocalists.length > 0) {
+    return item.vocalists
+      .map((vocalist) => vocalist.full_name || "")
+      .filter(Boolean)
+      .join(", ");
+  }
+  return item.vocalist?.full_name || "";
+}
+
+function itemDuration(item: ServiceFlowItem) {
+  if (!item.duration_seconds || item.duration_seconds <= 0) return "";
+  return formatDuration(item.duration_seconds);
 }
 
 export function LiveServiceFlowPanel({
@@ -36,33 +52,67 @@ export function LiveServiceFlowPanel({
       {items.map((item) => {
         if (item.item_type === "header") {
           return (
-            <li key={item.id} className="px-2 pt-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {item.title}
+            <li key={item.id} className="px-2 pt-3">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                {item.title}
+              </p>
+              {item.notes?.trim() ? (
+                <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{item.notes.trim()}</p>
+              ) : null}
             </li>
           );
         }
         const isCurrent = item.id === currentItemId;
+        const isSong = item.item_type === "song";
+        const duration = itemDuration(item);
+        const clockTime = clockTimes.get(item.id) || "";
+        const singers = isSong ? vocalistNames(item) : "";
+        const notes = item.notes?.trim() || "";
         return (
           <li key={item.id}>
             <button
               type="button"
               onClick={() => onSelect(isCurrent ? null : item.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left",
+                "flex w-full flex-col gap-1.5 rounded-xl border px-3 py-2.5 text-left",
                 isCurrent ? "border-primary bg-primary/10" : "border-transparent bg-muted/40",
               )}
             >
-              <span className="w-16 shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
-                {clockTimes.get(item.id) || ""}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-base font-semibold">{itemTitle(item)}</span>
-                {item.notes ? (
-                  <span className="block truncate text-xs text-muted-foreground">{item.notes}</span>
+              <span className="flex items-center gap-2">
+                {duration ? (
+                  <span className="shrink-0 rounded-md bg-background px-1.5 py-0.5 text-xs font-semibold tabular-nums text-foreground">
+                    {duration}
+                  </span>
+                ) : null}
+                {clockTime ? (
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">
+                    {clockTime}
+                  </span>
+                ) : null}
+                <span className="min-w-0 flex-1 truncate text-base font-semibold">{itemTitle(item)}</span>
+                {isCurrent ? (
+                  <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-primary">Now</span>
                 ) : null}
               </span>
-              {isCurrent ? (
-                <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-primary">Now</span>
+              {isSong && (item.song?.bpm || item.song_key || singers) ? (
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {item.song?.bpm ? (
+                    <span className="rounded-md bg-primary px-2 py-0.5 text-sm font-bold tabular-nums text-primary-foreground">
+                      {item.song.bpm} BPM
+                    </span>
+                  ) : null}
+                  {item.song_key ? (
+                    <span className="rounded-md border border-foreground/30 bg-background px-2 py-0.5 text-sm font-semibold">
+                      {item.song_key}
+                    </span>
+                  ) : null}
+                  {singers ? (
+                    <span className="min-w-0 text-sm font-medium">{singers}</span>
+                  ) : null}
+                </span>
+              ) : null}
+              {notes ? (
+                <span className="whitespace-pre-wrap text-xs text-muted-foreground">{notes}</span>
               ) : null}
             </button>
           </li>

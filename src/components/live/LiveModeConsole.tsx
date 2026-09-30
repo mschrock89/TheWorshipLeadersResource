@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ArrowLeft, AudioLines, Loader2, Radio, Settings2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -17,7 +17,14 @@ import { cn } from "@/lib/cn";
 import { liveStationLabel, readLiveStation, writeLiveStation, type LiveStation } from "@/lib/liveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
-import { buildServiceFlowClockTimes } from "@/components/service-flow/serviceFlowClock";
+import { useCampuses } from "@/hooks/useCampuses";
+import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  buildServiceFlowClockTimes,
+  normalizeClockSource,
+  resolveScheduledServiceStartTime,
+} from "@/components/service-flow/serviceFlowClock";
 import { AudioRoutingPage } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
 import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
@@ -72,9 +79,48 @@ export function LiveModeConsole({
     customServiceId,
   );
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(flow?.id || null);
+  const { data: campusesWithTimes = [] } = useCampuses();
+  const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
+    campusId,
+    startDate: serviceDate,
+    endDate: serviceDate,
+  });
+  const { data: customServiceStartTime = null } = useQuery({
+    queryKey: ["custom-service-start-time", customServiceId],
+    enabled: !!customServiceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_services")
+        .select("start_time")
+        .eq("id", customServiceId!)
+        .maybeSingle();
+      if (error) throw error;
+      return normalizeClockSource(data?.start_time) || null;
+    },
+  });
+  const startTime = useMemo(() => {
+    const saved = normalizeClockSource(flow?.start_time);
+    if (saved) return saved;
+    return resolveScheduledServiceStartTime({
+      customServiceStartTime,
+      serviceDate,
+      ministryType,
+      campusId,
+      campus: campusesWithTimes.find((campus) => campus.id === campusId),
+      overrides: serviceTimeOverrides,
+    });
+  }, [
+    campusesWithTimes,
+    campusId,
+    customServiceStartTime,
+    flow?.start_time,
+    ministryType,
+    serviceDate,
+    serviceTimeOverrides,
+  ]);
   const clockTimes = useMemo(
-    () => buildServiceFlowClockTimes(items, flow?.start_time),
-    [flow?.start_time, items],
+    () => buildServiceFlowClockTimes(items, startTime),
+    [items, startTime],
   );
   const cue = findFlowCue(items, live.session?.current_item_id || null);
   const ministryLabel =
