@@ -38,6 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
@@ -904,7 +905,7 @@ export default function Feed({
                       onValueChange={setSelectedCampusId}
                     >
                       <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
-                        <SelectValue placeholder="Select campus" />
+                        <CompactSelectValue label={selectedCampusName} placeholder="Select campus" />
                       </SelectTrigger>
                       <SelectContent>
                         {selectableCampuses.map((campus) => (
@@ -924,7 +925,7 @@ export default function Feed({
                       onValueChange={setSelectedMinistryType}
                     >
                       <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
-                        <SelectValue placeholder="Select ministry" />
+                        <CompactSelectValue label={selectedMinistryLabel} placeholder="Select ministry" />
                       </SelectTrigger>
                       <SelectContent>
                         {feedMinistries.map((ministry) => (

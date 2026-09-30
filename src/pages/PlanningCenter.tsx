@@ -20,7 +20,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -585,7 +586,14 @@ export default function PlanningCenter() {
                     <Label htmlFor="campus">Select Campus (Optional)</Label>
                     <Select value={selectedCampus} onValueChange={setSelectedCampus}>
                       <SelectTrigger id="campus">
-                        <SelectValue placeholder="All campuses" />
+                        <CompactSelectValue
+                          label={
+                            !selectedCampus || selectedCampus === "all"
+                              ? "All campuses"
+                              : campuses?.find((campus) => campus.id === selectedCampus)?.name
+                          }
+                          placeholder="All campuses"
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All campuses</SelectItem>

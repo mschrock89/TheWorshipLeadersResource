@@ -5,7 +5,8 @@ import { CalendarDays, Download, ExternalLink, FileText, Loader2, MapPinned, Pap
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -293,7 +294,10 @@ export default function CampMode() {
             <div className="border-b border-border px-4 py-4 sm:px-0">
               <Select value={selectedCampusId || ""} onValueChange={setSelectedCampusId}>
                 <SelectTrigger className="w-full sm:max-w-sm">
-                  <SelectValue placeholder="Choose campus" />
+                  <CompactSelectValue
+                    label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                    placeholder="Choose campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {availableCampuses.map((campus) => (

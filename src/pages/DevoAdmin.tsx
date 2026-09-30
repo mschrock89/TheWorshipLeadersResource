@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DatePickerField } from "@/components/devo/DatePickerField";
 import { useCapabilities } from "@/hooks/useCapabilities";
@@ -464,7 +465,10 @@ export default function DevoAdmin() {
                   onValueChange={(v) => setCampusId(v === "__none__" ? "" : v)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Required to publish" />
+                    <CompactSelectValue
+                      label={campusId ? campuses.find((campus) => campus.id === campusId)?.name : "None"}
+                      placeholder="Required to publish"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">None</SelectItem>
@@ -480,7 +484,10 @@ export default function DevoAdmin() {
                 <Label>Feed ministry</Label>
                 <Select value={ministryType} onValueChange={setMinistryType}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <CompactSelectValue
+                      label={ministries.find((ministry) => ministry.value === ministryType)?.label}
+                      placeholder="Feed ministry"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {ministries.map((ministry) => (

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
@@ -130,7 +131,10 @@ export function TeamBuilderHeader({
         <Select value={selectedCampusId || ""} onValueChange={onCampusChange}>
           <SelectTrigger className="w-full sm:w-auto sm:min-w-[220px]">
             <Building2 className="mr-2 h-4 w-4 shrink-0" />
-            <SelectValue placeholder="Select campus" />
+            <CompactSelectValue
+              label={campuses.find((campus) => campus.id === selectedCampusId)?.name}
+              placeholder="Select campus"
+            />
           </SelectTrigger>
           <SelectContent>
             {campuses.map(campus => (
@@ -166,7 +170,10 @@ export function TeamBuilderHeader({
           <Select value={selectedMinistryType} onValueChange={onMinistryTypeChange}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <Music className="mr-2 h-4 w-4 shrink-0" />
-              <SelectValue placeholder="Select ministry" />
+              <CompactSelectValue
+                label={ministryOptions.find((ministry) => ministry.value === selectedMinistryType)?.label}
+                placeholder="Select ministry"
+              />
             </SelectTrigger>
             <SelectContent>
               {ministryOptions.map(ministry => (

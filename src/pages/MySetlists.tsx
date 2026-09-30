@@ -15,8 +15,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -794,7 +794,10 @@ function StandardMySetlists() {
             <MapPin className="h-4 w-4 text-muted-foreground" />
             <Select value={normalizedCampusId} onValueChange={setSelectedCampusId} disabled={selectableCampuses.length === 0}>
               <SelectTrigger className="w-auto min-w-[160px]">
-                <SelectValue placeholder="Select Campus" />
+                <CompactSelectValue
+                  label={selectableCampuses.find((campus) => campus.id === normalizedCampusId)?.name}
+                  placeholder="Select Campus"
+                />
               </SelectTrigger>
               <SelectContent>
                 {selectableCampuses.map((campus) => (
@@ -813,7 +816,10 @@ function StandardMySetlists() {
               disabled={ministryFilterOptions.length === 0}
             >
               <SelectTrigger className="w-auto min-w-[160px]">
-                <SelectValue placeholder="Select Ministry" />
+                <CompactSelectValue
+                  label={ministryFilterOptions.find((ministry) => ministry.value === selectedMinistryType)?.label}
+                  placeholder="Select Ministry"
+                />
               </SelectTrigger>
               <SelectContent>
                 {ministryFilterOptions.map((ministry) => (

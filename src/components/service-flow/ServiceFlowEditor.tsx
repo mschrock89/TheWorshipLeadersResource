@@ -23,8 +23,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -1360,7 +1360,10 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       <div className="service-flow-screen-layout flex flex-wrap gap-3 items-center print:hidden">
         <Select value={effectiveCampusId || ""} onValueChange={handleCampusChange}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select Campus" />
+            <CompactSelectValue
+              label={serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId)?.name}
+              placeholder="Select Campus"
+            />
           </SelectTrigger>
           <SelectContent>
             {serviceFlowCampuses.map((campus) => (
@@ -1373,7 +1376,10 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
 
         <Select value={ministryType} onValueChange={setMinistryType}>
           <SelectTrigger className="w-[160px]">
-            <SelectValue />
+            <CompactSelectValue
+              label={availableMinistryOptions.find((ministry) => ministry.value === ministryType)?.label}
+              placeholder="Ministry"
+            />
           </SelectTrigger>
           <SelectContent>
             {availableMinistryOptions.map((m) => (

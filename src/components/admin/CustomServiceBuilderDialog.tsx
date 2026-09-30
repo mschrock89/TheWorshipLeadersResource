@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 
 type TeamPosition = Database["public"]["Enums"]["team_position"];
 
@@ -505,7 +506,10 @@ export function CustomServiceBuilderDialog({
                 <Label>Campus</Label>
                 <Select value={campusId} onValueChange={setCampusId} disabled={isEditMode}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select campus" />
+                    <CompactSelectValue
+                      label={campuses.find((campus) => campus.id === campusId)?.name}
+                      placeholder="Select campus"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {campuses.map((campus) => (
@@ -521,7 +525,10 @@ export function CustomServiceBuilderDialog({
                 <Label>Ministry</Label>
                 <Select value={ministry} onValueChange={setMinistry} disabled={isEditMode}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <CompactSelectValue
+                      label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministry)?.label}
+                      placeholder="Ministry"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (

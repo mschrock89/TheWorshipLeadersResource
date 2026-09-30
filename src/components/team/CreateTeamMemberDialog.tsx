@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { BASE_ROLES, ROLE_LABELS } from "@/lib/constants";
 
 interface CampusOption {
@@ -241,7 +242,10 @@ export function CreateTeamMemberDialog({
               <Label>Campus (optional)</Label>
               <Select value={campusId} onValueChange={setCampusId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select campus" />
+                  <CompactSelectValue
+                    label={campusId === "none" ? "No campus yet" : campuses.find((campus) => campus.id === campusId)?.name}
+                    placeholder="Select campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No campus yet</SelectItem>

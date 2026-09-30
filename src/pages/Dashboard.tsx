@@ -18,7 +18,8 @@ import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { useIsApprover } from "@/hooks/useSetlistApprovals";
 import { useIsLifeGroupLeader } from "@/hooks/useLifeGroups";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound } from "lucide-react";
 import { canAccessWeekendRundown } from "@/lib/weekendRundown";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
@@ -217,7 +218,10 @@ export default function Dashboard() {
         {canSelectCampus && canManageTeam && <Select value={selectedCampusId} onValueChange={handleCampusChange}>
             <SelectTrigger className="w-auto min-w-[200px] max-w-[280px] bg-card border-border">
               <MapPin className="h-4 w-4 mr-2 shrink-0 text-muted-foreground" />
-              <SelectValue placeholder="Select campus" />
+              <CompactSelectValue
+                label={selectedCampusId === "all" ? "All Campuses" : availableCampuses.find((campus) => campus?.id === selectedCampusId)?.name}
+                placeholder="Select campus"
+              />
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Campuses</SelectItem>

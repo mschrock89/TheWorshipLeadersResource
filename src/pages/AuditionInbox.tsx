@@ -45,6 +45,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -459,7 +460,10 @@ export default function AuditionInbox() {
               <Label>Campus</Label>
               <Select value={campusId} onValueChange={setCampusId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <CompactSelectValue
+                    label={availableCampuses.find((campus) => campus.id === campusId)?.name}
+                    placeholder="Campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {availableCampuses.map((campus) => (

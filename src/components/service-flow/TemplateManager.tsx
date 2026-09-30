@@ -8,8 +8,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import {
   Dialog,
   DialogContent,
@@ -300,7 +300,10 @@ export function TemplateManager() {
       <div className="flex flex-wrap gap-3 items-center">
         <Select value={selectedCampusId || ""} onValueChange={setSelectedCampusId}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select Campus" />
+            <CompactSelectValue
+              label={serviceFlowCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+              placeholder="Select Campus"
+            />
           </SelectTrigger>
           <SelectContent>
             {serviceFlowCampuses.map((campus) => (
@@ -313,7 +316,10 @@ export function TemplateManager() {
 
         <Select value={ministryType} onValueChange={setMinistryType}>
           <SelectTrigger className="w-[160px]">
-            <SelectValue />
+            <CompactSelectValue
+              label={MINISTRY_TYPES.find((ministry) => ministry.value === ministryType)?.label}
+              placeholder="Ministry"
+            />
           </SelectTrigger>
           <SelectContent>
             {MINISTRY_TYPES

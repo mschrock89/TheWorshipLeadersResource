@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -1826,12 +1827,20 @@ function StandardCalendar() {
         <div className="mx-auto max-w-6xl w-full">
           {/* Filters + month on one compact row */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1 sm:flex-wrap">
               {/* Campus selector - for admins OR volunteers with multiple campuses */}
               {isCampusAdmin && campuses.length > 0 || !isCampusAdmin && userCampuses.length > 1 ? <Select value={campusFilter} onValueChange={setCampusFilter}>
-                  <SelectTrigger className="h-8 min-w-0 flex-1 text-sm bg-background border-border sm:flex-initial sm:min-w-[180px] sm:max-w-[240px]">
-                    <Building2 className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
-                    <SelectValue placeholder="Campus" />
+                  <SelectTrigger className="h-8 min-w-0 flex-1 px-2 text-sm bg-background border-border sm:flex-initial sm:min-w-[180px] sm:max-w-[240px] sm:px-3">
+                    <Building2 className="mr-2 hidden h-4 w-4 flex-shrink-0 text-muted-foreground sm:block" />
+                    <CompactSelectValue
+                      label={
+                        campusFilter === "network-wide"
+                          ? "Network Wide Events"
+                          : (isCampusAdmin ? campuses : userCampuses.map((uc) => uc.campuses))
+                              .find((campus) => campus?.id === campusFilter)?.name
+                      }
+                      placeholder="Campus"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {isCampusAdmin && <SelectItem value="network-wide">Network Wide Events</SelectItem>}
@@ -1842,9 +1851,12 @@ function StandardCalendar() {
                 </Select> : null}
               {/* Ministry Filter */}
               <Select value={ministryFilter} onValueChange={setMinistryFilter}>
-                <SelectTrigger className="h-8 min-w-0 flex-1 text-sm bg-background border-border sm:flex-initial sm:min-w-[150px] sm:max-w-[200px]">
-                  <Music className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
-                  <SelectValue placeholder="Ministry" />
+                <SelectTrigger className="h-8 min-w-0 flex-1 px-2 text-sm bg-background border-border sm:flex-initial sm:min-w-[150px] sm:max-w-[200px] sm:px-3">
+                  <Music className="mr-2 hidden h-4 w-4 flex-shrink-0 text-muted-foreground sm:block" />
+                  <CompactSelectValue
+                    label={ministryFilterOptions.find((ministry) => ministry.value === ministryFilter)?.label}
+                    placeholder="Ministry"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {ministryFilterOptions.map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
@@ -2087,7 +2099,10 @@ function StandardCalendar() {
                                 campus_id: value
                               }))}>
                                     <SelectTrigger id="override-campus">
-                                      <SelectValue placeholder="Choose a campus" />
+                                      <CompactSelectValue
+                                        label={availableServiceTimeCampuses.find((campus) => campus.id === serviceOverrideForm.campus_id)?.name}
+                                        placeholder="Choose a campus"
+                                      />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {availableServiceTimeCampuses.map((campus) => <SelectItem key={campus.id} value={campus.id}>
@@ -2111,7 +2126,10 @@ function StandardCalendar() {
                               ministry_type: value
                             }))}>
                                   <SelectTrigger id="override-ministry">
-                                    <SelectValue placeholder="Choose a ministry" />
+                                    <CompactSelectValue
+                                      label={SERVICE_OVERRIDE_MINISTRY_OPTIONS.find((ministry) => ministry.value === serviceOverrideForm.ministry_type)?.label}
+                                      placeholder="Choose a ministry"
+                                    />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {SERVICE_OVERRIDE_MINISTRY_OPTIONS
@@ -2601,7 +2619,10 @@ function StandardCalendar() {
                             campus_id: value
                           })}>
                                     <SelectTrigger id="service-campus">
-                                      <SelectValue placeholder="Select campus" />
+                                      <CompactSelectValue
+                                        label={campuses.find((campus) => campus.id === newEvent.campus_id)?.name}
+                                        placeholder="Select campus"
+                                      />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {campuses.map(campus => <SelectItem key={campus.id} value={campus.id}>

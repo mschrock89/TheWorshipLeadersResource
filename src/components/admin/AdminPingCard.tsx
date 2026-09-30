@@ -13,7 +13,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
@@ -254,7 +255,10 @@ export function AdminPingCard() {
             <Label>Campus</Label>
             <Select value={campusId} onValueChange={setCampusId}>
               <SelectTrigger>
-                <SelectValue placeholder="All campuses" />
+                <CompactSelectValue
+                  label={campusId === "all" ? "All campuses" : campuses.find((campus) => campus.id === campusId)?.name}
+                  placeholder="All campuses"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All campuses</SelectItem>

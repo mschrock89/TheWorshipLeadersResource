@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Breadcrumb,
@@ -273,7 +274,10 @@ export default function Auditions() {
           <MapPin className="h-4 w-4 text-muted-foreground" />
           <Select value={selectedCampusId} onValueChange={setSelectedCampusId} disabled={availableCampuses.length === 0}>
             <SelectTrigger className="w-auto min-w-[220px]">
-              <SelectValue placeholder="Select Campus" />
+              <CompactSelectValue
+                label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                placeholder="Select Campus"
+              />
             </SelectTrigger>
             <SelectContent>
               {availableCampuses.map((campus) => (
@@ -436,7 +440,10 @@ export default function Auditions() {
               <Label>Campus</Label>
               <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <CompactSelectValue
+                    label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                    placeholder="Campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {availableCampuses.map((campus) => (

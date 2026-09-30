@@ -46,6 +46,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/cn";
@@ -1608,7 +1609,10 @@ export default function DrumTech() {
               {availableCampuses.length > 1 && setSelectedCampusId && (
                 <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
                   <SelectTrigger className="h-11 min-w-[220px] rounded-xl border-white/10 bg-black/25 text-white backdrop-blur">
-                    <SelectValue placeholder="Select campus" />
+                    <CompactSelectValue
+                      label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                      placeholder="Select campus"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {availableCampuses.map((campus) => (

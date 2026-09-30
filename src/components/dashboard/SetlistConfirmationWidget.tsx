@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -927,7 +928,10 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
           </CardTitle>
           <Select value={ministryFilter} onValueChange={setMinistryFilter}>
             <SelectTrigger className="w-[160px] bg-background">
-              <SelectValue placeholder="Ministry" />
+              <CompactSelectValue
+                label={ministryFilter === "all" ? "All Ministries" : ministryOptions.find((ministry) => ministry.value === ministryFilter)?.label}
+                placeholder="Ministry"
+              />
             </SelectTrigger>
             <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Ministries</SelectItem>

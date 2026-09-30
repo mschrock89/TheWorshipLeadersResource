@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Separator } from "@/components/ui/separator";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -143,7 +144,7 @@ export default function WeekendRundownHistory() {
               <Label htmlFor="rundown-history-campus">Campus</Label>
               <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
                 <SelectTrigger id="rundown-history-campus" className="w-full sm:max-w-xs">
-                  <SelectValue placeholder="Select a campus" />
+                  <CompactSelectValue label={selectedCampus?.name} placeholder="Select a campus" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableCampuses.map((campus) => (

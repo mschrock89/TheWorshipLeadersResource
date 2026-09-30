@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Breadcrumb,
@@ -1021,7 +1022,14 @@ export default function SetPlanner() {
                   <label className="text-xs font-medium text-muted-foreground">Campus</label>
                   <Select value={effectiveCampusId} onValueChange={setSelectedCampusId}>
                     <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Select campus" />
+                      <CompactSelectValue
+                        label={
+                          effectiveCampusId === NETWORK_WIDE_CAMPUS_ID
+                            ? "Network Wide"
+                            : availableCampuses.find((campus) => campus.id === effectiveCampusId)?.name
+                        }
+                        placeholder="Select campus"
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {(hasNetworkAccess || isAdmin || isNetworkWideCampus) && (
@@ -1042,7 +1050,10 @@ export default function SetPlanner() {
                 <label className="text-xs font-medium text-muted-foreground">Ministry</label>
                 <Select value={selectedMinistry} onValueChange={setSelectedMinistry}>
                   <SelectTrigger className="w-[180px]">
-                    <SelectValue />
+                    <CompactSelectValue
+                      label={ministryOptions.find((option) => option.value === selectedMinistry)?.label}
+                      placeholder="Ministry"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {ministryOptions.map(opt => (

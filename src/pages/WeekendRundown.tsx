@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -303,9 +304,12 @@ export default function WeekendRundown() {
               <div className="space-y-2">
                 <Label htmlFor="weekend-rundown-campus">Campus</Label>
                 <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
-                  <SelectTrigger id="weekend-rundown-campus">
-                    <SelectValue placeholder="Select a campus" />
-                  </SelectTrigger>
+                <SelectTrigger id="weekend-rundown-campus">
+                  <CompactSelectValue
+                    label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                    placeholder="Select a campus"
+                  />
+                </SelectTrigger>
                   <SelectContent>
                     {availableCampuses.map((campus) => (
                       <SelectItem key={campus.id} value={campus.id}>

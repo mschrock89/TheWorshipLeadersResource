@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
@@ -107,7 +108,10 @@ export default function HubDashboard() {
                   <Label>Ministry</Label>
                   <Select value={selectedMinistry} onValueChange={setMinistryKey}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose ministry" />
+                      <CompactSelectValue
+                        label={ministries.find((ministry) => ministry.key === selectedMinistry)?.name}
+                        placeholder="Choose ministry"
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {ministries
@@ -124,7 +128,10 @@ export default function HubDashboard() {
                   <Label>Campus</Label>
                   <Select value={campusId} onValueChange={setCampusId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose campus" />
+                      <CompactSelectValue
+                        label={campuses.find((campus) => campus.id === campusId)?.name}
+                        placeholder="Choose campus"
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {campuses.map((campus) => (

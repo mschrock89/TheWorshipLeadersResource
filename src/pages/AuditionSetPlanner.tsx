@@ -32,8 +32,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { useToast } from "@/hooks/use-toast";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 
@@ -524,7 +524,10 @@ export default function AuditionSetPlanner() {
             <Label>Campus</Label>
             <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
               <SelectTrigger className="min-w-0">
-                <SelectValue placeholder="Select campus" />
+                <CompactSelectValue
+                  label={campuses.find((campus) => campus.id === selectedCampusId)?.name}
+                  placeholder="Select campus"
+                />
               </SelectTrigger>
               <SelectContent>
                 {campuses.map((campus) => (

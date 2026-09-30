@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
@@ -772,7 +773,10 @@ export default function LifeGroups() {
             <Select value={selectedCampusId} onValueChange={handleCampusChange}>
               <SelectTrigger className="w-full sm:w-[220px]">
                 <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                <SelectValue placeholder="Campus" />
+                <CompactSelectValue
+                  label={selectedCampusId === "all" ? "All Campuses" : availableCampuses.find((campus) => campus?.id === selectedCampusId)?.name}
+                  placeholder="Campus"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Campuses</SelectItem>

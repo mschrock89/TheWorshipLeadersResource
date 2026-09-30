@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Search, X } from "lucide-react";
 import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
 import { useCampuses } from "@/hooks/useCampuses";
@@ -101,7 +102,10 @@ export function TeamFilters({
       {/* Campus filter */}
       <Select value={campusFilter} onValueChange={onCampusFilterChange}>
         <SelectTrigger className="w-full sm:w-[180px]">
-          <SelectValue placeholder="All campuses" />
+          <CompactSelectValue
+            label={campusFilter === "all" ? "All campuses" : campuses.find((campus) => campus.id === campusFilter)?.name}
+            placeholder="All campuses"
+          />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All campuses</SelectItem>
@@ -115,7 +119,20 @@ export function TeamFilters({
 
       <Select value={sortBy} onValueChange={onSortByChange}>
         <SelectTrigger className="w-full sm:w-[160px]">
-        <SelectValue placeholder="Sort by" />
+          <CompactSelectValue
+            label={
+              sortBy === "name"
+                ? "Sort: Name"
+                : sortBy === "base_role"
+                  ? "Sort: Base Role"
+                  : sortBy === "ministry"
+                    ? "Sort: Ministry (A-Z)"
+                    : sortBy.startsWith("ministry:")
+                      ? ministrySortOptions.find(([value]) => `ministry:${value}` === sortBy)?.[1]
+                      : undefined
+            }
+            placeholder="Sort by"
+          />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="name">Sort: Name</SelectItem>

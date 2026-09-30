@@ -31,6 +31,7 @@ import {
 import { Loader2, Save, MapPin, Shield, Key, Music, Home, Pencil, X, Check, ArrowLeft, ListMusic } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry, getViewMinistryFilterOptions } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
@@ -1019,7 +1020,10 @@ export default function Profile() {
                         <Label>Campus</Label>
                         <Select value={auditionCampusId} onValueChange={setAuditionCampusId}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select campus" />
+                            <CompactSelectValue
+                              label={campuses.find((campus) => campus.id === auditionCampusId)?.name}
+                              placeholder="Select campus"
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {campuses.map((campus) => (
@@ -1227,7 +1231,10 @@ export default function Profile() {
                   </p>
                   <Select value={defaultCampusId || ""} onValueChange={(value) => setDefaultCampusId(value || null)}>
                     <SelectTrigger className="w-full sm:w-[280px]">
-                      <SelectValue placeholder="Select default campus" />
+                      <CompactSelectValue
+                        label={campuses.find((campus) => campus.id === defaultCampusId)?.name}
+                        placeholder="Select default campus"
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {campuses.map((campus) => (
@@ -1255,7 +1262,10 @@ export default function Profile() {
                     onValueChange={(value) => setDefaultMinistryType(value || null)}
                   >
                     <SelectTrigger className="w-full sm:w-[280px]">
-                      <SelectValue placeholder="Select default ministry" />
+                      <CompactSelectValue
+                        label={defaultMinistryOptions.find((ministry) => ministry.value === defaultMinistryType)?.label}
+                        placeholder="Select default ministry"
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {defaultMinistryOptions.map((ministry) => (

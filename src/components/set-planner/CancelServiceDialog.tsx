@@ -17,8 +17,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Badge } from "@/components/ui/badge";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useServicesToCancelOnDate, useCancelService } from "@/hooks/useCancelService";
@@ -109,7 +109,10 @@ export function CancelServiceDialog({ trigger }: CancelServiceDialogProps) {
                 <label className="text-sm font-medium">Campus</label>
                 <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a campus" />
+                    <CompactSelectValue
+                      label={campuses.find((campus) => campus.id === selectedCampusId)?.name}
+                      placeholder="Select a campus"
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {campuses.map(campus => (

@@ -17,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
@@ -2061,7 +2062,10 @@ export default function AdminTools() {
               <Label>Campus</Label>
               <Select value={teachingCampusId} onValueChange={setTeachingCampusId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select campus" />
+                  <CompactSelectValue
+                    label={campuses.find((campus) => campus.id === teachingCampusId)?.name}
+                    placeholder="Select campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {campuses.map((campus) => (
@@ -2079,7 +2083,10 @@ export default function AdminTools() {
               <Label>Ministry</Label>
               <Select value={teachingMinistry} onValueChange={setTeachingMinistry}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <CompactSelectValue
+                    label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === teachingMinistry)?.label}
+                    placeholder="Ministry"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (

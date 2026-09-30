@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useCampuses } from "@/hooks/useCampuses";
@@ -150,7 +151,10 @@ export default function HubDirectory() {
         />
         <Select value={ministryFilter} onValueChange={setMinistryFilter}>
           <SelectTrigger className="w-44">
-            <SelectValue />
+            <CompactSelectValue
+              label={ministryFilter === ALL ? "All ministries" : ministries.find((ministry) => ministry.key === ministryFilter)?.name}
+              placeholder="Ministry"
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All ministries</SelectItem>
@@ -163,7 +167,10 @@ export default function HubDirectory() {
         </Select>
         <Select value={campusFilter} onValueChange={setCampusFilter}>
           <SelectTrigger className="w-44">
-            <SelectValue />
+            <CompactSelectValue
+              label={campusFilter === ALL ? "All campuses" : campuses.find((campus) => campus.id === campusFilter)?.name}
+              placeholder="Campus"
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All campuses</SelectItem>
@@ -246,7 +253,10 @@ export default function HubDirectory() {
               <Label>Ministry</Label>
               <Select value={addMinistryKey} onValueChange={setAddMinistryKey}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose ministry" />
+                  <CompactSelectValue
+                    label={ministries.find((ministry) => ministry.key === addMinistryKey)?.name}
+                    placeholder="Choose ministry"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {ministries
@@ -263,7 +273,10 @@ export default function HubDirectory() {
               <Label>Campus</Label>
               <Select value={addCampusId} onValueChange={setAddCampusId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose campus" />
+                  <CompactSelectValue
+                    label={campuses.find((campus) => campus.id === addCampusId)?.name}
+                    placeholder="Choose campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {campuses.map((campus) => (

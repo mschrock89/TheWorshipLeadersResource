@@ -9,8 +9,9 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
+import { toCompactLabel } from "@/lib/compactLabel";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { liveStationLabel, readLiveStation, writeLiveStation, type LiveStation } from "@/lib/liveMode";
@@ -151,7 +152,10 @@ export function LiveModeConsole({
           </Link>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-            <p className="truncate text-sm font-semibold">{campusName}</p>
+            <p className="truncate text-sm font-semibold" title={campusName}>
+              <span className="md:hidden">{toCompactLabel(campusName)}</span>
+              <span className="hidden md:inline">{campusName}</span>
+            </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="flex rounded-lg bg-muted p-0.5">
@@ -206,8 +210,8 @@ export function LiveModeConsole({
         <div className="flex gap-2 overflow-x-auto px-3 pb-2">
           {campuses.length > 1 ? (
             <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
-              <SelectTrigger className="h-9 w-40 shrink-0" aria-label="Campus">
-                <SelectValue />
+              <SelectTrigger className="h-9 w-40 shrink-0" aria-label={campusName || "Campus"}>
+                <CompactSelectValue label={campuses.find((campus) => campus.id === campusId)?.name || campusName} placeholder="Campus" />
               </SelectTrigger>
               <SelectContent>
                 {campuses.map((campus) => (
@@ -228,8 +232,11 @@ export function LiveModeConsole({
             className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
           />
           <Select value={ministryType} onValueChange={(value) => onScopeChange({ ministryType: value })}>
-            <SelectTrigger className="h-9 w-44 shrink-0" aria-label="Service">
-              <SelectValue />
+            <SelectTrigger className="h-9 w-44 shrink-0" aria-label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label || "Service"}>
+              <CompactSelectValue
+                label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label}
+                placeholder="Service"
+              />
             </SelectTrigger>
             <SelectContent>
               {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (

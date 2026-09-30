@@ -26,7 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
 
@@ -174,7 +175,10 @@ export default function Attendance() {
           <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
             <SelectTrigger className="w-full sm:w-[260px]">
               <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="Select campus" />
+              <CompactSelectValue
+                label={availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                placeholder="Select campus"
+              />
             </SelectTrigger>
             <SelectContent>
               {availableCampuses.map((campus) => (

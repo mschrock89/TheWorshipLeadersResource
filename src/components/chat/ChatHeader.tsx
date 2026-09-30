@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ChevronDown } from "lucide-react";
 import emLogo from "@/assets/em-logo.jpg";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { toCompactLabel } from "@/lib/compactLabel";
 
 interface Campus {
   campus_id: string;
@@ -52,8 +53,15 @@ export function ChatHeader({
                 <AvatarFallback className="bg-zinc-700 text-xs">EM</AvatarFallback>
               </Avatar>
               <div className="flex items-center gap-1 min-w-0">
-                <h1 className="text-base font-semibold text-white truncate">
-                  {selectedCampusName || "Experience Worship"}
+                <h1 className="text-base font-semibold text-white truncate" title={selectedCampusName || undefined}>
+                  {selectedCampusName ? (
+                    <>
+                      <span className="md:hidden">{toCompactLabel(selectedCampusName)}</span>
+                      <span className="hidden md:inline">{selectedCampusName}</span>
+                    </>
+                  ) : (
+                    "Experience Worship"
+                  )}
                 </h1>
                 {showDropdown && <ChevronDown className="h-4 w-4 text-zinc-400 flex-shrink-0" />}
               </div>
@@ -94,7 +102,8 @@ export function ChatHeader({
                     : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
                 }`}
               >
-                {ministry.label}
+                <span className="md:hidden">{toCompactLabel(ministry.label)}</span>
+                <span className="hidden md:inline">{ministry.label}</span>
                 {unreadCount > 0 && !isSelected && (
                   <span className="flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold">
                     {unreadCount > 99 ? "99+" : unreadCount}

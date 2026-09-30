@@ -14,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 
 interface CampusOption {
   id: string;
@@ -218,7 +219,10 @@ export function CreateAuditionCandidateDialog({
             <Label>Campus (optional)</Label>
             <Select value={campusId} onValueChange={setCampusId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select campus" />
+                <CompactSelectValue
+                  label={campuses.find((campus) => campus.id === campusId)?.name}
+                  placeholder="Select campus"
+                />
               </SelectTrigger>
               <SelectContent>
                 {campuses.map((campus) => (

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -262,7 +263,16 @@ export default function ManageSets() {
               <Select value={campusFilter} onValueChange={setCampusFilter}>
                 <SelectTrigger className="w-[160px]">
                   <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Campus" />
+                  <CompactSelectValue
+                    label={
+                      campusFilter === "all"
+                        ? "All Campuses"
+                        : campusFilter === NETWORK_WIDE_CAMPUS_ID
+                          ? "Network Wide"
+                          : campuses.find((campus) => campus.id === campusFilter)?.name
+                    }
+                    placeholder="Campus"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Campuses</SelectItem>
@@ -287,7 +297,14 @@ export default function ManageSets() {
               <Select value={ministryFilter} onValueChange={setMinistryFilter}>
                 <SelectTrigger className="w-[160px]">
                   <Music className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Ministry" />
+                  <CompactSelectValue
+                    label={
+                      ministryFilter === "all"
+                        ? "All Ministries"
+                        : MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label
+                    }
+                    placeholder="Ministry"
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Ministries</SelectItem>

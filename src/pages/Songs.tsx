@@ -27,8 +27,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Music, 
@@ -638,7 +638,10 @@ export default function Songs() {
             <MapPin className="h-4 w-4 text-muted-foreground" />
             <Select value={selectedCampusId} onValueChange={setSelectedCampusId}>
               <SelectTrigger className="w-[180px] bg-background">
-                <SelectValue placeholder="Select campus" />
+                <CompactSelectValue
+                  label={selectedCampusId === "all" ? "All Campuses" : availableCampuses.find((campus) => campus.id === selectedCampusId)?.name}
+                  placeholder="Select campus"
+                />
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 {!isVolunteer && <SelectItem value="all">All Campuses</SelectItem>}
@@ -656,7 +659,10 @@ export default function Songs() {
             <Music className="h-4 w-4 text-muted-foreground" />
             <Select value={selectedMinistry} onValueChange={setSelectedMinistry}>
               <SelectTrigger className="w-[160px] bg-background">
-                <SelectValue placeholder="Select ministry" />
+                <CompactSelectValue
+                  label={ministryOptions.find((ministry) => ministry.id === selectedMinistry)?.name}
+                  placeholder="Select ministry"
+                />
               </SelectTrigger>
               <SelectContent className="bg-popover">
                 {ministryOptions.map((ministry) => (

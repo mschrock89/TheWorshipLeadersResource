@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
@@ -379,7 +380,10 @@ export default function ServiceScriptsAdmin() {
           <Label>Campus</Label>
           <Select value={selectedCampusId} onValueChange={handleCampusChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Select campus" />
+              <CompactSelectValue
+                label={campuses.find((campus) => campus.id === selectedCampusId)?.name}
+                placeholder="Select campus"
+              />
             </SelectTrigger>
             <SelectContent>
               {campuses.map((campus) => (
@@ -394,7 +398,10 @@ export default function ServiceScriptsAdmin() {
           <Label>Ministry</Label>
           <Select value={ministryType} onValueChange={handleMinistryChange}>
             <SelectTrigger>
-              <SelectValue />
+              <CompactSelectValue
+                label={ministries.find((ministry) => ministry.value === ministryType)?.label}
+                placeholder="Ministry"
+              />
             </SelectTrigger>
             <SelectContent>
               {ministries.map((ministry) => (

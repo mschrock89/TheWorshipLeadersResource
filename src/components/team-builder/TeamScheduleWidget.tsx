@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import {
   Tooltip,
   TooltipContent,
@@ -74,6 +75,22 @@ interface DisplayScheduleEntry {
 }
 
 const ENCOUNTER_EON_COMBINED = "encounter_eon_combined";
+
+const SCHEDULE_MINISTRY_LABELS: Record<string, string> = {
+  weekend: "Weekend",
+  kids_camp: "Kids Camp",
+  student_camp: "Student Camp",
+  production: "Production",
+  ms_hs_production: "MS/HS Production",
+  hs_production: "HS Production",
+  video: "Video",
+  encounter: "HS Worship",
+  eon: "MS Worship",
+  ms_hs: "MS/HS Worship",
+  [ENCOUNTER_EON_COMBINED]: "Combined (HS + MS Worship)",
+  student: "Student",
+  speaker: "Speakers",
+};
 const HS_MS_WORSHIP_MINISTRY_TYPES = ["encounter", "eon"] as const;
 
 const TIME_OF_DAY_NONE = "all_day";
@@ -496,7 +513,10 @@ export function TeamScheduleWidget({
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Select value={activeScheduleMinistry} onValueChange={setScheduleMinistryFilter}>
               <SelectTrigger className="w-full sm:w-[190px]">
-                <SelectValue />
+                <CompactSelectValue
+                  label={SCHEDULE_MINISTRY_LABELS[activeScheduleMinistry] || activeScheduleMinistry}
+                  placeholder="Ministry"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="weekend">Weekend</SelectItem>
@@ -609,7 +629,10 @@ export function TeamScheduleWidget({
                       onValueChange={setNewMinistryType}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <CompactSelectValue
+                          label={SCHEDULE_MINISTRY_LABELS[newMinistryType] || newMinistryType}
+                          placeholder="Ministry"
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weekend">Weekend</SelectItem>

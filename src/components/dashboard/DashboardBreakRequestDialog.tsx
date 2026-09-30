@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Calendar } from "@/components/ui/calendar";
 import {
   BreakRequest,
@@ -394,7 +395,10 @@ export function DashboardBreakRequestDialog({
                 ) : (
                   <Select value={campusId} onValueChange={handleCampusChange}>
                     <SelectTrigger id="campus">
-                      <SelectValue placeholder={campusesLoading ? "Loading..." : "Select campus"} />
+                      <CompactSelectValue
+                        label={userCampuses.find((uc) => uc.campus_id === campusId)?.campuses?.name}
+                        placeholder={campusesLoading ? "Loading..." : "Select campus"}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {userCampuses.map((uc) => (
@@ -416,7 +420,8 @@ export function DashboardBreakRequestDialog({
                 ) : (
                   <Select value={ministryType} onValueChange={setMinistryType} disabled={!campusId}>
                     <SelectTrigger id="ministry">
-                      <SelectValue
+                      <CompactSelectValue
+                        label={ministryType ? getMinistryLabel(ministryType) : undefined}
                         placeholder={
                           !campusId
                             ? "Select campus first"
