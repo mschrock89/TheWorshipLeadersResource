@@ -18,10 +18,9 @@ import { useLiveSession } from "@/hooks/useLiveSession";
 import { useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { buildServiceFlowClockTimes } from "@/components/service-flow/serviceFlowClock";
 import { AudioRoutingPage } from "./AudioRoutingPage";
-import { TalkbackBoard } from "./TalkbackBoard";
+import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
 import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
 import { findFlowCue, LiveServiceFlowPanel } from "./LiveServiceFlowPanel";
-import { ProductionChatPanel } from "./ProductionChatPanel";
 import { LiveNotesPanel } from "./LiveNotesPanel";
 
 type LiveModeConsoleProps = {
@@ -272,6 +271,8 @@ export function LiveModeConsole({
               listening={listening}
               audioContext={audioContext}
               bindingRevision={bindingRevision}
+              messages={live.chatMessages}
+              showMessages={tab !== "chat"}
               onTranscript={live.addLine}
               onOpenSetup={() => setRoutingOpen(true)}
             />
@@ -312,7 +313,18 @@ export function LiveModeConsole({
               }}
             />
           ) : null}
-          {tab === "chat" ? <ProductionChatPanel campusId={campusId} active={tab === "chat"} /> : null}
+          {tab === "chat" ? (
+            <TalkbackChat
+              channels={live.channels}
+              lines={live.lines}
+              messages={live.chatMessages}
+              bindingRevision={bindingRevision}
+              currentUserId={live.currentUserId}
+              onSend={(body) => {
+                void live.sendChatMessage(body);
+              }}
+            />
+          ) : null}
           {tab === "notes" ? <LiveNotesPanel notes={live.notes} onSave={live.saveNotes} /> : null}
         </section>
       </div>

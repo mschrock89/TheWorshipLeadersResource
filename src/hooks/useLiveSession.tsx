@@ -15,6 +15,7 @@ import {
 export type LiveSessionRow = Database["public"]["Tables"]["live_sessions"]["Row"];
 export type LiveTalkbackChannel = Database["public"]["Tables"]["live_talkback_channels"]["Row"];
 export type LiveTalkbackLine = Database["public"]["Tables"]["live_talkback_lines"]["Row"];
+export type LiveChatMessage = Database["public"]["Tables"]["live_chat_messages"]["Row"];
 export type LiveSessionNotes = Database["public"]["Tables"]["live_session_notes"]["Row"];
 
 type LiveSessionParams = {
@@ -86,6 +87,7 @@ export function useLiveSession({
   const sessionId = session?.id ?? null;
   const channelsKey = useMemo(() => ["live-channels", sessionId] as const, [sessionId]);
   const linesKey = useMemo(() => ["live-lines", sessionId] as const, [sessionId]);
+  const chatKey = useMemo(() => ["live-chat", sessionId] as const, [sessionId]);
   const notesKey = useMemo(() => ["live-notes", sessionId] as const, [sessionId]);
 
   const channelsQuery = useQuery({
@@ -117,6 +119,21 @@ export function useLiveSession({
     },
   });
 
+  const chatQuery = useQuery({
+    queryKey: chatKey,
+    enabled: !!sessionId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("live_chat_messages")
+        .select("*")
+        .eq("session_id", sessionId!)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (error) throw error;
+      return (data || []).slice().reverse();
+    },
+  });
+
   const notesQuery = useQuery({
     queryKey: notesKey,
     enabled: !!sessionId,
@@ -130,6 +147,16 @@ export function useLiveSession({
       return data;
     },
   });
+
+  const appendChat = useCallback(
+    (message: LiveChatMessage) => {
+      queryClient.setQueryData<LiveChatMessage[]>(chatKey, (current = []) => {
+        if (current.some((row) => row.id === message.id)) return current;
+        return [...current, message].slice(-400);
+      });
+    },
+    [chatKey, queryClient],
+  );
 
   const appendLine = useCallback(
     (line: LiveTalkbackLine) => {
@@ -175,6 +202,20 @@ export function useLiveSession({
       )
       .on(
         "postgres_changes",
+        { event: "INSERT", schema: "public", table: "live_chat_messages", filter: `session_id=eq.${sessionId}` },
+        (payload) => {
+          appendChat(payload.new as LiveChatMessage);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "live_chat_messages", filter: `session_id=eq.${sessionId}` },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: chatKey });
+        },
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "live_session_notes", filter: `session_id=eq.${sessionId}` },
         (payload) => {
           if (payload.eventType === "DELETE") {
@@ -189,7 +230,7 @@ export function useLiveSession({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [appendLine, channelsKey, linesKey, notesKey, queryClient, sessionId, sessionKey]);
+  }, [appendChat, appendLine, channelsKey, chatKey, linesKey, notesKey, queryClient, sessionId, sessionKey]);
 
   const report = useCallback(
     (error: unknown, title: string) => {
@@ -288,6 +329,25 @@ export function useLiveSession({
     [appendLine, report, sessionId],
   );
 
+  const sendChatMessage = useCallback(
+    async (raw: string) => {
+      if (!sessionId || !user) return;
+      const body = raw.trim().slice(0, 2000);
+      if (!body) return;
+      const { data, error } = await supabase
+        .from("live_chat_messages")
+        .insert({ session_id: sessionId, user_id: user.id, body })
+        .select("*")
+        .single();
+      if (error) {
+        report(error, "Could not send that message");
+        return;
+      }
+      if (data) appendChat(data);
+    },
+    [appendChat, report, sessionId, user],
+  );
+
   const clearLines = useCallback(async () => {
     if (!sessionId) return;
     const { error } = await supabase.from("live_talkback_lines").delete().eq("session_id", sessionId);
@@ -364,6 +424,8 @@ export function useLiveSession({
     session,
     channels: channelsQuery.data || [],
     lines: linesQuery.data || [],
+    chatMessages: chatQuery.data || [],
+    currentUserId: user?.id ?? null,
     notes: notesQuery.data ?? null,
     isLoading: sessionQuery.isLoading || (!!sessionId && channelsQuery.isLoading),
     accessDenied: isForbidden(sessionQuery.error),
@@ -373,6 +435,7 @@ export function useLiveSession({
     releaseListener,
     setCurrentItem,
     addLine,
+    sendChatMessage,
     clearLines,
     addChannel,
     renameChannel,
