@@ -271,8 +271,6 @@ export function LiveModeConsole({
               listening={listening}
               audioContext={audioContext}
               bindingRevision={bindingRevision}
-              messages={live.chatMessages}
-              showMessages={tab !== "chat"}
               onTranscript={live.addLine}
               onOpenSetup={() => setRoutingOpen(true)}
             />
@@ -315,10 +313,8 @@ export function LiveModeConsole({
           ) : null}
           {tab === "chat" ? (
             <TalkbackChat
-              channels={live.channels}
-              lines={live.lines}
+              variant="typed"
               messages={live.chatMessages}
-              bindingRevision={bindingRevision}
               currentUserId={live.currentUserId}
               onSend={(body) => {
                 void live.sendChatMessage(body);

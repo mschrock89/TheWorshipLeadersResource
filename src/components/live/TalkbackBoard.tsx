@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Mic, Send, Settings2 } from "lucide-react";
+import { MessageSquare, Mic, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/cn";
@@ -16,20 +16,25 @@ type TalkbackBoardProps = {
   listening: boolean;
   audioContext: AudioContext | null;
   bindingRevision: number;
-  messages: LiveChatMessage[];
-  showMessages?: boolean;
   onTranscript: (channelId: string, text: string) => void;
   onOpenSetup: () => void;
 };
 
-type TalkbackChatProps = {
+type TranscriptChatProps = {
+  variant: "transcript";
   channels: LiveTalkbackChannel[];
   lines: LiveTalkbackLine[];
-  messages: LiveChatMessage[];
   bindingRevision: number;
-  currentUserId?: string | null;
-  onSend?: (body: string) => void;
 };
+
+type TypedChatProps = {
+  variant: "typed";
+  messages: LiveChatMessage[];
+  currentUserId?: string | null;
+  onSend: (body: string) => void;
+};
+
+type TalkbackChatProps = TranscriptChatProps | TypedChatProps;
 
 type ChannelStatus = {
   phase: "listening" | "hearing" | "error" | "idle";
@@ -58,17 +63,11 @@ function messageTime(value: string) {
   return format(date, "h:mm a");
 }
 
-export function TalkbackChat({
-  channels,
-  lines,
-  messages,
-  bindingRevision,
-  currentUserId = null,
-  onSend,
-}: TalkbackChatProps) {
+export function TalkbackChat(props: TalkbackChatProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const [draft, setDraft] = useState("");
+  const typed = props.variant === "typed";
   const profilesQuery = useQuery({
     queryKey: ["basic-profiles"],
     queryFn: async () => {
@@ -76,43 +75,49 @@ export function TalkbackChat({
       if (error) throw error;
       return data || [];
     },
+    enabled: typed,
     staleTime: 5 * 60 * 1000,
   });
   const names = useMemo(() => {
     return new Map((profilesQuery.data || []).map((profile) => [profile.id, profile.full_name || "Team"]));
   }, [profilesQuery.data]);
   const channelById = useMemo(() => {
-    return new Map(channels.map((channel, index) => [channel.id, { channel, index }]));
-  }, [channels]);
+    if (props.variant !== "transcript") return new Map<string, { channel: LiveTalkbackChannel; index: number }>();
+    return new Map(props.channels.map((channel, index) => [channel.id, { channel, index }]));
+  }, [props]);
   const inputNumbers = useMemo(() => {
     const numbers = new Map<string, number>();
-    for (const channel of channels) {
+    if (props.variant !== "transcript") return numbers;
+    for (const channel of props.channels) {
       const binding = resolveTalkbackBinding(channel.id, channel.position_slot);
       if (binding?.deviceId) numbers.set(channel.id, binding.channelIndex + 1);
     }
     return numbers;
-  }, [bindingRevision, channels]);
+  }, [props]);
   const feed = useMemo(() => {
-    const entries = [
-      ...lines.map((line) => ({
-        kind: "mic" as const,
-        id: line.id,
-        at: line.created_at,
-        channelId: line.channel_id,
-        text: line.transcript,
-      })),
-      ...messages.map((message) => ({
+    if (props.variant === "transcript") {
+      return props.lines
+        .map((line) => ({
+          kind: "mic" as const,
+          id: line.id,
+          at: line.created_at,
+          channelId: line.channel_id,
+          text: line.transcript,
+        }))
+        .sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
+    }
+    return props.messages
+      .map((message) => ({
         kind: "person" as const,
         id: message.id,
         at: message.created_at,
         userId: message.user_id,
         text: message.body,
-      })),
-    ];
-    entries.sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
-    return entries;
-  }, [lines, messages]);
+      }))
+      .sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
+  }, [props]);
   const latestId = feed[feed.length - 1]?.id;
+  const currentUserId = props.variant === "typed" ? props.currentUserId : null;
 
   useEffect(() => {
     const node = scroller.current;
@@ -123,8 +128,12 @@ export function TalkbackChat({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-border px-3 py-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">Live chat</p>
-        <p className="text-xs text-muted-foreground">This service only.</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+          {typed ? "Live chat" : "Talkback"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {typed ? "Typed messages for this service." : "Transcriptions for this service."}
+        </p>
       </div>
       <div
         ref={scroller}
@@ -137,8 +146,12 @@ export function TalkbackChat({
       >
         {feed.length === 0 ? (
           <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
-            <Mic className="h-5 w-5" />
-            <p className="text-sm">Mic transcriptions and messages for this service show up here.</p>
+            {typed ? <MessageSquare className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            <p className="text-sm">
+              {typed
+                ? "Typed messages for this service show up here."
+                : "Talkback transcriptions for this service show up here."}
+            </p>
           </div>
         ) : (
           feed.map((entry) => {
@@ -196,14 +209,14 @@ export function TalkbackChat({
           })
         )}
       </div>
-      {onSend ? (
+      {props.variant === "typed" ? (
         <form
           className="flex items-end gap-2 border-t border-border p-3"
           onSubmit={(event) => {
             event.preventDefault();
             const body = draft.trim();
             if (!body) return;
-            onSend(body);
+            props.onSend(body);
             setDraft("");
           }}
         >
@@ -236,8 +249,6 @@ export function TalkbackBoard({
   listening,
   audioContext,
   bindingRevision,
-  messages,
-  showMessages = true,
   onTranscript,
   onOpenSetup,
 }: TalkbackBoardProps) {
@@ -354,9 +365,7 @@ export function TalkbackBoard({
         })}
       </div>
 
-      {showMessages ? (
-        <TalkbackChat channels={channels} lines={lines} messages={messages} bindingRevision={bindingRevision} />
-      ) : null}
+      <TalkbackChat variant="transcript" channels={channels} lines={lines} bindingRevision={bindingRevision} />
     </div>
   );
 }
