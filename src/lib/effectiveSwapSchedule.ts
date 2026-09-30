@@ -75,3 +75,39 @@ export function applySwapsToScheduleDates(
 
   return [...dates].sort();
 }
+
+/**
+ * Keep one roster row per person who holds the date. A row for a different
+ * ministry does not count: that person still needs their matching assignment.
+ */
+export function selectEffectiveSwapMemberRows<T extends { userId: string | null }>(
+  members: T[],
+  effectiveUserIds: Array<string | null | undefined>,
+  matchesMinistry: (member: T) => boolean,
+  excludeUserId?: string | null,
+): { kept: T[]; missingUserIds: string[] } {
+  const rowsByUser = new Map<string, T[]>();
+  for (const member of members) {
+    if (!member.userId) continue;
+    const rows = rowsByUser.get(member.userId) || [];
+    rows.push(member);
+    rowsByUser.set(member.userId, rows);
+  }
+
+  const kept: T[] = [];
+  const missingUserIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const userId of effectiveUserIds) {
+    if (!userId || userId === excludeUserId || seen.has(userId)) continue;
+    seen.add(userId);
+    const matching = (rowsByUser.get(userId) || []).find(matchesMinistry);
+    if (matching) {
+      kept.push(matching);
+    } else {
+      missingUserIds.push(userId);
+    }
+  }
+
+  return { kept, missingUserIds };
+}

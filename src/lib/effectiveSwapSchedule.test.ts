@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applySwapsToScheduleDates, applySwapsToUserIds } from "./effectiveSwapSchedule.ts";
+import {
+  applySwapsToScheduleDates,
+  applySwapsToUserIds,
+  selectEffectiveSwapMemberRows,
+} from "./effectiveSwapSchedule.ts";
 
 const luke = "luke";
 const simms = "simms";
@@ -71,4 +75,19 @@ test("a third swap can give away the date received in the first swap", () => {
   assert.deepEqual(oct10, [bruno]);
   assert.deepEqual(oct31, [luke]);
   assert.deepEqual(lukeDates, ["2026-10-31", "2026-11-01"]);
+});
+
+test("a worship-night row on the swapped team does not hide the weekend drummer", () => {
+  const weekend = (member: { ministryTypes: string[] }) => member.ministryTypes.includes("weekend");
+  const { kept, missingUserIds } = selectEffectiveSwapMemberRows(
+    [
+      { userId: simms, ministryTypes: ["weekend"], team: "Team 2" },
+      { userId: luke, ministryTypes: ["worship_night"], team: "Team 2" },
+    ],
+    applySwapsToUserIds([simms, luke], ["2026-10-10", "2026-10-11"], [lukeSimmsSwap]),
+    weekend,
+  );
+
+  assert.deepEqual(kept, []);
+  assert.deepEqual(missingUserIds, [luke]);
 });

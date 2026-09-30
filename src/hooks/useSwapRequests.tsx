@@ -10,7 +10,11 @@ import {
   assignmentMatchesSupportScheduleMinistry,
   shouldSkipMisalignedSupportScheduleEntry,
 } from "@/lib/teamScheduleSupport";
-import { applySwapsToScheduleDates, applySwapsToUserIds } from "@/lib/effectiveSwapSchedule";
+import {
+  applySwapsToScheduleDates,
+  applySwapsToUserIds,
+  selectEffectiveSwapMemberRows,
+} from "@/lib/effectiveSwapSchedule";
 import { canonicalSwapPosition, swapPositionsMatch } from "@/lib/swapPositions";
 
 export type SwapRequestType = "swap" | "fill_in";
@@ -1104,11 +1108,16 @@ async function applyAcceptedSwapsToPositionMembers(args: {
       createdAt: swap.created_at,
     })),
   );
-  const effectiveIdSet = new Set(effectiveIds);
-  const kept = members.filter((member) => member.user_id && effectiveIdSet.has(member.user_id));
-  const presentIds = new Set(kept.map((member) => member.user_id));
-  const missingIds = effectiveIds.filter(
-    (userId) => userId && !presentIds.has(userId) && userId !== excludeUserId,
+  const { kept, missingUserIds: missingIds } = selectEffectiveSwapMemberRows(
+    members.map((member) => ({ ...member, userId: member.user_id as string | null })),
+    effectiveIds,
+    (member) => {
+      if (!ministryType) return true;
+      return ((member.ministry_types as string[] | null) || []).some((memberMinistry) =>
+        ministriesMatchForSwap(memberMinistry, ministryType),
+      );
+    },
+    excludeUserId,
   );
 
   if (missingIds.length === 0) return kept;
