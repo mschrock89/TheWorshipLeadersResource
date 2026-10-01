@@ -4,6 +4,7 @@ import {
   requireAuthenticatedUser,
   requireStaff,
 } from "../_shared/teaching-utils.ts";
+import { isSongInNewRotation, USAGE_HISTORY_WINDOW_MONTHS } from "../../../src/lib/songRotation.ts";
 
 interface SuggestSongsRequest {
   teaching_week_id: string;
@@ -15,6 +16,7 @@ type SongStatsRow = {
   title: string;
   author: string | null;
   bpm: number | null;
+  first_used?: string | null;
   usages?: Array<{
     plan_date: string;
     campus_id: string | null;
@@ -228,6 +230,9 @@ Deno.serve(async (req) => {
     const oneYearAgo = new Date(`${weekendDate}T00:00:00Z`);
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10);
+    const usageWindowStart = new Date(`${weekendDate}T00:00:00Z`);
+    usageWindowStart.setUTCMonth(usageWindowStart.getUTCMonth() - USAGE_HISTORY_WINDOW_MONTHS);
+    const usageWindowStartStr = usageWindowStart.toISOString().slice(0, 10);
 
     const seenSongs = new Set<string>();
     let deepCutCount = 0;
@@ -254,10 +259,14 @@ Deno.serve(async (req) => {
       const totalUses = usages.length;
       const lastUsedDate = pastUsages[0]?.plan_date || null;
 
-      const hasRecentSchedule = usages.some((u) => u.plan_date >= oneYearAgoStr && u.plan_date <= weekendDate);
-      const isNewSong = hasRecentSchedule && totalUses < 4;
-
       const usesInPastYear = pastUsages.filter((u) => u.plan_date >= oneYearAgoStr).length;
+      const isInRegularRotation = usesInPastYear >= 3 || pastUsages.length >= 4;
+      const isNewSong = isSongInNewRotation({
+        totalUses: pastUsages.length,
+        isInRegularRotation,
+        firstUsed: songStats?.first_used,
+        usageWindowStart: usageWindowStartStr,
+      });
       const isDeepCut = usesInPastYear <= 1;
 
       if (lastUsedDate) {

@@ -97,13 +97,11 @@ export function SongAvailabilityList({
         break;
       }
       case 'new-songs': {
-        // "New" = songs that have been scheduled 1-3 times (move to regular rotation at 4)
-        // Hard rule: if a song is marked regular rotation, never include it here.
-        // Exclude songs on active setlists
+        // New songs are still inside their first few plays, and that count has
+        // to cover the song's whole history. Older songs can look new when only
+        // the last 24 months of plays are loaded.
         filtered = filtered.filter(a =>
-          !a.isInRegularRotation &&
-          a.totalUses > 0 && 
-          a.totalUses < 4 && 
+          a.isNewSong &&
           (overridesEnabled || !publishedSetlistSongIds.has(a.song.id))
         );
         break;
@@ -334,7 +332,7 @@ export function SongAvailabilityList({
 
                   {/* Column 3: Right side controls - auto width, never clips */}
                   <div className="flex items-center gap-1.5">
-                    {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
+                    {/* NEW badge is only for songs still in their first few plays */}
                     {item.isNewSong || item.isGloballyNew ? (
                       <Badge className="bg-ecc-teal text-white text-[10px] px-1.5 py-0 h-4">
                         NEW

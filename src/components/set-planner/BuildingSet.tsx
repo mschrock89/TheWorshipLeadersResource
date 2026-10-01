@@ -309,7 +309,7 @@ export function BuildingSet({
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="truncate text-sm font-medium leading-tight">{item.song.title}</p>
-                          {/* NEW badge follows 12-month new-song classification for this campus/ministry */}
+                          {/* NEW badge is only for songs still in their first few plays */}
                           {(item.isNewSong || item.isGloballyNew) && (
                             <Badge className="h-4 shrink-0 bg-ecc-teal px-1.5 py-0 text-[10px] text-white">
                               NEW

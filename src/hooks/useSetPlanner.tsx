@@ -6,6 +6,7 @@ import { useToast } from "./use-toast";
 import { format } from "date-fns";
 import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtube";
 import { getSessionSetVariants, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
+import { isSongGloballyNew, isSongInNewRotation, REGULAR_ROTATION_MIN_USES, USAGE_HISTORY_WINDOW_MONTHS } from "@/lib/songRotation";
 import { formatDateForDB } from "@/lib/utils";
 
 export interface SongAvailability {
@@ -50,8 +51,6 @@ export interface DraftSetSong {
 const NEW_SONG_MIN_WEEKS = 3;
 const REGULAR_ROTATION_MIN_WEEKS = 5;
 const REGULAR_ROTATION_RECOMMENDED_WEEKS = 8;
-const NEW_SONG_MAX_USES = 3;
-const REGULAR_ROTATION_MIN_USES = 4;
 
 // Calculate weeks between two dates
 function weeksBetween(date1: Date, date2: Date): number {
@@ -86,6 +85,9 @@ export function useSongAvailability(
     const oneYearAgo = new Date(targetDate);
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const oneYearAgoStr = format(oneYearAgo, "yyyy-MM-dd");
+    const usageWindowStart = new Date(targetDate);
+    usageWindowStart.setMonth(usageWindowStart.getMonth() - USAGE_HISTORY_WINDOW_MONTHS);
+    const usageWindowStartStr = format(usageWindowStart, "yyyy-MM-dd");
 
     return songs
       .map((song): SongAvailability | null => {
@@ -149,14 +151,21 @@ export function useSongAvailability(
       // Calculate uses in past year for deep cut detection
       const usesInPastYear = pastUsages.filter(u => u.plan_date >= oneYearAgoStr).length;
       const totalUses = pastUsages.length;
-      const isGloballyNew = (song.usages?.length || 0) === 0;
+      // usages only includes about 24 months. All-time first_used / usage_count
+      // decide whether a song has ever been scheduled.
+      const isGloballyNew = isSongGloballyNew(song);
       // Classification rules:
       // - Deep Cut: 1 or less uses in past 12 months
-      // - Regular Rotation: 3 or more uses in past 12 months OR 4+ total historical uses
-      // - New Song: fewer than 4 total historical uses, unless it has already moved to regular rotation
+      // - Regular Rotation: 3 or more uses in past 12 months OR 4+ uses in the loaded history
+      // - New Song: fewer than 4 uses, and the loaded history covers its whole life
       const isInRegularRotation = usesInPastYear >= 3 || totalUses >= REGULAR_ROTATION_MIN_USES;
       const isDeepCut = usesInPastYear <= 1;
-      const isNewSong = totalUses > 0 && totalUses < REGULAR_ROTATION_MIN_USES && !isInRegularRotation;
+      const isNewSong = isSongInNewRotation({
+        totalUses,
+        isInRegularRotation,
+        firstUsed: song.first_used,
+        usageWindowStart: usageWindowStartStr,
+      });
 
       // Find last used date and most recently used key
       const sortedPastUsages = [...pastUsages].sort((a, b) => 
