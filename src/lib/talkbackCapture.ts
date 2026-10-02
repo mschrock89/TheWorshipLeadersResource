@@ -1,4 +1,5 @@
 import { rmsFromTimeDomain } from "@/lib/liveMode";
+import { phraseLevelIsVoice, shouldTranscribePhrase } from "@/lib/talkbackPhrase";
 
 export type TalkbackCaptureChannel = {
   id: string;
@@ -8,10 +9,6 @@ export type TalkbackCaptureChannel = {
 
 export type TalkbackCaptureStatus = "listening" | "hearing" | "error";
 
-const SPEECH_THRESHOLD = 0.02;
-const SILENCE_MS = 700;
-const MIN_UTTERANCE_MS = 450;
-const MAX_UTTERANCE_MS = 8000;
 const LEVEL_INTERVAL_MS = 80;
 
 type CaptureHandlers = {
@@ -159,8 +156,8 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
             const level = rmsFromTimeDomain(samples);
             handlers.onLevel(channel.id, level);
             const now = performance.now();
-            const speaking = level >= SPEECH_THRESHOLD;
             let utterance = recorders.get(channel.id);
+            const speaking = phraseLevelIsVoice(level, Boolean(utterance));
 
             if (speaking) {
               setPhase("hearing");
@@ -185,7 +182,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
             }
             const elapsed = now - utterance.startedAt;
             const quietFor = now - utterance.lastVoiceAt;
-            if (elapsed >= MAX_UTTERANCE_MS || (elapsed >= MIN_UTTERANCE_MS && quietFor >= SILENCE_MS)) {
+            if (shouldTranscribePhrase(elapsed, quietFor)) {
               flush(utterance);
               if (!speaking) setPhase("listening");
             }
