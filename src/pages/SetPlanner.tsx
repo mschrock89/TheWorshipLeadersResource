@@ -791,8 +791,8 @@ export default function SetPlanner() {
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
   useEffect(() => {
-    // Teaching sheets are campus-scoped; skip for Network Wide / Student Camp.
-    if (!physicalCampusId || isNetworkWideCampus || isNetworkWideMinistry) {
+    // Teaching sheets are campus-scoped and admin-only. Skip for Network Wide / Student Camp.
+    if (!isAdmin || !physicalCampusId || isNetworkWideCampus || isNetworkWideMinistry) {
       setTeachingWeek(null);
       setTeachingSummary("");
       setSuggestedThemes([]);
@@ -849,7 +849,7 @@ export default function SetPlanner() {
     return () => {
       cancelled = true;
     };
-  }, [physicalCampusId, isNetworkWideCampus, isNetworkWideMinistry, baseSelectedMinistry, teachingDateStr]);
+  }, [isAdmin, physicalCampusId, isNetworkWideCampus, isNetworkWideMinistry, baseSelectedMinistry, teachingDateStr]);
 
   const handleSuggestSongs = async () => {
     if (!teachingWeek) return;
@@ -1112,8 +1112,8 @@ export default function SetPlanner() {
           </CardContent>
         </Card>
 
-        {/* Teaching Schedule */}
-        <Card>
+        {/* Teaching Schedule — admins only */}
+        {isAdmin && <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
@@ -1290,7 +1290,7 @@ export default function SetPlanner() {
               </p>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* Team Roster - full width. Custom services use the builder-assigned
             roster only; do not also surface the Team Builder rotation (e.g. T3). */}

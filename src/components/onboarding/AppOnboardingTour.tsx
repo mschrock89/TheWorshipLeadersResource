@@ -9,7 +9,6 @@ import { useCompleteOnboarding, useOnboardingStatus } from "@/hooks/useProfiles"
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { isAuditionCandidateRole } from "@/lib/access";
-import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 type TourStep = {
   id: string;
@@ -51,7 +50,6 @@ function AppOnboardingTourContent() {
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
   const startedForUserId = useRef<string | null>(null);
   const isAuditionCandidate = isAuditionCandidateRole(roles.map((role) => role.role));
-  const isStudentApp = isCurrentStudentResourceApp();
 
   const steps = useMemo<TourStep[]>(() => {
     const baseSteps: TourStep[] = [
@@ -84,7 +82,7 @@ function AppOnboardingTourContent() {
         target: '[data-tour="calendar-grid"]',
         title: "Open any service date",
         description:
-          "Tap a highlighted date to open that day's details, see your team assignment, and view the set for that service.",
+          "Tap a date to open that day's setlist. If you're scheduled, charts, Practice Hub, and confirm show up on that day.",
       },
       {
         id: "swap-help",
@@ -95,19 +93,6 @@ function AppOnboardingTourContent() {
           "From Calendar, open one of your scheduled dates and tap Swap in the service card. That starts a request so someone else can cover or trade with you.",
       },
     ];
-
-    if (!isAuditionCandidate) {
-      baseSteps.splice(2, 0, {
-        id: "setlists-nav",
-        route: "/",
-        target: '[data-tour="nav-setlists"]',
-        title: isStudentApp ? "My Setlists lives here" : "Setlists live here",
-        description:
-          isStudentApp
-            ? "My Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to."
-            : "Setlists is where you review upcoming songs, charts, notes, and rehearsal details for services you've been assigned to.",
-      });
-    }
 
     if (isSupported && !isSubscribed) {
       baseSteps.splice(2, 0, {
@@ -121,7 +106,7 @@ function AppOnboardingTourContent() {
     }
 
     return baseSteps;
-  }, [isAuditionCandidate, isStudentApp, isSubscribed, isSupported]);
+  }, [isAuditionCandidate, isSubscribed, isSupported]);
 
   useEffect(() => {
     if (user) {

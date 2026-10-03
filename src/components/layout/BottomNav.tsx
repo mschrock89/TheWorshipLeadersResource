@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   MessageCircle,
   Calendar,
-  ListMusic,
   Music,
   BookOpen,
   Newspaper,
@@ -71,27 +70,14 @@ export function BottomNav() {
           { to: "/feed", icon: Newspaper, label: "Feed" },
           ...(isStudentApp ? [{ to: "/attendance", icon: MapPinned, label: "Attendance" }] : []),
           { to: "/resources", icon: Music, label: "Audio" },
-          { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
-          {
-            to: "/my-setlists",
-            icon: ListMusic,
-            label: isStudentApp ? "My Setlists" : "Setlists",
-            tourId: "nav-setlists",
-          },
+          { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar", badge: isApprover ? pendingApprovalCount : undefined },
         ]
       : [
         { to: "/bible", icon: BookOpen, label: "Bible" },
         ...campNavItem,
         { to: "/chat", icon: MessageCircle, label: "Chat", badge: totalUnread },
         { to: "/feed", icon: Newspaper, label: "Feed" },
-        { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar" },
-        {
-          to: "/my-setlists",
-          icon: ListMusic,
-          label: isStudentApp ? "My Setlists" : "Setlists",
-          badge: isApprover ? pendingApprovalCount : undefined,
-          tourId: "nav-setlists",
-        },
+        { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar", badge: isApprover ? pendingApprovalCount : undefined },
       ]
     : [];
 

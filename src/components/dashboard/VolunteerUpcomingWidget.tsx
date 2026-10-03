@@ -210,8 +210,8 @@ export function VolunteerUpcomingWidget() {
               Song Set
             </h3>
             {upcomingSet && (
-              <Link 
-                to="/my-setlists" 
+              <Link
+                to={`/calendar?date=${upcomingSet.plan_date}${upcomingSet.campus_id ? `&campus=${upcomingSet.campus_id}` : ""}`}
                 className="flex items-center gap-1 text-sm text-primary hover:underline"
               >
                 View Full Set

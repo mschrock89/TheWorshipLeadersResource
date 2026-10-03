@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Play, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Pencil, Download, Sparkles, MoreVertical, Layers } from "lucide-react";
+import { Play, Music2, Calendar, MapPin, Headphones, Plus, Trash2, FileAudio, ChevronDown, ChevronRight, Pencil, Download, MoreVertical, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +22,7 @@ import { useUserCampuses } from "@/hooks/useCampuses";
 import { ReferenceTrackUploadDialog } from "./ReferenceTrackUploadDialog";
 import { EditReferenceTrackMarkersDialog } from "./EditReferenceTrackMarkersDialog";
 import { SetlistSong } from "./ReferenceTrackMarkerInput";
-import { useAutoReorderChartsFromReferenceTrack, useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
+import { useDeleteReferenceTrack } from "@/hooks/useReferenceTrack";
 import { useSetlistStemSession } from "@/hooks/useSetlistStems";
 import { canManageReferenceTracks, isAuditionCandidateRole } from "@/lib/access";
 import { StemDAW } from "./StemDAW";
@@ -52,7 +52,6 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
   const [trackToDelete, setTrackToDelete] = useState<ReferenceTrack | null>(null);
   const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
   const deleteRefTrack = useDeleteReferenceTrack();
-  const autoReorderCharts = useAutoReorderChartsFromReferenceTrack();
   const roleNames = roles.map((role) => role.role);
   const userCampusIds = userCampuses.map((campus) => campus.campus_id);
   const isAuditionCandidate = isAuditionCandidateRole(roleNames);
@@ -170,13 +169,6 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
     } catch (error) {
       console.error('Download failed:', error);
     }
-  };
-
-  const handleAutoReorderCharts = (track: ReferenceTrack) => {
-    autoReorderCharts.mutate({
-      referenceTrackId: track.referenceTrackId,
-      draftSetId: playlist.draft_set_id,
-    });
   };
 
   return (
@@ -404,27 +396,6 @@ export function SetlistPlaylistCard({ playlist }: SetlistPlaylistCardProps) {
                               )}
                             </p>
                           </div>
-
-                          {/* Admin AI Sync Charts */}
-                          {isAdmin && hasMarkers && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-xs shrink-0"
-                              title="Reorder existing charts and generate drafts only for songs without chart text"
-                              disabled={
-                                autoReorderCharts.isPending &&
-                                autoReorderCharts.variables?.referenceTrackId === track.referenceTrackId
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAutoReorderCharts(track);
-                              }}
-                            >
-                              <Sparkles className="h-3.5 w-3.5" />
-                              AI Sync Charts
-                            </Button>
-                          )}
 
                           {/* Overflow actions */}
                           {canManageTracks ? (

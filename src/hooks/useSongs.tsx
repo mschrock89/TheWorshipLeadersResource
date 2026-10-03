@@ -1205,6 +1205,7 @@ export function useSongsForDate(
                   isFirstUse: (priorUsesMap.get(ps.song_id) || 0) === 0,
                   vocalist: vocalists[0] || null,
                   vocalists,
+                  draftSetSongId: null,
                 };
               }),
           });
@@ -1271,6 +1272,8 @@ export function useSongsForDate(
                   isFirstUse: (priorUsesMap.get(dss.song?.id) || 0) === 0,
                   vocalist: dss.vocalist || null,
                   vocalists: dss.vocalists || [],
+                  draftSetSongId: dss.id,
+                  youtube_url: dss.youtube_url || null,
                 })),
             });
           }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { format, getDay, parseISO } from "date-fns";
 import { Home, ListMusic, Check, Clock, Music2, Mic2, Guitar, ArrowLeftRight, ChevronLeft, ChevronRight, Headphones, MapPin, FileText, BookOpen, Youtube, Video, Church } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +29,7 @@ import { usePublishedSetlists, useConfirmSetlist, useConfirmSetlists } from "@/h
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession, getViewMinistryFilterOptions, isValidViewMinistryFilter, setlistMatchesMinistryFilter } from "@/lib/constants";
-import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel } from "@/lib/utils";
+import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel, formatDateForDB } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -1081,9 +1081,14 @@ function SetlistTeachingSchedule({
   campusId: string;
   ministryType: string;
 }) {
-  const { data: teachingWeek } = useTeachingWeekForDate(campusId, ministryType, planDate);
+  const { isAdmin } = useAuth();
+  const { data: teachingWeek } = useTeachingWeekForDate(
+    isAdmin ? campusId : null,
+    ministryType,
+    planDate,
+  );
 
-  if (!teachingWeek) return null;
+  if (!isAdmin || !teachingWeek) return null;
 
   return (
     <div className="border-t border-emerald-500/20 pt-3">
@@ -2413,6 +2418,53 @@ function AuditionCandidateSetlists() {
   );
 }
 
+function calendarMinistryForSet(ministryType: string) {
+  if (
+    ministryType === "weekend" ||
+    ministryType === "sunday_am" ||
+    ministryType === "weekend_team" ||
+    ministryType === "production" ||
+    ministryType === "video" ||
+    ministryType === "speaker" ||
+    ministryType === "eon_weekend"
+  ) {
+    return "weekend_team";
+  }
+  return ministryType;
+}
+
+function SetlistsToCalendarRedirect() {
+  const [searchParams] = useSearchParams();
+  const setId = searchParams.get("setId");
+  const confirm = searchParams.get("confirm");
+  const { data: setlists, isLoading } = usePublishedSetlists(undefined, undefined, true);
+  const appMinistryTypes = getResourceAppMinistryTypes(getCurrentResourceAppKey());
+
+  if (setId && isLoading) {
+    return <p className="p-6 text-sm text-muted-foreground">Opening your setlist…</p>;
+  }
+
+  const today = formatDateForDB(new Date());
+  const target = setId ? setlists?.find((setlist) => setlist.id === setId) : null;
+  const nextRostered = (setlists || [])
+    .filter((setlist) => setlist.amIOnRoster && setlist.plan_date >= today)
+    .sort((a, b) => a.plan_date.localeCompare(b.plan_date))[0];
+  const destination = setId ? target : nextRostered;
+  const params = new URLSearchParams();
+
+  if (destination?.plan_date) params.set("date", destination.plan_date);
+  if (destination?.campus_id) params.set("campus", destination.campus_id);
+  if (destination) {
+    const ministry = calendarMinistryForSet(getSetlistViewMinistryType(destination));
+    if (isValidViewMinistryFilter(ministry, appMinistryTypes)) params.set("ministry", ministry);
+  }
+  if (setId) params.set("setId", setId);
+  if (confirm) params.set("confirm", confirm);
+
+  const query = params.toString();
+  return <Navigate to={query ? `/calendar?${query}` : "/calendar"} replace />;
+}
+
 export default function MySetlists() {
   const { user } = useAuth();
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -2422,5 +2474,5 @@ export default function MySetlists() {
     return <AuditionCandidateSetlists />;
   }
 
-  return <StandardMySetlists />;
+  return <SetlistsToCalendarRedirect />;
 }

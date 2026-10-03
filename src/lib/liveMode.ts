@@ -17,6 +17,37 @@ export const PRODUCTION_LIVE_POSITIONS = [
   "audio_shadow",
 ] as const;
 
+export const VIDEO_LIVE_MINISTRIES = ["video"] as const;
+
+export const VIDEO_LIVE_POSITIONS = [
+  "tri_pod_camera",
+  "tri_pod_camera_1",
+  "tri_pod_camera_2",
+  "tri_pod_camera_3",
+  "tri_pod_camera_4",
+  "hand_held_camera",
+  "hand_held_camera_1",
+  "hand_held_camera_2",
+  "hand_held_camera_3",
+  "hand_held_camera_4",
+  "director",
+  "director_2",
+  "director_3",
+  "director_4",
+  "graphics",
+  "graphics_2",
+  "graphics_3",
+  "graphics_4",
+  "switcher",
+  "switcher_2",
+  "switcher_3",
+  "switcher_4",
+] as const;
+
+export const LIVE_CHAT_ROOMS = ["production", "video"] as const;
+export type LiveChatRoom = (typeof LIVE_CHAT_ROOMS)[number];
+export type LiveModeAudience = "production" | "video";
+
 const BINDING_KEY = "wlr-live-audio-bindings";
 const STATION_KEY = "wlr-live-station";
 const CLIENT_KEY = "wlr-live-client-id";
@@ -171,12 +202,48 @@ export function writeTalkbackBindingStore(store: {
   window.localStorage.setItem(BINDING_KEY, JSON.stringify(store));
 }
 
-export function hasProductionLiveAssignment(rows: Array<{ ministry_type?: string | null; position?: string | null }>) {
-  const ministries = new Set<string>(PRODUCTION_LIVE_MINISTRIES);
-  const positions = new Set<string>(PRODUCTION_LIVE_POSITIONS);
+type LiveAssignmentRow = { ministry_type?: string | null; position?: string | null };
+
+function matchesLiveAssignment(
+  rows: LiveAssignmentRow[],
+  ministries: ReadonlySet<string>,
+  positions: ReadonlySet<string>,
+) {
   return rows.some(
     (row) =>
       (row.ministry_type && ministries.has(row.ministry_type)) ||
       (row.position && positions.has(row.position)),
   );
+}
+
+export function hasProductionLiveAssignment(rows: LiveAssignmentRow[]) {
+  return matchesLiveAssignment(
+    rows,
+    new Set<string>(PRODUCTION_LIVE_MINISTRIES),
+    new Set<string>(PRODUCTION_LIVE_POSITIONS),
+  );
+}
+
+export function hasVideoLiveAssignment(rows: LiveAssignmentRow[]) {
+  return matchesLiveAssignment(
+    rows,
+    new Set<string>(VIDEO_LIVE_MINISTRIES),
+    new Set<string>(VIDEO_LIVE_POSITIONS),
+  );
+}
+
+export function liveChatRoomOf(message: { room?: string | null }): LiveChatRoom {
+  return message.room === "video" ? "video" : "production";
+}
+
+export function resolveLiveAudience(input: {
+  isAdmin: boolean;
+  isProductionManager: boolean;
+  isVideoDirector: boolean;
+  rows: LiveAssignmentRow[];
+}): LiveModeAudience | null {
+  if (input.isAdmin || input.isProductionManager) return "production";
+  if (input.isVideoDirector || hasVideoLiveAssignment(input.rows)) return "video";
+  if (hasProductionLiveAssignment(input.rows)) return "production";
+  return null;
 }

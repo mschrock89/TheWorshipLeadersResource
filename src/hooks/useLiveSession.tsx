@@ -9,6 +9,7 @@ import {
   getLiveClientId,
   sanitizeTalkbackTranscript,
   shouldDropRepeat,
+  type LiveChatRoom,
   type LiveStation,
 } from "@/lib/liveMode";
 
@@ -24,6 +25,10 @@ type LiveSessionParams = {
   serviceDate: string;
   customServiceId?: string | null;
   draftSetId?: string | null;
+  enabled?: boolean;
+  talkback?: boolean;
+  notes?: boolean;
+  chatRoom?: LiveChatRoom | null;
 };
 
 function errorText(error: unknown) {
@@ -52,6 +57,10 @@ export function useLiveSession({
   serviceDate,
   customServiceId = null,
   draftSetId = null,
+  enabled = true,
+  talkback = true,
+  notes = true,
+  chatRoom = null,
 }: LiveSessionParams) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -67,7 +76,7 @@ export function useLiveSession({
 
   const sessionQuery = useQuery({
     queryKey: sessionKey,
-    enabled: !!campusId && !!serviceDate && !!ministryType && !!user,
+    enabled: enabled && !!campusId && !!serviceDate && !!ministryType && !!user,
     retry: false,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("ensure_live_session", {
@@ -87,12 +96,15 @@ export function useLiveSession({
   const sessionId = session?.id ?? null;
   const channelsKey = useMemo(() => ["live-channels", sessionId] as const, [sessionId]);
   const linesKey = useMemo(() => ["live-lines", sessionId] as const, [sessionId]);
-  const chatKey = useMemo(() => ["live-chat", sessionId] as const, [sessionId]);
+  const chatKey = useMemo(
+    () => ["live-chat", sessionId, chatRoom || "all"] as const,
+    [sessionId, chatRoom],
+  );
   const notesKey = useMemo(() => ["live-notes", sessionId] as const, [sessionId]);
 
   const channelsQuery = useQuery({
     queryKey: channelsKey,
-    enabled: !!sessionId,
+    enabled: !!sessionId && talkback,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("live_talkback_channels")
@@ -106,7 +118,7 @@ export function useLiveSession({
 
   const linesQuery = useQuery({
     queryKey: linesKey,
-    enabled: !!sessionId,
+    enabled: !!sessionId && talkback,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("live_talkback_lines")
@@ -123,12 +135,14 @@ export function useLiveSession({
     queryKey: chatKey,
     enabled: !!sessionId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("live_chat_messages")
         .select("*")
         .eq("session_id", sessionId!)
         .order("created_at", { ascending: false })
         .limit(300);
+      if (chatRoom) query = query.eq("room", chatRoom);
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []).slice().reverse();
     },
@@ -136,7 +150,7 @@ export function useLiveSession({
 
   const notesQuery = useQuery({
     queryKey: notesKey,
-    enabled: !!sessionId,
+    enabled: !!sessionId && notes,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("live_session_notes")
@@ -150,12 +164,13 @@ export function useLiveSession({
 
   const appendChat = useCallback(
     (message: LiveChatMessage) => {
+      if (chatRoom && message.room !== chatRoom) return;
       queryClient.setQueryData<LiveChatMessage[]>(chatKey, (current = []) => {
         if (current.some((row) => row.id === message.id)) return current;
         return [...current, message].slice(-400);
       });
     },
-    [chatKey, queryClient],
+    [chatKey, chatRoom, queryClient],
   );
 
   const appendLine = useCallback(
@@ -330,13 +345,13 @@ export function useLiveSession({
   );
 
   const sendChatMessage = useCallback(
-    async (raw: string) => {
+    async (raw: string, room: LiveChatRoom = "production") => {
       if (!sessionId || !user) return;
       const body = raw.trim().slice(0, 2000);
       if (!body) return;
       const { data, error } = await supabase
         .from("live_chat_messages")
-        .insert({ session_id: sessionId, user_id: user.id, body })
+        .insert({ session_id: sessionId, user_id: user.id, body, room })
         .select("*")
         .single();
       if (error) {

@@ -38,6 +38,7 @@ export interface PublishedSetlist {
     song_id: string;
     sequence_order: number;
     song_key: string | null;
+    youtube_url?: string | null;
     vocalist: { id: string; full_name: string | null; avatar_url: string | null } | null;
     vocalists?: { id: string; full_name: string | null; avatar_url: string | null }[];
     song: { title: string; author: string | null } | null;

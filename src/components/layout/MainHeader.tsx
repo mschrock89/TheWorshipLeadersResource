@@ -174,9 +174,9 @@ export function MainHeader() {
               </DropdownMenuItem>
               {isStudentBase && (
                 <DropdownMenuItem asChild>
-                  <Link to="/my-setlists" className="flex items-center gap-2">
+                  <Link to="/calendar" className="flex items-center gap-2">
                     <ListMusic className="h-4 w-4" />
-                    {isStudentApp ? "My Setlists" : "Setlists"}
+                    Calendar
                   </Link>
                 </DropdownMenuItem>
               )}

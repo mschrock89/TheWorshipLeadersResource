@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin, FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -72,6 +72,9 @@ import { buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
+import { AssignedSetlistPrep, useRosteredSetlistsForDate } from "@/components/calendar/AssignedSetlistPrep";
+import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
+import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
 import { EventPushDialog } from "@/components/calendar/EventPushDialog";
 import { EventAttendeesDialog } from "@/components/calendar/EventAttendeesDialog";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -432,14 +435,14 @@ function CalendarDayWidget({
 }) {
   return (
     <section className={cn(
-      "calendar-day-widget flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-2.5 lg:p-4",
+      "calendar-day-widget flex min-w-0 w-full flex-col rounded-lg border border-border bg-card p-2 sm:p-2.5 lg:p-4",
       className,
     )}>
       <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto", bodyClassName)}>{children}</div>
+      <div className={cn("min-w-0", bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -773,6 +776,9 @@ function StandardCalendar() {
     roleNames.includes('network_student_pastor') ||
     roleNames.includes('network_worship_leader');
   const canManageWeekendOverrides = userRole ? LEADER_SERVICE_OVERRIDE_ROLES.has(userRole) : false;
+  const canViewSetlistConfirmations = isAdmin || canManageTeam || roleNames.some((role) =>
+    LEADER_SERVICE_OVERRIDE_ROLES.has(role) || role === "campus_pastor",
+  );
   const userCampusIds = useMemo(
     () => userCampuses.map((entry) => entry.campus_id).filter(Boolean),
     [userCampuses],
@@ -994,7 +1000,8 @@ function StandardCalendar() {
     upcomingScheduledServiceDates,
     usesRecurringServiceDay,
   ]);
-  const teachingCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
+  const teachingCampusId =
+    isAdmin && campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
   const teachingMinistryFilter =
     ministryFilter && ministryFilter !== "all" ? ministryFilter : "weekend";
   const { data: teachingWeeksForMonth = [] } = useTeachingWeeksInRange(
@@ -1968,7 +1975,7 @@ function StandardCalendar() {
                     color: teamColor
                   }} />}
                       {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                      {teachingWeek && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" title={formatTeachingReference(teachingWeek)} />}
+                      {isAdmin && teachingWeek && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" title={formatTeachingReference(teachingWeek)} />}
                       {hasCustomAssignment && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-sky-500" />}
                     </div>
                   </button>;
@@ -2199,7 +2206,7 @@ function StandardCalendar() {
                     </div>
                   </div>}
 
-                <div className="mt-1 min-h-0 min-w-0 flex-1 space-y-2">
+                <div className="mt-1 min-w-0 space-y-2">
                   <div className="min-w-0">
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
@@ -2288,28 +2295,28 @@ function StandardCalendar() {
 
               <CalendarDayWidget
                   title={
-                    <span className="flex items-center gap-2 text-blue-400 lg:text-xl">
+                    <span className="flex items-center gap-2 font-display text-base font-semibold text-primary lg:text-xl">
                       <ListMusic className="h-4 w-4 lg:h-5 lg:w-5" />
                       Setlist
                     </span>
                   }
-                  className="aspect-auto overflow-visible border-blue-500/30 bg-gradient-to-br from-card to-blue-500/[0.04] shadow-lg shadow-blue-500/5 lg:col-span-2 lg:col-start-1 lg:p-5"
+                  className="aspect-auto overflow-visible border-primary/30 bg-gradient-to-br from-card to-primary/[0.04] shadow-lg shadow-primary/10 lg:col-span-2 lg:col-start-1 lg:p-5"
                   bodyClassName="flex-none overflow-y-visible"
                 >
                   <div className="space-y-4 pt-1 lg:space-y-6">
-                    {selectedTeachingWeek ? (
-                      <div className="rounded-md border border-emerald-600/20 bg-emerald-600/5 px-2 py-1.5 lg:rounded-lg lg:p-4">
-                        <div className="flex flex-wrap items-center gap-1.5 lg:gap-3">
-                          <Badge variant="secondary" className="border-transparent bg-emerald-600/10 text-[10px] text-emerald-700 lg:h-7 lg:px-3 lg:text-sm">
+                    {isAdmin && selectedTeachingWeek ? (
+                      <div className="rounded-md border border-emerald-600/20 bg-emerald-600/5 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary" className="border-transparent bg-emerald-600/10 text-emerald-700">
                             Teaching
                           </Badge>
-                          <span className="text-sm font-medium lg:text-lg">{formatTeachingReference(selectedTeachingWeek)}</span>
+                          <span className="text-sm font-medium">{formatTeachingReference(selectedTeachingWeek)}</span>
                           {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 ? (
                             <span className="text-xs text-muted-foreground">
                               {selectedTeachingWeek.themes_manual.join(", ")}
                             </span>
                           ) : null}
-                          <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] lg:h-8 lg:px-3 lg:text-sm">
+                          <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
                             <Link to={buildBibleHref(
                               formatTeachingReference(selectedTeachingWeek),
                               selectedTeachingWeek.translation || "ESV",
@@ -2348,6 +2355,7 @@ function StandardCalendar() {
                           readOnly={isCrossCampusReadOnly}
                           showHeader={false}
                           prominent
+                          scheduled={Boolean(isPlayingThisWeekend)}
                         />
                       </div>
                     )) : sessionEntries.length > 0 ? sessionEntries.map((entry) => {
@@ -2370,6 +2378,7 @@ function StandardCalendar() {
                             ministryFilter={variant}
                             readOnly={isCrossCampusReadOnly}
                             prominent
+                            scheduled={Boolean(isPlayingThisWeekend)}
                           />
                         </div>
                       );
@@ -2380,8 +2389,15 @@ function StandardCalendar() {
                         ministryFilter={ministryFilter}
                         readOnly={isCrossCampusReadOnly}
                         prominent
+                        scheduled={Boolean(isPlayingThisWeekend)}
                       />
                     )}
+                    <AssignedSetlistPrep
+                      date={selectedDate}
+                      campusId={sessionCampusId}
+                      ministryFilter={ministryFilter}
+                      customServiceIds={selectedDayServices.map((service) => service.id)}
+                    />
                   </div>
                 </CalendarDayWidget>
 
@@ -2831,6 +2847,12 @@ function StandardCalendar() {
                   readOnly={isCrossCampusReadOnly}
                 />
               ))}
+            </div>
+          ) : null}
+
+          {canViewSetlistConfirmations && campusFilter && campusFilter !== "network-wide" ? (
+            <div className="mt-4">
+              <SetlistConfirmationWidget selectedCampusId={campusFilter} />
             </div>
           ) : null}
 
@@ -4790,6 +4812,14 @@ function BandRoster({
     </div>);
 }
 
+type ChartSongTarget = {
+  id: string;
+  title: string;
+  author: string | null;
+  draftSetSongId?: string | null;
+  originalKey?: string | null;
+};
+
 function SongsPreview({
   date,
   campusId,
@@ -4797,6 +4827,7 @@ function SongsPreview({
   readOnly = false,
   compact = false,
   prominent = false,
+  scheduled = false,
 }: {
   date: Date;
   campusId?: string | null;
@@ -4804,12 +4835,16 @@ function SongsPreview({
   readOnly?: boolean;
   compact?: boolean;
   prominent?: boolean;
+  scheduled?: boolean;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const {
     data: plansWithSongs = [],
     isLoading
   } = useSongsForDate(dateStr, campusId, ministryFilter);
+  const { setlists: rosteredSets, isLoading: rosterLoading } = useRosteredSetlistsForDate(date, campusId, ministryFilter);
+  const [chartSong, setChartSong] = useState<ChartSongTarget | null>(null);
+  const chartsEnabled = !readOnly && (scheduled || rosteredSets.length > 0);
 
   if (isLoading) {
     return <div className="animate-pulse space-y-2">
@@ -4820,7 +4855,9 @@ function SongsPreview({
     return <p className={compact ? "text-xs text-muted-foreground" : "text-sm text-muted-foreground"}>No songs for this service.</p>;
   }
   const allSongs = plansWithSongs.flatMap(p => p.songs || []);
-  return <div>
+  const showGuestNote = !readOnly && !scheduled && !rosterLoading && !chartsEnabled;
+  return <>
+    <div>
       {readOnly ? (
         <div className={compact ? "mb-1 flex justify-end" : "mb-2 flex justify-end"}>
           <Badge variant="outline" className="text-[10px]">
@@ -4828,11 +4865,31 @@ function SongsPreview({
           </Badge>
         </div>
       ) : null}
-      <div className={compact ? "space-y-0" : prominent ? "space-y-2 lg:space-y-3" : "space-y-1.5"}>
-        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "py-1 text-sm lg:py-2 lg:text-lg" : "py-1 text-sm"}`}>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
-              <span className="truncate text-foreground">{song.title}</span>
+      <div className={compact ? "space-y-0" : prominent ? "space-y-2" : "space-y-1.5"}>
+        {allSongs.map((song, index) => <div key={`${song.id}-${index}`} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "gap-2 rounded-lg bg-muted/50 p-2 text-sm" : "py-1 text-sm"}`}>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {prominent ? (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                  {index + 1}
+                </span>
+              ) : compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
+              {chartsEnabled && song.id ? (
+                <button
+                  type="button"
+                  className={`min-w-0 truncate text-left text-foreground hover:text-primary hover:underline ${prominent ? "text-sm font-medium" : ""}`}
+                  onClick={() => setChartSong({
+                    id: song.id,
+                    title: song.title || "Song",
+                    author: song.author || null,
+                    draftSetSongId: song.draftSetSongId || null,
+                    originalKey: song.key || null,
+                  })}
+                >
+                  {song.title}
+                </button>
+              ) : (
+                <span className={`truncate text-foreground ${prominent ? "text-sm font-medium" : ""}`}>{song.title}</span>
+              )}
               {song.isFirstUse && <Badge className="h-4 shrink-0 bg-ecc-teal px-1.5 py-0 text-[10px] text-white">
                   NEW
                 </Badge>}
@@ -4847,15 +4904,40 @@ function SongsPreview({
                   .map((v: any) => (v?.name || "").split(" ")[0])
                   .filter(Boolean)
                   .join(", ");
-                return <span className={`text-primary/70 ${compact ? "max-w-[4.5rem] truncate text-[10px]" : prominent ? "max-w-[12rem] truncate text-xs lg:max-w-[18rem] lg:text-base" : "text-xs"}`}>{label}</span>;
+                return <span className={`text-primary/70 ${compact ? "max-w-[4.5rem] truncate text-[10px]" : prominent ? "max-w-[12rem] truncate text-xs" : "text-xs"}`}>{label}</span>;
               })()}
-              {song.key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : prominent ? "text-xs lg:h-8 lg:px-3 lg:text-base" : "text-xs"}>
+              {song.key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs font-medium"}>
                   {song.key}
                 </Badge>}
+              {chartsEnabled && song.id ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={compact ? "h-6 px-1.5 text-[10px]" : "h-7 gap-1 px-2 text-xs"}
+                  onClick={() => setChartSong({
+                    id: song.id,
+                    title: song.title || "Song",
+                    author: song.author || null,
+                    draftSetSongId: song.draftSetSongId || null,
+                    originalKey: song.key || null,
+                  })}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {!compact && "Chart"}
+                </Button>
+              ) : null}
             </div>
           </div>)}
       </div>
-    </div>;
+      {showGuestNote ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Song list and team are visible. Charts and Practice Hub open when you're scheduled for this date.
+        </p>
+      ) : null}
+    </div>
+    <ChordChartDialog open={!!chartSong} onOpenChange={(open) => !open && setChartSong(null)} song={chartSong} />
+  </>;
 }
 
 function CustomServiceSongsPreview({
@@ -4868,6 +4950,7 @@ function CustomServiceSongsPreview({
   compact = false,
   showHeader = true,
   prominent = false,
+  scheduled = false,
 }: {
   customServiceId: string;
   planDate: string;
@@ -4878,6 +4961,7 @@ function CustomServiceSongsPreview({
   compact?: boolean;
   showHeader?: boolean;
   prominent?: boolean;
+  scheduled?: boolean;
 }) {
   const effectiveMinistryType = useMemo(
     () => getEffectiveCustomServiceMinistryType(ministryType, serviceName),
@@ -4886,6 +4970,9 @@ function CustomServiceSongsPreview({
 
   const { data: existingSet, isLoading: isSetLoading } = useExistingSet(campusId, effectiveMinistryType, planDate, customServiceId);
   const { data: draftSongs = [], isLoading: isSongsLoading } = useDraftSetSongs(existingSet?.id || null);
+  const { setlists: rosteredSets } = useRosteredSetlistsForDate(planDate, campusId, ministryType, customServiceId);
+  const [chartSong, setChartSong] = useState<ChartSongTarget | null>(null);
+  const chartsEnabled = !readOnly && (scheduled || rosteredSets.length > 0);
   const { data: vocalistsBySong = {}, isLoading: areVocalistsLoading } = useQuery({
     queryKey: ["custom-service-song-vocalists", existingSet?.id],
     enabled: !!existingSet?.id && draftSongs.length > 0,
@@ -4961,22 +5048,61 @@ function CustomServiceSongsPreview({
           </div>
         </div>
       ) : null}
-      <div className={compact ? "space-y-0" : prominent ? "space-y-2 lg:space-y-3" : "space-y-1.5"}>
-        {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "py-1 text-sm lg:py-2 lg:text-lg" : "py-1 text-sm"}`}>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              {compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
-              <span className="truncate text-foreground">{song.song?.title || "Untitled Song"}</span>
+      <div className={compact ? "space-y-0" : prominent ? "space-y-2" : "space-y-1.5"}>
+        {draftSongs.map((song, index) => <div key={song.id} className={`flex items-center justify-between ${compact ? "py-px text-xs" : prominent ? "gap-2 rounded-lg bg-muted/50 p-2 text-sm" : "py-1 text-sm"}`}>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {prominent ? (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                  {index + 1}
+                </span>
+              ) : compact ? <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{index + 1}.</span> : null}
+              {chartsEnabled && song.song_id ? (
+                <button
+                  type="button"
+                  className={`min-w-0 truncate text-left text-foreground hover:text-primary hover:underline ${prominent ? "text-sm font-medium" : ""}`}
+                  onClick={() => setChartSong({
+                    id: song.song_id,
+                    title: song.song?.title || "Untitled Song",
+                    author: song.song?.author || null,
+                    draftSetSongId: song.id,
+                    originalKey: song.song_key || null,
+                  })}
+                >
+                  {song.song?.title || "Untitled Song"}
+                </button>
+              ) : (
+                <span className={`truncate text-foreground ${prominent ? "text-sm font-medium" : ""}`}>{song.song?.title || "Untitled Song"}</span>
+              )}
             </div>
             <div className="ml-2 flex shrink-0 items-center gap-1.5">
-              <span className={`truncate ${vocalistsBySong[song.id]?.length ? "text-primary/70" : "text-muted-foreground"} ${compact ? "max-w-[7rem] text-[10px]" : prominent ? "max-w-[12rem] text-xs lg:max-w-[18rem] lg:text-base" : "max-w-[7rem] text-xs"}`}>
+              <span className={`truncate ${vocalistsBySong[song.id]?.length ? "text-primary/70" : "text-muted-foreground"} ${compact ? "max-w-[7rem] text-[10px]" : prominent ? "max-w-[12rem] text-xs" : "max-w-[7rem] text-xs"}`}>
                 {vocalistsBySong[song.id]?.length
                   ? vocalistsBySong[song.id].map((name) => name.split(" ")[0]).join(", ")
                   : "Unassigned"}
               </span>
-              {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : prominent ? "text-xs lg:h-8 lg:px-3 lg:text-base" : "text-xs"}>{song.song_key}</Badge>}
+              {song.song_key && <Badge variant="outline" className={compact ? "h-4 px-1 text-[10px]" : "text-xs font-medium"}>{song.song_key}</Badge>}
+              {chartsEnabled && song.song_id ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={compact ? "h-6 px-1.5 text-[10px]" : "h-7 gap-1 px-2 text-xs"}
+                  onClick={() => setChartSong({
+                    id: song.song_id,
+                    title: song.song?.title || "Untitled Song",
+                    author: song.song?.author || null,
+                    draftSetSongId: song.id,
+                    originalKey: song.song_key || null,
+                  })}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {!compact && "Chart"}
+                </Button>
+              ) : null}
             </div>
           </div>)}
       </div>
+      <ChordChartDialog open={!!chartSong} onOpenChange={(open) => !open && setChartSong(null)} song={chartSong} />
     </div>;
 }
 

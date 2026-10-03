@@ -1255,7 +1255,7 @@ export default function Profile() {
                     Default Ministry
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    This ministry will be pre-selected when you open the Calendar, My Setlists, and other ministry-filtered views.
+                    This ministry will be pre-selected when you open the Calendar and other ministry-filtered views.
                   </p>
                   <Select
                     value={defaultMinistryType || ""}

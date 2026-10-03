@@ -188,7 +188,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   mode = "editor",
 }, ref) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const { selectedCampusId, setSelectedCampusId } = useCampusSelection();
   const { data: campuses, isLoading: campusesLoading } = useCampuses();
@@ -1417,7 +1417,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         ) : null}
       </div>
 
-      {teachingWeek ? (
+      {isAdmin && teachingWeek ? (
         <div className="service-flow-screen-layout rounded-lg border border-border bg-muted/20 px-4 py-3 print:hidden">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">

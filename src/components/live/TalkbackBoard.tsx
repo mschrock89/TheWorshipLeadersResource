@@ -32,6 +32,9 @@ type TypedChatProps = {
   messages: LiveChatMessage[];
   currentUserId?: string | null;
   onSend: (body: string) => void;
+  title?: string;
+  subtitle?: string;
+  placeholder?: string;
 };
 
 type TalkbackChatProps = TranscriptChatProps | TypedChatProps;
@@ -68,6 +71,12 @@ export function TalkbackChat(props: TalkbackChatProps) {
   const stickToBottom = useRef(true);
   const [draft, setDraft] = useState("");
   const typed = props.variant === "typed";
+  const chatTitle = props.variant === "typed" ? props.title || "Live chat" : "Talkback";
+  const chatSubtitle =
+    props.variant === "typed"
+      ? props.subtitle || "Typed messages for this service."
+      : "Transcriptions for this service.";
+  const chatPlaceholder = props.variant === "typed" ? props.placeholder || "Message this service" : "";
   const profilesQuery = useQuery({
     queryKey: ["basic-profiles"],
     queryFn: async () => {
@@ -129,10 +138,10 @@ export function TalkbackChat(props: TalkbackChatProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-border px-3 py-2">
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
-          {typed ? "Live chat" : "Talkback"}
+          {chatTitle}
         </p>
         <p className="text-xs text-muted-foreground">
-          {typed ? "Typed messages for this service." : "Transcriptions for this service."}
+          {chatSubtitle}
         </p>
       </div>
       <div
@@ -230,7 +239,7 @@ export function TalkbackChat(props: TalkbackChatProps) {
               }
             }}
             rows={2}
-            placeholder="Message this service"
+            placeholder={chatPlaceholder}
             aria-label="Live chat message"
             className="min-h-[3rem] flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-base outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
           />

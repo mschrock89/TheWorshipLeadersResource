@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   hasProductionLiveAssignment,
+  hasVideoLiveAssignment,
+  liveChatRoomOf,
+  resolveLiveAudience,
   rmsFromTimeDomain,
   sanitizeTalkbackTranscript,
   shouldDropRepeat,
@@ -39,4 +42,57 @@ test("recognizes production ministry and FOH positions", () => {
   assert.equal(hasProductionLiveAssignment([{ ministry_type: "production" }]), true);
   assert.equal(hasProductionLiveAssignment([{ position: "sound_tech", ministry_type: "weekend" }]), true);
   assert.equal(hasProductionLiveAssignment([{ ministry_type: "weekend", position: "vocalist" }]), false);
+});
+
+test("recognizes video ministry and camera positions", () => {
+  assert.equal(hasVideoLiveAssignment([{ ministry_type: "video" }]), true);
+  assert.equal(hasVideoLiveAssignment([{ position: "tri_pod_camera", ministry_type: "weekend" }]), true);
+  assert.equal(hasVideoLiveAssignment([{ position: "director" }]), true);
+  assert.equal(hasVideoLiveAssignment([{ ministry_type: "weekend", position: "vocalist" }]), false);
+  assert.equal(hasVideoLiveAssignment([{ position: "sound_tech" }]), false);
+});
+
+test("keeps the video chat room separate from production", () => {
+  assert.equal(liveChatRoomOf({ room: "video" }), "video");
+  assert.equal(liveChatRoomOf({ room: "production" }), "production");
+  assert.equal(liveChatRoomOf({}), "production");
+});
+
+test("video team only gets the video live view", () => {
+  assert.equal(
+    resolveLiveAudience({
+      isAdmin: false,
+      isProductionManager: false,
+      isVideoDirector: false,
+      rows: [{ ministry_type: "video", position: "director" }],
+    }),
+    "video",
+  );
+  assert.equal(
+    resolveLiveAudience({
+      isAdmin: false,
+      isProductionManager: false,
+      isVideoDirector: true,
+      rows: [{ ministry_type: "production", position: "sound_tech" }],
+    }),
+    "video",
+  );
+  assert.equal(
+    resolveLiveAudience({
+      isAdmin: false,
+      isProductionManager: false,
+      isVideoDirector: false,
+      rows: [{ ministry_type: "production", position: "sound_tech" }],
+    }),
+    "production",
+  );
+  assert.equal(
+    resolveLiveAudience({
+      isAdmin: true,
+      isProductionManager: true,
+      isVideoDirector: true,
+      rows: [{ ministry_type: "video" }],
+    }),
+    "production",
+  );
 });

@@ -141,7 +141,6 @@ export function CalendarServiceFlowPanel({
 }: CalendarServiceFlowPanelProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canOpenLiveMode = useCanOpenLiveMode();
   const effectiveMinistryType = normalizeMinistryType(ministryType);
   const isNetworkWide =
     isNetworkWideMinistryType(effectiveMinistryType) ||
@@ -151,6 +150,7 @@ export function CalendarServiceFlowPanel({
   const flowCampusId = isNetworkWide
     ? networkWideCampus?.id || null
     : campusId;
+  const canOpenLiveMode = useCanOpenLiveMode(flowCampusId);
 
   const ministryLabel =
     label ||

@@ -14,7 +14,8 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { toCompactLabel } from "@/lib/compactLabel";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { liveStationLabel, readLiveStation, writeLiveStation, type LiveStation } from "@/lib/liveMode";
+import { liveChatRoomOf, liveStationLabel, readLiveStation, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
@@ -55,12 +56,18 @@ export function LiveModeConsole({
   onScopeChange,
 }: LiveModeConsoleProps) {
   const queryClient = useQueryClient();
+  const access = useLiveModeAccess(campusId);
+  const videoOnly = access.audience === "video";
   const live = useLiveSession({
     campusId,
     ministryType,
     serviceDate,
     customServiceId,
     draftSetId,
+    enabled: access.canOpen && !access.isLoading,
+    talkback: !videoOnly,
+    notes: !videoOnly,
+    chatRoom: videoOnly ? "video" : null,
   });
   const [station, setStation] = useState<LiveStation>(() => readLiveStation());
   const [listening, setListening] = useState(false);
@@ -69,6 +76,7 @@ export function LiveModeConsole({
   const [routingOpen, setRoutingOpen] = useState(false);
   const [bindingRevision, setBindingRevision] = useState(0);
   const [tab, setTab] = useState<DockTab>("flow");
+  const [chatRoom, setChatRoom] = useState<LiveChatRoom>("production");
 
   const flowDraftId = draftSetId || live.session?.draft_set_id || null;
   const { data: flow, isLoading: flowLoading } = useServiceFlow(
@@ -169,6 +177,37 @@ export function LiveModeConsole({
     Date.now() - new Date(live.session.listener_heartbeat).getTime() < 20_000;
 
   const calendarHref = `/calendar?date=${serviceDate}&campus=${campusId}&ministry=${ministryType}`;
+  const activeChatRoom: LiveChatRoom = videoOnly ? "video" : chatRoom;
+  const chatMessages = live.chatMessages.filter((message) => liveChatRoomOf(message) === activeChatRoom);
+  const dockTabs = (
+    videoOnly
+      ? [
+          ["flow", "Flow"],
+          ["chat", "Chat"],
+        ]
+      : [
+          ["flow", "Flow"],
+          ["chat", "Chat"],
+          ["notes", "Notes"],
+        ]
+  ) as Array<[DockTab, string]>;
+
+  if (access.isLoading) {
+    return (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!access.canOpen) {
+    return (
+      <StatusScreen
+        title="Live is for admins, production, and video"
+        body="Admins and production or video volunteers at this campus can open it."
+        href={calendarHref}
+      />
+    );
+  }
 
   if (live.schemaMissing) {
     return (
@@ -182,10 +221,88 @@ export function LiveModeConsole({
   if (live.accessDenied) {
     return (
       <StatusScreen
-        title="Live Mode is for the production team"
-        body="FOH, MON, and production staff at this campus can open it."
+        title="Live is for admins, production, and video"
+        body="Admins and production or video volunteers at this campus can open it."
         href={calendarHref}
       />
+    );
+  }
+
+  if (videoOnly) {
+    const videoMessages = live.chatMessages.filter((message) => message.room === "video");
+    return (
+      <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
+        <header className="shrink-0 border-b border-border bg-card">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-2 hover:bg-muted">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
+              <p className="truncate text-sm font-semibold" title={campusName}>
+                <span className="md:hidden">{toCompactLabel(campusName)}</span>
+                <span className="hidden md:inline">{campusName}</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto px-3 pb-2">
+            {campuses.length > 1 ? (
+              <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
+                <SelectTrigger className="h-9 w-40 shrink-0" aria-label={campusName || "Campus"}>
+                  <CompactSelectValue label={campuses.find((campus) => campus.id === campusId)?.name || campusName} placeholder="Campus" />
+                </SelectTrigger>
+                <SelectContent>
+                  {campuses.map((campus) => (
+                    <SelectItem key={campus.id} value={campus.id}>
+                      {campus.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <input
+              type="date"
+              value={serviceDate}
+              aria-label="Service date"
+              onChange={(event) => {
+                if (event.target.value) onScopeChange({ serviceDate: event.target.value });
+              }}
+              className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
+            />
+            <Select value={ministryType} onValueChange={(value) => onScopeChange({ ministryType: value })}>
+              <SelectTrigger className="h-9 w-44 shrink-0" aria-label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label || "Service"}>
+                <CompactSelectValue
+                  label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label}
+                  placeholder="Service"
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </header>
+        <div className="shrink-0 border-b border-border px-3">
+          <div className="inline-flex h-12 items-center border-b-2 border-primary text-sm font-semibold">
+            Video
+          </div>
+        </div>
+        <TalkbackChat
+          variant="typed"
+          messages={videoMessages}
+          currentUserId={live.currentUserId}
+          title="Video"
+          subtitle="Shared with production for this service."
+          placeholder="Message video"
+          onSend={(body) => {
+            void live.sendChatMessage(body, "video");
+          }}
+        />
+      </div>
     );
   }
 
@@ -332,13 +449,7 @@ export function LiveModeConsole({
 
         <section className="flex h-[42dvh] min-h-[16rem] flex-col border-t border-border landscape:h-auto landscape:min-h-0 landscape:w-[min(28rem,46%)] landscape:flex-1 landscape:border-l landscape:border-t-0">
           <div className="grid shrink-0 grid-cols-3 border-b border-border">
-            {(
-              [
-                ["flow", "Flow"],
-                ["chat", "Chat"],
-                ["notes", "Notes"],
-              ] as const
-            ).map(([value, label]) => (
+            {dockTabs.map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -365,14 +476,38 @@ export function LiveModeConsole({
             />
           ) : null}
           {tab === "chat" ? (
-            <TalkbackChat
-              variant="typed"
-              messages={live.chatMessages}
-              currentUserId={live.currentUserId}
-              onSend={(body) => {
-                void live.sendChatMessage(body);
-              }}
-            />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex shrink-0 gap-1 border-b border-border px-3 py-2">
+                  {(["production", "video"] as const).map((room) => (
+                    <button
+                      key={room}
+                      type="button"
+                      onClick={() => setChatRoom(room)}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-sm font-semibold",
+                        chatRoom === room ? "bg-muted text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {room === "production" ? "Production" : "Video"}
+                    </button>
+                  ))}
+                </div>
+              <TalkbackChat
+                variant="typed"
+                messages={chatMessages}
+                currentUserId={live.currentUserId}
+                title={activeChatRoom === "video" ? "Video" : "Production"}
+                subtitle={
+                  activeChatRoom === "video"
+                    ? "Shared with the video team. Separate from production chat."
+                    : "Production chat for this service."
+                }
+                placeholder={activeChatRoom === "video" ? "Message video and production" : "Message production"}
+                onSend={(body) => {
+                  void live.sendChatMessage(body, activeChatRoom);
+                }}
+              />
+            </div>
           ) : null}
           {tab === "notes" ? <LiveNotesPanel notes={live.notes} onSave={live.saveNotes} /> : null}
         </section>
