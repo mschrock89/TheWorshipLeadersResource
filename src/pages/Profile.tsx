@@ -595,9 +595,14 @@ export default function Profile() {
   if (!profile) {
     return (
       <>
-        <div className="text-center py-16">
+        <div className="mx-auto max-w-2xl space-y-4 py-16 text-center">
           <p className="text-muted-foreground">Profile not found</p>
           <Button variant="link" onClick={() => navigate(-1)}>Go back</Button>
+          {isOwnProfile && (
+            <div className="text-left">
+              <DeleteAccountSection />
+            </div>
+          )}
         </div>
       </>
     );
@@ -905,6 +910,8 @@ export default function Profile() {
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {isOwnProfile && <DeleteAccountSection />}
+
               <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                 <div>
                   <Label className="text-sm font-medium">Serving Requirements</Label>
@@ -1735,8 +1742,6 @@ export default function Profile() {
                   </div>
                 </div>
               )}
-
-              {isOwnProfile && <DeleteAccountSection />}
 
               {canEdit && (
                 <Button

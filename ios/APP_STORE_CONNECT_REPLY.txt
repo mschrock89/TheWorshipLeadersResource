@@ -17,22 +17,21 @@ We incorrectly marked Emails or Text Messages, Precise Location, and Photos or V
 We replaced the 6.7-inch iPhone and 13-inch iPad screenshots. They now show the signed-in app in use (home, schedule, songs/resources, and profile), not the splash or marketing screen.
 
 3) Guideline 2.1(a) — Camera crash on iPad
-The crash happened because iOS camera/photo permission strings were missing, and the profile photo picker used a WKWebView file input that can crash on iPad when Take Photo is selected.
+The crash happened when changing the profile picture on iPad. The photo control presented an unanchored action sheet / hidden file input, which iPadOS terminates.
 
-Version 1.0.1 (2) adds NSCameraUsageDescription and NSPhotoLibraryUsageDescription, and uses the Capacitor Camera plugin with popover presentation on iPad. Changing the profile picture with the camera or photo library no longer crashes.
+Version 1.0.2 (3) asks Photo Library or Take Photo inside the app, then opens the system picker fullscreen. Photos are resized before upload. Camera and photo permission strings are present. Changing the profile picture no longer crashes on iPad.
 
 4) Guideline 5.1.1(v) — Account deletion
-Version 1.0.1 (2) includes in-app account deletion.
+Version 1.0.2 (3) includes in-app account deletion. It is the first section on My Profile.
 
 How to review it:
 • Sign in with the demo account to see the option, but please do not delete the demo account.
 • To complete the full deletion flow, tap Sign Up, create a new account, then:
   1. After login, tap the avatar (top right)
   2. Tap My Profile
-  3. Scroll to Delete Account
-  4. Tap Delete Account
-  5. Type DELETE
-  6. Tap Delete Account to confirm
+  3. Tap Delete Account at the top of the page
+  4. Type DELETE
+  5. Tap Delete Account to confirm
 The account is permanently removed and you are returned to the home screen.
 
 A screen recording of this flow will be attached in App Review Information → Notes for future submissions.

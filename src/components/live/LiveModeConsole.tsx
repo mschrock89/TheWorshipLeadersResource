@@ -11,7 +11,6 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
-import { toCompactLabel } from "@/lib/compactLabel";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { liveChatRoomOf, liveStationLabel, readLiveStation, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
@@ -23,8 +22,13 @@ import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildServiceFlowClockTimes,
+  clockSourceToSeconds,
+  formatClockTime,
+  listScheduledServiceTimes,
+  localClockSeconds,
+  measureServiceFlowSpan,
   normalizeClockSource,
-  resolveScheduledServiceStartTime,
+  selectServiceTimeForLocalClock,
 } from "@/components/service-flow/serviceFlowClock";
 import { AudioRoutingPage } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
@@ -77,6 +81,7 @@ export function LiveModeConsole({
   const [bindingRevision, setBindingRevision] = useState(0);
   const [tab, setTab] = useState<DockTab>("flow");
   const [chatRoom, setChatRoom] = useState<LiveChatRoom>("production");
+  const [now, setNow] = useState(() => new Date());
 
   const flowDraftId = draftSetId || live.session?.draft_set_id || null;
   const { data: flow, isLoading: flowLoading } = useServiceFlow(
@@ -106,26 +111,36 @@ export function LiveModeConsole({
       return normalizeClockSource(data?.start_time) || null;
     },
   });
+  const scheduledServiceTimes = useMemo(
+    () =>
+      listScheduledServiceTimes({
+        customServiceStartTime,
+        serviceDate,
+        ministryType,
+        campusId,
+        campus: campusesWithTimes.find((campus) => campus.id === campusId),
+        overrides: serviceTimeOverrides,
+      }),
+    [campusesWithTimes, campusId, customServiceStartTime, ministryType, serviceDate, serviceTimeOverrides],
+  );
+  const flowSpan = useMemo(() => measureServiceFlowSpan(items), [items]);
   const startTime = useMemo(() => {
     const saved = normalizeClockSource(flow?.start_time);
+    const viewingToday = serviceDate === localDateIso(now);
+    if (scheduledServiceTimes.length > 1 && viewingToday) {
+      return selectServiceTimeForLocalClock(scheduledServiceTimes, localClockSeconds(now), flowSpan);
+    }
     if (saved) return saved;
-    return resolveScheduledServiceStartTime({
-      customServiceStartTime,
-      serviceDate,
-      ministryType,
-      campusId,
-      campus: campusesWithTimes.find((campus) => campus.id === campusId),
-      overrides: serviceTimeOverrides,
-    });
-  }, [
-    campusesWithTimes,
-    campusId,
-    customServiceStartTime,
-    flow?.start_time,
-    ministryType,
-    serviceDate,
-    serviceTimeOverrides,
-  ]);
+    return scheduledServiceTimes[0] || null;
+  }, [flow?.start_time, flowSpan, now, scheduledServiceTimes, serviceDate]);
+  const serviceTimeLabel = startTime
+    ? formatClockTime(clockSourceToSeconds(startTime) ?? 0)
+    : null;
+  const localTimeLabel = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
   const clockTimes = useMemo(
     () => buildServiceFlowClockTimes(items, startTime),
     [items, startTime],
@@ -136,9 +151,17 @@ export function LiveModeConsole({
   const serviceLabel = format(parseISO(`${serviceDate}T00:00:00`), "EEE, MMM d");
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       void queryClient.invalidateQueries({ queryKey: ["service-flow"] });
       void queryClient.invalidateQueries({ queryKey: ["service-flow-items"] });
+      void queryClient.invalidateQueries({ queryKey: ["service-time-overrides"] });
+      void queryClient.invalidateQueries({ queryKey: ["campuses"] });
+      void queryClient.invalidateQueries({ queryKey: ["custom-service-start-time"] });
     }, 20_000);
     return () => window.clearInterval(timer);
   }, [queryClient]);
@@ -237,14 +260,13 @@ export function LiveModeConsole({
             <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-2 hover:bg-muted">
               <ArrowLeft className="h-5 w-5" />
             </Link>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-              <p className="truncate text-sm font-semibold" title={campusName}>
-                <span className="md:hidden">{toCompactLabel(campusName)}</span>
-                <span className="hidden md:inline">{campusName}</span>
-              </p>
-            </div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
           </div>
+          <LiveNowTitle
+            campusName={campusName}
+            serviceTimeLabel={serviceTimeLabel}
+            localTimeLabel={localTimeLabel}
+          />
           <div className="flex gap-2 overflow-x-auto px-3 pb-2">
             {campuses.length > 1 ? (
               <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
@@ -313,13 +335,7 @@ export function LiveModeConsole({
           <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-2 hover:bg-muted">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-            <p className="truncate text-sm font-semibold" title={campusName}>
-              <span className="md:hidden">{toCompactLabel(campusName)}</span>
-              <span className="hidden md:inline">{campusName}</span>
-            </p>
-          </div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
           <div className="ml-auto flex items-center gap-2">
             <div className="flex rounded-lg bg-muted p-0.5">
               {(["foh", "mon"] as const).map((option) => (
@@ -370,6 +386,11 @@ export function LiveModeConsole({
             </Button>
           </div>
         </div>
+        <LiveNowTitle
+          campusName={campusName}
+          serviceTimeLabel={serviceTimeLabel}
+          localTimeLabel={localTimeLabel}
+        />
         <div className="flex gap-2 overflow-x-auto px-3 pb-2">
           {campuses.length > 1 ? (
             <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
@@ -539,6 +560,40 @@ export function LiveModeConsole({
           void live.clearLines();
         }}
       />
+    </div>
+  );
+}
+
+function localDateIso(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function LiveNowTitle({
+  campusName,
+  serviceTimeLabel,
+  localTimeLabel,
+}: {
+  campusName: string;
+  serviceTimeLabel: string | null;
+  localTimeLabel: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 pb-3">
+      <h1 className="min-w-0 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">
+        <span className="font-medium text-muted-foreground">You are live @</span> {campusName}
+        {serviceTimeLabel ? (
+          <>
+            <span className="font-medium text-muted-foreground"> for the </span>
+            <span className="tabular-nums text-primary">{serviceTimeLabel}</span>
+          </>
+        ) : null}
+      </h1>
+      <div className="shrink-0 rounded-xl border border-border bg-background px-3 py-2 text-right shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Local time</p>
+        <p className="text-base font-bold tabular-nums leading-none">{localTimeLabel}</p>
+      </div>
     </div>
   );
 }

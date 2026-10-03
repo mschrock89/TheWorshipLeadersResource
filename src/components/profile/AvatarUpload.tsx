@@ -2,11 +2,18 @@ import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, ImageIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { isNativeApp } from "@/lib/native";
-import { isPhotoPickerCancel, pickNativePhoto } from "@/lib/pickNativePhoto";
+import { CameraSource, isPhotoPickerCancel, pickNativePhoto, resizeImageFile } from "@/lib/pickNativePhoto";
 
 interface AvatarUploadProps {
   userId: string;
@@ -25,11 +32,15 @@ export function AvatarUpload({
 }: AvatarUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [useDirectFileInput, setUseDirectFileInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const uploadFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
+    const prepared = await resizeImageFile(file);
+
+    if (!prepared.type.startsWith("image/")) {
       toast({
         title: "Invalid file",
         description: "Please select an image file",
@@ -38,7 +49,7 @@ export function AvatarUpload({
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (prepared.size > 5 * 1024 * 1024) {
       toast({
         title: "File too large",
         description: "Please select an image under 5MB",
@@ -49,11 +60,11 @@ export function AvatarUpload({
 
     const reader = new FileReader();
     reader.onload = (e) => setPreviewUrl(e.target?.result as string);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(prepared);
 
     setIsUploading(true);
     try {
-      const fileExt = file.name.split(".").pop() || "jpg";
+      const fileExt = prepared.type === "image/png" ? "png" : "jpg";
       const fileName = `${userId}.${fileExt}`;
       const filePath = `${userId}/${fileName}`;
 
@@ -61,7 +72,7 @@ export function AvatarUpload({
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(filePath, file, { upsert: true });
+        .upload(filePath, prepared, { upsert: true, contentType: prepared.type });
 
       if (uploadError) throw uploadError;
 
@@ -103,28 +114,39 @@ export function AvatarUpload({
     await uploadFile(file);
   };
 
-  const handlePickPhoto = async () => {
+  const chooseNativeSource = async (source: CameraSource) => {
+    setChooserOpen(false);
     if (isUploading) return;
 
-    if (isNativeApp()) {
-      try {
-        const file = await pickNativePhoto();
-        if (!file) return;
-        await uploadFile(file);
-      } catch (error) {
-        if (isPhotoPickerCancel(error)) return;
-        console.error("Camera error:", error);
-        const message = error instanceof Error ? error.message : String(error);
-        if (/not implemented|plugin/i.test(message)) {
-          fileInputRef.current?.click();
-          return;
-        }
+    try {
+      const file = await pickNativePhoto({ source });
+      if (!file) return;
+      await uploadFile(file);
+    } catch (error) {
+      if (isPhotoPickerCancel(error)) return;
+      console.error("Camera error:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (/not implemented|plugin/i.test(message)) {
+        setUseDirectFileInput(true);
         toast({
-          title: "Camera unavailable",
-          description: "Allow camera and photo access in iOS Settings, or choose a photo from your library.",
-          variant: "destructive",
+          title: "Choose a photo",
+          description: "Tap your profile photo and select an image.",
         });
+        return;
       }
+      toast({
+        title: "Camera unavailable",
+        description: "Allow camera and photo access in iOS Settings, then try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePickPhoto = () => {
+    if (isUploading || disabled || useDirectFileInput) return;
+
+    if (isNativeApp()) {
+      setChooserOpen(true);
       return;
     }
 
@@ -144,13 +166,26 @@ export function AvatarUpload({
 
       {!disabled && (
         <>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
+          {!isNativeApp() && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          )}
+          {useDirectFileInput && (
+            <label className="absolute inset-0 z-10 cursor-pointer">
+              <span className="sr-only">Choose profile photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
+          )}
           <Button
             type="button"
             size="icon"
@@ -161,6 +196,7 @@ export function AvatarUpload({
             )}
             onClick={handlePickPhoto}
             disabled={isUploading}
+            aria-label="Change profile photo"
           >
             {isUploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -170,6 +206,37 @@ export function AvatarUpload({
           </Button>
         </>
       )}
+
+      <Dialog open={chooserOpen} onOpenChange={setChooserOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Change profile photo</DialogTitle>
+            <DialogDescription>
+              Choose a photo from your library or take a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2"
+              onClick={() => void chooseNativeSource(CameraSource.Photos)}
+            >
+              <ImageIcon className="h-4 w-4" />
+              Photo Library
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2"
+              onClick={() => void chooseNativeSource(CameraSource.Camera)}
+            >
+              <Camera className="h-4 w-4" />
+              Take Photo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

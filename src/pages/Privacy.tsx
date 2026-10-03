@@ -2,7 +2,7 @@ import { LegalPageLayout } from "@/components/legal/LegalPageLayout";
 
 export default function Privacy() {
   return (
-    <LegalPageLayout title="Privacy Policy" lastUpdated="September 13, 2026">
+    <LegalPageLayout title="Privacy Policy" lastUpdated="October 3, 2026">
       <section className="space-y-3">
         <p>
           Worship Resource authenticates users with email and password. If a leader connects Google, we use
@@ -39,7 +39,7 @@ export default function Privacy() {
 
       <section className="space-y-3">
         <p>
-          You can delete your account in the app: sign in, open My Profile, then tap Delete Account. That
+          You can delete your account in the app: sign in, open My Profile, then tap Delete Account at the top of the page. That
           permanently removes your login and personal data. If you have questions or need help, contact{" "}
           <a className="text-primary underline" href="mailto:mitch.schrock@gmail.com">
             mitch.schrock@gmail.com

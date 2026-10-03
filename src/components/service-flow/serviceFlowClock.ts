@@ -66,9 +66,17 @@ function serviceTimeOverrideMatches(overrideMinistryType: string, ministryType: 
   return WEEKEND_SERVICE_TYPES.has(overrideMinistryType) && WEEKEND_SERVICE_TYPES.has(ministryType);
 }
 
-export function resolveScheduledServiceStartTime(source: ScheduledServiceStartSource): string | null {
+function uniqueClockTimes(values?: Array<string | null> | null): string[] {
+  const times = (values || [])
+    .map(normalizeClockSource)
+    .filter((time): time is string => Boolean(time));
+  return [...new Set(times)].sort();
+}
+
+/** Every start time for this campus and date, earliest first. */
+export function listScheduledServiceTimes(source: ScheduledServiceStartSource): string[] {
   const customServiceStartTime = normalizeClockSource(source.customServiceStartTime);
-  if (customServiceStartTime) return customServiceStartTime;
+  if (customServiceStartTime) return [customServiceStartTime];
 
   const matchingOverride = (source.overrides || [])
     .filter((override) => {
@@ -82,13 +90,10 @@ export function resolveScheduledServiceStartTime(source: ScheduledServiceStartSo
       return aExact - bExact || (a.ministry_type || "").localeCompare(b.ministry_type || "");
     })[0];
 
-  const overrideTime = matchingOverride?.service_times
-    ?.map(normalizeClockSource)
-    .filter((time): time is string => Boolean(time))
-    .sort()[0];
-  if (overrideTime) return overrideTime;
+  const overrideTimes = uniqueClockTimes(matchingOverride?.service_times);
+  if (overrideTimes.length > 0) return overrideTimes;
 
-  if (!source.campus || !WEEKEND_SERVICE_TYPES.has(source.ministryType)) return null;
+  if (!source.campus || !WEEKEND_SERVICE_TYPES.has(source.ministryType)) return [];
 
   const [year, month, day] = source.serviceDate.split("-").map(Number);
   const serviceDate = new Date(year, (month || 1) - 1, day || 1);
@@ -100,10 +105,93 @@ export function resolveScheduledServiceStartTime(source: ScheduledServiceStartSo
         ? source.campus.sunday_service_time
         : [];
 
-  return (defaultTimes || [])
-    .map(normalizeClockSource)
-    .filter((time): time is string => Boolean(time))
-    .sort()[0] || null;
+  return uniqueClockTimes(defaultTimes);
+}
+
+export function resolveScheduledServiceStartTime(source: ScheduledServiceStartSource): string | null {
+  return listScheduledServiceTimes(source)[0] || null;
+}
+
+export type ServiceFlowSpan = {
+  preServiceSeconds: number;
+  serviceDurationSeconds: number;
+};
+
+/** How long pre-service runs before the Start header, and how long the service itself runs. */
+export function measureServiceFlowSpan(items: ServiceFlowClockItem[]): ServiceFlowSpan {
+  let seenStartHeader = false;
+  let startItemIndex = -1;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.item_type === "header") {
+      if (isServiceStartHeader(item.title)) seenStartHeader = true;
+      continue;
+    }
+    if (seenStartHeader) {
+      startItemIndex = index;
+      break;
+    }
+  }
+
+  let preServiceSeconds = 0;
+  if (startItemIndex >= 0) {
+    for (let index = 0; index < startItemIndex; index += 1) {
+      const item = items[index];
+      if (item.item_type === "header") continue;
+      preServiceSeconds += item.duration_seconds || 0;
+    }
+  }
+
+  let serviceDurationSeconds = 0;
+  const durationStart = startItemIndex >= 0 ? startItemIndex : 0;
+  for (let index = durationStart; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.item_type === "header") continue;
+    serviceDurationSeconds += item.duration_seconds || 0;
+  }
+
+  return { preServiceSeconds, serviceDurationSeconds };
+}
+
+export function localClockSeconds(date: Date): number {
+  return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+}
+
+/**
+ * Which service the local clock is in. The next service takes over when its
+ * pre-service begins. Before the first service, and after the last one ends,
+ * the nearest service stays selected.
+ */
+export function selectServiceTimeForLocalClock(
+  serviceTimes: string[],
+  nowSeconds: number,
+  span: Partial<ServiceFlowSpan> = {},
+): string | null {
+  const starts = uniqueClockTimes(serviceTimes)
+    .map((label) => ({ label, seconds: clockSourceToSeconds(label) }))
+    .filter((start): start is { label: string; seconds: number } => start.seconds !== null)
+    .sort((a, b) => a.seconds - b.seconds);
+
+  if (starts.length === 0) return null;
+  if (starts.length === 1) return starts[0].label;
+
+  const preServiceSeconds = Math.max(0, span.preServiceSeconds || 0);
+  const serviceDurationSeconds = Math.max(0, span.serviceDurationSeconds || 0);
+  const windows = starts.map((start, index) => {
+    const opensAt = start.seconds - preServiceSeconds;
+    const next = starts[index + 1];
+    const closesAt = next
+      ? next.seconds - preServiceSeconds
+      : serviceDurationSeconds > 0
+        ? start.seconds + serviceDurationSeconds
+        : Number.POSITIVE_INFINITY;
+    return { label: start.label, opensAt, closesAt };
+  });
+
+  if (nowSeconds < windows[0].opensAt) return windows[0].label;
+
+  const active = windows.find((window) => nowSeconds >= window.opensAt && nowSeconds < window.closesAt);
+  return active?.label || windows[windows.length - 1].label;
 }
 
 /**

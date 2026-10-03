@@ -1,4 +1,5 @@
-Do these in App Store Connect before you resubmit 1.0.1 (2).
+Do these in App Store Connect before you resubmit 1.0.2 (3).
+Apple’s September 17 review was still binary 1.0 (1). That build does not contain these fixes. Upload 1.0.2 (3).
 The reply text is in APP_STORE_CONNECT_REPLY.txt.
 
 ========================================
@@ -70,7 +71,7 @@ C. BUILD AND RESUBMIT
 1. Deploy the new backend function (required for Delete Account):
    supabase functions deploy delete-own-account
 2. Deploy the website/privacy page so the live privacy policy mentions Delete Account.
-3. In Xcode: Product → Archive 1.0.1 (2) → Upload to App Store Connect
+3. In Xcode: Product → Archive 1.0.2 (3) → Upload to App Store Connect
    Open the iOS project with: npm run ios:open
 4. In App Store Connect, attach the new build to the iOS app version.
 5. Paste APP_STORE_CONNECT_REPLY.txt into the rejection thread AND into App Review Information → Notes.

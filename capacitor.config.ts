@@ -20,7 +20,7 @@ const config: CapacitorConfig = {
       presentationOptions: ["badge", "sound", "alert"],
     },
     Camera: {
-      presentationStyle: "popover",
+      presentationStyle: "fullscreen",
     },
   },
 };

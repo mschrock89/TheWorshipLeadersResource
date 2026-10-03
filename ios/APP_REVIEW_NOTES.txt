@@ -1,6 +1,6 @@
 APP REVIEW NOTES — Wrshp Resource
 Bundle ID: com.worshipleadersresource.app
-Version: 1.0.1 (2)
+Version: 1.0.2 (3)
 Paste the block below into App Store Connect → App Review Information → Notes.
 Also fill the dedicated Username and Password fields with the same demo login.
 Character limit for Notes is 4,000. Keep credentials in both places.
@@ -24,11 +24,11 @@ How to sign in:
 ACCOUNT DELETION (Guideline 5.1.1(v))
 Please do not delete the demo account.
 To test the full deletion flow, use Sign Up to create a throwaway account, then:
-Home → avatar → My Profile → scroll to Delete Account → tap Delete Account → type DELETE → confirm.
+Home → avatar → My Profile → Delete Account (top of the page) → type DELETE → confirm.
 The account is permanently removed.
 
 PROFILE PHOTO / CAMERA (Guideline 2.1(a))
-My Profile → camera button on the avatar. Take Photo or Photo Library. iOS will ask for camera/photos permission. This no longer crashes on iPad.
+My Profile → camera button on the avatar → Photo Library or Take Photo. iOS will ask for camera/photos permission. The picker is fullscreen and no longer crashes on iPad.
 
 PRIVACY / TRACKING (Guideline 5.1.2(i))
 This app does not track users and does not use App Tracking Transparency. App Privacy has been corrected so Email, Precise Location, and Photos are App Functionality only, not tracking.

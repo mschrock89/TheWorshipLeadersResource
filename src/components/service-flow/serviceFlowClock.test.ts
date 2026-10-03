@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   buildServiceFlowClockTimes,
   formatClockTime,
+  listScheduledServiceTimes,
+  measureServiceFlowSpan,
+  selectServiceTimeForLocalClock,
   resolveScheduledServiceStartTime,
 } from "./serviceFlowClock.ts";
 
@@ -122,4 +125,31 @@ test("a saved flow start time is preferred, then the day's override, then the ca
     }),
     "09:00",
   );
+
+  assert.deepEqual(
+    listScheduledServiceTimes({
+      serviceDate: "2026-09-27",
+      ministryType: "weekend",
+      campusId: "campus-1",
+      campus,
+    }),
+    ["09:00", "11:00"],
+  );
+});
+
+test("the live clock follows the service that local time is in", () => {
+  const times = ["09:00", "11:00"];
+  const span = measureServiceFlowSpan([
+    { id: "pre", item_type: "header", title: "Pre-Service", duration_seconds: null },
+    { id: "countdown", item_type: "item", title: "Countdown", duration_seconds: 10 * 60 },
+    { id: "start", item_type: "header", title: "Start", duration_seconds: null },
+    { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 70 * 60 },
+  ]);
+
+  assert.equal(span.preServiceSeconds, 10 * 60);
+  assert.equal(span.serviceDurationSeconds, 70 * 60);
+  assert.equal(selectServiceTimeForLocalClock(times, 8 * 3600, span), "09:00");
+  assert.equal(selectServiceTimeForLocalClock(times, 9 * 3600 + 30 * 60, span), "09:00");
+  assert.equal(selectServiceTimeForLocalClock(times, 10 * 3600 + 50 * 60, span), "11:00");
+  assert.equal(selectServiceTimeForLocalClock(times, 13 * 3600, span), "11:00");
 });
