@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { widenInputSource } from "./systemAudioInputs.ts";
+import { splitterChannelCount, widenInputSource } from "./systemAudioInputs.ts";
 import { phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
 import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
 
@@ -53,6 +53,13 @@ test("keeps the node stereo when it refuses a wider channel count", () => {
     },
   };
   assert.equal(widenInputSource(source as unknown as AudioNode, 48), 2);
+  assert.equal(source.channelCountMode, "max");
+  assert.equal(source.channelInterpretation, "discrete");
+});
+
+test("splits a 48-input track even when the audio node still says stereo", () => {
+  assert.equal(splitterChannelCount(48, 2), 32);
+  assert.equal(splitterChannelCount(2, 2), 2);
 });
 
 test("downsamples a multichannel frame to the transcription rate", () => {

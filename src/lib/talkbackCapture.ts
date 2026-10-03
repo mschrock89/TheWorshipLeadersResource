@@ -1,5 +1,5 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
-import { openSystemInput } from "./systemAudioInputs.ts";
+import { openSystemInput, splitterChannelCount } from "./systemAudioInputs.ts";
 import { phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
 
 export type TalkbackCaptureChannel = {
@@ -11,7 +11,6 @@ export type TalkbackCaptureChannel = {
 export type TalkbackCaptureStatus = "listening" | "hearing" | "error";
 
 const LEVEL_INTERVAL_MS = 80;
-const WEB_AUDIO_SPLIT_LIMIT = 32;
 const WAV_RATE = 16000;
 const MAX_WAV_SAMPLES = Math.floor((350_000 - 44) / 2);
 
@@ -88,11 +87,10 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
           opened.release();
           return;
         }
-        const splitCount = Math.min(opened.nodeChannelCount, WEB_AUDIO_SPLIT_LIMIT);
         let source = opened.source;
-        let available = splitCount;
         let reported = opened.channelCount;
-        if (!source || needed > splitCount) {
+        let available = splitterChannelCount(reported, opened.nodeChannelCount);
+        if (!source || needed > available) {
           opened.release();
           const heard = await monitorDeviceChannels(handlers, channels, deviceId, () => stopped, readers);
           if (heard || stopped) continue;
@@ -102,8 +100,8 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
             return;
           }
           source = fallback.source;
-          available = Math.max(1, Math.min(fallback.nodeChannelCount, WEB_AUDIO_SPLIT_LIMIT));
           reported = fallback.channelCount;
+          available = splitterChannelCount(reported, fallback.nodeChannelCount);
           streams.push(fallback.stream);
         } else {
           streams.push(opened.stream);
@@ -123,7 +121,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
               channel.id,
               "error",
               reported > available
-                ? `This browser only passed through ${available} of ${reported} channels.`
+                ? `This browser can only separate the first ${available} of ${reported} inputs.`
                 : `This input only has ${available} channel${available === 1 ? "" : "s"}.`,
             );
             continue;

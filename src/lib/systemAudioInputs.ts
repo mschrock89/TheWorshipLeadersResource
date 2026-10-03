@@ -5,6 +5,7 @@ export type SystemAudioInput = {
 
 const HIDDEN_DEVICE_IDS = new Set(["default", "communications"]);
 const PROBE_SIZES = [64, 56, 48, 40, 32, 24, 16, 8];
+export const WEB_AUDIO_CHANNEL_LIMIT = 32;
 
 const PROCESSING_OFF = {
   echoCancellation: false,
@@ -47,15 +48,21 @@ export async function probeInputChannelCount(deviceId: string, context: AudioCon
 }
 
 // The track can report every MADI channel while the Web Audio node still starts in stereo.
+// Leaving that node on an explicit stereo count folds the rest of the interface away.
 export function widenInputSource(source: AudioNode, reported: number): number {
   const current = source.channelCount || 1;
   const wanted = Math.max(current, reported || current);
+  try {
+    source.channelInterpretation = "discrete";
+  } catch {
+    // This node keeps its current interpretation.
+  }
   if (wanted <= current) return current;
   const max = (source as AudioNode & { maxChannelCount?: number }).maxChannelCount || wanted;
-  const capped = Math.min(wanted, max);
+  const capped = Math.min(wanted, max, WEB_AUDIO_CHANNEL_LIMIT);
+  const previousMode = source.channelCountMode;
   try {
     source.channelCountMode = "explicit";
-    source.channelInterpretation = "discrete";
   } catch {
     return source.channelCount || current;
   }
@@ -68,7 +75,17 @@ export function widenInputSource(source: AudioNode, reported: number): number {
       // This node rejected that channel count.
     }
   }
+  try {
+    source.channelCountMode = previousMode;
+  } catch {
+    // The node kept the mode it already accepted.
+  }
   return source.channelCount || current;
+}
+
+export function splitterChannelCount(reported: number, nodeChannelCount: number) {
+  const heard = Math.max(Math.floor(reported) || 0, Math.floor(nodeChannelCount) || 0, 1);
+  return Math.min(heard, WEB_AUDIO_CHANNEL_LIMIT);
 }
 
 export async function openSystemInput(
