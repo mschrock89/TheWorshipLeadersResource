@@ -10,6 +10,11 @@ export function phraseLevelIsVoice(level: number, phraseOpen: boolean, floor = 0
   return level >= Math.max(absolute, aboveFloor);
 }
 
+export function talkbackMeterLevel(peak: number) {
+  if (!Number.isFinite(peak) || peak <= 0) return 0;
+  return Math.min(1, peak / 0.25);
+}
+
 export function nextNoiseFloor(floor: number, level: number, speaking: boolean) {
   if (speaking) return floor;
   if (floor <= 0) return level;

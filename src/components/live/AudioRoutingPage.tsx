@@ -15,7 +15,7 @@ import {
   writeAudioInterfaceId,
 } from "@/lib/audioRouting";
 import { readTalkbackBindings, writeTalkbackBindingStore } from "@/lib/liveMode";
-import { listSystemAudioInputs, probeInputChannelCount, type SystemAudioInput } from "@/lib/systemAudioInputs";
+import { createInputAudioContext, listSystemAudioInputs, probeInputChannelCount, type SystemAudioInput } from "@/lib/systemAudioInputs";
 import type { LiveTalkbackChannel } from "@/hooks/useLiveSession";
 
 type AudioRoutingPageProps = {
@@ -112,7 +112,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
         <Button
           type="button"
           onClick={() => {
-            const context = new AudioContext();
+            const context = createInputAudioContext();
             void context.resume();
             void readInputs(context);
           }}
@@ -129,7 +129,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
             <Select
               value={deviceId}
               onValueChange={(value) => {
-                const context = new AudioContext();
+                const context = createInputAudioContext();
                 void context.resume();
                 setDeviceId(value);
                 writeAudioInterfaceId(value);

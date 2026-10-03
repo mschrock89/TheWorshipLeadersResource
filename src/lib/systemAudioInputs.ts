@@ -83,6 +83,64 @@ export function splitterChannelCount(reported: number, nodeChannelCount: number)
   return Math.min(heard, WEB_AUDIO_CHANNEL_LIMIT);
 }
 
+export function createInputAudioContext() {
+  const Context = window.AudioContext;
+  try {
+    return new Context({ sampleRate: 48000 });
+  } catch {
+    return new Context();
+  }
+}
+
+// Ask for a 1:1 split at the full reported count first. A smaller explicit
+// count on the source node mutes a 48-channel MADI stream, so the tap node
+// is what gets clamped, and only if the browser refuses the wider layout.
+export function talkbackTapAttempts(reported: number) {
+  const wanted = Math.max(1, Math.floor(reported) || 1);
+  const sizes = [wanted, 32, 24, 16, 8, 2, 1];
+  return sizes.filter((size, index) => size <= wanted && sizes.indexOf(size) === index);
+}
+
+export function talkbackTapOptions(channelCount: number): AudioWorkletNodeOptions {
+  const count = Math.max(1, Math.floor(channelCount) || 1);
+  return {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [count],
+    channelCount: count,
+    channelCountMode: "explicit",
+    channelInterpretation: "discrete",
+  };
+}
+
+export function talkbackTapOptionSets(reported: number): AudioWorkletNodeOptions[] {
+  return talkbackTapAttempts(reported).flatMap((count) => {
+    const discrete = talkbackTapOptions(count);
+    return [
+      { ...discrete, channelCountMode: "max" as const },
+      discrete,
+    ];
+  });
+}
+
+export function createTalkbackTap(context: AudioContext, reported: number) {
+  for (const options of talkbackTapOptionSets(reported)) {
+    try {
+      return new AudioWorkletNode(context, TAP_NAME, options);
+    } catch {
+      // This browser cannot split that many channels in one node.
+    }
+  }
+  const node = new AudioWorkletNode(context, TAP_NAME);
+  try {
+    node.channelCountMode = "max";
+    node.channelInterpretation = "discrete";
+  } catch {
+    // The node keeps its default channel layout.
+  }
+  return node;
+}
+
 export function inputRequestAttempts(): MediaTrackConstraints[] {
   const exactProcessing = {
     echoCancellation: { exact: false },
@@ -201,19 +259,56 @@ function tapModuleUrl() {
           this.port.postMessage({ channelCount: list.length, rate: sampleRate, channels: [] });
         }
         if (!this.watch.length || list.length === 0) return true;
-        const channels = [];
-        const transfers = [];
+        if (!this.buckets) this.buckets = {};
+        if (!this.blocks) this.blocks = 0;
+        this.blocks += 1;
         for (const index of this.watch) {
           const data = list[index];
           if (!data || data.length === 0) continue;
+          let bucket = this.buckets[index];
+          if (!bucket) {
+            bucket = { sum: 0, count: 0, peak: 0, chunks: [] };
+            this.buckets[index] = bucket;
+          }
           let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-          const samples = new Float32Array(data);
-          channels.push({ index, rms: Math.sqrt(sum / data.length), samples });
+          let peak = bucket.peak;
+          for (let i = 0; i < data.length; i++) {
+            const value = data[i];
+            sum += value * value;
+            const abs = value < 0 ? -value : value;
+            if (abs > peak) peak = abs;
+          }
+          bucket.sum += sum;
+          bucket.count += data.length;
+          bucket.peak = peak;
+          bucket.chunks.push(new Float32Array(data));
+        }
+        const interval = Math.max(1, Math.round(sampleRate * 0.08 / 128));
+        if (this.blocks < interval) return true;
+        this.blocks = 0;
+        const channels = [];
+        const transfers = [];
+        for (const index of this.watch) {
+          const bucket = this.buckets[index];
+          if (!bucket || !bucket.count) continue;
+          const length = bucket.chunks.reduce((total, chunk) => total + chunk.length, 0);
+          const samples = new Float32Array(length);
+          let offset = 0;
+          for (const chunk of bucket.chunks) {
+            samples.set(chunk, offset);
+            offset += chunk.length;
+          }
+          channels.push({
+            index,
+            rms: Math.sqrt(bucket.sum / bucket.count),
+            peak: bucket.peak,
+            samples,
+          });
           transfers.push(samples.buffer);
         }
+        this.buckets = {};
         if (channels.length) {
-          this.port.postMessage({ channelCount: list.length, rate: sampleRate, channels }, transfers);
+          this.port.postMessage({ channelCount: this.seen, rate: sampleRate, channels }, transfers);
         }
         return true;
       }
@@ -227,9 +322,7 @@ export async function measureStreamChannels(context: AudioContext, stream: Media
   if (context.state === "suspended") await context.resume();
   if (!(await ensureTalkbackTap(context))) return 0;
   const source = context.createMediaStreamSource(stream);
-  const node = new AudioWorkletNode(context, TAP_NAME);
-  node.channelCountMode = "max";
-  node.channelInterpretation = "discrete";
+  const node = createTalkbackTap(context, inputChannelCount(stream));
   const silent = context.createGain();
   silent.gain.value = 0;
   source.connect(node);
@@ -280,13 +373,15 @@ async function finishInput(
   }
 
   const source = context.createMediaStreamSource(stream);
-  const nodeChannelCount = heard > 2 ? widenInputSource(source, heard) : source.channelCount || 1;
+  // Leave the source at the stream's own layout. Forcing its channel count
+  // down to the Web Audio maximum mutes every MADI input.
+  const nodeChannelCount = source.channelCount || 1;
   return {
     stream,
     source,
-    channelCount: Math.max(reported, heard, nodeChannelCount, 1),
+    channelCount: Math.max(reported, heard, 1),
     nodeChannelCount,
-    heardChannelCount: Math.max(heard, nodeChannelCount, 0),
+    heardChannelCount: Math.max(heard, 0),
     release: () => {
       source.disconnect();
       releaseStream();

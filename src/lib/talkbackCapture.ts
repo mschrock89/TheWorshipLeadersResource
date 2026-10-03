@@ -1,6 +1,6 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
-import { ensureTalkbackTap, openSystemInput, splitterChannelCount, TALKBACK_TAP_NAME } from "./systemAudioInputs.ts";
-import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
+import { createTalkbackTap, ensureTalkbackTap, openSystemInput, splitterChannelCount } from "./systemAudioInputs.ts";
+import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 
 export type TalkbackCaptureChannel = {
   id: string;
@@ -33,12 +33,13 @@ type ActiveUtterance = {
 type TapMessage = {
   channelCount?: number;
   rate?: number;
-  channels?: Array<{ index: number; rms: number; samples: Float32Array }>;
+  channels?: Array<{ index: number; rms: number; peak?: number; samples: Float32Array }>;
 };
 
 async function watchTalkbackTap(
   context: AudioContext,
   source: MediaStreamAudioSourceNode,
+  inputCount: number,
   channels: TalkbackCaptureChannel[],
   handlers: CaptureHandlers,
   isStopped: () => boolean,
@@ -46,13 +47,8 @@ async function watchTalkbackTap(
   timers: number[],
 ) {
   if (!(await ensureTalkbackTap(context))) return false;
-  const node = new AudioWorkletNode(context, TALKBACK_TAP_NAME);
-  try {
-    node.channelInterpretation = "discrete";
-    node.channelCountMode = "max";
-  } catch {
-    // The node keeps its default channel layout.
-  }
+  const needed = channels.reduce((max, channel) => Math.max(max, channel.channelIndex + 1), 1);
+  const node = createTalkbackTap(context, Math.max(inputCount, needed));
   const silent = context.createGain();
   silent.gain.value = 0;
   source.connect(node);
@@ -106,7 +102,7 @@ async function watchTalkbackTap(
       const floor = floors.get(channel.id) || 0;
       const speaking = phraseLevelIsVoice(level, Boolean(open), floor);
       if (!speaking) floors.set(channel.id, nextNoiseFloor(floor, level, false));
-      handlers.onLevel(channel.id, Math.max(0, level - floor));
+      handlers.onLevel(channel.id, talkbackMeterLevel(heard.peak || level));
       if (speaking) {
         setPhase(channel.id, "hearing");
         const piece = downsampleMono(heard.samples, rate, WAV_RATE);
@@ -215,7 +211,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
           opened.release();
           return;
         }
-        if (opened.source && (await watchTalkbackTap(context, opened.source, channels, handlers, () => stopped, cleanups, timers))) {
+        if (opened.source && (await watchTalkbackTap(context, opened.source, opened.channelCount, channels, handlers, () => stopped, cleanups, timers))) {
           cleanups.push(opened.release);
           continue;
         }

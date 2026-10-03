@@ -328,7 +328,7 @@ export function TalkbackBoard({
         {channels.map((channel, index) => {
           const channelStatus = status[channel.id];
           const binding = armed.find((entry) => entry.id === channel.id);
-          const level = Math.min(1, (channelStatus?.level || 0) / 0.06);
+          const level = Math.min(1, channelStatus?.level || 0);
           const tone = speakerTone(index);
           const hearing = channelStatus?.phase === "hearing";
           return (
@@ -360,7 +360,7 @@ export function TalkbackBoard({
               <p className="mt-1 truncate text-[11px] text-muted-foreground">
                 {binding ? `Input ${binding.channelIndex + 1}` : "No input assigned"}
               </p>
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-75"
                   style={{ width: `${Math.round(level * 100)}%` }}

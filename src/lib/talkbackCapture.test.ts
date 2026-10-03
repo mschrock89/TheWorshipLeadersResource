@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { splitterChannelCount, widenInputSource } from "./systemAudioInputs.ts";
-import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
+import { splitterChannelCount, talkbackTapAttempts, talkbackTapOptionSets, talkbackTapOptions, widenInputSource } from "./systemAudioInputs.ts";
+import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
 
 test("holds a phrase open through a mid-phrase pause", () => {
@@ -73,6 +73,25 @@ test("keeps the node stereo when it refuses a wider channel count", () => {
   assert.equal(widenInputSource(source as unknown as AudioNode, 48), 2);
   assert.equal(source.channelCountMode, "max");
   assert.equal(source.channelInterpretation, "speakers");
+});
+
+test("splits a MADI tap one-to-one before it will mix channels down", () => {
+  assert.deepEqual(talkbackTapAttempts(48), [48, 32, 24, 16, 8, 2, 1]);
+  const options = talkbackTapOptions(48);
+  assert.equal(options.channelCount, 48);
+  assert.equal(options.channelCountMode, "explicit");
+  assert.equal(options.channelInterpretation, "discrete");
+  assert.deepEqual(options.outputChannelCount, [48]);
+  const [first] = talkbackTapOptionSets(48);
+  assert.equal(first.channelCountMode, "max");
+  assert.equal(first.channelInterpretation, "discrete");
+  assert.deepEqual(first.outputChannelCount, [48]);
+});
+
+test("shows talkback level instead of the gap above the noise floor", () => {
+  assert.equal(talkbackMeterLevel(0), 0);
+  assert.equal(talkbackMeterLevel(0.125), 0.5);
+  assert.equal(talkbackMeterLevel(0.5), 1);
 });
 
 test("splits a 48-input track even when the audio node still says stereo", () => {

@@ -14,6 +14,7 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { liveChatRoomOf, liveStationLabel, readLiveStation, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
@@ -425,7 +426,7 @@ export function LiveModeConsole({
                   void live.releaseListener();
                   return;
                 }
-                const context = new AudioContext();
+                const context = createInputAudioContext();
                 void context.resume();
                 setAudioContext(context);
                 setListening(true);
