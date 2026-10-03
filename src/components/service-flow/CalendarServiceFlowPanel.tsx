@@ -45,6 +45,7 @@ import {
   buildScheduledRoleNames,
   isLessonPlaceholderTitle,
   isNamePlaceholderTitle,
+  storedTitleMatchesScheduledNames,
 } from "./resolveServiceFlowPlaceholders";
 import {
   buildServiceFlowClockTimes,
@@ -310,7 +311,8 @@ export function CalendarServiceFlowPanel({
   const editingStartTime = useRef(false);
   const hasAttemptedGenerate = useRef(false);
   const hasSyncedSetlist = useRef(false);
-  const syncedPlaceholderIdsRef = useRef<Set<string>>(new Set());
+  const syncedPlaceholderTitlesRef = useRef<Map<string, string>>(new Map());
+  const manualTitleLockRef = useRef<Set<string>>(new Set());
   const contextKeyRef = useRef("");
   const draggedItemRef = useRef<ServiceFlowItemType | null>(null);
   const localItemsRef = useRef<ServiceFlowItemType[]>([]);
@@ -329,7 +331,8 @@ export function CalendarServiceFlowPanel({
     contextKeyRef.current = contextKey;
     hasAttemptedGenerate.current = false;
     hasSyncedSetlist.current = false;
-    syncedPlaceholderIdsRef.current = new Set();
+    syncedPlaceholderTitlesRef.current = new Map();
+    manualTitleLockRef.current = new Set();
     editingStartTime.current = false;
     setGenerateError(null);
     setBoundFlowId(null);
@@ -555,7 +558,7 @@ export function CalendarServiceFlowPanel({
         !isNamePlaceholderTitle(nextTitle) &&
         !isLessonPlaceholderTitle(nextTitle)
       ) {
-        syncedPlaceholderIdsRef.current.add(itemId);
+        manualTitleLockRef.current.add(itemId);
       }
 
       const nextItems = localItemsRef.current.map((entry) =>
@@ -720,19 +723,27 @@ export function CalendarServiceFlowPanel({
     const updates: Array<{ id: string; title: string; fromTitle: string }> = [];
     for (const item of localItems) {
       if (item.item_type === "header") continue;
-      if (syncedPlaceholderIdsRef.current.has(item.id)) continue;
+      if (manualTitleLockRef.current.has(item.id)) continue;
       const resolved = resolvedItemTitlesById.get(item.id);
       if (!resolved || resolved === item.title) continue;
-      if (!isNamePlaceholderTitle(item.title) && !isLessonPlaceholderTitle(item.title)) {
-        continue;
-      }
+      if (syncedPlaceholderTitlesRef.current.get(item.id) === resolved) continue;
+      const tracksScheduledPerson =
+        isNamePlaceholderTitle(item.title) ||
+        isLessonPlaceholderTitle(item.title) ||
+        storedTitleMatchesScheduledNames(
+          item.title,
+          scheduledRoleNames.announcementNameKeys,
+          teachingWeek?.announcer_name,
+        ) ||
+        storedTitleMatchesScheduledNames(item.title, scheduledRoleNames.closingPrayerNameKeys);
+      if (!tracksScheduledPerson) continue;
       updates.push({ id: item.id, title: resolved, fromTitle: item.title });
     }
 
     if (updates.length === 0) return;
 
     for (const update of updates) {
-      syncedPlaceholderIdsRef.current.add(update.id);
+      syncedPlaceholderTitlesRef.current.set(update.id, update.title);
     }
 
     void (async () => {
@@ -740,7 +751,7 @@ export function CalendarServiceFlowPanel({
       for (const update of updates) {
         const item = localItemsRef.current.find((entry) => entry.id === update.id);
         if (!item || item.title !== update.fromTitle) {
-          syncedPlaceholderIdsRef.current.delete(update.id);
+          syncedPlaceholderTitlesRef.current.delete(update.id);
           continue;
         }
         try {
@@ -759,7 +770,7 @@ export function CalendarServiceFlowPanel({
           appliedIds.add(update.id);
         } catch (error) {
           console.error("Failed to sync placeholder title:", error);
-          syncedPlaceholderIdsRef.current.delete(update.id);
+          syncedPlaceholderTitlesRef.current.delete(update.id);
         }
       }
       if (appliedIds.size === 0) return;
@@ -771,7 +782,16 @@ export function CalendarServiceFlowPanel({
         }),
       );
     })();
-  }, [activeFlowId, localItems, readOnly, resolvedItemTitlesById, saveItem]);
+  }, [
+    activeFlowId,
+    localItems,
+    readOnly,
+    resolvedItemTitlesById,
+    saveItem,
+    scheduledRoleNames.announcementNameKeys,
+    scheduledRoleNames.closingPrayerNameKeys,
+    teachingWeek?.announcer_name,
+  ]);
 
   const clockTimesByItemId = useMemo(
     () => buildServiceFlowClockTimes(localItems, startTime),

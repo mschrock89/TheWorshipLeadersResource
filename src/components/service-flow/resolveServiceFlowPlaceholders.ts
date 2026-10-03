@@ -98,30 +98,73 @@ export function isLessonPlaceholderTitle(title: string) {
   );
 }
 
+const ANNOUNCEMENT_ROLES = new Set([
+  "announcement",
+  "announcements",
+  "anncouncement",
+  "anncouncements",
+  "annoucement",
+  "annoucements",
+]);
+const CLOSING_PRAYER_ROLES = new Set(["closingprayer", "closer"]);
+const TEACHER_ROLES = new Set(["teacher", "speaker", "pastor speaker", "pastorspeaker"]);
+
 export type ScheduledRoleNames = {
   announcements: string;
   closingPrayer: string;
   teacher: string;
+  /** Compact current and swapped-out names for this role. */
+  announcementNameKeys: string[];
+  closingPrayerNameKeys: string[];
 };
+
+function collectRoleNameKeys(roster: RosterMember[], roles: Set<string>) {
+  const keys = new Set<string>();
+  for (const member of roster) {
+    if (!rosterMemberHasRole(member, roles)) continue;
+    for (const name of [member.memberName, member.originalMemberName]) {
+      const trimmed = name?.trim();
+      if (!trimmed || trimmed === TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME) continue;
+      const key = compactRoleText(trimmed);
+      if (key) keys.add(key);
+    }
+  }
+  return [...keys];
+}
+
+function appendNameKey(nameKeys: string[], extraName?: string | null) {
+  const key = compactRoleText(extraName);
+  if (!key || nameKeys.includes(key)) return nameKeys;
+  return [...nameKeys, key];
+}
+
+function scheduledNameParts(title: string) {
+  return title
+    .split(/\s*(?:,|&|\band\b)\s*/i)
+    .map((part) => compactRoleText(part))
+    .filter(Boolean);
+}
+
+/** True when every name in the title is a current or swapped-out person for this role. */
+export function storedTitleMatchesScheduledNames(
+  title: string,
+  nameKeys: string[],
+  extraName?: string | null,
+) {
+  const parts = scheduledNameParts(title);
+  const keys = appendNameKey(nameKeys, extraName);
+  if (parts.length === 0 || keys.length === 0) return false;
+  const known = new Set(keys);
+  return parts.every((part) => known.has(part));
+}
 
 export function buildScheduledRoleNames(roster: RosterMember[]): ScheduledRoleNames {
   return {
-    announcements: formatRosterRoleNames(
-      roster,
-      new Set([
-        "announcement",
-        "announcements",
-        "anncouncement",
-        "anncouncements",
-        "annoucement",
-        "annoucements",
-      ]),
-    ),
-    closingPrayer: formatRosterRoleNames(roster, new Set(["closingprayer", "closer"])),
-    teacher: formatRosterRoleNames(
-      roster,
-      new Set(["teacher", "speaker", "pastor speaker", "pastorspeaker"]),
-    ),
+    announcements: formatRosterRoleNames(roster, ANNOUNCEMENT_ROLES),
+    closingPrayer: formatRosterRoleNames(roster, CLOSING_PRAYER_ROLES),
+    teacher: formatRosterRoleNames(roster, TEACHER_ROLES),
+    announcementNameKeys: collectRoleNameKeys(roster, ANNOUNCEMENT_ROLES),
+    closingPrayerNameKeys: collectRoleNameKeys(roster, CLOSING_PRAYER_ROLES),
   };
 }
 
@@ -133,19 +176,29 @@ export function resolveServiceFlowPlaceholderTitle(params: {
   teacherName?: string | null;
 }) {
   const rawTitle = params.item.song?.title || params.item.title;
+  if (params.item.song?.title) return rawTitle;
 
-  if (
-    isNamePlaceholderTitle(rawTitle) &&
-    isAnnouncementsContext(rawTitle, params.sectionTitle)
-  ) {
-    return params.roleNames.announcements || params.announcerName?.trim() || rawTitle;
+  if (isAnnouncementsContext(rawTitle, params.sectionTitle)) {
+    const currentAnnouncer = params.roleNames.announcements;
+    const tracksAnnouncer =
+      isNamePlaceholderTitle(rawTitle) ||
+      storedTitleMatchesScheduledNames(
+        rawTitle,
+        params.roleNames.announcementNameKeys,
+        params.announcerName,
+      );
+    if (currentAnnouncer && tracksAnnouncer) return currentAnnouncer;
+    if (isNamePlaceholderTitle(rawTitle)) {
+      return params.announcerName?.trim() || rawTitle;
+    }
   }
 
-  if (
-    isNamePlaceholderTitle(rawTitle) &&
-    isClosingPrayerContext(rawTitle, params.sectionTitle)
-  ) {
-    return params.roleNames.closingPrayer || rawTitle;
+  if (isClosingPrayerContext(rawTitle, params.sectionTitle)) {
+    const currentCloser = params.roleNames.closingPrayer;
+    const tracksCloser =
+      isNamePlaceholderTitle(rawTitle) ||
+      storedTitleMatchesScheduledNames(rawTitle, params.roleNames.closingPrayerNameKeys);
+    if (currentCloser && tracksCloser) return currentCloser;
   }
 
   if (

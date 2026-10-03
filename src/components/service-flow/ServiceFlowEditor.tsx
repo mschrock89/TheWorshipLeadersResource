@@ -35,7 +35,11 @@ import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
-import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
+import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import {
+  buildScheduledRoleNames,
+  resolveServiceFlowPlaceholderTitle,
+} from "./resolveServiceFlowPlaceholders";
 import { useCustomServiceOccurrences } from "@/hooks/useCustomServices";
 import { buildBibleHref } from "@/lib/bible";
 import {
@@ -81,8 +85,6 @@ export type ServiceFlowEditorHandle = {
   releasePrint: () => void;
 };
 
-const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
-
 function normalizeRoleText(value?: string | null): string {
   return (value || "")
     .trim()
@@ -94,33 +96,6 @@ function normalizeRoleText(value?: string | null): string {
 
 function compactRoleText(value?: string | null): string {
   return normalizeRoleText(value).replace(/\s+/g, "");
-}
-
-function rosterMemberHasRole(member: RosterMember, roles: Set<string>) {
-  return [...member.positions, ...member.positionSlots].some((role) =>
-    roles.has(compactRoleText(role))
-  );
-}
-
-function formatRosterRoleNames(members: RosterMember[], roles: Set<string>) {
-  const seen = new Set<string>();
-
-  return members
-    .filter((member) => rosterMemberHasRole(member, roles))
-    .map((member) => member.memberName?.trim())
-    .filter((name): name is string => Boolean(name) && name !== TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME)
-    .filter((name) => {
-      const key = compactRoleText(name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .join(", ");
-}
-
-function isNamePlaceholderTitle(title: string) {
-  const normalized = normalizeRoleText(title);
-  return normalized === "name place holder" || normalized === "name placeholder";
 }
 
 function isAnnouncementsContext(title: string, sectionTitle: string) {
@@ -140,16 +115,6 @@ function isAnnouncementsContext(title: string, sectionTitle: string) {
   );
 }
 
-function isClosingPrayerContext(title: string, sectionTitle: string) {
-  const normalizedTitle = normalizeRoleText(title);
-  const normalizedSectionTitle = normalizeRoleText(sectionTitle);
-  return (
-    normalizedSectionTitle.includes("closing prayer") ||
-    normalizedSectionTitle.includes("communion closing prayer") ||
-    normalizedTitle.includes("communion closing prayer")
-  );
-}
-
 function isLessonContext(title: string, sectionTitle: string) {
   const normalizedTitle = normalizeRoleText(title);
   const normalizedSectionTitle = normalizeRoleText(sectionTitle);
@@ -162,20 +127,6 @@ function isLessonContext(title: string, sectionTitle: string) {
     normalizedTitle.includes("teacher") ||
     normalizedTitle.includes("message") ||
     normalizedTitle.includes("sermon")
-  );
-}
-
-function isLessonPlaceholderTitle(title: string) {
-  const normalized = normalizeRoleText(title);
-  return (
-    isNamePlaceholderTitle(title) ||
-    normalized === "lesson" ||
-    normalized === "teacher" ||
-    normalized === "teacher place holder" ||
-    normalized === "teacher placeholder" ||
-    normalized === "speaker" ||
-    normalized === "speaker place holder" ||
-    normalized === "speaker placeholder"
   );
 }
 
@@ -957,61 +908,24 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     [localItems, scheduledStartTime],
   );
 
-  const scheduledRoleNames = useMemo(() => ({
-    announcements: formatRosterRoleNames(
-      combinedScheduledRoster,
-      new Set(["announcement", "announcements", "anncouncement", "anncouncements", "annoucement", "annoucements"])
-    ),
-    closingPrayer: formatRosterRoleNames(
-      combinedScheduledRoster,
-      new Set(["closingprayer", "closer"])
-    ),
-    teacher: formatRosterRoleNames(
-      combinedScheduledRoster,
-      new Set(["teacher", "speaker", "pastor speaker", "pastorspeaker"])
-    ),
-  }), [combinedScheduledRoster]);
+  const scheduledRoleNames = useMemo(
+    () => buildScheduledRoleNames(combinedScheduledRoster),
+    [combinedScheduledRoster],
+  );
 
   const resolvePlaceholderTitle = useCallback((
     item: ServiceFlowItemType,
     sectionTitle: string
   ) => {
-    const rawTitle = item.song?.title || item.title;
-
-    if (
-      isNamePlaceholderTitle(rawTitle) &&
-      isAnnouncementsContext(rawTitle, sectionTitle)
-    ) {
-      return scheduledRoleNames.announcements || teachingWeek?.announcer_name?.trim() || rawTitle;
-    }
-
-    if (
-      isNamePlaceholderTitle(rawTitle) &&
-      isClosingPrayerContext(rawTitle, sectionTitle)
-    ) {
-      return scheduledRoleNames.closingPrayer || rawTitle;
-    }
-
-    if (
-      normalizeRoleText(rawTitle) === "communion closing prayer" &&
-      scheduledRoleNames.closingPrayer
-    ) {
-      return scheduledRoleNames.closingPrayer;
-    }
-
-    if (isLessonPlaceholderTitle(rawTitle) && isLessonContext(rawTitle, sectionTitle)) {
-      return (
-        teachingWeek?.teacher_name?.trim() ||
-        scheduledRoleNames.teacher ||
-        rawTitle
-      );
-    }
-
-    return rawTitle;
+    return resolveServiceFlowPlaceholderTitle({
+      item,
+      sectionTitle,
+      roleNames: scheduledRoleNames,
+      announcerName: teachingWeek?.announcer_name,
+      teacherName: teachingWeek?.teacher_name,
+    });
   }, [
-    scheduledRoleNames.announcements,
-    scheduledRoleNames.closingPrayer,
-    scheduledRoleNames.teacher,
+    scheduledRoleNames,
     teachingWeek?.announcer_name,
     teachingWeek?.teacher_name,
   ]);

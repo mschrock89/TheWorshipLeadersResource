@@ -4,7 +4,21 @@ export type SystemAudioInput = {
 };
 
 const HIDDEN_DEVICE_IDS = new Set(["default", "communications"]);
-const PROBE_SIZES = [64, 32, 24, 16, 8];
+const PROBE_SIZES = [64, 56, 48, 40, 32, 24, 16, 8];
+
+const PROCESSING_OFF = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+} as const;
+
+export type OpenedSystemInput = {
+  stream: MediaStream;
+  source: MediaStreamAudioSourceNode | null;
+  channelCount: number;
+  nodeChannelCount: number;
+  release: () => void;
+};
 
 export async function listSystemAudioInputs(requestPermission = false): Promise<SystemAudioInput[]> {
   if (!navigator.mediaDevices?.enumerateDevices) {
@@ -12,7 +26,7 @@ export async function listSystemAudioInputs(requestPermission = false): Promise<
   }
   if (requestPermission) {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: PROCESSING_OFF,
     });
     stream.getTracks().forEach((track) => track.stop());
   }
@@ -26,51 +40,115 @@ export async function listSystemAudioInputs(requestPermission = false): Promise<
 }
 
 export async function probeInputChannelCount(deviceId: string, context: AudioContext): Promise<number> {
-  const opened = await openInput(context, deviceId, { ideal: PROBE_SIZES[0] });
-  if (opened.channelCount > 2) {
-    opened.release();
-    return opened.channelCount;
-  }
+  const opened = await openSystemInput(context, deviceId);
+  const count = opened.channelCount;
   opened.release();
+  return count;
+}
 
-  for (const size of PROBE_SIZES) {
+// The track can report every MADI channel while the Web Audio node still starts in stereo.
+export function widenInputSource(source: AudioNode, reported: number): number {
+  const current = source.channelCount || 1;
+  const wanted = Math.max(current, reported || current);
+  if (wanted <= current) return current;
+  const max = (source as AudioNode & { maxChannelCount?: number }).maxChannelCount || wanted;
+  const capped = Math.min(wanted, max);
+  try {
+    source.channelCountMode = "explicit";
+    source.channelInterpretation = "discrete";
+  } catch {
+    return source.channelCount || current;
+  }
+  for (const target of capped === wanted ? [wanted] : [capped, wanted]) {
+    if (target <= current) continue;
     try {
-      const exact = await openInput(context, deviceId, { exact: size });
-      exact.release();
-      return exact.channelCount;
+      source.channelCount = target;
+      if ((source.channelCount || 0) > current) return source.channelCount;
     } catch {
-      // This browser or device refused that channel count.
+      // This node rejected that channel count.
+    }
+  }
+  return source.channelCount || current;
+}
+
+export async function openSystemInput(
+  context: AudioContext,
+  deviceId: string,
+  options?: { raw?: boolean },
+): Promise<OpenedSystemInput> {
+  const attempts: Array<{ exact: number } | undefined> = [
+    undefined,
+    ...PROBE_SIZES.map((size) => ({ exact: size })),
+  ];
+  let fallback: { exact: number } | undefined;
+  let fallbackCount = 0;
+  let openedAny = false;
+
+  for (const channelCount of attempts) {
+    let stream: MediaStream;
+    try {
+      stream = await requestInput(deviceId, channelCount);
+    } catch {
+      continue;
+    }
+    openedAny = true;
+    const count = inputChannelCount(stream);
+    const matched = channelCount ? count >= channelCount.exact : count > 2;
+    if (matched) return finishInput(context, stream, count, options?.raw);
+    stream.getTracks().forEach((track) => track.stop());
+    if (count >= fallbackCount) {
+      fallback = channelCount;
+      fallbackCount = count;
     }
   }
 
-  const fallback = await openInput(context, deviceId, { ideal: 2 });
-  fallback.release();
-  return fallback.channelCount;
+  if (!openedAny) throw new Error("Could not open that audio input.");
+  const stream = await requestInput(deviceId, fallback);
+  return finishInput(context, stream, Math.max(inputChannelCount(stream), fallbackCount), options?.raw);
 }
 
-async function openInput(
-  context: AudioContext,
-  deviceId: string,
-  channelCount: { ideal: number } | { exact: number },
-) {
-  const stream = await navigator.mediaDevices.getUserMedia({
+function inputChannelCount(stream: MediaStream) {
+  return stream.getAudioTracks()[0]?.getSettings().channelCount || 0;
+}
+
+async function requestInput(deviceId: string, channelCount?: { exact: number }) {
+  return navigator.mediaDevices.getUserMedia({
     audio: {
       deviceId: { exact: deviceId },
-      channelCount,
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
+      ...PROCESSING_OFF,
+      ...(channelCount ? { channelCount } : {}),
     },
   });
+}
+
+async function finishInput(
+  context: AudioContext,
+  stream: MediaStream,
+  reported: number,
+  raw = false,
+): Promise<OpenedSystemInput> {
   if (context.state === "suspended") await context.resume();
+  const releaseStream = () => stream.getTracks().forEach((track) => track.stop());
+  if (raw) {
+    return {
+      stream,
+      source: null,
+      channelCount: Math.max(reported, 1),
+      nodeChannelCount: 0,
+      release: releaseStream,
+    };
+  }
+
   const source = context.createMediaStreamSource(stream);
-  const settings = stream.getAudioTracks()[0]?.getSettings();
-  const count = Math.max(source.channelCount || 1, settings?.channelCount || 1);
+  const nodeChannelCount = widenInputSource(source, reported);
   return {
-    channelCount: count,
+    stream,
+    source,
+    channelCount: Math.max(reported, nodeChannelCount, 1),
+    nodeChannelCount,
     release: () => {
       source.disconnect();
-      stream.getTracks().forEach((track) => track.stop());
+      releaseStream();
     },
   };
 }

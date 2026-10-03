@@ -18,7 +18,14 @@ import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
+import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
+import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
+import {
+  buildResolvedServiceFlowTitles,
+  buildScheduledRoleNames,
+} from "@/components/service-flow/resolveServiceFlowPlaceholders";
 import { supabase } from "@/integrations/supabase/client";
 import {
   buildServiceFlowClockTimes,
@@ -92,6 +99,53 @@ export function LiveModeConsole({
     customServiceId,
   );
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(flow?.id || null);
+  const rosterDate = useMemo(() => {
+    const [year, month, day] = serviceDate.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+  }, [serviceDate]);
+  const { data: teachingWeek } = useTeachingWeekForDate(campusId, ministryType, serviceDate);
+  const { data: scheduledTeam } = useScheduledTeamForDate(rosterDate, campusId, ministryType);
+  const { data: scheduledRoster = [] } = useTeamRosterForDate(
+    rosterDate,
+    scheduledTeam?.teamId,
+    ministryType,
+    campusId,
+  );
+  const { data: speakerTeam } = useScheduledTeamForDate(rosterDate, campusId, "speaker");
+  const { data: speakerRoster = [] } = useTeamRosterForDate(
+    rosterDate,
+    speakerTeam?.teamId,
+    "speaker",
+    campusId,
+  );
+  const combinedScheduledRoster = useMemo(() => {
+    if (ministryType === "speaker" || speakerRoster.length === 0) return scheduledRoster;
+    const seen = new Set(
+      scheduledRoster.map((member) => member.userId || member.memberName.toLowerCase()),
+    );
+    return [
+      ...scheduledRoster,
+      ...speakerRoster.filter((member) => {
+        const key = member.userId || member.memberName.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    ];
+  }, [ministryType, scheduledRoster, speakerRoster]);
+  const scheduledRoleNames = useMemo(
+    () => buildScheduledRoleNames(combinedScheduledRoster),
+    [combinedScheduledRoster],
+  );
+  const resolvedTitles = useMemo(
+    () =>
+      buildResolvedServiceFlowTitles(items, scheduledRoleNames, {
+        announcerName: teachingWeek?.announcer_name,
+        teacherName: teachingWeek?.teacher_name,
+      }),
+    [items, scheduledRoleNames, teachingWeek?.announcer_name, teachingWeek?.teacher_name],
+  );
   const { data: campusesWithTimes = [] } = useCampuses();
   const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
     campusId,
@@ -145,7 +199,7 @@ export function LiveModeConsole({
     () => buildServiceFlowClockTimes(items, startTime),
     [items, startTime],
   );
-  const cue = findFlowCue(items, live.session?.current_item_id || null);
+  const cue = findFlowCue(items, live.session?.current_item_id || null, resolvedTitles);
   const ministryLabel =
     MINISTRY_TYPES.find((option) => option.value === ministryType)?.label || "Service";
   const serviceLabel = format(parseISO(`${serviceDate}T00:00:00`), "EEE, MMM d");
@@ -162,6 +216,9 @@ export function LiveModeConsole({
       void queryClient.invalidateQueries({ queryKey: ["service-time-overrides"] });
       void queryClient.invalidateQueries({ queryKey: ["campuses"] });
       void queryClient.invalidateQueries({ queryKey: ["custom-service-start-time"] });
+      void queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
+      void queryClient.invalidateQueries({ queryKey: ["scheduled-team-for-date"] });
+      void queryClient.invalidateQueries({ queryKey: ["teaching-week"] });
     }, 20_000);
     return () => window.clearInterval(timer);
   }, [queryClient]);
@@ -488,6 +545,7 @@ export function LiveModeConsole({
           {tab === "flow" ? (
             <LiveServiceFlowPanel
               items={items}
+              titles={resolvedTitles}
               clockTimes={clockTimes}
               currentItemId={live.session?.current_item_id || null}
               isLoading={flowLoading || (!!flow?.id && itemsLoading)}

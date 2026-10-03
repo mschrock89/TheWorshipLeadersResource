@@ -3776,8 +3776,9 @@ function BandRoster({
   const { data: roles = [] } = useUserRoles(user?.id);
   const roleNames = useMemo(() => roles.map((role) => role.role), [roles]);
   // Weekend worship volunteers don't see the Production/Video column, and
-  // production/video volunteers only see each other (no band column). Being
-  // assigned on a roster always unlocks those sections — see below.
+  // video volunteers only see the support crew (no band column). Production
+  // volunteers see the whole roster. Being assigned on a roster always
+  // unlocks those sections — see below.
   const rosterScope = useRosterVisibilityScope();
 
   const resourceAppKey = getCurrentResourceAppKey();

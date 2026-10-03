@@ -1,4 +1,4 @@
-import { POSITION_SLOTS } from "@/lib/constants";
+import { POSITION_SLOTS } from "./constants.ts";
 
 export const AUDITION_CANDIDATE_ROLE = "audition_candidate";
 export const STUDENT_BASE_ROLE = "student";
@@ -151,9 +151,10 @@ export function filterGroupTextRecipients<T extends { ministryTypes?: string[] |
   return members;
 }
 
-// Team Roster section visibility. Weekend worship volunteers don't need the
-// Production/Video sections, and production/video volunteers only need to see
-// each other. Leaders (canManageTeam) always see the full roster.
+// Team Roster section visibility. Weekend worship volunteers don't see the
+// Production/Video sections, and video volunteers only see the support crew.
+// Production volunteers see the whole roster. Leaders (canManageTeam) always
+// see the full roster.
 export type RosterVisibilityScope = "all" | "worship" | "support";
 
 export type RosterVisibilityAssignment = {
@@ -167,11 +168,10 @@ const ROSTER_WORSHIP_MINISTRY_ALIASES = new Set([
   "weekend_team",
   "sunday_am",
 ]);
-const ROSTER_SUPPORT_MINISTRY_TYPES = new Set([
+const ROSTER_PRODUCTION_MINISTRY_TYPES = new Set([
   "production",
   "ms_hs_production",
   "hs_production",
-  "video",
 ]);
 const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
   POSITION_SLOTS.flatMap((slot) => [
@@ -180,15 +180,29 @@ const ROSTER_POSITION_CATEGORY_BY_VALUE = new Map(
   ]),
 );
 
-const getRosterScopeFromFlags = (hasSupport: boolean, hasWorship: boolean) => {
+const getRosterScopeFromFlags = (
+  hasSupport: boolean,
+  hasWorship: boolean,
+  hasProduction = false,
+) => {
+  // Production volunteers see band, vocals, and the support crew.
+  if (hasProduction) return "all" as const;
   if (hasSupport && !hasWorship) return "support" as const;
   if (hasWorship && !hasSupport) return "worship" as const;
   return "all" as const;
 };
 
+const isProductionPositionValue = (value: string) => {
+  const category = ROSTER_POSITION_CATEGORY_BY_VALUE.get(value);
+  if (category === "Production") return true;
+  if (category) return false;
+  return matchesPositionKeyword(value, PRODUCTION_POSITION_KEYWORDS);
+};
+
 const getAssignmentRosterFlags = (assignments: RosterVisibilityAssignment[]) => {
   let hasSupport = false;
   let hasWorship = false;
+  let hasProduction = false;
 
   for (const assignment of assignments) {
     const positionValues = [assignment.positionSlot, assignment.position]
@@ -201,8 +215,12 @@ const getAssignmentRosterFlags = (assignments: RosterVisibilityAssignment[]) => 
     // Team Builder's exact role is the strongest signal. This keeps a production
     // volunteer classified correctly even when an older row is still tagged as
     // "weekend", which is common after moving someone between roster sections.
+    if (positionValues.some(isProductionPositionValue)) {
+      hasProduction = true;
+      continue;
+    }
     if (
-      positionCategories.some((category) => category === "Production" || category === "Video") ||
+      positionCategories.some((category) => category === "Video") ||
       hasSupportPosition(positionValues)
     ) {
       hasSupport = true;
@@ -219,7 +237,10 @@ const getAssignmentRosterFlags = (assignments: RosterVisibilityAssignment[]) => 
     }
 
     const ministryTypes = assignment.ministryTypes || [];
-    if (ministryTypes.some((type) => ROSTER_SUPPORT_MINISTRY_TYPES.has(type))) {
+    if (ministryTypes.some((type) => ROSTER_PRODUCTION_MINISTRY_TYPES.has(type))) {
+      hasProduction = true;
+    }
+    if (ministryTypes.some((type) => type === "video")) {
       hasSupport = true;
     }
     if (ministryTypes.some((type) => ROSTER_WORSHIP_MINISTRY_ALIASES.has(type))) {
@@ -227,7 +248,7 @@ const getAssignmentRosterFlags = (assignments: RosterVisibilityAssignment[]) => 
     }
   }
 
-  return { hasSupport, hasWorship };
+  return { hasSupport, hasWorship, hasProduction };
 };
 
 export function getRosterVisibilityScope(params: {
@@ -242,23 +263,25 @@ export function getRosterVisibilityScope(params: {
   // Prefer actual Team Builder membership over the profile classification. The
   // latter defaults to "weekend" and can lag behind a volunteer moving to
   // Production/Video. Only fall back to the profile when membership has no
-  // recognizable worship or support role.
+  // recognizable worship, production, or video role.
   if (teamAssignments && teamAssignments.length > 0) {
     const assignmentFlags = getAssignmentRosterFlags(teamAssignments);
-    if (assignmentFlags.hasSupport || assignmentFlags.hasWorship) {
+    if (assignmentFlags.hasSupport || assignmentFlags.hasWorship || assignmentFlags.hasProduction) {
       return getRosterScopeFromFlags(
         assignmentFlags.hasSupport,
         assignmentFlags.hasWorship,
+        assignmentFlags.hasProduction,
       );
     }
   }
 
   const types = ministryTypes || [];
-  const hasSupport = types.some((type) => ROSTER_SUPPORT_MINISTRY_TYPES.has(type));
+  const hasProduction = types.some((type) => ROSTER_PRODUCTION_MINISTRY_TYPES.has(type));
+  const hasSupport = types.some((type) => type === "video");
   const hasWorship = types.some((type) => ROSTER_WORSHIP_MINISTRY_ALIASES.has(type));
 
   // Both (serves across teams), neither, or other ministries: fail open.
-  return getRosterScopeFromFlags(hasSupport, hasWorship);
+  return getRosterScopeFromFlags(hasSupport, hasWorship, hasProduction);
 }
 
 // Assignment-based overrides for the scope above: a volunteer must always see

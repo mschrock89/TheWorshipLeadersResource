@@ -1139,8 +1139,9 @@ function SetlistTeamRoster({
 }) {
   const { user } = useAuth();
   // Weekend worship volunteers don't see the Production/Video sections, and
-  // production/video volunteers only see each other. Being assigned on the
-  // roster always unlocks those sections — see below rosterRows.
+  // video volunteers only see the support crew. Production volunteers see the
+  // whole roster. Being assigned on the roster always unlocks those sections
+  // — see below rosterRows.
   const rosterScope = useRosterVisibilityScope();
   const resourceAppKey = getCurrentResourceAppKey();
   const date = useMemo(() => parseLocalDate(planDate), [planDate]);

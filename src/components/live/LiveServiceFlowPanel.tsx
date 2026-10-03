@@ -4,14 +4,15 @@ import { formatDuration } from "@/components/service-flow/DurationInput";
 
 type LiveServiceFlowPanelProps = {
   items: ServiceFlowItem[];
+  titles?: Map<string, string>;
   clockTimes: Map<string, string>;
   currentItemId: string | null;
   isLoading: boolean;
   onSelect: (itemId: string | null) => void;
 };
 
-function itemTitle(item: ServiceFlowItem) {
-  return item.song?.title || item.title;
+function itemTitle(item: ServiceFlowItem, titles?: Map<string, string>) {
+  return titles?.get(item.id) || item.song?.title || item.title;
 }
 
 function vocalistNames(item: ServiceFlowItem) {
@@ -31,6 +32,7 @@ function itemDuration(item: ServiceFlowItem) {
 
 export function LiveServiceFlowPanel({
   items,
+  titles,
   clockTimes,
   currentItemId,
   isLoading,
@@ -67,6 +69,7 @@ export function LiveServiceFlowPanel({
         const duration = itemDuration(item);
         const clockTime = clockTimes.get(item.id) || "";
         const singers = isSong ? vocalistNames(item) : "";
+        const title = itemTitle(item, titles);
         const notes = item.notes?.trim() || "";
         return (
           <li key={item.id}>
@@ -89,7 +92,7 @@ export function LiveServiceFlowPanel({
                     {clockTime}
                   </span>
                 ) : null}
-                <span className="min-w-0 flex-1 truncate text-base font-semibold">{itemTitle(item)}</span>
+                <span className="min-w-0 flex-1 truncate text-base font-semibold">{title}</span>
                 {isCurrent ? (
                   <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-primary">Now</span>
                 ) : null}
@@ -122,13 +125,17 @@ export function LiveServiceFlowPanel({
   );
 }
 
-export function findFlowCue(items: ServiceFlowItem[], currentItemId: string | null) {
+export function findFlowCue(
+  items: ServiceFlowItem[],
+  currentItemId: string | null,
+  titles?: Map<string, string>,
+) {
   const playable = items.filter((item) => item.item_type !== "header");
   const currentIndex = playable.findIndex((item) => item.id === currentItemId);
   const current = currentIndex >= 0 ? playable[currentIndex] : null;
   const next = currentIndex >= 0 ? playable[currentIndex + 1] : null;
   return {
-    currentTitle: current ? itemTitle(current) : null,
-    nextTitle: next ? itemTitle(next) : null,
+    currentTitle: current ? itemTitle(current, titles) : null,
+    nextTitle: next ? itemTitle(next, titles) : null,
   };
 }

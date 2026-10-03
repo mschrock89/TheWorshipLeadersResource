@@ -5,9 +5,10 @@ import { getRosterVisibilityScope, type RosterVisibilityScope } from "@/lib/acce
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 // Scopes the Team Roster sections to the viewer: weekend worship volunteers
-// don't see Production/Video, and production/video volunteers only see each
-// other. Actual Team Builder membership is authoritative, with the profile's
-// ministry_types retained as a fallback; leaders always get the full roster.
+// don't see Production/Video, and video volunteers only see the support crew.
+// Production volunteers see the whole roster. Actual Team Builder membership
+// is authoritative, with the profile's ministry_types retained as a fallback;
+// leaders always get the full roster.
 export function useRosterVisibilityScope(): RosterVisibilityScope {
   const { user, canManageTeam } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();

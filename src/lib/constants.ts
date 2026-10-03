@@ -23,7 +23,7 @@ export const ROLE_LABELS: Record<string, string> = {
   volunteer: "Volunteer",
 };
 
-export * from "./resourceApps";
+export * from "./resourceApps.ts";
 export const STUDENT_TEAM_BUILDER_MINISTRY_TYPE = "students";
 export const STUDENT_TEAM_NAMES = ["Hospitality", "Hype", "Prayer", "Cafe"] as const;
 export const STUDENT_POSITION_VALUES = [
