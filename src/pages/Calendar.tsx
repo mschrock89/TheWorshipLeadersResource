@@ -41,6 +41,7 @@ import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
 } from "@/lib/constants";
+import { canonicalSwapPosition } from "@/lib/swapPositions";
 import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import {
   useDeleteServiceTimeOverride,
@@ -4598,7 +4599,7 @@ function BandRoster({
           if (slot === 'ag_1' || !slot) return 'AG 1';
         }
         if (p === 'Acoustic 2') return 'AG 2';
-        if (p === 'vocalist' || p === 'Vocalist' || p === 'Vocals') return 'Vox';
+        if (canonicalSwapPosition(p) === "vocalist") return "Vox";
         if (p.toLowerCase() === 'propresenter') return 'Lyrics';
         if (p.toLowerCase() === 'foh') return 'FOH';
         if (p.toLowerCase() === 'mon') return 'MON';
@@ -5523,7 +5524,7 @@ function CustomServiceRoster({
       </Avatar>
       <span className="min-w-0 flex-1 break-words text-foreground">{member.name}</span>
       <span className={`min-w-0 max-w-[50%] break-words text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
-        {visibleRoles.map((role) => role === "vocalist" ? "Vox" : POSITION_LABELS[role] || role).join(", ")}
+        {visibleRoles.map((role) => canonicalSwapPosition(role) === "vocalist" ? "Vox" : POSITION_LABELS[role] || role).join(", ")}
       </span>
     </div>
     );
