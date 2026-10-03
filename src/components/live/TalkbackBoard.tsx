@@ -42,7 +42,6 @@ type TalkbackChatProps = TranscriptChatProps | TypedChatProps;
 type ChannelStatus = {
   phase: "listening" | "hearing" | "error" | "idle";
   message?: string;
-  level: number;
 };
 
 const SPEAKER_TONES = [
@@ -262,6 +261,8 @@ export function TalkbackBoard({
   onOpenSetup,
 }: TalkbackBoardProps) {
   const [status, setStatus] = useState<Record<string, ChannelStatus>>({});
+  const levelsRef = useRef<Record<string, number>>({});
+  const barRefs = useRef(new Map<string, HTMLDivElement>());
 
   const armed = useMemo(() => {
     return channels.flatMap((channel) => {
@@ -275,6 +276,8 @@ export function TalkbackBoard({
 
   useEffect(() => {
     if (!listening || !audioContext || armed.length === 0) {
+      levelsRef.current = {};
+      for (const bar of barRefs.current.values()) bar.style.transform = "scaleX(0)";
       setStatus({});
       return;
     }
@@ -284,16 +287,18 @@ export function TalkbackBoard({
       transcribe: transcribeTalkbackChunk,
       onTranscript,
       onLevel: (channelId, level) => {
-        setStatus((current) => ({
-          ...current,
-          [channelId]: { ...current[channelId], phase: current[channelId]?.phase || "listening", level },
-        }));
+        const percent = Math.max(0, Math.min(100, Math.round(Math.min(1, level) * 100)));
+        if (levelsRef.current[channelId] === percent) return;
+        levelsRef.current[channelId] = percent;
+        const bar = barRefs.current.get(channelId);
+        if (bar) bar.style.transform = `scaleX(${percent / 100})`;
       },
       onStatus: (channelId, phase, message) => {
-        setStatus((current) => ({
-          ...current,
-          [channelId]: { level: current[channelId]?.level || 0, phase, message },
-        }));
+        setStatus((current) => {
+          const previous = current[channelId];
+          if (previous?.phase === phase && previous.message === message) return current;
+          return { ...current, [channelId]: { phase, message } };
+        });
       },
     });
   }, [armed, armedKey, audioContext, listening, onTranscript]);
@@ -328,7 +333,6 @@ export function TalkbackBoard({
         {channels.map((channel, index) => {
           const channelStatus = status[channel.id];
           const binding = armed.find((entry) => entry.id === channel.id);
-          const level = Math.min(1, channelStatus?.level || 0);
           const tone = speakerTone(index);
           const hearing = channelStatus?.phase === "hearing";
           return (
@@ -362,8 +366,12 @@ export function TalkbackBoard({
               </p>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
                 <div
-                  className="h-full rounded-full bg-primary transition-[width] duration-75"
-                  style={{ width: `${Math.round(level * 100)}%` }}
+                  ref={(node) => {
+                    if (node) barRefs.current.set(channel.id, node);
+                    else barRefs.current.delete(channel.id);
+                  }}
+                  className="h-full w-full origin-left rounded-full bg-primary"
+                  style={{ transform: `scaleX(${(levelsRef.current[channel.id] || 0) / 100})` }}
                 />
               </div>
               {channelStatus?.phase === "error" && channelStatus.message ? (

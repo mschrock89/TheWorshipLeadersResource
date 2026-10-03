@@ -1,6 +1,9 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
 import { captureUsesWorklet, createTalkbackTap, ensureTalkbackTap, openSystemInput, splitterChannelCount, type OpenedSystemInput } from "./systemAudioInputs.ts";
+import { concatFloats, downsampleMono, encodeMonoWav, rmsFloat } from "./talkbackPcm.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
+
+export { downsampleMono, encodeMonoWav };
 
 export type TalkbackCaptureChannel = {
   id: string;
@@ -12,7 +15,6 @@ export type TalkbackCaptureStatus = "listening" | "hearing" | "error";
 
 const LEVEL_INTERVAL_MS = 80;
 const WAV_RATE = 16000;
-const MAX_WAV_SAMPLES = Math.floor((350_000 - 44) / 2);
 
 type CaptureHandlers = {
   audioContext: AudioContext;
@@ -33,8 +35,10 @@ type ActiveUtterance = {
 type TapMessage = {
   channelCount?: number;
   rate?: number;
-  channels?: Array<{ index: number; rms: number; peak?: number; samples: Float32Array }>;
+  channels?: Array<{ index: number; rms: number; peak?: number; samples?: Float32Array }>;
 };
+
+type CaptureReader = { cancel: () => void | Promise<void> };
 
 async function watchTalkbackTap(
   context: AudioContext,
@@ -105,10 +109,14 @@ async function watchTalkbackTap(
       handlers.onLevel(channel.id, talkbackMeterLevel(heard.peak || level));
       if (speaking) {
         setPhase(channel.id, "hearing");
-        const piece = downsampleMono(heard.samples, rate, WAV_RATE);
-        if (!open) phrases.set(channel.id, { chunks: [piece], startedAt: now, lastVoiceAt: now });
-        else {
-          open.chunks.push(piece);
+        if (heard.samples?.length) {
+          const piece = downsampleMono(heard.samples, rate, WAV_RATE);
+          if (!open) phrases.set(channel.id, { chunks: [piece], startedAt: now, lastVoiceAt: now });
+          else {
+            open.chunks.push(piece);
+            open.lastVoiceAt = now;
+          }
+        } else if (open) {
           open.lastVoiceAt = now;
         }
       }
@@ -158,7 +166,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
   let stopped = false;
   const streams: MediaStream[] = [];
   const timers: number[] = [];
-  const readers: ReadableStreamDefaultReader<AudioPlaneFrame>[] = [];
+  const readers: CaptureReader[] = [];
   const cleanups: Array<() => void> = [];
   const recorders = new Map<string, ActiveUtterance>();
   const context = handlers.audioContext;
@@ -182,7 +190,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
         // The audio graph is already closed.
       }
     }
-    for (const reader of readers) void reader.cancel().catch(() => undefined);
+    for (const reader of readers) void Promise.resolve(reader.cancel()).catch(() => undefined);
     for (const stream of streams) stream.getTracks().forEach((track) => track.stop());
   };
 
@@ -382,12 +390,124 @@ function trackProcessor(track: MediaStreamTrack) {
   }
 }
 
+function createTalkbackTrackWorker() {
+  if (typeof Worker === "undefined") return null;
+  try {
+    return new Worker(new URL("./talkbackTrackWorker.ts", import.meta.url), { type: "module" });
+  } catch {
+    return null;
+  }
+}
+
+function publishTranscript(handlers: CaptureHandlers, channelId: string, wav: Blob, isStopped: () => boolean) {
+  if (wav.size < 1500 || isStopped()) return;
+  void handlers
+    .transcribe(wav)
+    .then((text) => {
+      if (!isStopped() && text.trim()) handlers.onTranscript(channelId, text);
+    })
+    .catch((error: unknown) => {
+      if (isStopped()) return;
+      const message = error instanceof Error ? error.message : "Transcription failed.";
+      handlers.onStatus(channelId, "error", message);
+    });
+}
+
+async function listenOnTalkbackWorker(
+  processor: { readable: ReadableStream<AudioPlaneFrame> },
+  handlers: CaptureHandlers,
+  channels: TalkbackCaptureChannel[],
+  isStopped: () => boolean,
+  readers: CaptureReader[],
+): Promise<boolean | null> {
+  const worker = createTalkbackTrackWorker();
+  if (!worker) return null;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let transferred = false;
+    let ready = false;
+    const finish = (result: boolean | null) => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      resolve(result);
+    };
+
+    worker.onmessage = (event: MessageEvent) => {
+      const data = event.data as {
+        type?: string;
+        channelId?: string;
+        phase?: TalkbackCaptureStatus;
+        message?: string;
+        levels?: Array<{ channelId: string; level: number }>;
+        wav?: ArrayBuffer;
+      };
+      if (data.type === "ready") {
+        ready = true;
+        return;
+      }
+      if (data.type === "unsupported") {
+        finish(false);
+        return;
+      }
+      if (data.type === "done") {
+        finish(true);
+        return;
+      }
+      if (settled || isStopped()) return;
+      if (data.type === "levels") {
+        for (const entry of data.levels || []) handlers.onLevel(entry.channelId, entry.level);
+        return;
+      }
+      if (data.type === "status" && data.channelId && data.phase) {
+        handlers.onStatus(data.channelId, data.phase, data.message);
+        return;
+      }
+      if (data.type === "phrase" && data.channelId && data.wav) {
+        publishTranscript(handlers, data.channelId, new Blob([data.wav], { type: "audio/wav" }), isStopped);
+      }
+    };
+    worker.onerror = () => {
+      if (!transferred) finish(null);
+      else finish(ready ? true : false);
+    };
+
+    try {
+      transferred = true;
+      worker.postMessage(
+        {
+          type: "start",
+          readable: processor.readable,
+          channels: channels.map((channel) => ({ id: channel.id, channelIndex: channel.channelIndex })),
+        },
+        [processor.readable as unknown as Transferable],
+      );
+    } catch {
+      transferred = false;
+      finish(null);
+      return;
+    }
+
+    readers.push({
+      cancel: () => {
+        try {
+          worker.postMessage({ type: "stop" });
+        } catch {
+          // The worker is already gone.
+        }
+        finish(true);
+      },
+    });
+  });
+}
+
 async function monitorOpenedChannels(
   opened: OpenedSystemInput,
   handlers: CaptureHandlers,
   channels: TalkbackCaptureChannel[],
   isStopped: () => boolean,
-  readers: ReadableStreamDefaultReader<AudioPlaneFrame>[],
+  readers: CaptureReader[],
 ) {
   if (isStopped()) {
     opened.release();
@@ -396,6 +516,12 @@ async function monitorOpenedChannels(
   const track = opened.stream.getAudioTracks()[0];
   const processor = track ? trackProcessor(track) : null;
   if (!processor) return false;
+
+  const offThread = await listenOnTalkbackWorker(processor, handlers, channels, isStopped, readers);
+  if (offThread !== null) {
+    opened.release();
+    return offThread;
+  }
 
   const reader = processor.readable.getReader();
   readers.push(reader);
@@ -485,11 +611,14 @@ async function monitorOpenedChannels(
       return false;
     }
     first.value.close();
+    let frames = 0;
     while (!isStopped()) {
       const next = await reader.read();
       if (next.done || !next.value) break;
       onFrame(next.value);
       next.value.close();
+      frames += 1;
+      if (frames % 2 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     return true;
   } catch {
@@ -528,65 +657,3 @@ function readPlane(frame: AudioPlaneFrame, channelIndex: number) {
   }
 }
 
-function rmsFloat(samples: Float32Array) {
-  if (samples.length === 0) return 0;
-  let sum = 0;
-  for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index];
-  return Math.sqrt(sum / samples.length);
-}
-
-function concatFloats(chunks: Float32Array[]) {
-  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-}
-
-export function downsampleMono(samples: Float32Array, inputRate: number, outputRate: number) {
-  if (samples.length === 0 || !inputRate || !outputRate || inputRate <= outputRate) return samples;
-  const ratio = inputRate / outputRate;
-  const length = Math.max(1, Math.floor(samples.length / ratio));
-  const output = new Float32Array(length);
-  for (let index = 0; index < length; index += 1) {
-    const position = index * ratio;
-    const left = Math.floor(position);
-    const mix = position - left;
-    const start = samples[left] || 0;
-    const end = samples[Math.min(left + 1, samples.length - 1)] || start;
-    output[index] = start + (end - start) * mix;
-  }
-  return output;
-}
-
-export function encodeMonoWav(samples: Float32Array, sampleRate: number) {
-  const pcm = samples.length > MAX_WAV_SAMPLES ? samples.subarray(0, MAX_WAV_SAMPLES) : samples;
-  const buffer = new ArrayBuffer(44 + pcm.length * 2);
-  const view = new DataView(buffer);
-  const write = (offset: number, text: string) => {
-    for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index));
-  };
-  write(0, "RIFF");
-  view.setUint32(4, 36 + pcm.length * 2, true);
-  write(8, "WAVE");
-  write(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  write(36, "data");
-  view.setUint32(40, pcm.length * 2, true);
-  let offset = 44;
-  for (let index = 0; index < pcm.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, pcm[index]));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    offset += 2;
-  }
-  return new Blob([buffer], { type: "audio/wav" });
-}

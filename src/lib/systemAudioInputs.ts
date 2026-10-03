@@ -1,3 +1,5 @@
+import { TALKBACK_SAMPLE_FLOOR } from "./talkbackPhrase.ts";
+
 export type SystemAudioInput = {
   deviceId: string;
   label: string;
@@ -299,16 +301,24 @@ function tapModuleUrl() {
         if (!this.buckets) this.buckets = {};
         if (!this.blocks) this.blocks = 0;
         this.blocks += 1;
+        const floor = ${TALKBACK_SAMPLE_FLOOR};
         for (const index of this.watch) {
           const data = list[index];
           if (!data || data.length === 0) continue;
           let bucket = this.buckets[index];
           if (!bucket) {
-            bucket = { sum: 0, count: 0, peak: 0, chunks: [] };
+            bucket = {
+              sum: 0,
+              count: 0,
+              peak: 0,
+              samples: new Float32Array(Math.ceil(sampleRate * 0.12)),
+              offset: 0,
+              armed: 0,
+            };
             this.buckets[index] = bucket;
           }
           let sum = 0;
-          let peak = bucket.peak;
+          let peak = 0;
           for (let i = 0; i < data.length; i++) {
             const value = data[i];
             sum += value * value;
@@ -317,8 +327,17 @@ function tapModuleUrl() {
           }
           bucket.sum += sum;
           bucket.count += data.length;
-          bucket.peak = peak;
-          bucket.chunks.push(new Float32Array(data));
+          if (peak > bucket.peak) bucket.peak = peak;
+          const blockRms = data.length ? Math.sqrt(sum / data.length) : 0;
+          if (bucket.armed || blockRms >= floor || peak >= floor) bucket.armed = 1;
+          if (!bucket.armed) continue;
+          if (bucket.offset + data.length > bucket.samples.length) {
+            const grown = new Float32Array((bucket.offset + data.length) * 2);
+            grown.set(bucket.samples.subarray(0, bucket.offset));
+            bucket.samples = grown;
+          }
+          bucket.samples.set(data, bucket.offset);
+          bucket.offset += data.length;
         }
         const interval = Math.max(1, Math.round(sampleRate * 0.08 / 128));
         if (this.blocks < interval) return true;
@@ -328,22 +347,23 @@ function tapModuleUrl() {
         for (const index of this.watch) {
           const bucket = this.buckets[index];
           if (!bucket || !bucket.count) continue;
-          const length = bucket.chunks.reduce((total, chunk) => total + chunk.length, 0);
-          const samples = new Float32Array(length);
-          let offset = 0;
-          for (const chunk of bucket.chunks) {
-            samples.set(chunk, offset);
-            offset += chunk.length;
-          }
-          channels.push({
+          const entry = {
             index,
             rms: Math.sqrt(bucket.sum / bucket.count),
             peak: bucket.peak,
-            samples,
-          });
-          transfers.push(samples.buffer);
+          };
+          if (bucket.offset > 0) {
+            const samples = new Float32Array(bucket.samples.subarray(0, bucket.offset));
+            entry.samples = samples;
+            transfers.push(samples.buffer);
+          }
+          channels.push(entry);
+          bucket.sum = 0;
+          bucket.count = 0;
+          bucket.peak = 0;
+          bucket.offset = 0;
+          bucket.armed = 0;
         }
-        this.buckets = {};
         if (channels.length) {
           this.port.postMessage({ channelCount: this.seen, rate: sampleRate, channels }, transfers);
         }
