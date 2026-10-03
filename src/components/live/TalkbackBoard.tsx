@@ -59,6 +59,31 @@ function speakerTone(index: number) {
   return SPEAKER_TONES[index % SPEAKER_TONES.length];
 }
 
+const MIXER_SHORT_LABELS: Record<string, string> = {
+  "worship leader": "WL",
+  vocals: "Vox",
+  drums: "Drm",
+  bass: "Bass",
+  keys: "Keys",
+  electric: "EG",
+  acoustic: "AG",
+  pastor: "Pst",
+};
+
+function mixerShortLabel(label: string) {
+  const known = MIXER_SHORT_LABELS[label.trim().toLowerCase()];
+  if (known) return known;
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .map((word) => word[0] || "")
+      .join("")
+      .slice(0, 3)
+      .toUpperCase();
+  }
+  return label.trim().slice(0, 4);
+}
+
 function messageTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -277,7 +302,7 @@ export function TalkbackBoard({
   useEffect(() => {
     if (!listening || !audioContext || armed.length === 0) {
       levelsRef.current = {};
-      for (const bar of barRefs.current.values()) bar.style.transform = "scaleX(0)";
+      for (const bar of barRefs.current.values()) bar.style.transform = "scaleY(0)";
       setStatus({});
       return;
     }
@@ -291,7 +316,7 @@ export function TalkbackBoard({
         if (levelsRef.current[channelId] === percent) return;
         levelsRef.current[channelId] = percent;
         const bar = barRefs.current.get(channelId);
-        if (bar) bar.style.transform = `scaleX(${percent / 100})`;
+        if (bar) bar.style.transform = `scaleY(${percent / 100})`;
       },
       onStatus: (channelId, phase, message) => {
         setStatus((current) => {
@@ -329,54 +354,61 @@ export function TalkbackBoard({
         </button>
       )}
 
-      <div className="flex shrink-0 gap-2 overflow-x-auto px-3 py-3">
+      <div
+        className="grid shrink-0 gap-1 px-2.5 pb-2 pt-1.5"
+        style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}
+      >
         {channels.map((channel, index) => {
           const channelStatus = status[channel.id];
           const binding = armed.find((entry) => entry.id === channel.id);
           const tone = speakerTone(index);
           const hearing = channelStatus?.phase === "hearing";
+          const inputNumber = binding ? binding.channelIndex + 1 : null;
+          const errorMessage = channelStatus?.phase === "error" ? channelStatus.message : "";
           return (
             <div
               key={channel.id}
+              title={errorMessage || channel.label}
+              aria-label={
+                errorMessage
+                  ? `${channel.label}, ${errorMessage}`
+                  : inputNumber
+                    ? `${channel.label}, input ${inputNumber}`
+                    : `${channel.label}, no input assigned`
+              }
               className={cn(
-                "min-w-[8.5rem] shrink-0 rounded-xl border px-3 py-2",
+                "flex min-w-0 flex-col items-center gap-0.5 rounded-md border px-0.5 py-1",
                 hearing ? "border-primary bg-primary/10" : "border-border bg-card",
               )}
             >
-              <div className="flex items-center gap-2">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", tone.dot)} />
-                <p className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-[0.12em] text-foreground">
-                  {channel.label}
-                </p>
-                <span
-                  className={cn(
-                    "h-2 w-2 shrink-0 rounded-full",
-                    hearing
-                      ? "bg-primary"
-                      : channelStatus?.phase === "error"
-                        ? "bg-destructive"
-                        : listening && binding
-                          ? "bg-emerald-500"
-                          : "bg-muted-foreground/30",
-                  )}
-                />
-              </div>
-              <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                {binding ? `Input ${binding.channelIndex + 1}` : "No input assigned"}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  hearing
+                    ? "bg-primary"
+                    : channelStatus?.phase === "error"
+                      ? "bg-destructive"
+                      : listening && binding
+                        ? "bg-emerald-500"
+                        : "bg-muted-foreground/30",
+                )}
+              />
+              <p className="w-full truncate text-center text-[9px] font-bold uppercase leading-none tracking-tight text-foreground">
+                {mixerShortLabel(channel.label)}
               </p>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div className="mt-0.5 flex h-7 w-1.5 items-end overflow-hidden rounded-full bg-muted" aria-hidden>
                 <div
                   ref={(node) => {
                     if (node) barRefs.current.set(channel.id, node);
                     else barRefs.current.delete(channel.id);
                   }}
-                  className="h-full w-full origin-left rounded-full bg-primary"
-                  style={{ transform: `scaleX(${(levelsRef.current[channel.id] || 0) / 100})` }}
+                  className={cn("h-full w-full origin-bottom rounded-full", hearing ? "bg-primary" : tone.dot)}
+                  style={{ transform: `scaleY(${(levelsRef.current[channel.id] || 0) / 100})` }}
                 />
               </div>
-              {channelStatus?.phase === "error" && channelStatus.message ? (
-                <p className="mt-1 line-clamp-2 text-[11px] text-destructive">{channelStatus.message}</p>
-              ) : null}
+              <span className="text-[9px] font-semibold tabular-nums leading-none text-muted-foreground">
+                {inputNumber ?? "–"}
+              </span>
             </div>
           );
         })}
