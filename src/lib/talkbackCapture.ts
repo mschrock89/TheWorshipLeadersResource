@@ -1,5 +1,5 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
-import { createTalkbackTap, ensureTalkbackTap, openSystemInput, splitterChannelCount } from "./systemAudioInputs.ts";
+import { captureUsesWorklet, createTalkbackTap, ensureTalkbackTap, openSystemInput, splitterChannelCount, type OpenedSystemInput } from "./systemAudioInputs.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 
 export type TalkbackCaptureChannel = {
@@ -211,17 +211,21 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
           opened.release();
           return;
         }
-        if (opened.source && (await watchTalkbackTap(context, opened.source, opened.channelCount, channels, handlers, () => stopped, cleanups, timers))) {
+        const useWorklet = Boolean(
+          opened.source && captureUsesWorklet(opened.heardChannelCount, opened.channelCount, needed),
+        );
+        if (useWorklet && opened.source && (await watchTalkbackTap(context, opened.source, opened.channelCount, channels, handlers, () => stopped, cleanups, timers))) {
           cleanups.push(opened.release);
           continue;
         }
-        let source = opened.source;
+        const heardRaw = await monitorOpenedChannels(opened, handlers, channels, () => stopped, readers);
+        if (heardRaw || stopped) continue;
+        const trackLive = opened.stream.getAudioTracks().some((track) => track.readyState === "live");
+        let source = trackLive ? opened.source : null;
         let reported = opened.channelCount;
         let available = splitterChannelCount(reported, opened.nodeChannelCount);
         if (!source || needed > available) {
           opened.release();
-          const heard = await monitorDeviceChannels(handlers, channels, deviceId, () => stopped, readers);
-          if (heard || stopped) continue;
           const fallback = await openSystemInput(context, deviceId);
           if (stopped) {
             fallback.release();
@@ -250,7 +254,9 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
               "error",
               reported > available
                 ? `This browser can only separate the first ${available} of ${reported} inputs.`
-                : `This input only has ${available} channel${available === 1 ? "" : "s"}.`,
+                : available <= 2
+                  ? "This browser opened that interface as stereo. Set it to 48 channels at 48 kHz in Audio MIDI Setup, then reload in Safari."
+                  : `This input only has ${available} channel${available === 1 ? "" : "s"}.`,
             );
             continue;
           }
@@ -376,24 +382,20 @@ function trackProcessor(track: MediaStreamTrack) {
   }
 }
 
-async function monitorDeviceChannels(
+async function monitorOpenedChannels(
+  opened: OpenedSystemInput,
   handlers: CaptureHandlers,
   channels: TalkbackCaptureChannel[],
-  deviceId: string,
   isStopped: () => boolean,
   readers: ReadableStreamDefaultReader<AudioPlaneFrame>[],
 ) {
-  const opened = await openSystemInput(handlers.audioContext, deviceId, { raw: true });
   if (isStopped()) {
     opened.release();
     return true;
   }
   const track = opened.stream.getAudioTracks()[0];
   const processor = track ? trackProcessor(track) : null;
-  if (!processor) {
-    opened.release();
-    return false;
-  }
+  if (!processor) return false;
 
   const reader = processor.readable.getReader();
   readers.push(reader);

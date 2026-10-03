@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { splitterChannelCount, talkbackTapAttempts, talkbackTapOptionSets, talkbackTapOptions, widenInputSource } from "./systemAudioInputs.ts";
+import { captureUsesWorklet, inputRequestAttempts, splitterChannelCount, talkbackTapAttempts, talkbackTapOptionSets, talkbackTapOptions, widenInputSource } from "./systemAudioInputs.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
 
@@ -94,9 +94,23 @@ test("shows talkback level instead of the gap above the noise floor", () => {
   assert.equal(talkbackMeterLevel(0.5), 1);
 });
 
-test("splits a 48-input track even when the audio node still says stereo", () => {
-  assert.equal(splitterChannelCount(48, 2), 32);
+test("does not turn a stereo node into empty MADI channels", () => {
+  assert.equal(splitterChannelCount(48, 2), 2);
+  assert.equal(splitterChannelCount(48, 32), 32);
   assert.equal(splitterChannelCount(2, 2), 2);
+});
+
+test("opens UB MADI at 48 channels and 48 kHz before it will accept stereo", () => {
+  const [first] = inputRequestAttempts(48);
+  assert.equal(first.channelCount && "exact" in first.channelCount ? first.channelCount.exact : 0, 48);
+  assert.equal(first.sampleRate && "exact" in first.sampleRate ? first.sampleRate.exact : 0, 48000);
+  assert.equal(first.echoCancellation, false);
+});
+
+test("reads the raw track when the audio node folds UB MADI into stereo", () => {
+  assert.equal(captureUsesWorklet(2, 48, 12), false);
+  assert.equal(captureUsesWorklet(32, 48, 12), true);
+  assert.equal(captureUsesWorklet(2, 2, 1), true);
 });
 
 test("downsamples a multichannel frame to the transcription rate", () => {

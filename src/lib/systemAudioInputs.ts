@@ -79,7 +79,12 @@ export function widenInputSource(source: AudioNode, reported: number): number {
 }
 
 export function splitterChannelCount(reported: number, nodeChannelCount: number) {
-  const heard = Math.max(Math.floor(reported) || 0, Math.floor(nodeChannelCount) || 0, 1);
+  const track = Math.max(Math.floor(reported) || 0, 0);
+  const node = Math.max(Math.floor(nodeChannelCount) || 0, 0);
+  // A stereo Web Audio node upmixed to 32 inputs is still one pair. Keep that
+  // pair intact instead of inventing empty MADI channels past it.
+  if (node > 0 && node <= 2 && track > node) return node;
+  const heard = Math.max(track, node, 1);
   return Math.min(heard, WEB_AUDIO_CHANNEL_LIMIT);
 }
 
@@ -141,25 +146,74 @@ export function createTalkbackTap(context: AudioContext, reported: number) {
   return node;
 }
 
-export function inputRequestAttempts(): MediaTrackConstraints[] {
-  const exactProcessing = {
-    echoCancellation: { exact: false },
-    noiseSuppression: { exact: false },
-    autoGainControl: { exact: false },
-    sampleRate: { ideal: 48000 },
-  } as const;
-  const idealProcessing = {
+export function inputRequestAttempts(channelLimit = 48): MediaTrackConstraints[] {
+  const sizes = [channelLimit, 48, 32, 16, 8].filter(
+    (size, index, all) => size >= 2 && all.indexOf(size) === index,
+  );
+  const processingOff = {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
-    sampleRate: { ideal: 48000 },
-  } as const;
-  const sizes = [48, 32, 16];
+    voiceIsolation: false,
+  } as MediaTrackConstraints;
+  const exactProcessingOff = {
+    echoCancellation: { exact: false },
+    noiseSuppression: { exact: false },
+    autoGainControl: { exact: false },
+  };
   return [
-    ...sizes.map((size) => ({ ...exactProcessing, channelCount: { exact: size } })),
-    ...sizes.map((size) => ({ ...idealProcessing, channelCount: { ideal: size } })),
-    idealProcessing,
+    ...sizes.map((size) => ({
+      ...processingOff,
+      sampleRate: { exact: 48000 },
+      channelCount: { exact: size },
+    })),
+    ...sizes.map((size) => ({
+      ...exactProcessingOff,
+      sampleRate: { exact: 48000 },
+      channelCount: { exact: size },
+    })),
+    ...sizes.map((size) => ({
+      ...processingOff,
+      sampleRate: { ideal: 48000 },
+      channelCount: { ideal: size },
+    })),
+    { ...processingOff, sampleRate: { ideal: 48000 } },
   ];
+}
+
+export function captureUsesWorklet(heard: number, reported: number, needed: number) {
+  if (reported > Math.max(heard, 2) && heard <= 2) return false;
+  return heard >= needed;
+}
+
+export async function deviceChannelLimit(deviceId: string) {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const input = devices.find((device) => device.kind === "audioinput" && device.deviceId === deviceId);
+    const max = input && "getCapabilities" in input
+      ? (input as InputDeviceInfo).getCapabilities().channelCount?.max
+      : undefined;
+    if (typeof max === "number" && max > 2) return max;
+  } catch {
+    // Channel capabilities show up after the input permission exists.
+  }
+  return 48;
+}
+
+export async function alignContextSink(context: AudioContext, deviceId: string) {
+  const sink = context as AudioContext & { setSinkId?: (sinkId: string) => Promise<void> };
+  if (!sink.setSinkId) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const input = devices.find((device) => device.kind === "audioinput" && device.deviceId === deviceId);
+    const output = devices.find(
+      (device) => device.kind === "audiooutput" && Boolean(input?.groupId) && device.groupId === input?.groupId,
+    );
+    if (!output?.deviceId) return;
+    await sink.setSinkId(output.deviceId);
+  } catch {
+    // Playback stays on the current speakers.
+  }
 }
 
 export async function openSystemInput(
@@ -167,16 +221,17 @@ export async function openSystemInput(
   deviceId: string,
   options?: { raw?: boolean },
 ): Promise<OpenedSystemInput> {
+  await alignContextSink(context, deviceId);
+  const channelLimit = await deviceChannelLimit(deviceId);
   let best: { stream: MediaStream; reported: number; heard: number } | null = null;
 
-  for (const audio of inputRequestAttempts()) {
+  for (const audio of inputRequestAttempts(channelLimit)) {
     let stream: MediaStream;
     try {
       stream = await requestInput(deviceId, audio);
     } catch {
       continue;
     }
-    await unprocessTrack(stream.getAudioTracks()[0]);
     const reported = inputChannelCount(stream);
     const heard = options?.raw ? reported : await measureStreamChannels(context, stream);
     const score = heard;
@@ -198,24 +253,6 @@ export async function openSystemInput(
 
 function inputChannelCount(stream: MediaStream) {
   return stream.getAudioTracks()[0]?.getSettings().channelCount || 0;
-}
-
-async function unprocessTrack(track: MediaStreamTrack | undefined) {
-  if (!track?.applyConstraints) return;
-  try {
-    await track.applyConstraints({
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    });
-  } catch {
-    // This browser keeps its current processing settings.
-  }
-  try {
-    await track.applyConstraints({ voiceIsolation: false } as MediaTrackConstraints);
-  } catch {
-    // Voice isolation is not a setting on this input.
-  }
 }
 
 async function requestInput(deviceId: string, audio: MediaTrackConstraints) {
@@ -322,7 +359,9 @@ export async function measureStreamChannels(context: AudioContext, stream: Media
   if (context.state === "suspended") await context.resume();
   if (!(await ensureTalkbackTap(context))) return 0;
   const source = context.createMediaStreamSource(stream);
-  const node = createTalkbackTap(context, inputChannelCount(stream));
+  const reported = inputChannelCount(stream);
+  if (reported > (source.channelCount || 1)) widenInputSource(source, reported);
+  const node = createTalkbackTap(context, Math.max(reported, source.channelCount || 1));
   const silent = context.createGain();
   silent.gain.value = 0;
   source.connect(node);
@@ -373,9 +412,9 @@ async function finishInput(
   }
 
   const source = context.createMediaStreamSource(stream);
-  // Leave the source at the stream's own layout. Forcing its channel count
-  // down to the Web Audio maximum mutes every MADI input.
-  const nodeChannelCount = source.channelCount || 1;
+  const nodeChannelCount = reported > (source.channelCount || 1)
+    ? widenInputSource(source, reported)
+    : source.channelCount || 1;
   return {
     stream,
     source,

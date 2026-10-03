@@ -159,7 +159,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
 
         {channelCount !== null && channelCount <= 2 ? (
           <p className="rounded-xl border border-border bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-            This browser opened {channelCount} input{channelCount === 1 ? "" : "s"} on {selected?.label || "this interface"}. Audio MIDI Setup may list more. Open Live Mode in Safari on the booth Mac so each board input stays separate.
+            This browser opened {selected?.label || "this interface"} as {channelCount === 1 ? "a single channel" : "a stereo pair"}. In Audio MIDI Setup, set that input to 48 channels at 48 kHz, then reload Live in Safari.
           </p>
         ) : null}
 
