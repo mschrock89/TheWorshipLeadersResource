@@ -1,6 +1,6 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
-import { openSystemInput, splitterChannelCount } from "./systemAudioInputs.ts";
-import { phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
+import { ensureTalkbackTap, openSystemInput, splitterChannelCount, TALKBACK_TAP_NAME } from "./systemAudioInputs.ts";
+import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
 
 export type TalkbackCaptureChannel = {
   id: string;
@@ -30,6 +30,126 @@ type ActiveUtterance = {
   lastVoiceAt: number;
 };
 
+type TapMessage = {
+  channelCount?: number;
+  rate?: number;
+  channels?: Array<{ index: number; rms: number; samples: Float32Array }>;
+};
+
+async function watchTalkbackTap(
+  context: AudioContext,
+  source: MediaStreamAudioSourceNode,
+  channels: TalkbackCaptureChannel[],
+  handlers: CaptureHandlers,
+  isStopped: () => boolean,
+  cleanups: Array<() => void>,
+  timers: number[],
+) {
+  if (!(await ensureTalkbackTap(context))) return false;
+  const node = new AudioWorkletNode(context, TALKBACK_TAP_NAME);
+  try {
+    node.channelInterpretation = "discrete";
+    node.channelCountMode = "max";
+  } catch {
+    // The node keeps its default channel layout.
+  }
+  const silent = context.createGain();
+  silent.gain.value = 0;
+  source.connect(node);
+  node.connect(silent);
+  silent.connect(context.destination);
+  node.port.postMessage({ watch: channels.map((channel) => channel.channelIndex) });
+
+  const floors = new Map<string, number>();
+  const phrases = new Map<string, ChannelPhrase>();
+  const phase = new Map<string, TalkbackCaptureStatus>();
+  let seenChannels = 0;
+
+  const setPhase = (channelId: string, next: TalkbackCaptureStatus, message?: string) => {
+    if (phase.get(channelId) === next && !message) return;
+    phase.set(channelId, next);
+    handlers.onStatus(channelId, next, message);
+  };
+
+  for (const channel of channels) {
+    phase.set(channel.id, "listening");
+    handlers.onStatus(channel.id, "listening");
+  }
+
+  const flush = (channelId: string, phrase: ChannelPhrase) => {
+    phrases.delete(channelId);
+    const wav = encodeMonoWav(concatFloats(phrase.chunks), WAV_RATE);
+    if (wav.size < 1500 || isStopped()) return;
+    void handlers
+      .transcribe(wav)
+      .then((text) => {
+        if (!isStopped() && text.trim()) handlers.onTranscript(channelId, text);
+      })
+      .catch((error: unknown) => {
+        if (isStopped()) return;
+        const message = error instanceof Error ? error.message : "Transcription failed.";
+        setPhase(channelId, "error", message);
+      });
+  };
+
+  node.port.onmessage = (event: MessageEvent<TapMessage>) => {
+    if (isStopped()) return;
+    const count = event.data?.channelCount || 0;
+    if (count > seenChannels) seenChannels = count;
+    const rate = event.data?.rate || context.sampleRate || 48000;
+    const now = performance.now();
+    for (const heard of event.data?.channels || []) {
+      const channel = channels.find((entry) => entry.channelIndex === heard.index);
+      if (!channel) continue;
+      const level = heard.rms || 0;
+      const open = phrases.get(channel.id);
+      const floor = floors.get(channel.id) || 0;
+      const speaking = phraseLevelIsVoice(level, Boolean(open), floor);
+      if (!speaking) floors.set(channel.id, nextNoiseFloor(floor, level, false));
+      handlers.onLevel(channel.id, Math.max(0, level - floor));
+      if (speaking) {
+        setPhase(channel.id, "hearing");
+        const piece = downsampleMono(heard.samples, rate, WAV_RATE);
+        if (!open) phrases.set(channel.id, { chunks: [piece], startedAt: now, lastVoiceAt: now });
+        else {
+          open.chunks.push(piece);
+          open.lastVoiceAt = now;
+        }
+      }
+      const phrase = phrases.get(channel.id);
+      if (!phrase) {
+        if (!speaking && phase.get(channel.id) === "hearing") setPhase(channel.id, "listening");
+        continue;
+      }
+      if (shouldTranscribePhrase(now - phrase.startedAt, now - phrase.lastVoiceAt)) {
+        flush(channel.id, phrase);
+        if (!speaking) setPhase(channel.id, "listening");
+      }
+    }
+  };
+
+  timers.push(
+    window.setTimeout(() => {
+      if (isStopped() || seenChannels < 1) return;
+      for (const channel of channels) {
+        if (channel.channelIndex < seenChannels) continue;
+        setPhase(
+          channel.id,
+          "error",
+          `This browser can only separate the first ${seenChannels} inputs on this interface.`,
+        );
+      }
+    }, 500),
+  );
+
+  cleanups.push(() => {
+    node.port.onmessage = null;
+    node.disconnect();
+    silent.disconnect();
+  });
+  return true;
+}
+
 function preferredMimeType() {
   if (typeof MediaRecorder === "undefined") return "";
   if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus";
@@ -43,6 +163,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
   const streams: MediaStream[] = [];
   const timers: number[] = [];
   const readers: ReadableStreamDefaultReader<AudioPlaneFrame>[] = [];
+  const cleanups: Array<() => void> = [];
   const recorders = new Map<string, ActiveUtterance>();
   const context = handlers.audioContext;
 
@@ -58,6 +179,13 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
       }
     }
     recorders.clear();
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch {
+        // The audio graph is already closed.
+      }
+    }
     for (const reader of readers) void reader.cancel().catch(() => undefined);
     for (const stream of streams) stream.getTracks().forEach((track) => track.stop());
   };
@@ -86,6 +214,10 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
         if (stopped) {
           opened.release();
           return;
+        }
+        if (opened.source && (await watchTalkbackTap(context, opened.source, channels, handlers, () => stopped, cleanups, timers))) {
+          cleanups.push(opened.release);
+          continue;
         }
         let source = opened.source;
         let reported = opened.channelCount;

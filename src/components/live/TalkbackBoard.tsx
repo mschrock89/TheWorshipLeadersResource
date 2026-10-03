@@ -328,7 +328,7 @@ export function TalkbackBoard({
         {channels.map((channel, index) => {
           const channelStatus = status[channel.id];
           const binding = armed.find((entry) => entry.id === channel.id);
-          const level = Math.min(1, (channelStatus?.level || 0) / 0.18);
+          const level = Math.min(1, (channelStatus?.level || 0) / 0.06);
           const tone = speakerTone(index);
           const hearing = channelStatus?.phase === "hearing";
           return (

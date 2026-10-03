@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { splitterChannelCount, widenInputSource } from "./systemAudioInputs.ts";
-import { phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
+import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase } from "./talkbackPhrase.ts";
 import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
 
 test("holds a phrase open through a mid-phrase pause", () => {
@@ -25,17 +25,35 @@ test("keeps soft speech inside an open phrase", () => {
   assert.equal(phraseLevelIsVoice(0.009, true), false);
 });
 
-test("widens a stereo input node to the interface channel count", () => {
+test("ignores hiss that never rises above the channel noise floor", () => {
+  assert.equal(phraseLevelIsVoice(0.02, false, 0.01), false);
+  assert.equal(phraseLevelIsVoice(0.04, false, 0.01), true);
+  assert.equal(nextNoiseFloor(0.01, 0.01, true), 0.01);
+});
+
+test("widens a node only when it can hold every reported channel", () => {
   const source = {
     channelCount: 2,
     maxChannelCount: 32,
     channelCountMode: "max",
     channelInterpretation: "speakers",
   };
-  assert.equal(widenInputSource(source as unknown as AudioNode, 48), 32);
-  assert.equal(source.channelCount, 32);
+  assert.equal(widenInputSource(source as unknown as AudioNode, 16), 16);
+  assert.equal(source.channelCount, 16);
   assert.equal(source.channelCountMode, "explicit");
   assert.equal(source.channelInterpretation, "discrete");
+});
+
+test("does not clamp a 48-channel track onto a smaller explicit count", () => {
+  const source = {
+    channelCount: 2,
+    maxChannelCount: 32,
+    channelCountMode: "max",
+    channelInterpretation: "speakers",
+  };
+  assert.equal(widenInputSource(source as unknown as AudioNode, 48), 2);
+  assert.equal(source.channelCount, 2);
+  assert.equal(source.channelCountMode, "max");
 });
 
 test("keeps the node stereo when it refuses a wider channel count", () => {
@@ -54,7 +72,7 @@ test("keeps the node stereo when it refuses a wider channel count", () => {
   };
   assert.equal(widenInputSource(source as unknown as AudioNode, 48), 2);
   assert.equal(source.channelCountMode, "max");
-  assert.equal(source.channelInterpretation, "discrete");
+  assert.equal(source.channelInterpretation, "speakers");
 });
 
 test("splits a 48-input track even when the audio node still says stereo", () => {
