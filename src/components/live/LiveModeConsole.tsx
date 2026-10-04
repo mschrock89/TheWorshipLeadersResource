@@ -16,7 +16,13 @@ import { cn } from "@/lib/cn";
 import { liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import { readSmpteBinding } from "@/lib/audioRouting";
 import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
-import { buildTimecodeWindows, matchTimecodeWindow, type TimecodeWindow } from "@/lib/serviceFlowTimecode";
+import {
+  buildTimecodeWindows,
+  followTimecodeItem,
+  matchTimecodeWindow,
+  videoSlotForItem,
+  type TimecodeWindow,
+} from "@/lib/serviceFlowTimecode";
 import { startSmpteCapture } from "@/lib/smpteCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
@@ -263,6 +269,7 @@ export function LiveModeConsole({
     windows: [] as TimecodeWindow[],
     fps: 30,
     currentId: null as string | null,
+    suppressItemId: null as string | null,
     lastSend: 0,
     lastUi: 0,
     lastFrameAt: 0,
@@ -328,12 +335,17 @@ export function LiveModeConsole({
           state.fps = stamp.fps;
           state.windows = buildTimecodeWindows(flowItemsRef.current, stamp.fps);
         }
-        const match = matchTimecodeWindow(state.windows, smpteSortKey(stamp, stamp.fps));
+        const key = smpteSortKey(stamp, stamp.fps);
+        const match = matchTimecodeWindow(state.windows, key);
+        const decision = state.follow
+          ? followTimecodeItem(flowItemsRef.current, state.windows, state, key, stamp.fps)
+          : null;
+        if (decision) state.suppressItemId = decision.suppressItemId;
         const label = formatSmpte(stamp);
-        const itemChanged = Boolean(state.follow && match && match.itemId !== state.currentId);
-        if (itemChanged && match) {
-          state.currentId = match.itemId;
-          state.setItem(match.itemId);
+        const itemChanged = Boolean(decision?.changed && decision.itemId);
+        if (itemChanged && decision?.itemId) {
+          state.currentId = decision.itemId;
+          state.setItem(decision.itemId);
         }
         if (nowMs - state.lastUi > 80) {
           state.lastUi = nowMs;
@@ -365,6 +377,43 @@ export function LiveModeConsole({
       stop();
     };
   }, [audioContext, bindingRevision, isTimecodeHost]);
+
+  const videoSlotRef = useRef<{
+    itemId: string;
+    nextItemId: string;
+    startedAt: number;
+    durationMs: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isTimecodeHost || !followTimecode || station !== "foh") {
+      videoSlotRef.current = null;
+      return;
+    }
+    const slot = videoSlotForItem(items, live.session?.current_item_id || null);
+    if (!slot) return;
+    const existing = videoSlotRef.current;
+    if (!existing || existing.itemId !== slot.itemId) {
+      videoSlotRef.current = {
+        itemId: slot.itemId,
+        nextItemId: slot.nextItemId,
+        startedAt: performance.now(),
+        durationMs: slot.durationSeconds * 1000,
+      };
+    } else {
+      existing.nextItemId = slot.nextItemId;
+      existing.durationMs = slot.durationSeconds * 1000;
+    }
+    const pending = videoSlotRef.current;
+    const remaining = pending.durationMs - (performance.now() - pending.startedAt);
+    const timer = window.setTimeout(() => {
+      const state = timecodeTrack.current;
+      if (!state.follow || state.currentId !== pending.itemId) return;
+      state.suppressItemId = pending.itemId;
+      state.currentId = pending.nextItemId;
+      state.setItem(pending.nextItemId);
+    }, Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id, station]);
 
   const remoteListening =
     !!live.session?.listener_client_id &&

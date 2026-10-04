@@ -4,8 +4,10 @@ import { smpteSortKey } from "./smpteLtc.ts";
 import {
   buildTimecodeWindows,
   flowTimecodeLabels,
+  followTimecodeItem,
   matchTimecodeWindow,
   parseNoteTimecode,
+  videoSlotForItem,
 } from "./serviceFlowTimecode.ts";
 
 const song = {
@@ -113,7 +115,7 @@ test("assigns Pre-Roll and PSA videos SMPTE notes clear of the songs", () => {
   const labels = flowTimecodeLabels(items);
   assert.equal(labels.get("preroll"), "TC 02:00:00:00");
   assert.equal(labels.get("psa"), "TC 02:10:00:00");
-  assert.equal(labels.get("bumper"), undefined);
+  assert.equal(labels.get("bumper"), "TC 02:20:00:00");
   assert.equal(labels.get("song"), "TC 01:00:00:00");
 
   const windows = buildTimecodeWindows(items, 30);
@@ -125,6 +127,54 @@ test("assigns Pre-Roll and PSA videos SMPTE notes clear of the songs", () => {
     matchTimecodeWindow(windows, smpteSortKey({ hours: 2, minutes: 10, seconds: 10, frames: 0 }, 30))?.itemId,
     "psa",
   );
+});
+
+test("moves to the next line when a ProPresenter video slot ends", () => {
+  const items = [
+    { id: "preroll", item_type: "item", title: "Pre-Roll Video", notes: null, duration_seconds: 224 },
+    { id: "welcome", item_type: "item", title: "Jalen Taylor", notes: null, duration_seconds: 30 },
+    { id: "psa", item_type: "item", title: "PSA Video", notes: null, duration_seconds: 45 },
+    { id: "host", item_type: "item", title: "Jalen Taylor", notes: null, duration_seconds: 120 },
+    { id: "header", item_type: "header", title: "LESSON", notes: null, duration_seconds: null },
+    { id: "bumper", item_type: "item", title: "Bumper Video", notes: null, duration_seconds: 80 },
+    { id: "teacher", item_type: "item", title: "Corey", notes: null, duration_seconds: 2700 },
+  ];
+  assert.equal(videoSlotForItem(items, "welcome"), null);
+  assert.equal(videoSlotForItem(items, "teacher"), null);
+  assert.deepEqual(videoSlotForItem(items, "bumper"), {
+    itemId: "bumper",
+    nextItemId: "teacher",
+    durationSeconds: 80,
+  });
+
+  const windows = buildTimecodeWindows(items, 30);
+  const inside = smpteSortKey({ hours: 2, minutes: 1, seconds: 0, frames: 0 }, 30);
+  const held = followTimecodeItem(items, windows, { currentId: "preroll", suppressItemId: null }, inside, 30);
+  assert.equal(held.itemId, "preroll");
+  assert.equal(held.changed, false);
+
+  const afterPreroll = smpteSortKey({ hours: 2, minutes: 3, seconds: 44, frames: 0 }, 30);
+  const handoff = followTimecodeItem(items, windows, { currentId: "preroll", suppressItemId: null }, afterPreroll, 30);
+  assert.equal(handoff.itemId, "welcome");
+  assert.equal(handoff.suppressItemId, "preroll");
+
+  const stillHolding = followTimecodeItem(
+    items,
+    windows,
+    { currentId: "welcome", suppressItemId: "preroll" },
+    inside,
+    30,
+  );
+  assert.equal(stillHolding.itemId, "welcome");
+  assert.equal(stillHolding.changed, false);
+
+  const psa = smpteSortKey({ hours: 2, minutes: 10, seconds: 1, frames: 0 }, 30);
+  const nextVideo = followTimecodeItem(items, windows, { currentId: "welcome", suppressItemId: "preroll" }, psa, 30);
+  assert.equal(nextVideo.itemId, "psa");
+
+  const afterBumper = smpteSortKey({ hours: 2, minutes: 21, seconds: 20, frames: 0 }, 30);
+  const lesson = followTimecodeItem(items, windows, { currentId: "bumper", suppressItemId: null }, afterBumper, 30);
+  assert.equal(lesson.itemId, "teacher");
 });
 
 test("hands a note without a duration to the next SMPTE cue", () => {

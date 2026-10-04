@@ -89,7 +89,30 @@ export function propresenterVideoTimecode(title: string | null | undefined): Smp
   if (/\bpsa\b/.test(normalized)) {
     return { hours: 2, minutes: 10, seconds: 0, frames: 0 };
   }
+  if (/\bbumper\b/.test(normalized)) {
+    return { hours: 2, minutes: 20, seconds: 0, frames: 0 };
+  }
   return null;
+}
+
+export function nextFlowItemId(items: TimecodeFlowItem[], itemId: string) {
+  const index = items.findIndex((item) => item.id === itemId);
+  if (index < 0) return null;
+  for (let cursor = index + 1; cursor < items.length; cursor += 1) {
+    if (items[cursor].item_type === "header") continue;
+    return items[cursor].id;
+  }
+  return null;
+}
+
+export function videoSlotForItem(items: TimecodeFlowItem[], itemId: string | null) {
+  if (!itemId) return null;
+  const item = items.find((entry) => entry.id === itemId);
+  if (!item || !propresenterVideoTimecode(item.title)) return null;
+  if (!item.duration_seconds || item.duration_seconds <= 0) return null;
+  const nextItemId = nextFlowItemId(items, item.id);
+  if (!nextItemId) return null;
+  return { itemId: item.id, nextItemId, durationSeconds: item.duration_seconds };
 }
 
 export function flowTimecodeCues(items: TimecodeFlowItem[]) {
@@ -155,4 +178,48 @@ export function matchTimecodeWindow(windows: TimecodeWindow[], key: number) {
     itemId: best.itemId,
     progress: Math.min(1, Math.max(0, (key - best.start) / span)),
   };
+}
+
+export type TimecodeFollowState = {
+  currentId: string | null;
+  suppressItemId: string | null;
+};
+
+export function followTimecodeItem(
+  items: TimecodeFlowItem[],
+  windows: TimecodeWindow[],
+  state: TimecodeFollowState,
+  key: number,
+  fps: number,
+) {
+  const rate = fps > 0 ? fps : 30;
+  let suppressItemId = state.suppressItemId;
+  if (suppressItemId) {
+    const suppressed = windows.find((window) => window.itemId === suppressItemId);
+    const restarted = suppressed && key >= suppressed.start && key < suppressed.start + rate;
+    if (!suppressed || key < suppressed.start || key >= suppressed.end || restarted) {
+      suppressItemId = null;
+    }
+  }
+
+  const match = matchTimecodeWindow(windows, key);
+  if (match && match.itemId !== suppressItemId) {
+    return {
+      itemId: match.itemId,
+      suppressItemId,
+      changed: match.itemId !== state.currentId,
+    };
+  }
+
+  const slot = videoSlotForItem(items, state.currentId);
+  const window = slot ? windows.find((entry) => entry.itemId === slot.itemId) : null;
+  if (slot && window && key >= window.end) {
+    return {
+      itemId: slot.nextItemId,
+      suppressItemId: slot.itemId,
+      changed: slot.nextItemId !== state.currentId,
+    };
+  }
+
+  return { itemId: state.currentId, suppressItemId, changed: false };
 }
