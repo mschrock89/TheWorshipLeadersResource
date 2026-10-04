@@ -3,15 +3,16 @@ import test from "node:test";
 import { captureUsesWorklet, inputRequestAttempts, splitterChannelCount, talkbackTapAttempts, talkbackTapOptionSets, talkbackTapOptions, widenInputSource } from "./systemAudioInputs.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
+import { encodePcm16Base64 } from "./talkbackPcm.ts";
 
-test("holds a phrase open through a mid-phrase pause", () => {
-  assert.equal(shouldTranscribePhrase(2000, 700), false);
-  assert.equal(shouldTranscribePhrase(2000, 1199), false);
+test("holds a phrase open through a short breath", () => {
+  assert.equal(shouldTranscribePhrase(2000, 200), false);
+  assert.equal(shouldTranscribePhrase(2000, 379), false);
 });
 
 test("sends the phrase once the speaker has finished", () => {
-  assert.equal(shouldTranscribePhrase(1800, 1200), true);
-  assert.equal(shouldTranscribePhrase(400, 1200), false);
+  assert.equal(shouldTranscribePhrase(1800, 380), true);
+  assert.equal(shouldTranscribePhrase(279, 380), false);
 });
 
 test("cuts only after the phrase has run the full safety limit", () => {
@@ -117,6 +118,18 @@ test("downsamples a multichannel frame to the transcription rate", () => {
   const samples = new Float32Array([0, 0.5, 1, 0.5, 0, -0.5]);
   const down = downsampleMono(samples, 48000, 16000);
   assert.equal(down.length, 2);
+});
+
+test("packs live talkback audio as 16-bit little-endian pcm", () => {
+  const encoded = encodePcm16Base64(new Float32Array([0, 1, -1]));
+  const binary = atob(encoded);
+  assert.equal(binary.length, 6);
+  assert.equal(binary.charCodeAt(0), 0);
+  assert.equal(binary.charCodeAt(1), 0);
+  assert.equal(binary.charCodeAt(2), 0xff);
+  assert.equal(binary.charCodeAt(3), 0x7f);
+  assert.equal(binary.charCodeAt(4), 0x00);
+  assert.equal(binary.charCodeAt(5), 0x80);
 });
 
 test("writes a mono wav small enough to transcribe", async () => {

@@ -3,8 +3,8 @@ const PHRASE_HOLD_RMS = 0.01;
 // Stay under the hold threshold so a quiet word is still recorded, while silence
 // does not copy PCM onto the main thread.
 export const TALKBACK_SAMPLE_FLOOR = 0.008;
-const PHRASE_END_SILENCE_MS = 1200;
-const MIN_PHRASE_MS = 450;
+const PHRASE_END_SILENCE_MS = 380;
+const MIN_PHRASE_MS = 280;
 const MAX_PHRASE_MS = 12000;
 
 export function phraseLevelIsVoice(level: number, phraseOpen: boolean, floor = 0): boolean {

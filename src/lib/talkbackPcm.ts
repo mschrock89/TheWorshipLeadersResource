@@ -66,3 +66,19 @@ export function encodeMonoWavBytes(samples: Float32Array, sampleRate: number) {
 export function encodeMonoWav(samples: Float32Array, sampleRate: number) {
   return new Blob([encodeMonoWavBytes(samples, sampleRate)], { type: "audio/wav" });
 }
+
+export function encodePcm16Base64(samples: Float32Array) {
+  if (samples.length === 0) return "";
+  const bytes = new Uint8Array(samples.length * 2);
+  const view = new DataView(bytes.buffer);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index] || 0));
+    view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  let binary = "";
+  const step = 0x8000;
+  for (let index = 0; index < bytes.length; index += step) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + step));
+  }
+  return btoa(binary);
+}

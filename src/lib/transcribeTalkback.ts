@@ -7,6 +7,10 @@ const SUPABASE_FUNCTIONS_URL = USE_SUPABASE_DEV_PROXY
   : `${REMOTE_SUPABASE_URL}/functions/v1`;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+export function talkbackFunctionUrl(name: string) {
+  return `${SUPABASE_FUNCTIONS_URL}/${name}`;
+}
+
 export async function transcribeTalkbackChunk(blob: Blob): Promise<string> {
   const {
     data: { session },
@@ -19,7 +23,7 @@ export async function transcribeTalkbackChunk(blob: Blob): Promise<string> {
   const extension = blob.type.includes("mp4") ? "m4a" : blob.type.includes("wav") ? "wav" : "webm";
   form.append("file", blob, `talkback.${extension}`);
 
-  const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/transcribe-talkback`, {
+  const response = await fetch(talkbackFunctionUrl("transcribe-talkback"), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${session.access_token}`,

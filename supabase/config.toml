@@ -206,6 +206,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/transcribe-talkback/index.ts"
 
+[functions.talkback-live-session]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/talkback-live-session/index.ts"
+
 [functions.cancel-push-notification]
 enabled = true
 verify_jwt = true

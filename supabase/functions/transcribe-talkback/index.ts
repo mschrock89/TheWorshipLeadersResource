@@ -38,9 +38,8 @@ Deno.serve(async (req) => {
 
     const whisper = new FormData();
     whisper.append("file", file, file.name || "talkback.webm");
-    whisper.append("model", "whisper-1");
+    whisper.append("model", "gpt-4o-mini-transcribe");
     whisper.append("language", "en");
-    whisper.append("temperature", "0");
     whisper.append("response_format", "json");
     whisper.append(
       "prompt",
