@@ -13,7 +13,7 @@ import {
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { isFohListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import { readAudioChannelCount, readAudioInterfaceId, readSmpteListens, type SmpteSource } from "@/lib/audioRouting";
 import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
 import {
@@ -237,13 +237,36 @@ export function LiveModeConsole({
     return () => window.clearInterval(timer);
   }, [queryClient]);
 
+  const listeningRef = useRef(listening);
+  listeningRef.current = listening;
+  const audioContextRef = useRef(audioContext);
+  audioContextRef.current = audioContext;
+
+  const releaseListener = live.releaseListener;
+  const heartbeatListener = live.heartbeatListener;
+
+  const stopListening = () => {
+    setListening(false);
+    void audioContextRef.current?.close();
+    setAudioContext(null);
+    void releaseListener();
+  };
+
   useEffect(() => {
-    if (!listening) return;
+    if (station === "foh" || !listeningRef.current) return;
+    setListening(false);
+    void audioContextRef.current?.close();
+    setAudioContext(null);
+    void releaseListener();
+  }, [releaseListener, station]);
+
+  useEffect(() => {
+    if (!listening || station !== "foh") return;
     const timer = window.setInterval(() => {
-      void live.heartbeatListener();
+      void heartbeatListener();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [listening, live.heartbeatListener]);
+  }, [heartbeatListener, listening, station]);
 
   const sawOwnClaim = useRef(false);
   useEffect(() => {
@@ -435,11 +458,7 @@ export function LiveModeConsole({
     return () => window.clearTimeout(timer);
   }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id, station]);
 
-  const remoteListening =
-    !!live.session?.listener_client_id &&
-    live.session.listener_client_id !== live.clientId &&
-    !!live.session.listener_heartbeat &&
-    Date.now() - new Date(live.session.listener_heartbeat).getTime() < 20_000;
+  const fohHosting = isFohListenerHosting(live.session, now.getTime());
 
   const calendarHref = `/calendar?date=${serviceDate}&campus=${campusId}&ministry=${ministryType}`;
   const activeChatRoom: LiveChatRoom = videoOnly ? "video" : chatRoom;
@@ -608,7 +627,6 @@ export function LiveModeConsole({
                   onClick={() => {
                     setStation(option);
                     writeLiveStation(option);
-                    if (listening) void live.claimListener(option);
                   }}
                   className={cn(
                     "rounded-md px-3 py-1.5 text-sm font-bold",
@@ -619,28 +637,38 @@ export function LiveModeConsole({
                 </button>
               ))}
             </div>
-            <Button
-              type="button"
-              variant={listening ? "secondary" : "default"}
-              className="h-10"
-              onClick={() => {
-                if (listening) {
-                  setListening(false);
-                  void audioContext?.close();
-                  setAudioContext(null);
-                  void live.releaseListener();
-                  return;
-                }
-                const context = createInputAudioContext();
-                void context.resume();
-                setAudioContext(context);
-                setListening(true);
-                void live.claimListener(station);
-              }}
-            >
-              <Radio className={cn("h-4 w-4", listening && "text-primary")} />
-              {listening ? "Stop" : "Listen"}
-            </Button>
+            {station === "foh" ? (
+              <Button
+                type="button"
+                variant={listening ? "secondary" : "default"}
+                className="h-10"
+                onClick={() => {
+                  if (listening) {
+                    stopListening();
+                    return;
+                  }
+                  const context = createInputAudioContext();
+                  void context.resume();
+                  setAudioContext(context);
+                  setListening(true);
+                  void live.claimListener();
+                }}
+              >
+                <Radio className={cn("h-4 w-4", listening && "text-primary")} />
+                {listening ? "Stop" : "Listen"}
+              </Button>
+            ) : (
+              <div
+                className={cn(
+                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-semibold",
+                  fohHosting ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground",
+                )}
+                aria-live="polite"
+              >
+                <Radio className={cn("h-4 w-4", fohHosting && "text-primary")} />
+                {fohHosting ? "Following FOH" : "Waiting for FOH"}
+              </div>
+            )}
             {station === "foh" ? (
               <Button
                 type="button"
@@ -731,11 +759,15 @@ export function LiveModeConsole({
           <div className="shrink-0 border-b border-border px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {ministryLabel} · {serviceLabel}
-              {remoteListening && live.session?.listener_station
-                ? ` · ${liveStationLabel(live.session.listener_station === "mon" ? "mon" : "foh")} is listening`
+              {station === "mon"
+                ? fohHosting
+                  ? " · Following FOH"
+                  : ""
                 : listening
                   ? " · This screen is listening"
-                  : ""}
+                  : fohHosting
+                    ? " · FOH is listening"
+                    : ""}
             </p>
             <p className="mt-1 text-2xl font-bold leading-tight">
               {cue.currentTitle || "Cue the service flow"}

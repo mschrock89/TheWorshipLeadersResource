@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   hasProductionLiveAssignment,
   hasVideoLiveAssignment,
+  isFohListenerHosting,
   liveChatRoomOf,
   resolveLiveAudience,
   rmsFromTimeDomain,
@@ -50,6 +51,43 @@ test("recognizes video ministry and camera positions", () => {
   assert.equal(hasVideoLiveAssignment([{ position: "director" }]), true);
   assert.equal(hasVideoLiveAssignment([{ ministry_type: "weekend", position: "vocalist" }]), false);
   assert.equal(hasVideoLiveAssignment([{ position: "sound_tech" }]), false);
+});
+
+test("treats a fresh FOH listener as the host and ignores MON", () => {
+  const now = Date.parse("2026-10-04T12:00:00.000Z");
+  assert.equal(
+    isFohListenerHosting(
+      {
+        listener_client_id: "foh-screen",
+        listener_station: "foh",
+        listener_heartbeat: "2026-10-04T11:59:50.000Z",
+      },
+      now,
+    ),
+    true,
+  );
+  assert.equal(
+    isFohListenerHosting(
+      {
+        listener_client_id: "mon-screen",
+        listener_station: "mon",
+        listener_heartbeat: "2026-10-04T11:59:50.000Z",
+      },
+      now,
+    ),
+    false,
+  );
+  assert.equal(
+    isFohListenerHosting(
+      {
+        listener_client_id: "foh-screen",
+        listener_station: "foh",
+        listener_heartbeat: "2026-10-04T11:59:00.000Z",
+      },
+      now,
+    ),
+    false,
+  );
 });
 
 test("keeps the video chat room separate from production", () => {

@@ -136,6 +136,23 @@ export function liveStationLabel(station: LiveStation) {
   return station === "foh" ? "FOH" : "MON";
 }
 
+const FOH_LISTENER_FRESH_MS = 20_000;
+
+export function isFohListenerHosting(
+  session: {
+    listener_client_id?: string | null;
+    listener_station?: string | null;
+    listener_heartbeat?: string | null;
+  } | null | undefined,
+  nowMs: number,
+) {
+  if (!session?.listener_client_id || session.listener_station !== "foh" || !session.listener_heartbeat) {
+    return false;
+  }
+  const heartbeat = new Date(session.listener_heartbeat).getTime();
+  return Number.isFinite(heartbeat) && nowMs - heartbeat < FOH_LISTENER_FRESH_MS;
+}
+
 export function readLiveStation(): LiveStation {
   if (typeof window === "undefined") return "foh";
   const stored = window.localStorage.getItem(STATION_KEY);

@@ -11,7 +11,6 @@ import {
   sanitizeTalkbackTranscript,
   shouldDropRepeat,
   type LiveChatRoom,
-  type LiveStation,
 } from "@/lib/liveMode";
 
 export type LiveSessionRow = Database["public"]["Tables"]["live_sessions"]["Row"];
@@ -288,12 +287,12 @@ export function useLiveSession({
   );
 
   const claimListener = useCallback(
-    async (station: LiveStation) => {
+    async () => {
       if (!sessionId) return;
       const listener_heartbeat = new Date().toISOString();
       const patch = {
         listener_client_id: clientId,
-        listener_station: station,
+        listener_station: "foh" as const,
         listener_heartbeat,
       };
       patchSession(patch);
