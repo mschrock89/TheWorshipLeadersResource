@@ -103,6 +103,30 @@ test("assigns Playback songs every ten minutes from 01:00:00:00", () => {
   );
 });
 
+test("assigns Pre-Roll and PSA videos SMPTE notes clear of the songs", () => {
+  const items = [
+    { id: "preroll", item_type: "item", title: "Pre-Roll Video", notes: null, duration_seconds: 224 },
+    { id: "psa", item_type: "item", title: "PSA Video", notes: null, duration_seconds: 45 },
+    { id: "bumper", item_type: "item", title: "Bumper Video", notes: null, duration_seconds: 80 },
+    { id: "song", item_type: "song", title: "Battle Belongs", notes: null, duration_seconds: 281 },
+  ];
+  const labels = flowTimecodeLabels(items);
+  assert.equal(labels.get("preroll"), "TC 02:00:00:00");
+  assert.equal(labels.get("psa"), "TC 02:10:00:00");
+  assert.equal(labels.get("bumper"), undefined);
+  assert.equal(labels.get("song"), "TC 01:00:00:00");
+
+  const windows = buildTimecodeWindows(items, 30);
+  assert.equal(
+    matchTimecodeWindow(windows, smpteSortKey({ hours: 2, minutes: 1, seconds: 0, frames: 0 }, 30))?.itemId,
+    "preroll",
+  );
+  assert.equal(
+    matchTimecodeWindow(windows, smpteSortKey({ hours: 2, minutes: 10, seconds: 10, frames: 0 }, 30))?.itemId,
+    "psa",
+  );
+});
+
 test("hands a note without a duration to the next SMPTE cue", () => {
   const windows = buildTimecodeWindows(
     [

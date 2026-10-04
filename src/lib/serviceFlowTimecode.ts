@@ -5,6 +5,7 @@ export type TimecodeFlowItem = {
   item_type: string;
   notes: string | null;
   duration_seconds: number | null;
+  title?: string | null;
 };
 
 export type NoteTimecode = {
@@ -80,18 +81,35 @@ export function playbackTimecodeForSong(songIndex: number): SmpteParts {
   };
 }
 
+export function propresenterVideoTimecode(title: string | null | undefined): SmpteParts | null {
+  const normalized = (title || "").toLowerCase();
+  if (/\bpre[-\s]?roll\b/.test(normalized)) {
+    return { hours: 2, minutes: 0, seconds: 0, frames: 0 };
+  }
+  if (/\bpsa\b/.test(normalized)) {
+    return { hours: 2, minutes: 10, seconds: 0, frames: 0 };
+  }
+  return null;
+}
+
 export function flowTimecodeCues(items: TimecodeFlowItem[]) {
   const cues = new Map<string, NoteTimecode>();
   let songIndex = 0;
   for (const item of items) {
     if (item.item_type === "header") continue;
     const explicit = parseNoteTimecode(item.notes);
+    if (explicit) {
+      cues.set(item.id, explicit);
+      if (item.item_type === "song") songIndex += 1;
+      continue;
+    }
     if (item.item_type === "song") {
-      cues.set(item.id, explicit ?? { start: playbackTimecodeForSong(songIndex), end: null });
+      cues.set(item.id, { start: playbackTimecodeForSong(songIndex), end: null });
       songIndex += 1;
       continue;
     }
-    if (explicit) cues.set(item.id, explicit);
+    const video = propresenterVideoTimecode(item.title);
+    if (video) cues.set(item.id, { start: video, end: null });
   }
   return cues;
 }
