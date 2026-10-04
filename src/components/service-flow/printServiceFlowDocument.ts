@@ -50,6 +50,7 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
             <div class="item-main">
               <span class="item-title">${escapeHtml(item.title)}</span>
               ${metaParts.length > 0 ? `<span class="item-meta">${metaParts.join(" · ")}</span>` : ""}
+              ${item.smpte ? `<span class="item-notes">${escapeHtml(item.smpte)}</span>` : ""}
               ${item.notes ? `<span class="item-notes">${escapeHtml(item.notes)}</span>` : ""}
             </div>
             <span class="item-times">

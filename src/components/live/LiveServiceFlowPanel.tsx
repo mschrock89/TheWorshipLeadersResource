@@ -1,12 +1,23 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatDuration } from "@/components/service-flow/DurationInput";
+import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
+
+const SMPTE_VIEW_KEY = "wlr-live-smpte-view";
+
+function readSmpteView() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(SMPTE_VIEW_KEY) === "1";
+}
 
 type LiveServiceFlowPanelProps = {
   items: ServiceFlowItem[];
   titles?: Map<string, string>;
   clockTimes: Map<string, string>;
   currentItemId: string | null;
+  progress?: number | null;
+  timecodeHint?: string | null;
   isLoading: boolean;
   onSelect: (itemId: string | null) => void;
 };
@@ -35,9 +46,27 @@ export function LiveServiceFlowPanel({
   titles,
   clockTimes,
   currentItemId,
+  progress = null,
+  timecodeHint = null,
   isLoading,
   onSelect,
 }: LiveServiceFlowPanelProps) {
+  const currentRef = useRef<HTMLButtonElement | null>(null);
+  const [showSmpte, setShowSmpte] = useState(readSmpteView);
+  const smpteLabels = useMemo(() => flowTimecodeLabels(items), [items]);
+
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: "nearest" });
+  }, [currentItemId, showSmpte]);
+
+  const toggleSmpte = () => {
+    setShowSmpte((current) => {
+      const next = !current;
+      window.localStorage.setItem(SMPTE_VIEW_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
+
   if (isLoading) {
     return <p className="px-4 py-6 text-sm text-muted-foreground">Loading the service flow…</p>;
   }
@@ -50,7 +79,27 @@ export function LiveServiceFlowPanel({
   }
 
   return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+          {showSmpte ? "SMPTE notes" : "Service flow"}
+        </p>
+        <button
+          type="button"
+          aria-pressed={showSmpte}
+          onClick={toggleSmpte}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
+            showSmpte ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+          )}
+        >
+          SMPTE
+        </button>
+      </div>
     <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3">
+      {showSmpte && timecodeHint ? (
+        <li className="px-2 pb-1 text-xs text-muted-foreground">{timecodeHint}</li>
+      ) : null}
       {items.map((item) => {
         if (item.item_type === "header") {
           return (
@@ -70,10 +119,12 @@ export function LiveServiceFlowPanel({
         const clockTime = clockTimes.get(item.id) || "";
         const singers = isSong ? vocalistNames(item) : "";
         const title = itemTitle(item, titles);
-        const notes = item.notes?.trim() || "";
+        const smpteLabel = smpteLabels.get(item.id) || "";
+        const notes = notesWithoutTimecodeCue(item.notes);
         return (
           <li key={item.id}>
             <button
+              ref={isCurrent ? currentRef : undefined}
               type="button"
               onClick={() => onSelect(isCurrent ? null : item.id)}
               className={cn(
@@ -114,14 +165,26 @@ export function LiveServiceFlowPanel({
                   ) : null}
                 </span>
               ) : null}
+              {showSmpte && smpteLabel ? (
+                <span className="text-sm font-semibold tabular-nums text-primary">{smpteLabel}</span>
+              ) : null}
               {notes ? (
                 <span className="whitespace-pre-wrap text-xs text-muted-foreground">{notes}</span>
+              ) : null}
+              {isCurrent && progress != null ? (
+                <span className="mt-0.5 block h-1 overflow-hidden rounded-full bg-primary/20">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }}
+                  />
+                </span>
               ) : null}
             </button>
           </li>
         );
       })}
     </ol>
+    </div>
   );
 }
 

@@ -287,9 +287,30 @@ function tapModuleUrl() {
         super();
         this.watch = [];
         this.seen = 0;
+        this.smpte = -1;
+        this.smpteOffset = 0;
         this.port.onmessage = (event) => {
           if (Array.isArray(event.data?.watch)) this.watch = event.data.watch;
+          if (typeof event.data?.smpte === "number") this.smpte = event.data.smpte;
         };
+      }
+      captureSmpte(list) {
+        if (typeof this.smpte !== "number" || this.smpte < 0) return;
+        const data = list[this.smpte];
+        if (!data || data.length === 0) return;
+        if (!this.smpteBuf) this.smpteBuf = new Float32Array(Math.ceil(sampleRate * 0.05));
+        if (this.smpteOffset + data.length > this.smpteBuf.length) {
+          const grown = new Float32Array((this.smpteOffset + data.length) * 2);
+          grown.set(this.smpteBuf.subarray(0, this.smpteOffset));
+          this.smpteBuf = grown;
+        }
+        this.smpteBuf.set(data, this.smpteOffset);
+        this.smpteOffset += data.length;
+        const want = Math.max(128, Math.round(sampleRate * 0.02));
+        if (this.smpteOffset < want) return;
+        const samples = new Float32Array(this.smpteBuf.subarray(0, this.smpteOffset));
+        this.smpteOffset = 0;
+        this.port.postMessage({ smpte: true, rate: sampleRate, samples }, [samples.buffer]);
       }
       process(inputs) {
         const list = (inputs && inputs[0]) || [];
@@ -297,6 +318,7 @@ function tapModuleUrl() {
           this.seen = list.length;
           this.port.postMessage({ channelCount: list.length, rate: sampleRate, channels: [] });
         }
+        this.captureSmpte(list);
         if (!this.watch.length || list.length === 0) return true;
         if (!this.buckets) this.buckets = {};
         if (!this.blocks) this.blocks = 0;

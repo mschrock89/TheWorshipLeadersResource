@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { ServiceFlowItem } from "./ServiceFlowItem";
+import { flowTimecodeLabels } from "@/lib/serviceFlowTimecode";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
 import { buildServiceFlowPreview } from "./buildServiceFlowPreview";
@@ -982,6 +983,7 @@ export function CalendarServiceFlowPanel({
                   onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
                   clockTime={clockTimesByItemId.get(item.id)}
+                  smpteLabel={flowTimecodeLabels(localItems).get(item.id) || null}
                   isDragging={draggedItem?.id === item.id}
                 />
               </div>

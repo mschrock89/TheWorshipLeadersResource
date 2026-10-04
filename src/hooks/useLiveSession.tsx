@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -18,6 +19,15 @@ export type LiveTalkbackChannel = Database["public"]["Tables"]["live_talkback_ch
 export type LiveTalkbackLine = Database["public"]["Tables"]["live_talkback_lines"]["Row"];
 export type LiveChatMessage = Database["public"]["Tables"]["live_chat_messages"]["Row"];
 export type LiveSessionNotes = Database["public"]["Tables"]["live_session_notes"]["Row"];
+
+export type LiveTimecodeCue = {
+  itemId: string | null;
+  progress: number;
+  label: string;
+  fps: number;
+  at: number;
+  clientId: string;
+};
 
 type LiveSessionParams = {
   campusId: string | null;
@@ -68,6 +78,8 @@ export function useLiveSession({
   const resourceAppKey = getCurrentResourceAppKey();
   const clientId = useMemo(() => getLiveClientId(), []);
   const recentLines = useRef(new Map<string, { text: string; at: number }>());
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const [timecodeCue, setTimecodeCue] = useState<LiveTimecodeCue | null>(null);
 
   const sessionKey = useMemo(
     () => ["live-session", resourceAppKey, campusId, ministryType, serviceDate, customServiceId || null, draftSetId || null] as const,
@@ -184,6 +196,10 @@ export function useLiveSession({
   );
 
   useEffect(() => {
+    setTimecodeCue(null);
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!sessionId) return;
     const channel = supabase
       .channel(`live-mode-${sessionId}`)
@@ -240,12 +256,19 @@ export function useLiveSession({
           queryClient.setQueryData(notesKey, payload.new as LiveSessionNotes);
         },
       )
+      .on("broadcast", { event: "smpte" }, (message: { payload?: LiveTimecodeCue }) => {
+        const payload = message.payload;
+        if (!payload || payload.clientId === clientId) return;
+        setTimecodeCue((current) => (current && current.at > payload.at ? current : payload));
+      })
       .subscribe();
+    channelRef.current = channel;
 
     return () => {
+      if (channelRef.current === channel) channelRef.current = null;
       void supabase.removeChannel(channel);
     };
-  }, [appendChat, appendLine, channelsKey, chatKey, linesKey, notesKey, queryClient, sessionId, sessionKey]);
+  }, [appendChat, appendLine, channelsKey, chatKey, clientId, linesKey, notesKey, queryClient, sessionId, sessionKey]);
 
   const report = useCallback(
     (error: unknown, title: string) => {
@@ -308,6 +331,19 @@ export function useLiveSession({
       .eq("id", sessionId)
       .eq("listener_client_id", clientId);
   }, [clientId, patchSession, sessionId]);
+
+  const publishTimecode = useCallback(
+    (cue: Omit<LiveTimecodeCue, "clientId">) => {
+      const next = { ...cue, clientId };
+      setTimecodeCue(next);
+      void channelRef.current?.send({
+        type: "broadcast",
+        event: "smpte",
+        payload: next,
+      });
+    },
+    [clientId],
+  );
 
   const setCurrentItem = useCallback(
     async (itemId: string | null) => {
@@ -442,6 +478,8 @@ export function useLiveSession({
     chatMessages: chatQuery.data || [],
     currentUserId: user?.id ?? null,
     notes: notesQuery.data ?? null,
+    timecodeCue,
+    publishTimecode,
     isLoading: sessionQuery.isLoading || (!!sessionId && channelsQuery.isLoading),
     accessDenied: isForbidden(sessionQuery.error),
     schemaMissing: isMissingLiveSchema(sessionQuery.error),

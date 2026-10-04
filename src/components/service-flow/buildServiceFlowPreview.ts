@@ -2,6 +2,7 @@ import { MINISTRY_TYPES } from "@/lib/constants";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import type { Service, ServiceItem, ServiceSection } from "./ServiceFlow";
 import { formatTotalDuration } from "./DurationInput";
+import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 
 function isAnnouncementsContext(title: string, sectionTitle: string) {
   const compact = (value: string) =>
@@ -135,6 +136,7 @@ export function buildServiceFlowPreview(params: {
   };
 
   let totalDuration = 0;
+  const smpteLabels = flowTimecodeLabels(params.items);
 
   for (const item of params.items) {
     if (item.item_type === "header") {
@@ -164,7 +166,8 @@ export function buildServiceFlowPreview(params: {
       bpm: item.song?.bpm || undefined,
       key: item.song_key || undefined,
       leader: formatLeader(item),
-      notes: item.notes?.trim() || undefined,
+      smpte: smpteLabels.get(item.id),
+      notes: notesWithoutTimecodeCue(item.notes) || undefined,
     });
   }
 

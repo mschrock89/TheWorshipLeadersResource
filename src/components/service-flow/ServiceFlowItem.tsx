@@ -14,8 +14,18 @@ interface ServiceFlowItemProps {
   onDelete: (itemId: string) => void;
   displayTitle?: string;
   clockTime?: string | null;
+  smpteLabel?: string | null;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
+}
+
+function TimecodeNote({ label }: { label: string | null }) {
+  if (!label) return null;
+  return (
+    <p className="order-last basis-full pl-6 text-xs font-semibold tabular-nums text-muted-foreground">
+      {label}
+    </p>
+  );
 }
 
 function FlowItemNotes({
@@ -58,7 +68,7 @@ function FlowItemNotes({
           setDraft(notes || "");
           setEditing(true);
         }}
-        title={savedNotes ? "Edit note" : "Add note"}
+        title={savedNotes ? "Edit note or SMPTE cue" : "Add a note or SMPTE cue"}
         aria-label={savedNotes ? "Edit note" : "Add note"}
       >
         <StickyNote className="h-3.5 w-3.5" />
@@ -70,7 +80,7 @@ function FlowItemNotes({
               value={draft}
               autoFocus
               rows={2}
-              placeholder="Note for this service only"
+              placeholder="TC 01:00:00:00 or a note"
               className="min-h-[2.5rem] py-1.5 text-xs"
               onChange={(event) => setDraft(event.target.value)}
               onBlur={commit}
@@ -106,6 +116,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
   onDelete,
   displayTitle,
   clockTime,
+  smpteLabel = null,
   dragHandleProps,
   isDragging,
 }: ServiceFlowItemProps) {
@@ -293,6 +304,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
             )}
           </div>
         )}
+        <TimecodeNote label={smpteLabel} />
         <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
         <Button
           variant="ghost"
@@ -355,6 +367,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
           {resolvedTitle}
         </button>
       )}
+      <TimecodeNote label={smpteLabel} />
       <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
       <Button
         variant="ghost"

@@ -12,6 +12,7 @@ import {
   patchInput,
   readAudioInterfaceId,
   routingRows,
+  SMPTE_ROUTE_ID,
   writeAudioInterfaceId,
 } from "@/lib/audioRouting";
 import { readTalkbackBindings, writeTalkbackBindingStore } from "@/lib/liveMode";
@@ -32,10 +33,13 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
 
-  const targets = channels.map((channel) => ({
-    id: channel.id,
-    positionSlot: channel.position_slot,
-  }));
+  const targets = [
+    ...channels.map((channel) => ({
+      id: channel.id,
+      positionSlot: channel.position_slot,
+    })),
+    { id: SMPTE_ROUTE_ID, positionSlot: null },
+  ];
   const rows = deviceId && channelCount
     ? routingRows(channelCount, targets, readTalkbackBindings(), deviceId)
     : [];
@@ -100,13 +104,13 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
         </button>
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Audio routing</p>
-          <p className="truncate text-sm font-semibold">Match board inputs to talkback names</p>
+          <p className="truncate text-sm font-semibold">Match board inputs to talkback and timecode</p>
         </div>
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then assign each input number to a talkback.
+          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, assign talkback names, and assign Timecode to the input that carries SMPTE. ProPresenter and Playback can both feed that same input. Only one of them should be sending at a time.
         </p>
 
         <Button
@@ -174,6 +178,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unused">Unused</SelectItem>
+                    <SelectItem value={SMPTE_ROUTE_ID}>Timecode</SelectItem>
                     {channels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.id}>
                         {channel.label}

@@ -1,4 +1,5 @@
 const INTERFACE_KEY = "wlr-live-audio-interface";
+export const SMPTE_ROUTE_ID = "smpte";
 
 type TalkbackBinding = {
   deviceId: string;
@@ -28,6 +29,10 @@ export function readAudioInterfaceId(): string | null {
 
 export function writeAudioInterfaceId(deviceId: string) {
   window.localStorage.setItem(INTERFACE_KEY, deviceId);
+}
+
+export function readSmpteBinding(store: RoutingStore): { deviceId: string; channelIndex: number } | null {
+  return store.byChannelId[SMPTE_ROUTE_ID] || null;
 }
 
 export function routingRows(

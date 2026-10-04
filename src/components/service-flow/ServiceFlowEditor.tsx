@@ -56,6 +56,7 @@ import {
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { ServiceFlowItem } from "./ServiceFlowItem";
+import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewData } from "./ServiceFlow";
 import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 import { AddItemDialog } from "./AddItemDialog";
@@ -1194,6 +1195,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       return item.vocalist?.full_name || undefined;
     };
 
+    const smpteLabels = flowTimecodeLabels(localItems);
     localItems.forEach((item) => {
       if (item.item_type === "header") {
         currentSection = {
@@ -1215,7 +1217,8 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         bpm: item.song?.bpm || undefined,
         key: item.song_key || undefined,
         leader: formatLeader(item),
-        notes: item.notes?.trim() || undefined,
+        smpte: smpteLabels.get(item.id),
+        notes: notesWithoutTimecodeCue(item.notes) || undefined,
       });
     });
 
@@ -1414,6 +1417,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
                   onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
                   clockTime={clockTimesByItemId.get(item.id)}
+                  smpteLabel={flowTimecodeLabels(localItems).get(item.id) || null}
                   isDragging={draggedItem?.id === item.id}
                 />
               </div>

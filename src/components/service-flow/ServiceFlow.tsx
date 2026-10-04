@@ -14,6 +14,7 @@ export type ServiceItem = {
   key?: string;
   leader?: string;
   notes?: string;
+  smpte?: string;
 };
 
 export type ServiceSection = {
@@ -321,6 +322,11 @@ export const ServiceFlow = memo(function ServiceFlow({
                                     {item.leader}
                                   </p>
                                 ) : null}
+                                {item.smpte ? (
+                                  <p className="service-flow-print-item-notes print:min-w-0 print:shrink-0 print:whitespace-nowrap print:text-[10px] print:font-semibold print:leading-tight print:tabular-nums print:text-black/80">
+                                    {item.smpte}
+                                  </p>
+                                ) : null}
                                 {item.notes ? (
                                   <p className="service-flow-print-item-notes print:min-w-0 print:truncate print:text-[10px] print:leading-tight print:text-black/70">
                                     {item.notes}
@@ -352,6 +358,11 @@ export const ServiceFlow = memo(function ServiceFlow({
                                     <p className="mt-0.5 text-sm capitalize text-slate-600">
                                       {item.type}
                                     </p>
+                                    {item.smpte ? (
+                                      <p className="mt-1 text-sm font-semibold tabular-nums text-slate-700">
+                                        {item.smpte}
+                                      </p>
+                                    ) : null}
                                     {item.notes ? (
                                       <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
                                         {item.notes}

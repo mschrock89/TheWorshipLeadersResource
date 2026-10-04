@@ -13,7 +13,11 @@ import {
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { liveChatRoomOf, liveStationLabel, readLiveStation, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { readSmpteBinding } from "@/lib/audioRouting";
+import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
+import { buildTimecodeWindows, matchTimecodeWindow, type TimecodeWindow } from "@/lib/serviceFlowTimecode";
+import { startSmpteCapture } from "@/lib/smpteCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
@@ -87,6 +91,9 @@ export function LiveModeConsole({
   const [setupOpen, setSetupOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
   const [bindingRevision, setBindingRevision] = useState(0);
+  const [followTimecode, setFollowTimecode] = useState(true);
+  const [smpteStatus, setSmpteStatus] = useState<"idle" | "listening" | "locked" | "error">("idle");
+  const [smpteLabel, setSmpteLabel] = useState<string | null>(null);
   const [tab, setTab] = useState<DockTab>("flow");
   const [chatRoom, setChatRoom] = useState<LiveChatRoom>("production");
   const [now, setNow] = useState(() => new Date());
@@ -251,6 +258,114 @@ export function LiveModeConsole({
     }
   }, [audioContext, listening, live.clientId, live.session?.listener_client_id]);
 
+  const timecodeTrack = useRef({
+    follow: false,
+    windows: [] as TimecodeWindow[],
+    fps: 30,
+    currentId: null as string | null,
+    lastSend: 0,
+    lastUi: 0,
+    lastFrameAt: 0,
+    setItem: (_itemId: string) => {},
+    publish: (_cue: { itemId: string | null; progress: number; label: string; fps: number; at: number }) => {},
+  });
+  const flowItemsRef = useRef(items);
+  flowItemsRef.current = items;
+  timecodeTrack.current.follow = followTimecode && station === "foh";
+  timecodeTrack.current.windows = buildTimecodeWindows(items, timecodeTrack.current.fps);
+  timecodeTrack.current.currentId = live.session?.current_item_id || null;
+  timecodeTrack.current.setItem = (itemId) => {
+    void live.setCurrentItem(itemId);
+  };
+  timecodeTrack.current.publish = live.publishTimecode;
+  const isTimecodeHost =
+    listening &&
+    station === "foh" &&
+    live.session?.listener_client_id === live.clientId;
+
+  useEffect(() => {
+    if (!isTimecodeHost || !audioContext) {
+      setSmpteStatus("idle");
+      setSmpteLabel(null);
+      return;
+    }
+    const binding = readSmpteBinding(readTalkbackBindings());
+    if (!binding?.deviceId) {
+      setSmpteStatus("error");
+      setSmpteLabel("Assign Timecode in audio routing.");
+      return;
+    }
+    let active = true;
+    let decoder: LtcDecoder | null = null;
+    let decoderRate = 0;
+    setSmpteStatus("listening");
+    setSmpteLabel(null);
+    const stop = startSmpteCapture({
+      audioContext,
+      deviceId: binding.deviceId,
+      channelIndex: binding.channelIndex,
+      onStatus: (status, message) => {
+        if (!active) return;
+        if (status === "error") {
+          setSmpteStatus("error");
+          setSmpteLabel(message || "Could not open the SMPTE input.");
+          return;
+        }
+        setSmpteStatus((current) => (current === "locked" ? current : "listening"));
+      },
+      onSamples: (samples, sampleRate) => {
+        if (!active) return;
+        if (!decoder || decoderRate !== sampleRate) {
+          decoder = new LtcDecoder(sampleRate);
+          decoderRate = sampleRate;
+        }
+        const stamp = decoder.push(samples);
+        if (!stamp) return;
+        const state = timecodeTrack.current;
+        const nowMs = performance.now();
+        state.lastFrameAt = nowMs;
+        if (stamp.fps !== state.fps) {
+          state.fps = stamp.fps;
+          state.windows = buildTimecodeWindows(flowItemsRef.current, stamp.fps);
+        }
+        const match = matchTimecodeWindow(state.windows, smpteSortKey(stamp, stamp.fps));
+        const label = formatSmpte(stamp);
+        const itemChanged = Boolean(state.follow && match && match.itemId !== state.currentId);
+        if (itemChanged && match) {
+          state.currentId = match.itemId;
+          state.setItem(match.itemId);
+        }
+        if (nowMs - state.lastUi > 80) {
+          state.lastUi = nowMs;
+          setSmpteStatus("locked");
+          setSmpteLabel(label);
+        }
+        if (state.follow && (itemChanged || nowMs - state.lastSend > 200)) {
+          state.lastSend = nowMs;
+          state.publish({
+            itemId: match?.itemId ?? null,
+            progress: match?.progress ?? 0,
+            label,
+            fps: stamp.fps,
+            at: Date.now(),
+          });
+        }
+      },
+    });
+    const watch = window.setInterval(() => {
+      const state = timecodeTrack.current;
+      if (!active || !state.lastFrameAt) return;
+      if (performance.now() - state.lastFrameAt > 1500) {
+        setSmpteStatus((current) => (current === "locked" ? "listening" : current));
+      }
+    }, 400);
+    return () => {
+      active = false;
+      window.clearInterval(watch);
+      stop();
+    };
+  }, [audioContext, bindingRevision, isTimecodeHost]);
+
   const remoteListening =
     !!live.session?.listener_client_id &&
     live.session.listener_client_id !== live.clientId &&
@@ -386,6 +501,27 @@ export function LiveModeConsole({
     );
   }
 
+  const timecodeCue = live.timecodeCue;
+  const cueIsFresh = !!timecodeCue && now.getTime() - timecodeCue.at < 2500;
+  const flowProgress = cueIsFresh && timecodeCue?.itemId === live.session?.current_item_id ? timecodeCue.progress : null;
+  const hasTimecodeCues = buildTimecodeWindows(items, timecodeTrack.current.fps).length > 0;
+  const timecodeHint =
+    listening && station === "foh" && !hasTimecodeCues && items.some((item) => item.item_type !== "header")
+      ? "Add TC 01:00:00:00 to a line note so SMPTE can move the highlight."
+      : null;
+  const smpteReadout =
+    station === "foh" && listening
+      ? smpteStatus === "locked" && smpteLabel
+        ? `SMPTE ${smpteLabel}`
+        : smpteStatus === "error"
+          ? smpteLabel || "SMPTE input needs a check"
+          : smpteStatus === "listening"
+            ? "SMPTE waiting"
+            : null
+      : cueIsFresh && timecodeCue?.label
+        ? `SMPTE ${timecodeCue.label}`
+        : null;
+
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       <header className="shrink-0 border-b border-border bg-card">
@@ -436,6 +572,16 @@ export function LiveModeConsole({
               <Radio className={cn("h-4 w-4", listening && "text-primary")} />
               {listening ? "Stop" : "Listen"}
             </Button>
+            {station === "foh" ? (
+              <Button
+                type="button"
+                variant={followTimecode ? "secondary" : "outline"}
+                className="h-10"
+                onClick={() => setFollowTimecode((value) => !value)}
+              >
+                {followTimecode ? "Following" : "Follow"}
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" size="icon" aria-label="Audio routing" onClick={() => setRoutingOpen(true)}>
               <AudioLines className="h-4 w-4" />
             </Button>
@@ -508,6 +654,16 @@ export function LiveModeConsole({
             {cue.nextTitle ? (
               <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
             ) : null}
+            {smpteReadout ? (
+              <p
+                className={cn(
+                  "mt-1 text-sm font-semibold tabular-nums",
+                  smpteStatus === "error" && station === "foh" ? "text-destructive" : "text-primary",
+                )}
+              >
+                {smpteReadout}
+              </p>
+            ) : null}
           </div>
           {live.isLoading ? (
             <div className="flex flex-1 items-center justify-center">
@@ -549,6 +705,8 @@ export function LiveModeConsole({
               titles={resolvedTitles}
               clockTimes={clockTimes}
               currentItemId={live.session?.current_item_id || null}
+              progress={flowProgress}
+              timecodeHint={timecodeHint}
               isLoading={flowLoading || (!!flow?.id && itemsLoading)}
               onSelect={(itemId) => {
                 void live.setCurrentItem(itemId);
