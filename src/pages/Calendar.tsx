@@ -1834,7 +1834,7 @@ function StandardCalendar() {
       <div data-tour="calendar-page" className="bg-background overflow-x-hidden">
         <div className="w-full">
           {/* Filters + month on one compact row */}
-          <div className="mx-auto mb-3 flex w-full max-w-6xl flex-wrap items-center gap-2">
+          <div className="mb-3 flex w-full flex-wrap items-center gap-2">
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1 sm:flex-wrap">
               {/* Campus selector - for admins OR volunteers with multiple campuses */}
               {isCampusAdmin && campuses.length > 0 || !isCampusAdmin && userCampuses.length > 1 ? <Select value={campusFilter} onValueChange={setCampusFilter}>
@@ -1886,11 +1886,11 @@ function StandardCalendar() {
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 items-start gap-3 ${selectedDate ? "lg:grid-cols-[1fr_minmax(0,calc(36rem-0.375rem))_minmax(0,calc(36rem-0.375rem))_1fr]" : "mx-auto max-w-[30rem]"}`}>
+          <div className={`grid grid-cols-1 items-start gap-3 ${selectedDate ? "lg:grid-cols-2" : "mx-auto max-w-[30rem]"}`}>
           {/* Calendar Grid — square widget that scales with column width */}
           <div
             data-tour="calendar-grid"
-            className={`flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3 ${selectedDate ? "lg:col-start-2" : ""}`}
+            className="flex aspect-square min-h-0 min-w-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-card p-2 sm:p-3"
           >
             {/* Weekday headers */}
             <div className="mb-1.5 grid shrink-0 grid-cols-7 gap-1">
@@ -2050,7 +2050,7 @@ function StandardCalendar() {
           const showScheduledTeamLabel = selectedDayServices.length === 0;
           return <>
               <CalendarDayWidget
-                className="aspect-square min-h-0 overflow-hidden lg:col-start-3"
+                className="aspect-square min-h-0 overflow-hidden"
                 bodyClassName="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
                 title={
                   <span className="flex min-w-0 items-baseline gap-2">
@@ -2303,7 +2303,7 @@ function StandardCalendar() {
                       Setlist
                     </span>
                   }
-                  className="aspect-auto overflow-visible border-primary/30 bg-gradient-to-br from-card to-primary/[0.04] shadow-lg shadow-primary/10 lg:col-span-4 lg:col-start-1 lg:p-5"
+                  className="aspect-auto overflow-visible border-primary/30 bg-gradient-to-br from-card to-primary/[0.04] shadow-lg shadow-primary/10 lg:col-span-2 lg:p-5"
                   bodyClassName="flex-none overflow-y-visible"
                 >
                   <div className="space-y-4 pt-1 lg:space-y-6">
@@ -2425,7 +2425,7 @@ function StandardCalendar() {
                             section={section}
                           />
                         ) : null}
-                        className="min-w-0 lg:col-span-4"
+                        className="min-w-0 lg:col-span-2"
                       >
                         <CustomServiceRoster
                           customServiceId={service.id}
@@ -2441,7 +2441,7 @@ function StandardCalendar() {
                   )
                 : (["production", "video"] as const).map((section) => (
                 sessionEntries.length > 0 ? (
-                  <CalendarDayWidget key={section} title={section === "video" ? "Video" : "Production"} className="min-w-0 lg:col-span-4">
+                  <CalendarDayWidget key={section} title={section === "video" ? "Video" : "Production"} className="min-w-0 lg:col-span-2">
                     <div className="space-y-4">
                       {sessionEntries.map((entry) => {
                         const timeOfDay = entry.time_of_day as string;
@@ -2503,7 +2503,7 @@ function StandardCalendar() {
 
                 {/* Events Section */}
                 <CalendarDayWidget
-                  className="lg:col-span-4"
+                  className="lg:col-span-2"
                   title="Events"
                   actions={canManageTeam ? <Dialog open={isAddOpen} onOpenChange={(open) => {
                     setIsAddOpen(open);
@@ -4734,7 +4734,7 @@ function BandRoster({
     if (!body) return null;
     if (!supportOnly || embedded) return body;
     return (
-      <CalendarDayWidget title={supportSection === "video" ? "Video" : supportSection === "production" ? "Production" : "Production & Video"} className="min-w-0 lg:col-span-4">
+      <CalendarDayWidget title={supportSection === "video" ? "Video" : supportSection === "production" ? "Production" : "Production & Video"} className="min-w-0 lg:col-span-2">
         {body}
       </CalendarDayWidget>
     );
