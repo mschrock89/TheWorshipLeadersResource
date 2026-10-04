@@ -24,7 +24,6 @@ type TranscriptChatProps = {
   variant: "transcript";
   channels: LiveTalkbackChannel[];
   lines: LiveTalkbackLine[];
-  drafts?: Record<string, string>;
   bindingRevision: number;
 };
 
@@ -130,32 +129,15 @@ export function TalkbackChat(props: TalkbackChatProps) {
   }, [props]);
   const feed = useMemo(() => {
     if (props.variant === "transcript") {
-      const saved = props.lines.map((line) => ({
-        kind: "mic" as const,
-        id: line.id,
-        at: line.created_at,
-        channelId: line.channel_id,
-        text: line.transcript,
-        pending: false,
-      }));
-      const drafts = Object.entries(props.drafts || {}).flatMap(([channelId, text]) => {
-        const trimmed = text.trim();
-        if (!trimmed) return [];
-        if (props.lines.some((line) => line.channel_id === channelId && line.transcript === trimmed)) return [];
-        return [
-          {
-            kind: "mic" as const,
-            id: `draft:${channelId}`,
-            at: "9999-12-31T23:59:59.999Z",
-            channelId,
-            text: trimmed,
-            pending: true,
-          },
-        ];
-      });
-      return [...saved, ...drafts].sort(
-        (left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id),
-      );
+      return props.lines
+        .map((line) => ({
+          kind: "mic" as const,
+          id: line.id,
+          at: line.created_at,
+          channelId: line.channel_id,
+          text: line.transcript,
+        }))
+        .sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
     }
     return props.messages
       .map((message) => ({
@@ -167,15 +149,14 @@ export function TalkbackChat(props: TalkbackChatProps) {
       }))
       .sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
   }, [props]);
-  const tail = feed[feed.length - 1];
-  const tailKey = tail ? `${tail.id}:${tail.text}` : "";
+  const latestId = feed[feed.length - 1]?.id;
   const currentUserId = props.variant === "typed" ? props.currentUserId : null;
 
   useEffect(() => {
     const node = scroller.current;
     if (!node || !stickToBottom.current) return;
     node.scrollTop = node.scrollHeight;
-  }, [tailKey]);
+  }, [latestId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -251,13 +232,8 @@ export function TalkbackChat(props: TalkbackChatProps) {
                       {inputNumber ? (
                         <span className="ml-2 font-semibold normal-case tracking-normal opacity-80">Input {inputNumber}</span>
                       ) : null}
-                      {entry.pending ? (
-                        <span className="ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current align-middle" />
-                      ) : null}
                     </p>
-                    {stamp && !entry.pending ? (
-                      <time className="ml-auto shrink-0 text-[10px] text-muted-foreground">{stamp}</time>
-                    ) : null}
+                    {stamp ? <time className="ml-auto shrink-0 text-[10px] text-muted-foreground">{stamp}</time> : null}
                   </div>
                   <p className="mt-1 text-lg font-medium leading-snug text-foreground sm:text-xl">{entry.text}</p>
                 </div>
@@ -310,7 +286,6 @@ export function TalkbackBoard({
   onOpenSetup,
 }: TalkbackBoardProps) {
   const [status, setStatus] = useState<Record<string, ChannelStatus>>({});
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const levelsRef = useRef<Record<string, number>>({});
   const barRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -331,30 +306,11 @@ export function TalkbackBoard({
       setStatus({});
       return;
     }
-    const stop = startTalkbackCapture({
+    return startTalkbackCapture({
       audioContext,
       channels: armed,
       transcribe: transcribeTalkbackChunk,
-      onPartial: (channelId, text) => {
-        const trimmed = text.trim();
-        setDrafts((current) => {
-          if (!trimmed) {
-            if (!current[channelId]) return current;
-            const next = { ...current };
-            delete next[channelId];
-            return next;
-          }
-          if (current[channelId] === trimmed) return current;
-          return { ...current, [channelId]: trimmed };
-        });
-      },
-      onTranscript: (channelId, text) => {
-        const trimmed = text.trim();
-        if (trimmed) {
-          setDrafts((current) => (current[channelId] === trimmed ? current : { ...current, [channelId]: trimmed }));
-        }
-        onTranscript(channelId, text);
-      },
+      onTranscript,
       onLevel: (channelId, level) => {
         const percent = Math.max(0, Math.min(100, Math.round(Math.min(1, level) * 100)));
         if (levelsRef.current[channelId] === percent) return;
@@ -370,16 +326,7 @@ export function TalkbackBoard({
         });
       },
     });
-    return () => {
-      stop();
-      setDrafts({});
-    };
   }, [armed, armedKey, audioContext, listening, onTranscript]);
-
-  useEffect(() => {
-    if (listening) return;
-    setDrafts({});
-  }, [listening]);
 
   if (channels.length === 0) {
     return (
@@ -467,7 +414,7 @@ export function TalkbackBoard({
         })}
       </div>
 
-      <TalkbackChat variant="transcript" channels={channels} lines={lines} drafts={drafts} bindingRevision={bindingRevision} />
+      <TalkbackChat variant="transcript" channels={channels} lines={lines} bindingRevision={bindingRevision} />
     </div>
   );
 }

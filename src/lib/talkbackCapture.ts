@@ -1,7 +1,6 @@
 import { rmsFromTimeDomain } from "./liveMode.ts";
 import { captureUsesWorklet, createTalkbackTap, ensureTalkbackTap, openSystemInput, splitterChannelCount, type OpenedSystemInput } from "./systemAudioInputs.ts";
 import { concatFloats, downsampleMono, encodeMonoWav, rmsFloat } from "./talkbackPcm.ts";
-import type { TalkbackLiveSession } from "./talkbackLive.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
 
 export { downsampleMono, encodeMonoWav };
@@ -21,7 +20,6 @@ type CaptureHandlers = {
   audioContext: AudioContext;
   channels: TalkbackCaptureChannel[];
   transcribe: (blob: Blob) => Promise<string>;
-  onPartial?: (channelId: string, text: string) => void;
   onTranscript: (channelId: string, text: string) => void;
   onLevel: (channelId: string, level: number) => void;
   onStatus: (channelId: string, status: TalkbackCaptureStatus, message?: string) => void;
@@ -48,7 +46,6 @@ async function watchTalkbackTap(
   inputCount: number,
   channels: TalkbackCaptureChannel[],
   handlers: CaptureHandlers,
-  live: TalkbackLiveSession,
   isStopped: () => boolean,
   cleanups: Array<() => void>,
   timers: number[],
@@ -81,8 +78,18 @@ async function watchTalkbackTap(
 
   const flush = (channelId: string, phrase: ChannelPhrase) => {
     phrases.delete(channelId);
-    if (isStopped()) return;
-    live.end(channelId, encodeMonoWav(concatFloats(phrase.chunks), WAV_RATE));
+    const wav = encodeMonoWav(concatFloats(phrase.chunks), WAV_RATE);
+    if (wav.size < 1500 || isStopped()) return;
+    void handlers
+      .transcribe(wav)
+      .then((text) => {
+        if (!isStopped() && text.trim()) handlers.onTranscript(channelId, text);
+      })
+      .catch((error: unknown) => {
+        if (isStopped()) return;
+        const message = error instanceof Error ? error.message : "Transcription failed.";
+        setPhase(channelId, "error", message);
+      });
   };
 
   node.port.onmessage = (event: MessageEvent<TapMessage>) => {
@@ -103,7 +110,6 @@ async function watchTalkbackTap(
       if (speaking) {
         setPhase(channel.id, "hearing");
         if (heard.samples?.length) {
-          live.push(channel.id, heard.samples, rate);
           const piece = downsampleMono(heard.samples, rate, WAV_RATE);
           if (!open) phrases.set(channel.id, { chunks: [piece], startedAt: now, lastVoiceAt: now });
           else {
@@ -158,7 +164,6 @@ function preferredMimeType() {
 
 export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
   let stopped = false;
-  let live: TalkbackLiveSession | null = null;
   const streams: MediaStream[] = [];
   const timers: number[] = [];
   const readers: CaptureReader[] = [];
@@ -169,7 +174,6 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
   const stop = () => {
     if (stopped) return;
     stopped = true;
-    live?.stop();
     for (const timer of timers) window.clearInterval(timer);
     for (const utterance of recorders.values()) {
       try {
@@ -199,28 +203,6 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
       return;
     }
 
-    const { startTalkbackLive } = await import("./talkbackLive.ts");
-    if (stopped) return;
-    live = startTalkbackLive({
-      onPartial: (channelId, text) => {
-        if (!stopped) handlers.onPartial?.(channelId, text);
-      },
-      onFinal: (channelId, text) => {
-        if (!stopped && text.trim()) handlers.onTranscript(channelId, text);
-      },
-      fallback: async (channelId, wav) => {
-        try {
-          const text = await handlers.transcribe(wav);
-          if (!stopped && text.trim()) handlers.onTranscript(channelId, text);
-        } catch (error: unknown) {
-          if (stopped) return;
-          const message = error instanceof Error ? error.message : "Transcription failed.";
-          handlers.onStatus(channelId, "error", message);
-        }
-      },
-    });
-    live.warm(handlers.channels.map((channel) => channel.id));
-
     const byDevice = new Map<string, TalkbackCaptureChannel[]>();
     for (const channel of handlers.channels) {
       const group = byDevice.get(channel.deviceId) || [];
@@ -240,13 +222,11 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
         const useWorklet = Boolean(
           opened.source && captureUsesWorklet(opened.heardChannelCount, opened.channelCount, needed),
         );
-        if (useWorklet && opened.source && live && (await watchTalkbackTap(context, opened.source, opened.channelCount, channels, handlers, live, () => stopped, cleanups, timers))) {
+        if (useWorklet && opened.source && (await watchTalkbackTap(context, opened.source, opened.channelCount, channels, handlers, () => stopped, cleanups, timers))) {
           cleanups.push(opened.release);
           continue;
         }
-        const heardRaw = live
-          ? await monitorOpenedChannels(opened, handlers, channels, live, () => stopped, readers)
-          : false;
+        const heardRaw = await monitorOpenedChannels(opened, handlers, channels, () => stopped, readers);
         if (heardRaw || stopped) continue;
         const trackLive = opened.stream.getAudioTracks().some((track) => track.readyState === "live");
         let source = trackLive ? opened.source : null;
@@ -316,8 +296,17 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
             const recorder = utterance.recorder;
             recorder.onstop = () => {
               const blob = new Blob(utterance.chunks, { type: recorder.mimeType || mimeType });
-              if (blob.size < 1500 || stopped || !live) return;
-              live.end(channel.id, blob);
+              if (blob.size < 1500 || stopped) return;
+              void handlers
+                .transcribe(blob)
+                .then((text) => {
+                  if (!stopped && text.trim()) handlers.onTranscript(channel.id, text);
+                })
+                .catch((error: unknown) => {
+                  if (stopped) return;
+                  const message = error instanceof Error ? error.message : "Transcription failed.";
+                  setPhase("error", message);
+                });
             };
             if (recorder.state !== "inactive") recorder.stop();
           };
@@ -410,11 +399,24 @@ function createTalkbackTrackWorker() {
   }
 }
 
+function publishTranscript(handlers: CaptureHandlers, channelId: string, wav: Blob, isStopped: () => boolean) {
+  if (wav.size < 1500 || isStopped()) return;
+  void handlers
+    .transcribe(wav)
+    .then((text) => {
+      if (!isStopped() && text.trim()) handlers.onTranscript(channelId, text);
+    })
+    .catch((error: unknown) => {
+      if (isStopped()) return;
+      const message = error instanceof Error ? error.message : "Transcription failed.";
+      handlers.onStatus(channelId, "error", message);
+    });
+}
+
 async function listenOnTalkbackWorker(
   processor: { readable: ReadableStream<AudioPlaneFrame> },
   handlers: CaptureHandlers,
   channels: TalkbackCaptureChannel[],
-  live: TalkbackLiveSession,
   isStopped: () => boolean,
   readers: CaptureReader[],
 ): Promise<boolean | null> {
@@ -440,8 +442,6 @@ async function listenOnTalkbackWorker(
         message?: string;
         levels?: Array<{ channelId: string; level: number }>;
         wav?: ArrayBuffer;
-        pcm?: ArrayBuffer;
-        rate?: number;
       };
       if (data.type === "ready") {
         ready = true;
@@ -464,12 +464,8 @@ async function listenOnTalkbackWorker(
         handlers.onStatus(data.channelId, data.phase, data.message);
         return;
       }
-      if (data.type === "audio" && data.channelId && data.pcm) {
-        live.push(data.channelId, new Float32Array(data.pcm), data.rate || 24000);
-        return;
-      }
       if (data.type === "phrase" && data.channelId && data.wav) {
-        live.end(data.channelId, new Blob([data.wav], { type: "audio/wav" }));
+        publishTranscript(handlers, data.channelId, new Blob([data.wav], { type: "audio/wav" }), isStopped);
       }
     };
     worker.onerror = () => {
@@ -510,7 +506,6 @@ async function monitorOpenedChannels(
   opened: OpenedSystemInput,
   handlers: CaptureHandlers,
   channels: TalkbackCaptureChannel[],
-  live: TalkbackLiveSession,
   isStopped: () => boolean,
   readers: CaptureReader[],
 ) {
@@ -522,7 +517,7 @@ async function monitorOpenedChannels(
   const processor = track ? trackProcessor(track) : null;
   if (!processor) return false;
 
-  const offThread = await listenOnTalkbackWorker(processor, handlers, channels, live, isStopped, readers);
+  const offThread = await listenOnTalkbackWorker(processor, handlers, channels, isStopped, readers);
   if (offThread !== null) {
     opened.release();
     return offThread;
@@ -546,8 +541,18 @@ async function monitorOpenedChannels(
 
   const flush = (channelId: string, phrase: ChannelPhrase) => {
     phrases.delete(channelId);
-    if (isStopped()) return;
-    live.end(channelId, encodeMonoWav(concatFloats(phrase.chunks), WAV_RATE));
+    const wav = encodeMonoWav(concatFloats(phrase.chunks), WAV_RATE);
+    if (wav.size < 1500 || isStopped()) return;
+    void handlers
+      .transcribe(wav)
+      .then((text) => {
+        if (!isStopped() && text.trim()) handlers.onTranscript(channelId, text);
+      })
+      .catch((error: unknown) => {
+        if (isStopped()) return;
+        const message = error instanceof Error ? error.message : "Transcription failed.";
+        setPhase(channelId, "error", message);
+      });
   };
 
   const onFrame = (frame: AudioPlaneFrame) => {
@@ -577,7 +582,6 @@ async function monitorOpenedChannels(
       const speaking = phraseLevelIsVoice(level, Boolean(open));
       if (speaking) {
         setPhase(channel.id, "hearing");
-        live.push(channel.id, samples, rate);
         const piece = downsampleMono(samples, rate, WAV_RATE);
         if (!open) phrases.set(channel.id, { chunks: [piece], startedAt: now, lastVoiceAt: now });
         else {
