@@ -2,6 +2,7 @@ import { MINISTRY_TYPES } from "@/lib/constants";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import type { Service, ServiceItem, ServiceSection } from "./ServiceFlow";
 import { formatTotalDuration } from "./DurationInput";
+import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
 import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 
 function isAnnouncementsContext(title: string, sectionTitle: string) {
@@ -143,7 +144,7 @@ export function buildServiceFlowPreview(params: {
       currentSection = {
         id: item.id,
         title: item.title,
-        notes: item.notes?.trim() || undefined,
+        notes: notesWithoutMidiCue(item.notes) || undefined,
         items: [],
       };
       sections.push(currentSection);
@@ -167,7 +168,7 @@ export function buildServiceFlowPreview(params: {
       key: item.song_key || undefined,
       leader: formatLeader(item),
       smpte: smpteLabels.get(item.id),
-      notes: notesWithoutTimecodeCue(item.notes) || undefined,
+      notes: notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)) || undefined,
     });
   }
 

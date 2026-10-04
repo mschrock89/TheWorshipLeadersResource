@@ -56,6 +56,7 @@ import {
   ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { ServiceFlowItem } from "./ServiceFlowItem";
+import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
 import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import { ServiceFlow as ServiceFlowPreview, type Service as ServiceFlowPreviewData } from "./ServiceFlow";
 import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
@@ -1201,7 +1202,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         currentSection = {
           id: item.id,
           title: item.title,
-          notes: item.notes?.trim() || undefined,
+          notes: notesWithoutMidiCue(item.notes) || undefined,
           items: [],
         };
         sections.push(currentSection);
@@ -1218,7 +1219,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         key: item.song_key || undefined,
         leader: formatLeader(item),
         smpte: smpteLabels.get(item.id),
-        notes: notesWithoutTimecodeCue(item.notes) || undefined,
+        notes: notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)) || undefined,
       });
     });
 

@@ -187,7 +187,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the ProPresenter SMPTE input and the Playback SMPTE input. Playback moves the songs. ProPresenter moves Pre-Roll, PSA, and Bumper.
+          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu.
         </p>
 
         <Button
@@ -245,26 +245,22 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
         ) : null}
 
         {deviceId ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(["propresenter", "playback"] as const).map((source) => (
-              <label key={source} className="block space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {source === "propresenter" ? "ProPresenter SMPTE" : "Playback SMPTE"}
-                </span>
-                <SmpteInputSelect
-                  source={source}
-                  channels={channels}
-                  channelCount={channelCount}
-                  deviceId={deviceId}
-                  revision={revision}
-                  onAssigned={() => {
-                    setRevision((value) => value + 1);
-                    onBindingsChange();
-                  }}
-                />
-              </label>
-            ))}
-          </div>
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Playback SMPTE
+            </span>
+            <SmpteInputSelect
+              source="playback"
+              channels={channels}
+              channelCount={channelCount}
+              deviceId={deviceId}
+              revision={revision}
+              onAssigned={() => {
+                setRevision((value) => value + 1);
+                onBindingsChange();
+              }}
+            />
+          </label>
         ) : null}
 
         {rows.length > 0 ? (
@@ -278,8 +274,8 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unused">Unused</SelectItem>
-                    <SelectItem value={PROPRESENTER_SMPTE_ROUTE_ID}>ProPresenter</SelectItem>
-                    <SelectItem value={PLAYBACK_SMPTE_ROUTE_ID}>Playback</SelectItem>
+                    <SelectItem value={PLAYBACK_SMPTE_ROUTE_ID}>Playback SMPTE</SelectItem>
+                    <SelectItem value={PROPRESENTER_SMPTE_ROUTE_ID}>ProPresenter SMPTE</SelectItem>
                     {channels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.id}>
                         {channel.label}

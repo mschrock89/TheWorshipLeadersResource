@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
+import { notesWithMidiCue, notesWithoutMidiCue, parseNoteMidi } from "@/lib/serviceFlowMidi";
 
 interface ServiceFlowItemProps {
   item: ServiceFlowItemType;
@@ -36,11 +37,11 @@ function FlowItemNotes({
   onCommit: (notes: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(notes || "");
-  const savedNotes = notes?.trim() || "";
+  const [draft, setDraft] = useState(() => notesWithoutMidiCue(notes));
+  const savedNotes = notesWithoutMidiCue(notes);
 
   useEffect(() => {
-    if (!editing) setDraft(notes || "");
+    if (!editing) setDraft(notesWithoutMidiCue(notes));
   }, [editing, notes]);
 
   const commit = () => {
@@ -156,8 +157,9 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
   };
 
   const commitNotes = (notes: string | null) => {
-    if ((notes || "") === (item.notes?.trim() || "")) return;
-    onUpdate(item.id, { notes });
+    const next = notesWithMidiCue(notes, parseNoteMidi(item.notes));
+    if ((next || "") === (item.notes?.trim() || "")) return;
+    onUpdate(item.id, { notes: next });
   };
 
   const resolvedTitle = visibleTitle;
