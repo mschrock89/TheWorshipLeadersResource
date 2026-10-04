@@ -14,7 +14,7 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
-import { readSmpteBinding } from "@/lib/audioRouting";
+import { readAudioChannelCount, readAudioInterfaceId, readSmpteListens, type SmpteSource } from "@/lib/audioRouting";
 import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
 import {
   buildTimecodeWindows,
@@ -48,7 +48,7 @@ import {
   normalizeClockSource,
   selectServiceTimeForLocalClock,
 } from "@/components/service-flow/serviceFlowClock";
-import { AudioRoutingPage } from "./AudioRoutingPage";
+import { AudioRoutingPage, SmpteInputSelect } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
 import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
 import { findFlowCue, LiveServiceFlowPanel } from "./LiveServiceFlowPanel";
@@ -273,6 +273,8 @@ export function LiveModeConsole({
     lastSend: 0,
     lastUi: 0,
     lastFrameAt: 0,
+    lastBySource: { propresenter: 0, playback: 0 } as Record<SmpteSource, number>,
+    labels: { propresenter: null, playback: null } as Record<SmpteSource, string | null>,
     setItem: (_itemId: string) => {},
     publish: (_cue: { itemId: string | null; progress: number; label: string; fps: number; at: number }) => {},
   });
@@ -296,52 +298,62 @@ export function LiveModeConsole({
       setSmpteLabel(null);
       return;
     }
-    const binding = readSmpteBinding(readTalkbackBindings());
-    if (!binding?.deviceId) {
+    const listens = readSmpteListens(readTalkbackBindings());
+    if (listens.length === 0) {
       setSmpteStatus("error");
-      setSmpteLabel("Assign Timecode in audio routing.");
+      setSmpteLabel("Choose the ProPresenter and Playback SMPTE inputs.");
       return;
     }
     let active = true;
-    let decoder: LtcDecoder | null = null;
-    let decoderRate = 0;
+    const decoders = new Map<SmpteSource, { decoder: LtcDecoder; rate: number }>();
     setSmpteStatus("listening");
     setSmpteLabel(null);
+    const paintLabels = () => {
+      const labels = timecodeTrack.current.labels;
+      const parts = [
+        labels.propresenter ? `ProP ${labels.propresenter}` : "",
+        labels.playback ? `Playback ${labels.playback}` : "",
+      ].filter(Boolean);
+      setSmpteLabel(parts.join(" · ") || null);
+    };
     const stop = startSmpteCapture({
       audioContext,
-      deviceId: binding.deviceId,
-      channelIndex: binding.channelIndex,
+      listens,
       onStatus: (status, message) => {
         if (!active) return;
         if (status === "error") {
           setSmpteStatus("error");
-          setSmpteLabel(message || "Could not open the SMPTE input.");
+          setSmpteLabel(message || "Could not open a SMPTE input.");
           return;
         }
         setSmpteStatus((current) => (current === "locked" ? current : "listening"));
       },
-      onSamples: (samples, sampleRate) => {
+      onSamples: (source, samples, sampleRate) => {
         if (!active) return;
-        if (!decoder || decoderRate !== sampleRate) {
-          decoder = new LtcDecoder(sampleRate);
-          decoderRate = sampleRate;
-        }
-        const stamp = decoder.push(samples);
+        const existing = decoders.get(source);
+        const entry = !existing || existing.rate !== sampleRate
+          ? { decoder: new LtcDecoder(sampleRate), rate: sampleRate }
+          : existing;
+        if (entry !== existing) decoders.set(source, entry);
+        const stamp = entry.decoder.push(samples);
         if (!stamp) return;
         const state = timecodeTrack.current;
         const nowMs = performance.now();
         state.lastFrameAt = nowMs;
+        state.lastBySource[source] = nowMs;
         if (stamp.fps !== state.fps) {
           state.fps = stamp.fps;
           state.windows = buildTimecodeWindows(flowItemsRef.current, stamp.fps);
         }
         const key = smpteSortKey(stamp, stamp.fps);
-        const match = matchTimecodeWindow(state.windows, key);
+        const scoped = state.windows.filter((window) => window.source === source);
+        const match = matchTimecodeWindow(scoped, key);
         const decision = state.follow
-          ? followTimecodeItem(flowItemsRef.current, state.windows, state, key, stamp.fps)
+          ? followTimecodeItem(flowItemsRef.current, state.windows, state, key, stamp.fps, source)
           : null;
         if (decision) state.suppressItemId = decision.suppressItemId;
         const label = formatSmpte(stamp);
+        state.labels[source] = label;
         const itemChanged = Boolean(decision?.changed && decision.itemId);
         if (itemChanged && decision?.itemId) {
           state.currentId = decision.itemId;
@@ -350,7 +362,7 @@ export function LiveModeConsole({
         if (nowMs - state.lastUi > 80) {
           state.lastUi = nowMs;
           setSmpteStatus("locked");
-          setSmpteLabel(label);
+          paintLabels();
         }
         if (state.follow && (itemChanged || nowMs - state.lastSend > 200)) {
           state.lastSend = nowMs;
@@ -367,7 +379,15 @@ export function LiveModeConsole({
     const watch = window.setInterval(() => {
       const state = timecodeTrack.current;
       if (!active || !state.lastFrameAt) return;
-      if (performance.now() - state.lastFrameAt > 1500) {
+      const nowMs = performance.now();
+      let cleared = false;
+      for (const source of ["propresenter", "playback"] as const) {
+        if (!state.labels[source] || nowMs - state.lastBySource[source] <= 1500) continue;
+        state.labels[source] = null;
+        cleared = true;
+      }
+      if (cleared) paintLabels();
+      if (nowMs - state.lastFrameAt > 1500) {
         setSmpteStatus((current) => (current === "locked" ? "listening" : current));
       }
     }, 400);
@@ -579,7 +599,7 @@ export function LiveModeConsole({
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 overflow-x-auto">
             <div className="flex rounded-lg bg-muted p-0.5">
               {(["foh", "mon"] as const).map((option) => (
                 <button
@@ -631,6 +651,26 @@ export function LiveModeConsole({
                 {followTimecode ? "Following" : "Follow"}
               </Button>
             ) : null}
+            {station === "foh" && !readAudioInterfaceId() ? (
+              <Button type="button" variant="outline" className="h-10 shrink-0" onClick={() => setRoutingOpen(true)}>
+                SMPTE inputs
+              </Button>
+            ) : null}
+            {station === "foh" && readAudioInterfaceId()
+              ? (["propresenter", "playback"] as const).map((source) => (
+                  <SmpteInputSelect
+                    key={source}
+                    source={source}
+                    channels={live.channels}
+                    channelCount={readAudioChannelCount()}
+                    deviceId={readAudioInterfaceId()}
+                    revision={bindingRevision}
+                    labeled
+                    onAssigned={() => setBindingRevision((value) => value + 1)}
+                    className="h-10 w-40 shrink-0"
+                  />
+                ))
+              : null}
             <Button type="button" variant="outline" size="icon" aria-label="Audio routing" onClick={() => setRoutingOpen(true)}>
               <AudioLines className="h-4 w-4" />
             </Button>
@@ -803,7 +843,10 @@ export function LiveModeConsole({
       {routingOpen ? (
         <AudioRoutingPage
           channels={live.channels}
-          onClose={() => setRoutingOpen(false)}
+          onClose={() => {
+            setRoutingOpen(false);
+            setBindingRevision((value) => value + 1);
+          }}
           onBindingsChange={() => setBindingRevision((value) => value + 1)}
         />
       ) : null}

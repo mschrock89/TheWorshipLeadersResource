@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { patchInput, routingRows, type RoutingStore, type RoutingTarget } from "./audioRouting.ts";
+import {
+  assignSmpteInput,
+  patchInput,
+  PLAYBACK_SMPTE_ROUTE_ID,
+  PROPRESENTER_SMPTE_ROUTE_ID,
+  routingRows,
+  type RoutingStore,
+  type RoutingTarget,
+} from "./audioRouting.ts";
 
 const targets: RoutingTarget[] = [
   { id: "wl", positionSlot: "vocalist_1" },
@@ -35,6 +43,29 @@ test("moves a talkback when it is patched to a new input", () => {
   assert.equal(rows[0].talkbackId, null);
   assert.equal(rows[3].talkbackId, "wl");
   assert.equal(store.byChannelId.wl.channelIndex, 3);
+});
+
+test("selects separate ProPresenter and Playback SMPTE inputs", () => {
+  const withSmpte = [
+    ...targets,
+    { id: PROPRESENTER_SMPTE_ROUTE_ID, positionSlot: null },
+    { id: PLAYBACK_SMPTE_ROUTE_ID, positionSlot: null },
+  ];
+  let store = patchInput(emptyStore(), withSmpte, "board", 0, "wl");
+  store = assignSmpteInput(store, targets, "board", 1, "propresenter");
+  store = assignSmpteInput(store, targets, "board", 2, "playback");
+  let rows = routingRows(4, withSmpte, store, "board");
+  assert.equal(rows[0].talkbackId, "wl");
+  assert.equal(rows[1].talkbackId, PROPRESENTER_SMPTE_ROUTE_ID);
+  assert.equal(rows[2].talkbackId, PLAYBACK_SMPTE_ROUTE_ID);
+
+  store = assignSmpteInput(store, targets, "board", 1, "playback");
+  rows = routingRows(4, withSmpte, store, "board");
+  assert.equal(rows[1].talkbackId, PLAYBACK_SMPTE_ROUTE_ID);
+  assert.equal(store.byChannelId[PROPRESENTER_SMPTE_ROUTE_ID], undefined);
+
+  store = assignSmpteInput(store, targets, "board", null, "playback");
+  assert.equal(store.byChannelId[PLAYBACK_SMPTE_ROUTE_ID], undefined);
 });
 
 test("clears an input without removing the other patches", () => {

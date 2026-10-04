@@ -1,5 +1,19 @@
 const INTERFACE_KEY = "wlr-live-audio-interface";
-export const SMPTE_ROUTE_ID = "smpte";
+const CHANNEL_COUNT_KEY = "wlr-live-audio-channel-count";
+export const PROPRESENTER_SMPTE_ROUTE_ID = "smpte-propresenter";
+export const PLAYBACK_SMPTE_ROUTE_ID = "smpte-playback";
+export const SMPTE_INPUT_FALLBACK_COUNT = 48;
+
+export type SmpteSource = "propresenter" | "playback";
+
+const SMPTE_ROUTE_IDS: Record<SmpteSource, string> = {
+  propresenter: PROPRESENTER_SMPTE_ROUTE_ID,
+  playback: PLAYBACK_SMPTE_ROUTE_ID,
+};
+
+export function smpteRouteId(source: SmpteSource) {
+  return SMPTE_ROUTE_IDS[source];
+}
 
 type TalkbackBinding = {
   deviceId: string;
@@ -31,8 +45,54 @@ export function writeAudioInterfaceId(deviceId: string) {
   window.localStorage.setItem(INTERFACE_KEY, deviceId);
 }
 
-export function readSmpteBinding(store: RoutingStore): { deviceId: string; channelIndex: number } | null {
-  return store.byChannelId[SMPTE_ROUTE_ID] || null;
+export function readAudioChannelCount(): number | null {
+  if (typeof window === "undefined") return null;
+  const count = Number(window.localStorage.getItem(CHANNEL_COUNT_KEY));
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : null;
+}
+
+export function writeAudioChannelCount(count: number) {
+  window.localStorage.setItem(CHANNEL_COUNT_KEY, String(Math.max(1, Math.floor(count))));
+}
+
+export function readSmpteBinding(
+  store: RoutingStore,
+  source: SmpteSource,
+): { deviceId: string; channelIndex: number } | null {
+  return store.byChannelId[smpteRouteId(source)] || null;
+}
+
+export function readSmpteListens(store: RoutingStore) {
+  return (["propresenter", "playback"] as const).flatMap((source) => {
+    const binding = readSmpteBinding(store, source);
+    return binding ? [{ source, deviceId: binding.deviceId, channelIndex: binding.channelIndex }] : [];
+  });
+}
+
+export function visibleSmpteInputCount(probed: number | null, selectedChannelIndex: number | null) {
+  const known = probed && probed > 0 ? Math.floor(probed) : SMPTE_INPUT_FALLBACK_COUNT;
+  const selected = selectedChannelIndex != null && selectedChannelIndex >= 0 ? selectedChannelIndex + 1 : 0;
+  return Math.max(known, selected, 1);
+}
+
+export function assignSmpteInput(
+  store: RoutingStore,
+  targets: RoutingTarget[],
+  deviceId: string,
+  channelIndex: number | null,
+  source: SmpteSource,
+): RoutingStore {
+  const routeId = smpteRouteId(source);
+  const withSmpte = (["propresenter", "playback"] as const).reduce((list, entry) => {
+    const id = smpteRouteId(entry);
+    return list.some((target) => target.id === id) ? list : [...list, { id, positionSlot: null }];
+  }, targets);
+  if (channelIndex == null) {
+    const current = store.byChannelId[routeId];
+    if (!current) return store;
+    return patchInput(store, withSmpte, current.deviceId, current.channelIndex, null);
+  }
+  return patchInput(store, withSmpte, deviceId, channelIndex, routeId);
 }
 
 export function routingRows(

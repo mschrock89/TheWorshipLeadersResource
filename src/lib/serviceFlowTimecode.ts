@@ -13,10 +13,13 @@ export type NoteTimecode = {
   end: SmpteParts | null;
 };
 
+export type TimecodeSource = "playback" | "propresenter";
+
 export type TimecodeWindow = {
   itemId: string;
   start: number;
   end: number;
+  source: TimecodeSource;
 };
 
 const CUE_PATTERN =
@@ -162,7 +165,12 @@ export function buildTimecodeWindows(items: TimecodeFlowItem[], fps: number): Ti
     } else if (next) end = next.start;
     if (next && end > next.start) end = next.start;
     if (end <= entry.start) end = entry.start + 1;
-    return { itemId: entry.item.id, start: entry.start, end };
+    return {
+      itemId: entry.item.id,
+      start: entry.start,
+      end,
+      source: entry.item.item_type === "song" ? "playback" : "propresenter",
+    };
   });
 }
 
@@ -191,10 +199,12 @@ export function followTimecodeItem(
   state: TimecodeFollowState,
   key: number,
   fps: number,
+  source?: TimecodeSource,
 ) {
+  const scoped = source ? windows.filter((window) => window.source === source) : windows;
   const rate = fps > 0 ? fps : 30;
   let suppressItemId = state.suppressItemId;
-  if (suppressItemId) {
+  if (source !== "playback" && suppressItemId) {
     const suppressed = windows.find((window) => window.itemId === suppressItemId);
     const restarted = suppressed && key >= suppressed.start && key < suppressed.start + rate;
     if (!suppressed || key < suppressed.start || key >= suppressed.end || restarted) {
@@ -202,13 +212,17 @@ export function followTimecodeItem(
     }
   }
 
-  const match = matchTimecodeWindow(windows, key);
+  const match = matchTimecodeWindow(scoped, key);
   if (match && match.itemId !== suppressItemId) {
     return {
       itemId: match.itemId,
-      suppressItemId,
+      suppressItemId: source === "playback" ? null : suppressItemId,
       changed: match.itemId !== state.currentId,
     };
+  }
+
+  if (source === "playback") {
+    return { itemId: state.currentId, suppressItemId, changed: false };
   }
 
   const slot = videoSlotForItem(items, state.currentId);

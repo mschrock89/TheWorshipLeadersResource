@@ -175,6 +175,26 @@ test("moves to the next line when a ProPresenter video slot ends", () => {
   const afterBumper = smpteSortKey({ hours: 2, minutes: 21, seconds: 20, frames: 0 }, 30);
   const lesson = followTimecodeItem(items, windows, { currentId: "bumper", suppressItemId: null }, afterBumper, 30);
   assert.equal(lesson.itemId, "teacher");
+
+  const songCode = smpteSortKey({ hours: 1, minutes: 0, seconds: 30, frames: 0 }, 30);
+  const fromPlayback = followTimecodeItem(
+    [{ id: "song", item_type: "song", title: "Battle Belongs", notes: null, duration_seconds: 281 }, ...items],
+    buildTimecodeWindows(
+      [{ id: "song", item_type: "song", title: "Battle Belongs", notes: null, duration_seconds: 281 }, ...items],
+      30,
+    ),
+    { currentId: "preroll", suppressItemId: null },
+    songCode,
+    30,
+    "playback",
+  );
+  assert.equal(fromPlayback.itemId, "song");
+  const videoCode = smpteSortKey({ hours: 2, minutes: 0, seconds: 10, frames: 0 }, 30);
+  const fromProPresenter = followTimecodeItem(items, windows, { currentId: "song", suppressItemId: null }, videoCode, 30, "propresenter");
+  assert.equal(fromProPresenter.itemId, "preroll");
+  const playbackIgnoresVideo = followTimecodeItem(items, windows, { currentId: "welcome", suppressItemId: "preroll" }, videoCode, 30, "playback");
+  assert.equal(playbackIgnoresVideo.itemId, "welcome");
+  assert.equal(playbackIgnoresVideo.suppressItemId, "preroll");
 });
 
 test("hands a note without a duration to the next SMPTE cue", () => {

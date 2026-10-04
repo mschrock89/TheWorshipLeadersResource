@@ -9,10 +9,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  assignSmpteInput,
   patchInput,
+  PLAYBACK_SMPTE_ROUTE_ID,
+  PROPRESENTER_SMPTE_ROUTE_ID,
   readAudioInterfaceId,
+  readSmpteBinding,
   routingRows,
-  SMPTE_ROUTE_ID,
+  type SmpteSource,
+  visibleSmpteInputCount,
+  writeAudioChannelCount,
   writeAudioInterfaceId,
 } from "@/lib/audioRouting";
 import { readTalkbackBindings, writeTalkbackBindingStore } from "@/lib/liveMode";
@@ -24,6 +30,75 @@ type AudioRoutingPageProps = {
   onClose: () => void;
   onBindingsChange: () => void;
 };
+
+const SMPTE_SOURCE_NAME: Record<SmpteSource, string> = {
+  propresenter: "ProPresenter",
+  playback: "Playback",
+};
+
+const SMPTE_SOURCE_SHORT: Record<SmpteSource, string> = {
+  propresenter: "ProP",
+  playback: "Playback",
+};
+
+type SmpteInputSelectProps = {
+  source: SmpteSource;
+  channels: Array<{ id: string; position_slot: string | null }>;
+  channelCount: number | null;
+  deviceId: string | null;
+  revision: number;
+  onAssigned: () => void;
+  labeled?: boolean;
+  className?: string;
+};
+
+export function SmpteInputSelect({
+  source,
+  channels,
+  channelCount,
+  deviceId,
+  revision,
+  onAssigned,
+  labeled = false,
+  className,
+}: SmpteInputSelectProps) {
+  void revision;
+  const binding = deviceId ? readSmpteBinding(readTalkbackBindings(), source) : null;
+  const selectedHere = binding && binding.deviceId === deviceId ? binding.channelIndex : null;
+  const count = deviceId ? visibleSmpteInputCount(channelCount, selectedHere) : 0;
+  const value = selectedHere == null ? "none" : String(selectedHere);
+
+  return (
+    <Select
+      value={value}
+      onValueChange={(next) => {
+        if (!deviceId) return;
+        const store = assignSmpteInput(
+          readTalkbackBindings(),
+          channels.map((channel) => ({ id: channel.id, positionSlot: channel.position_slot })),
+          deviceId,
+          next === "none" ? null : Number(next),
+        );
+        writeTalkbackBindingStore(store);
+        onAssigned();
+      }}
+      disabled={!deviceId}
+    >
+      <SelectTrigger className={className || "h-9 w-full"} aria-label={`${SMPTE_SOURCE_NAME[source]} SMPTE input`}>
+        {labeled ? <span className="mr-2 shrink-0 text-muted-foreground">{SMPTE_SOURCE_SHORT[source]}</span> : null}
+        <SelectValue placeholder="Input" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No input</SelectItem>
+        {Array.from({ length: count }, (_, index) => (
+          <SelectItem key={index} value={String(index)}>
+            In {index + 1}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioRoutingPageProps) {
   const [inputs, setInputs] = useState<SystemAudioInput[]>([]);
@@ -38,7 +113,8 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
       id: channel.id,
       positionSlot: channel.position_slot,
     })),
-    { id: SMPTE_ROUTE_ID, positionSlot: null },
+    { id: PROPRESENTER_SMPTE_ROUTE_ID, positionSlot: null },
+    { id: PLAYBACK_SMPTE_ROUTE_ID, positionSlot: null },
   ];
   const rows = deviceId && channelCount
     ? routingRows(channelCount, targets, readTalkbackBindings(), deviceId)
@@ -51,6 +127,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
     try {
       const count = await probeInputChannelCount(nextDeviceId, context);
       setChannelCount(count);
+      writeAudioChannelCount(count);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That input could not be opened.");
     } finally {
@@ -110,7 +187,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, assign talkback names, and assign Timecode to the input that carries SMPTE. ProPresenter and Playback can both feed that same input. Only one of them should be sending at a time.
+          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the ProPresenter SMPTE input and the Playback SMPTE input. Playback moves the songs. ProPresenter moves Pre-Roll, PSA, and Bumper.
         </p>
 
         <Button
@@ -167,6 +244,29 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
           </p>
         ) : null}
 
+        {deviceId ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["propresenter", "playback"] as const).map((source) => (
+              <label key={source} className="block space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {source === "propresenter" ? "ProPresenter SMPTE" : "Playback SMPTE"}
+                </span>
+                <SmpteInputSelect
+                  source={source}
+                  channels={channels}
+                  channelCount={channelCount}
+                  deviceId={deviceId}
+                  revision={revision}
+                  onAssigned={() => {
+                    setRevision((value) => value + 1);
+                    onBindingsChange();
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        ) : null}
+
         {rows.length > 0 ? (
           <ul className="space-y-2" data-revision={revision}>
             {rows.map((row) => (
@@ -178,7 +278,8 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unused">Unused</SelectItem>
-                    <SelectItem value={SMPTE_ROUTE_ID}>Timecode</SelectItem>
+                    <SelectItem value={PROPRESENTER_SMPTE_ROUTE_ID}>ProPresenter</SelectItem>
+                    <SelectItem value={PLAYBACK_SMPTE_ROUTE_ID}>Playback</SelectItem>
                     {channels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.id}>
                         {channel.label}

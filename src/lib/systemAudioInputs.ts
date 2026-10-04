@@ -287,30 +287,49 @@ function tapModuleUrl() {
         super();
         this.watch = [];
         this.seen = 0;
-        this.smpte = -1;
-        this.smpteOffset = 0;
+        this.smpteChannels = [];
+        this.smpteBufs = {};
+        this.smpteOffsets = {};
         this.port.onmessage = (event) => {
           if (Array.isArray(event.data?.watch)) this.watch = event.data.watch;
-          if (typeof event.data?.smpte === "number") this.smpte = event.data.smpte;
+          if (Array.isArray(event.data?.smpteChannels)) this.smpteChannels = event.data.smpteChannels;
+          else if (typeof event.data?.smpte === "number") this.smpteChannels = event.data.smpte < 0 ? [] : [event.data.smpte];
         };
       }
       captureSmpte(list) {
-        if (typeof this.smpte !== "number" || this.smpte < 0) return;
-        const data = list[this.smpte];
-        if (!data || data.length === 0) return;
-        if (!this.smpteBuf) this.smpteBuf = new Float32Array(Math.ceil(sampleRate * 0.05));
-        if (this.smpteOffset + data.length > this.smpteBuf.length) {
-          const grown = new Float32Array((this.smpteOffset + data.length) * 2);
-          grown.set(this.smpteBuf.subarray(0, this.smpteOffset));
-          this.smpteBuf = grown;
+        const channels = this.smpteChannels || [];
+        if (!channels.length) return;
+        if (!this.smpteBufs) this.smpteBufs = {};
+        if (!this.smpteOffsets) this.smpteOffsets = {};
+        for (let n = 0; n < channels.length; n++) {
+          const channel = channels[n];
+          if (typeof channel !== "number" || channel < 0) continue;
+          const data = list[channel];
+          if (!data || data.length === 0) continue;
+          let buf = this.smpteBufs[channel];
+          if (!buf) {
+            buf = new Float32Array(Math.ceil(sampleRate * 0.05));
+            this.smpteBufs[channel] = buf;
+            this.smpteOffsets[channel] = 0;
+          }
+          let offset = this.smpteOffsets[channel] || 0;
+          if (offset + data.length > buf.length) {
+            const grown = new Float32Array((offset + data.length) * 2);
+            grown.set(buf.subarray(0, offset));
+            buf = grown;
+            this.smpteBufs[channel] = buf;
+          }
+          buf.set(data, offset);
+          offset += data.length;
+          const want = Math.max(128, Math.round(sampleRate * 0.02));
+          if (offset < want) {
+            this.smpteOffsets[channel] = offset;
+            continue;
+          }
+          const samples = new Float32Array(buf.subarray(0, offset));
+          this.smpteOffsets[channel] = 0;
+          this.port.postMessage({ smpte: true, channelIndex: channel, rate: sampleRate, samples }, [samples.buffer]);
         }
-        this.smpteBuf.set(data, this.smpteOffset);
-        this.smpteOffset += data.length;
-        const want = Math.max(128, Math.round(sampleRate * 0.02));
-        if (this.smpteOffset < want) return;
-        const samples = new Float32Array(this.smpteBuf.subarray(0, this.smpteOffset));
-        this.smpteOffset = 0;
-        this.port.postMessage({ smpte: true, rate: sampleRate, samples }, [samples.buffer]);
       }
       process(inputs) {
         const list = (inputs && inputs[0]) || [];
