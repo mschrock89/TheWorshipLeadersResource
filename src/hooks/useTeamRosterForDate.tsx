@@ -12,6 +12,8 @@ import {
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
+import { resolveChainedHolder, type AcceptedRosterSwap } from "@/lib/effectiveSwapSchedule";
+import { swapPositionsMatch } from "@/lib/swapPositions";
 
 const WEEKEND_TEACHING_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
 const WEEKEND_ROSTER_MINISTRY_ALIASES = ["weekend", "weekend_team", "sunday_am"];
@@ -337,7 +339,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v21"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v22"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -1169,6 +1171,105 @@ export function useTeamRosterForDate(
             serviceDay: member.service_day || null,
           });
         }
+      }
+
+      // A person swapped onto this date can give that date away again. The pass
+      // above only rewrites base team rows, so follow the chain from whoever it
+      // just placed here (Luke took Simms' weekend, then traded it to Bruno).
+      const chainSelect = `
+        id,
+        requester_id,
+        accepted_by_id,
+        position,
+        original_date,
+        swap_date,
+        request_type,
+        created_at,
+        requester:profiles!swap_requests_requester_id_fkey(full_name, avatar_url),
+        accepted_by:profiles!swap_requests_accepted_by_id_fkey(full_name, avatar_url)
+      `;
+      let chainByOriginalQuery = supabase
+        .from("swap_requests")
+        .select(chainSelect)
+        .in("original_date", datesToCheck)
+        .eq("resource_app_key", resourceAppKey)
+        .eq("status", "accepted");
+      let chainBySwapDateQuery = supabase
+        .from("swap_requests")
+        .select(chainSelect)
+        .in("swap_date", datesToCheck)
+        .eq("resource_app_key", resourceAppKey)
+        .eq("status", "accepted");
+      if (rosterSwapMinistries) {
+        chainByOriginalQuery = chainByOriginalQuery.in("ministry_type", rosterSwapMinistries);
+        chainBySwapDateQuery = chainBySwapDateQuery.in("ministry_type", rosterSwapMinistries);
+      }
+      const [chainByOriginalResult, chainBySwapDateResult] = await Promise.all([
+        chainByOriginalQuery,
+        chainBySwapDateQuery,
+      ]);
+      if (chainByOriginalResult.error) throw chainByOriginalResult.error;
+      if (chainBySwapDateResult.error) throw chainBySwapDateResult.error;
+
+      const chainRowsById = new Map<string, (typeof chainByOriginalResult.data)[number]>();
+      for (const swap of [...(chainByOriginalResult.data || []), ...(chainBySwapDateResult.data || [])]) {
+        chainRowsById.set(swap.id, swap);
+      }
+
+      const chainPersonById = new Map<string, { name: string; avatarUrl: string | null }>();
+      const asChainProfile = (
+        profile:
+          | { full_name: string | null; avatar_url: string | null }
+          | { full_name: string | null; avatar_url: string | null }[]
+          | null
+          | undefined,
+      ) => (Array.isArray(profile) ? profile[0] : profile);
+      const rememberChainPerson = (
+        userId: string | null | undefined,
+        profile: { full_name: string | null; avatar_url: string | null } | null | undefined,
+      ) => {
+        if (!userId || !profile?.full_name || chainPersonById.has(userId)) return;
+        chainPersonById.set(userId, {
+          name: profile.full_name,
+          avatarUrl: profile.avatar_url || null,
+        });
+      };
+
+      for (const entry of intermediateRoster) {
+        if (!entry.isSwapped || !entry.userId) continue;
+
+        const applicable: AcceptedRosterSwap[] = [];
+        for (const swap of chainRowsById.values()) {
+          if (!swap.accepted_by_id) continue;
+          const matchesPosition =
+            swapPositionsMatch(swap.position, entry.position) ||
+            (entry.positionSlot ? swapPositionsMatch(swap.position, entry.positionSlot) : false);
+          if (!matchesPosition) continue;
+
+          rememberChainPerson(swap.requester_id, asChainProfile(swap.requester));
+          rememberChainPerson(swap.accepted_by_id, asChainProfile(swap.accepted_by));
+          applicable.push({
+            requesterId: swap.requester_id,
+            acceptedById: swap.accepted_by_id,
+            originalDate: swap.original_date,
+            swapDate: swap.swap_date,
+            requestType: swap.request_type,
+            createdAt: swap.created_at,
+          });
+        }
+
+        const nextUserId = resolveChainedHolder(entry.userId, datesToCheck, applicable);
+        if (nextUserId === entry.userId) continue;
+
+        const profile = allSafeProfiles.find((candidate) => candidate.id === nextUserId);
+        const chainPerson = chainPersonById.get(nextUserId);
+        const nextName = profile?.full_name || chainPerson?.name;
+        if (!nextName) continue;
+
+        entry.userId = nextUserId;
+        entry.memberName = nextName;
+        entry.avatarUrl = profileMap.get(nextUserId) || chainPerson?.avatarUrl || null;
+        entry.phone = resolveRosterPhone(nextUserId, nextName);
       }
 
       if (campusId) {

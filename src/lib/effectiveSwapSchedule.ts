@@ -77,6 +77,35 @@ export function applySwapsToScheduleDates(
 }
 
 /**
+ * Who holds a date after the person already placed there gives it away again.
+ * Starts from the current holder (often someone swapped in) and only moves
+ * when that person is the one leaving, so other swaps on the same date stay put.
+ */
+export function resolveChainedHolder(
+  holderId: string,
+  dates: string[],
+  swaps: AcceptedRosterSwap[],
+): string {
+  const dateSet = new Set(dates);
+  let holder = holderId;
+
+  for (const swap of [...swaps].sort(byCreatedAt)) {
+    if (!swap.requesterId || !swap.acceptedById || !holder) continue;
+
+    if (dateSet.has(swap.originalDate) && swap.requesterId === holder) {
+      holder = swap.acceptedById;
+      continue;
+    }
+
+    if (isDirectSwap(swap) && swap.swapDate && dateSet.has(swap.swapDate) && swap.acceptedById === holder) {
+      holder = swap.requesterId;
+    }
+  }
+
+  return holder;
+}
+
+/**
  * Keep one roster row per person who holds the date. A row for a different
  * ministry does not count: that person still needs their matching assignment.
  */
