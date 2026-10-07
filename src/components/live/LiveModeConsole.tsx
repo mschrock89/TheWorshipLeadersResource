@@ -1048,6 +1048,7 @@ export function LiveModeConsole({
         onClearLines={() => {
           void live.clearLines();
         }}
+        onColorsChange={() => setBindingRevision((value) => value + 1)}
       />
     </div>
   );

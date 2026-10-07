@@ -4,7 +4,9 @@ import { format } from "date-fns";
 import { MessageSquare, Mic, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { ChannelColorPicker } from "@/components/live/ChannelColorPicker";
 import { cn } from "@/lib/cn";
+import { readChannelColorStore, resolveChannelTone } from "@/lib/channelColors";
 import { resolveTalkbackBinding } from "@/lib/liveMode";
 import { startTalkbackCapture } from "@/lib/talkbackCapture";
 import { transcribeTalkbackChunk } from "@/lib/transcribeTalkback";
@@ -43,21 +45,6 @@ type ChannelStatus = {
   phase: "listening" | "hearing" | "error" | "idle";
   message?: string;
 };
-
-const SPEAKER_TONES = [
-  { bubble: "border-sky-400/35 bg-sky-400/15", name: "text-sky-300", dot: "bg-sky-400" },
-  { bubble: "border-amber-400/35 bg-amber-400/15", name: "text-amber-300", dot: "bg-amber-400" },
-  { bubble: "border-emerald-400/35 bg-emerald-400/15", name: "text-emerald-300", dot: "bg-emerald-400" },
-  { bubble: "border-violet-400/35 bg-violet-400/15", name: "text-violet-300", dot: "bg-violet-400" },
-  { bubble: "border-rose-400/35 bg-rose-400/15", name: "text-rose-300", dot: "bg-rose-400" },
-  { bubble: "border-cyan-400/35 bg-cyan-400/15", name: "text-cyan-300", dot: "bg-cyan-400" },
-  { bubble: "border-orange-400/35 bg-orange-400/15", name: "text-orange-300", dot: "bg-orange-400" },
-  { bubble: "border-fuchsia-400/35 bg-fuchsia-400/15", name: "text-fuchsia-300", dot: "bg-fuchsia-400" },
-] as const;
-
-function speakerTone(index: number) {
-  return SPEAKER_TONES[index % SPEAKER_TONES.length];
-}
 
 const MIXER_SHORT_LABELS: Record<string, string> = {
   "worship leader": "WL",
@@ -215,7 +202,14 @@ export function TalkbackChat(props: TalkbackChatProps) {
               );
             }
             const match = channelById.get(entry.channelId);
-            const tone = match ? speakerTone(match.index) : null;
+            const tone = match
+              ? resolveChannelTone(
+                  readChannelColorStore(),
+                  match.channel.id,
+                  match.channel.position_slot,
+                  match.index,
+                )
+              : null;
             const label = match?.channel.label || "Input";
             const inputNumber = inputNumbers.get(entry.channelId);
             return (
@@ -286,6 +280,7 @@ export function TalkbackBoard({
   onOpenSetup,
 }: TalkbackBoardProps) {
   const [status, setStatus] = useState<Record<string, ChannelStatus>>({});
+  const [colorRevision, setColorRevision] = useState(0);
   const levelsRef = useRef<Record<string, number>>({});
   const barRefs = useRef(new Map<string, HTMLDivElement>());
 
@@ -356,60 +351,70 @@ export function TalkbackBoard({
 
       <div
         className="grid shrink-0 gap-1 px-2.5 pb-2 pt-1.5"
+        data-colors={colorRevision}
         style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}
       >
         {channels.map((channel, index) => {
           const channelStatus = status[channel.id];
           const binding = armed.find((entry) => entry.id === channel.id);
-          const tone = speakerTone(index);
+          const tone = resolveChannelTone(readChannelColorStore(), channel.id, channel.position_slot, index);
           const hearing = channelStatus?.phase === "hearing";
           const inputNumber = binding ? binding.channelIndex + 1 : null;
           const errorMessage = channelStatus?.phase === "error" ? channelStatus.message : "";
+          const statusLabel = errorMessage
+            ? `${channel.label}, ${errorMessage}`
+            : inputNumber
+              ? `${channel.label}, input ${inputNumber}`
+              : `${channel.label}, no input assigned`;
           return (
-            <div
+            <ChannelColorPicker
               key={channel.id}
-              title={errorMessage || channel.label}
-              aria-label={
-                errorMessage
-                  ? `${channel.label}, ${errorMessage}`
-                  : inputNumber
-                    ? `${channel.label}, input ${inputNumber}`
-                    : `${channel.label}, no input assigned`
-              }
-              className={cn(
-                "flex min-w-0 flex-col items-center gap-0.5 rounded-md border px-0.5 py-1",
-                hearing ? "border-primary bg-primary/10" : "border-border bg-card",
-              )}
+              channelId={channel.id}
+              positionSlot={channel.position_slot}
+              fallbackIndex={index}
+              label={channel.label}
+              onChange={() => setColorRevision((value) => value + 1)}
             >
-              <span
+              <button
+                type="button"
+                title={errorMessage || `Change ${channel.label} color`}
+                aria-label={`Change ${statusLabel} color`}
                 className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  hearing
-                    ? "bg-primary"
-                    : channelStatus?.phase === "error"
-                      ? "bg-destructive"
-                      : listening && binding
-                        ? "bg-emerald-500"
-                        : "bg-muted-foreground/30",
+                  "flex min-w-0 flex-col items-center gap-0.5 rounded-md border border-border px-0.5 py-1",
+                  hearing ? "bg-primary/10" : "bg-card",
                 )}
-              />
-              <p className="w-full truncate text-center text-[9px] font-bold uppercase leading-none tracking-tight text-foreground">
-                {mixerShortLabel(channel.label)}
-              </p>
-              <div className="mt-0.5 flex h-7 w-1.5 items-end overflow-hidden rounded-full bg-muted" aria-hidden>
-                <div
-                  ref={(node) => {
-                    if (node) barRefs.current.set(channel.id, node);
-                    else barRefs.current.delete(channel.id);
-                  }}
-                  className={cn("h-full w-full origin-bottom rounded-full", hearing ? "bg-primary" : tone.dot)}
-                  style={{ transform: `scaleY(${(levelsRef.current[channel.id] || 0) / 100})` }}
+              >
+                <span className={cn("h-1 w-full rounded-full", tone.swatch)} />
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    hearing
+                      ? "bg-primary"
+                      : channelStatus?.phase === "error"
+                        ? "bg-destructive"
+                        : listening && binding
+                          ? "bg-emerald-500"
+                          : "bg-muted-foreground/30",
+                  )}
                 />
-              </div>
-              <span className="text-[9px] font-semibold tabular-nums leading-none text-muted-foreground">
-                {inputNumber ?? "–"}
-              </span>
-            </div>
+                <p className={cn("w-full truncate text-center text-[9px] font-bold uppercase leading-none tracking-tight", tone.name)}>
+                  {mixerShortLabel(channel.label)}
+                </p>
+                <div className="mt-0.5 flex h-7 w-1.5 items-end overflow-hidden rounded-full bg-muted" aria-hidden>
+                  <div
+                    ref={(node) => {
+                      if (node) barRefs.current.set(channel.id, node);
+                      else barRefs.current.delete(channel.id);
+                    }}
+                    className={cn("h-full w-full origin-bottom rounded-full", hearing ? "bg-primary" : tone.dot)}
+                    style={{ transform: `scaleY(${(levelsRef.current[channel.id] || 0) / 100})` }}
+                  />
+                </div>
+                <span className="text-[9px] font-semibold tabular-nums leading-none text-muted-foreground">
+                  {inputNumber ?? "–"}
+                </span>
+              </button>
+            </ChannelColorPicker>
           );
         })}
       </div>

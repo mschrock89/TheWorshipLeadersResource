@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChannelColorButton } from "@/components/live/ChannelColorPicker";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,8 @@ import {
   writeAudioChannelCount,
   writeAudioInterfaceId,
 } from "@/lib/audioRouting";
+import { cn } from "@/lib/cn";
+import { readChannelColorStore, resolveChannelTone } from "@/lib/channelColors";
 import { readTalkbackBindings, writeTalkbackBindingStore } from "@/lib/liveMode";
 import { createInputAudioContext, listSystemAudioInputs, probeInputChannelCount, type SystemAudioInput } from "@/lib/systemAudioInputs";
 import type { LiveTalkbackChannel } from "@/hooks/useLiveSession";
@@ -97,6 +100,45 @@ export function SmpteInputSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function assignmentColor(
+  channels: LiveTalkbackChannel[],
+  talkbackId: string | null,
+): { label: string; positionSlot: string | null; fallbackIndex: number } | null {
+  if (!talkbackId) return null;
+  const index = channels.findIndex((channel) => channel.id === talkbackId);
+  if (index >= 0) {
+    const channel = channels[index];
+    return { label: channel.label, positionSlot: channel.position_slot, fallbackIndex: index };
+  }
+  if (talkbackId === PLAYBACK_SMPTE_ROUTE_ID) {
+    return { label: "Playback SMPTE", positionSlot: null, fallbackIndex: channels.length };
+  }
+  if (talkbackId === PROPRESENTER_SMPTE_ROUTE_ID) {
+    return { label: "ProPresenter SMPTE", positionSlot: null, fallbackIndex: channels.length + 1 };
+  }
+  return null;
+}
+
+function ColorChoice({
+  label,
+  channelId,
+  positionSlot,
+  fallbackIndex,
+}: {
+  label: string;
+  channelId: string;
+  positionSlot: string | null;
+  fallbackIndex: number;
+}) {
+  const tone = resolveChannelTone(readChannelColorStore(), channelId, positionSlot, fallbackIndex);
+  return (
+    <span className="flex items-center gap-2">
+      <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", tone.dot)} aria-hidden />
+      {label}
+    </span>
   );
 }
 
@@ -187,7 +229,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu.
+          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu. The color beside an input is that talkback’s color on the mixer and in captions.
         </p>
 
         <Button
@@ -265,26 +307,74 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
 
         {rows.length > 0 ? (
           <ul className="space-y-2" data-revision={revision}>
-            {rows.map((row) => (
-              <li key={row.inputNumber} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2">
-                <span className="w-16 shrink-0 text-lg font-bold tabular-nums">In {row.inputNumber}</span>
-                <Select value={row.talkbackId || "unused"} onValueChange={(value) => assign(row.channelIndex, value)}>
-                  <SelectTrigger aria-label={`Input ${row.inputNumber} talkback`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unused">Unused</SelectItem>
-                    <SelectItem value={PLAYBACK_SMPTE_ROUTE_ID}>Playback SMPTE</SelectItem>
-                    <SelectItem value={PROPRESENTER_SMPTE_ROUTE_ID}>ProPresenter SMPTE</SelectItem>
-                    {channels.map((channel) => (
-                      <SelectItem key={channel.id} value={channel.id}>
-                        {channel.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </li>
-            ))}
+            {rows.map((row) => {
+              const assignment = assignmentColor(channels, row.talkbackId);
+              const tone = assignment
+                ? resolveChannelTone(
+                    readChannelColorStore(),
+                    row.talkbackId || "",
+                    assignment.positionSlot,
+                    assignment.fallbackIndex,
+                  )
+                : null;
+              return (
+                <li key={row.inputNumber} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2">
+                  {assignment && tone ? (
+                    <ChannelColorButton
+                      channelId={row.talkbackId || ""}
+                      positionSlot={assignment.positionSlot}
+                      fallbackIndex={assignment.fallbackIndex}
+                      label={assignment.label}
+                      onChange={() => {
+                        setRevision((value) => value + 1);
+                        onBindingsChange();
+                      }}
+                    />
+                  ) : (
+                    <span className="h-7 w-7 shrink-0 rounded-full border border-dashed border-border" aria-hidden />
+                  )}
+                  <span className={cn("w-14 shrink-0 text-lg font-bold tabular-nums", tone?.name)}>
+                    In {row.inputNumber}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Select value={row.talkbackId || "unused"} onValueChange={(value) => assign(row.channelIndex, value)}>
+                      <SelectTrigger aria-label={`Input ${row.inputNumber} talkback`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unused">Unused</SelectItem>
+                        <SelectItem value={PLAYBACK_SMPTE_ROUTE_ID}>
+                          <ColorChoice
+                            label="Playback SMPTE"
+                            channelId={PLAYBACK_SMPTE_ROUTE_ID}
+                            positionSlot={null}
+                            fallbackIndex={channels.length}
+                          />
+                        </SelectItem>
+                        <SelectItem value={PROPRESENTER_SMPTE_ROUTE_ID}>
+                          <ColorChoice
+                            label="ProPresenter SMPTE"
+                            channelId={PROPRESENTER_SMPTE_ROUTE_ID}
+                            positionSlot={null}
+                            fallbackIndex={channels.length + 1}
+                          />
+                        </SelectItem>
+                        {channels.map((channel, index) => (
+                          <SelectItem key={channel.id} value={channel.id}>
+                            <ColorChoice
+                              label={channel.label}
+                              channelId={channel.id}
+                              positionSlot={channel.position_slot}
+                              fallbackIndex={index}
+                            />
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </div>

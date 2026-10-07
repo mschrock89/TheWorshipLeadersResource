@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChannelColorButton } from "@/components/live/ChannelColorPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +20,7 @@ type TalkbackSetupSheetProps = {
   onRenameChannel: (channelId: string, label: string) => void;
   onRemoveChannel: (channelId: string) => void;
   onClearLines: () => void;
+  onColorsChange?: () => void;
 };
 
 export function TalkbackSetupSheet({
@@ -30,6 +32,7 @@ export function TalkbackSetupSheet({
   onRenameChannel,
   onRemoveChannel,
   onClearLines,
+  onColorsChange,
 }: TalkbackSetupSheetProps) {
   const [newLabel, setNewLabel] = useState("");
 
@@ -39,7 +42,7 @@ export function TalkbackSetupSheet({
         <SheetHeader>
           <SheetTitle>Talkback inputs</SheetTitle>
           <SheetDescription>
-            Name each talkback by its stage position. Match those names to input numbers on Audio routing. Listen on the computer that receives the board.
+            Name each talkback by its stage position and choose its color. Match those names to input numbers on Audio routing. Listen on the computer that receives the board.
           </SheetDescription>
         </SheetHeader>
 
@@ -60,9 +63,16 @@ export function TalkbackSetupSheet({
           </div>
 
           <ul className="space-y-3">
-            {channels.map((channel) => (
+            {channels.map((channel, index) => (
               <li key={channel.id} className="rounded-xl border border-border p-3">
                 <div className="flex items-center gap-2">
+                  <ChannelColorButton
+                    channelId={channel.id}
+                    positionSlot={channel.position_slot}
+                    fallbackIndex={index}
+                    label={channel.label}
+                    onChange={onColorsChange}
+                  />
                   <Input
                     aria-label={`${channel.label} name`}
                     defaultValue={channel.label}
