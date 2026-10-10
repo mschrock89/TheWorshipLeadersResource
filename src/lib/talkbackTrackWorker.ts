@@ -2,6 +2,8 @@ import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase } from "./ta
 import { concatFloats, downsampleMono, encodeMonoWavBytes, rmsFloat } from "./talkbackPcm.ts";
 
 const WAV_RATE = 16000;
+const LIVE_RATE = 24000;
+const LIVE_WINDOW = Math.round(LIVE_RATE * 0.06);
 const LEVEL_INTERVAL_MS = 80;
 
 type WorkerChannel = {
@@ -21,6 +23,8 @@ type ChannelPhrase = {
   chunks: Float32Array[];
   startedAt: number;
   lastVoiceAt: number;
+  live: Float32Array[];
+  liveSamples: number;
 };
 
 type WorkerGlobal = {
@@ -61,6 +65,23 @@ function readPlane(frame: AudioPlaneFrame, channelIndex: number, reuse: Float32A
 function postPhrase(channelId: string, phrase: ChannelPhrase) {
   const wav = encodeMonoWavBytes(concatFloats(phrase.chunks), WAV_RATE);
   scope.postMessage({ type: "phrase", channelId, wav }, [wav]);
+}
+
+function emitLive(channelId: string, phrase: ChannelPhrase) {
+  if (!phrase.live.length) return;
+  const merged = concatFloats(phrase.live);
+  phrase.live = [];
+  phrase.liveSamples = 0;
+  scope.postMessage({ type: "audio", channelId, rate: LIVE_RATE, samples: merged }, [merged.buffer]);
+}
+
+function appendLive(channelId: string, phrase: ChannelPhrase, samples: Float32Array, rate: number) {
+  const piece = downsampleMono(samples, rate, LIVE_RATE);
+  const copy = piece === samples ? new Float32Array(samples) : piece;
+  phrase.live.push(copy);
+  phrase.liveSamples += copy.length;
+  if (phrase.liveSamples < LIVE_WINDOW) return;
+  emitLive(channelId, phrase);
 }
 
 async function run(readable: ReadableStream<AudioPlaneFrame>, channels: WorkerChannel[], isStopped: () => boolean) {
@@ -113,13 +134,20 @@ async function run(readable: ReadableStream<AudioPlaneFrame>, channels: WorkerCh
       if (!speaking) floors.set(channel.id, nextNoiseFloor(floor, level, false));
       if (speaking) {
         setPhase(channel.id, "hearing");
+        const phraseOpen =
+          open ||
+          ({
+            chunks: [],
+            startedAt: now,
+            lastVoiceAt: now,
+            live: [],
+            liveSamples: 0,
+          } satisfies ChannelPhrase);
+        if (!open) phrases.set(channel.id, phraseOpen);
+        else phraseOpen.lastVoiceAt = now;
+        appendLive(channel.id, phraseOpen, samples, rate);
         const piece = downsampleMono(samples, rate, WAV_RATE);
-        const stored = piece === samples ? new Float32Array(piece) : piece;
-        if (!open) phrases.set(channel.id, { chunks: [stored], startedAt: now, lastVoiceAt: now });
-        else {
-          open.chunks.push(stored);
-          open.lastVoiceAt = now;
-        }
+        phraseOpen.chunks.push(piece === samples ? new Float32Array(piece) : piece);
       }
       const phrase = phrases.get(channel.id);
       if (!phrase) {
@@ -128,6 +156,7 @@ async function run(readable: ReadableStream<AudioPlaneFrame>, channels: WorkerCh
       }
       if (shouldTranscribePhrase(now - phrase.startedAt, now - phrase.lastVoiceAt)) {
         phrases.delete(channel.id);
+        emitLive(channel.id, phrase);
         postPhrase(channel.id, phrase);
         if (!speaking) setPhase(channel.id, "listening");
       }

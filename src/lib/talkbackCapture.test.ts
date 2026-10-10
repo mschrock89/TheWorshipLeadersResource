@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { captureUsesWorklet, inputRequestAttempts, splitterChannelCount, talkbackTapAttempts, talkbackTapOptionSets, talkbackTapOptions, widenInputSource } from "./systemAudioInputs.ts";
 import { nextNoiseFloor, phraseLevelIsVoice, shouldTranscribePhrase, talkbackMeterLevel } from "./talkbackPhrase.ts";
-import { downsampleMono, encodeMonoWav } from "./talkbackCapture.ts";
+import { downsampleMono, encodeMonoWav } from "./talkbackPcm.ts";
 import { encodePcm16Base64 } from "./talkbackPcm.ts";
 
 test("holds a phrase open through a short breath", () => {
   assert.equal(shouldTranscribePhrase(2000, 200), false);
-  assert.equal(shouldTranscribePhrase(2000, 379), false);
+  assert.equal(shouldTranscribePhrase(2000, 239), false);
 });
 
 test("sends the phrase once the speaker has finished", () => {
-  assert.equal(shouldTranscribePhrase(1800, 380), true);
-  assert.equal(shouldTranscribePhrase(279, 380), false);
+  assert.equal(shouldTranscribePhrase(1800, 240), true);
+  assert.equal(shouldTranscribePhrase(279, 240), false);
 });
 
 test("cuts only after the phrase has run the full safety limit", () => {

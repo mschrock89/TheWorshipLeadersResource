@@ -188,7 +188,15 @@ export function useLiveSession({
     (line: LiveTalkbackLine) => {
       queryClient.setQueryData<LiveTalkbackLine[]>(linesKey, (current = []) => {
         if (current.some((row) => row.id === line.id)) return current;
-        return [...current, line].slice(-400);
+        const withoutPending = current.filter(
+          (row) =>
+            !(
+              row.id.startsWith("pending:") &&
+              row.channel_id === line.channel_id &&
+              row.transcript === line.transcript
+            ),
+        );
+        return [...withoutPending, line].slice(-400);
       });
     },
     [linesKey, queryClient],
@@ -365,18 +373,34 @@ export function useLiveSession({
       const at = Date.now();
       if (shouldDropRepeat(recentLines.current.get(channelId), transcript, at)) return;
       recentLines.current.set(channelId, { text: transcript, at });
+      const pendingId = `pending:${channelId}:${at}`;
+      appendLine({
+        id: pendingId,
+        session_id: sessionId,
+        channel_id: channelId,
+        transcript,
+        created_at: new Date(at).toISOString(),
+      });
       const { data, error } = await supabase
         .from("live_talkback_lines")
         .insert({ session_id: sessionId, channel_id: channelId, transcript })
         .select("*")
         .single();
       if (error) {
+        queryClient.setQueryData<LiveTalkbackLine[]>(linesKey, (current = []) =>
+          current.filter((row) => row.id !== pendingId),
+        );
         report(error, "Could not share that caption");
         return;
       }
-      if (data) appendLine(data);
+      if (data) {
+        queryClient.setQueryData<LiveTalkbackLine[]>(linesKey, (current = []) => {
+          const kept = current.filter((row) => row.id !== pendingId && row.id !== data.id);
+          return [...kept, data].slice(-400);
+        });
+      }
     },
-    [appendLine, report, sessionId],
+    [appendLine, linesKey, queryClient, report, sessionId],
   );
 
   const sendChatMessage = useCallback(

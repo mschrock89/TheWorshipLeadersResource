@@ -349,6 +349,17 @@ export function startTalkbackLive(handlers: LiveHandlers) {
       if (!state.socket && !state.connecting) void connect(channelId, state);
       flush(channelId, state);
     },
+    cancel(channelId: string) {
+      const state = channels.get(channelId);
+      if (!state || state.stopped) return;
+      const sent = state.hadAudio;
+      state.pending = [];
+      state.hadAudio = false;
+      state.finishing = false;
+      state.wav = null;
+      state.earlyFinal = null;
+      if (sent && state.ready) send(state, { type: "input_audio_buffer.clear" });
+    },
     end(channelId: string, wav: Blob) {
       if (stopped) return;
       const state = ensure(channelId);

@@ -26,6 +26,7 @@ type TranscriptChatProps = {
   variant: "transcript";
   channels: LiveTalkbackChannel[];
   lines: LiveTalkbackLine[];
+  drafts?: Record<string, string>;
   bindingRevision: number;
 };
 
@@ -137,13 +138,18 @@ export function TalkbackChat(props: TalkbackChatProps) {
       .sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id));
   }, [props]);
   const latestId = feed[feed.length - 1]?.id;
+  const draftRows =
+    props.variant === "transcript"
+      ? Object.entries(props.drafts || {}).filter((entry): entry is [string, string] => Boolean(entry[1].trim()))
+      : [];
+  const draftKey = draftRows.map(([channelId, text]) => `${channelId}:${text}`).join("|");
   const currentUserId = props.variant === "typed" ? props.currentUserId : null;
 
   useEffect(() => {
     const node = scroller.current;
     if (!node || !stickToBottom.current) return;
     node.scrollTop = node.scrollHeight;
-  }, [latestId]);
+  }, [draftKey, latestId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -164,7 +170,7 @@ export function TalkbackChat(props: TalkbackChatProps) {
           stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
         }}
       >
-        {feed.length === 0 ? (
+        {feed.length === 0 && draftRows.length === 0 ? (
           <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 px-4 text-center text-muted-foreground">
             {typed ? <MessageSquare className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             <p className="text-sm">
@@ -235,6 +241,32 @@ export function TalkbackChat(props: TalkbackChatProps) {
             );
           })
         )}
+        {draftRows.map(([channelId, text]) => {
+          const match = channelById.get(channelId);
+          const tone = match
+            ? resolveChannelTone(readChannelColorStore(), match.channel.id, match.channel.position_slot, match.index)
+            : null;
+          const label = match?.channel.label || "Input";
+          const inputNumber = inputNumbers.get(channelId);
+          return (
+            <article key={`draft:${channelId}`} className="flex justify-start">
+              <div
+                className={cn(
+                  "max-w-[min(40rem,100%)] rounded-2xl rounded-tl-md border px-3.5 py-2.5",
+                  tone?.bubble || "border-border bg-muted",
+                )}
+              >
+                <p className={cn("text-[11px] font-bold uppercase tracking-[0.14em]", tone?.name || "text-muted-foreground")}>
+                  {label}
+                  {inputNumber ? (
+                    <span className="ml-2 font-semibold normal-case tracking-normal opacity-80">Input {inputNumber}</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-lg font-medium leading-snug text-foreground sm:text-xl">{text}</p>
+              </div>
+            </article>
+          );
+        })}
       </div>
       {props.variant === "typed" ? (
         <form
@@ -280,6 +312,7 @@ export function TalkbackBoard({
   onOpenSetup,
 }: TalkbackBoardProps) {
   const [status, setStatus] = useState<Record<string, ChannelStatus>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [colorRevision, setColorRevision] = useState(0);
   const levelsRef = useRef<Record<string, number>>({});
   const barRefs = useRef(new Map<string, HTMLDivElement>());
@@ -299,13 +332,36 @@ export function TalkbackBoard({
       levelsRef.current = {};
       for (const bar of barRefs.current.values()) bar.style.transform = "scaleY(0)";
       setStatus({});
+      setDrafts({});
       return;
     }
+    setDrafts({});
     return startTalkbackCapture({
       audioContext,
       channels: armed,
       transcribe: transcribeTalkbackChunk,
-      onTranscript,
+      onPartial: (channelId, text) => {
+        const trimmed = text.trim();
+        setDrafts((current) => {
+          if (!trimmed) {
+            if (!current[channelId]) return current;
+            const next = { ...current };
+            delete next[channelId];
+            return next;
+          }
+          if (current[channelId] === trimmed) return current;
+          return { ...current, [channelId]: trimmed };
+        });
+      },
+      onTranscript: (channelId, text) => {
+        setDrafts((current) => {
+          if (!current[channelId]) return current;
+          const next = { ...current };
+          delete next[channelId];
+          return next;
+        });
+        onTranscript(channelId, text);
+      },
       onLevel: (channelId, level) => {
         const percent = Math.max(0, Math.min(100, Math.round(Math.min(1, level) * 100)));
         if (levelsRef.current[channelId] === percent) return;
@@ -419,7 +475,7 @@ export function TalkbackBoard({
         })}
       </div>
 
-      <TalkbackChat variant="transcript" channels={channels} lines={lines} bindingRevision={bindingRevision} />
+      <TalkbackChat variant="transcript" channels={channels} lines={lines} drafts={drafts} bindingRevision={bindingRevision} />
     </div>
   );
 }
