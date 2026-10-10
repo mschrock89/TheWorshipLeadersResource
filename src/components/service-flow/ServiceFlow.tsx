@@ -2,7 +2,13 @@ import { memo, useMemo } from "react";
 import { Music4, Video, Megaphone, Mic2, Circle, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
+import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
+
+function printableNotes(notes: string | null | undefined) {
+  return notesWithoutMidiCue(notesWithoutTimecodeCue(notes));
+}
 
 export type ServiceItem = {
   id: string;
@@ -231,6 +237,7 @@ export const ServiceFlow = memo(function ServiceFlow({
           {service.sections.map((section) => {
             const sectionRuntime = sectionRuntimeById.get(section.id) ?? 0;
             const isHighlightedSection = section.id === highlightSectionId;
+            const sectionNotes = isPrintSheet ? printableNotes(section.notes) : section.notes;
 
             return (
               <section
@@ -260,9 +267,9 @@ export const ServiceFlow = memo(function ServiceFlow({
                     <p className={cn("service-flow-print-section-runtime mt-0.5 text-xs font-semibold text-slate-600 print:text-black/70", isPrintSheet && !isFullSheet && "print:hidden")}>
                       {formatSeconds(sectionRuntime)}
                     </p>
-                    {section.notes ? (
+                    {sectionNotes ? (
                       <p className="mt-1 whitespace-pre-wrap text-xs font-medium text-slate-600 print:text-[10px] print:text-black/75">
-                        {section.notes}
+                        {sectionNotes}
                       </p>
                     ) : null}
                   </div>
@@ -281,6 +288,7 @@ export const ServiceFlow = memo(function ServiceFlow({
                     const isSong = item.type === "song";
                     const isHighlightedItem = item.id === highlightItemId;
                     const songMeta = isSong ? formatSongMeta(item) : "";
+                    const itemNotes = isPrintSheet ? printableNotes(item.notes) : item.notes;
 
                     return (
                       <article
@@ -322,14 +330,9 @@ export const ServiceFlow = memo(function ServiceFlow({
                                     {item.leader}
                                   </p>
                                 ) : null}
-                                {item.smpte ? (
-                                  <p className="service-flow-print-item-notes print:min-w-0 print:shrink-0 print:whitespace-nowrap print:text-[10px] print:font-semibold print:leading-tight print:tabular-nums print:text-black/80">
-                                    {item.smpte}
-                                  </p>
-                                ) : null}
-                                {item.notes ? (
+                                {itemNotes ? (
                                   <p className="service-flow-print-item-notes print:min-w-0 print:truncate print:text-[10px] print:leading-tight print:text-black/70">
-                                    {item.notes}
+                                    {itemNotes}
                                   </p>
                                 ) : null}
                                 <div className="print:ml-auto print:flex print:shrink-0 print:items-center print:gap-1">

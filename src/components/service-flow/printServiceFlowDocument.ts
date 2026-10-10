@@ -1,3 +1,5 @@
+import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
+import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import type { Service } from "./ServiceFlow";
 
 const BRAND = {
@@ -17,6 +19,10 @@ function escapeHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function printableNotes(notes: string | null | undefined) {
+  return notesWithoutMidiCue(notesWithoutTimecodeCue(notes));
 }
 
 function formatServiceDate(date: string) {
@@ -46,12 +52,12 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
             item.leader ? escapeHtml(item.leader) : "",
           ].filter(Boolean);
 
+          const notes = printableNotes(item.notes);
           return `<li class="item">
             <div class="item-main">
               <span class="item-title">${escapeHtml(item.title)}</span>
               ${metaParts.length > 0 ? `<span class="item-meta">${metaParts.join(" · ")}</span>` : ""}
-              ${item.smpte ? `<span class="item-notes">${escapeHtml(item.smpte)}</span>` : ""}
-              ${item.notes ? `<span class="item-notes">${escapeHtml(item.notes)}</span>` : ""}
+              ${notes ? `<span class="item-notes">${escapeHtml(notes)}</span>` : ""}
             </div>
             <span class="item-times">
               <span class="item-duration">${escapeHtml(item.duration || "")}</span>
@@ -61,9 +67,10 @@ export function buildPrintHtml(service: Service, layout: ServiceFlowPrintLayout 
         })
         .join("");
 
+      const sectionNotes = printableNotes(section.notes);
       return `<section class="section">
         <h2 class="section-title">${escapeHtml(section.title)}</h2>
-        ${section.notes ? `<p class="section-notes">${escapeHtml(section.notes)}</p>` : ""}
+        ${sectionNotes ? `<p class="section-notes">${escapeHtml(sectionNotes)}</p>` : ""}
         <ul class="items">${itemsHtml}</ul>
       </section>`;
     })
