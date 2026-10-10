@@ -11,16 +11,21 @@ import {
 } from "@/components/ui/select";
 import {
   assignSmpteInput,
+  captureAudioRoutingDefault,
+  markRoutingDefaultApplied,
   patchInput,
   PLAYBACK_SMPTE_ROUTE_ID,
   PROPRESENTER_SMPTE_ROUTE_ID,
   readAudioInterfaceId,
+  readAudioRoutingDefault,
   readSmpteBinding,
   routingRows,
+  sessionRoutingIdentities,
   type SmpteSource,
   visibleSmpteInputCount,
   writeAudioChannelCount,
   writeAudioInterfaceId,
+  writeAudioRoutingDefault,
 } from "@/lib/audioRouting";
 import { cn } from "@/lib/cn";
 import { readChannelColorStore, resolveChannelTone } from "@/lib/channelColors";
@@ -29,6 +34,7 @@ import { createInputAudioContext, listSystemAudioInputs, probeInputChannelCount,
 import type { LiveTalkbackChannel } from "@/hooks/useLiveSession";
 
 type AudioRoutingPageProps = {
+  sessionId: string | null;
   channels: LiveTalkbackChannel[];
   onClose: () => void;
   onBindingsChange: () => void;
@@ -142,22 +148,21 @@ function ColorChoice({
   );
 }
 
-export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioRoutingPageProps) {
+export function AudioRoutingPage({ sessionId, channels, onClose, onBindingsChange }: AudioRoutingPageProps) {
   const [inputs, setInputs] = useState<SystemAudioInput[]>([]);
   const [deviceId, setDeviceId] = useState(readAudioInterfaceId() || "");
   const [channelCount, setChannelCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<"list" | "probe" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [defaultSaved, setDefaultSaved] = useState(() => readAudioRoutingDefault() !== null);
+  const [justSaved, setJustSaved] = useState(false);
 
-  const targets = [
-    ...channels.map((channel) => ({
-      id: channel.id,
-      positionSlot: channel.position_slot,
-    })),
-    { id: PROPRESENTER_SMPTE_ROUTE_ID, positionSlot: null },
-    { id: PLAYBACK_SMPTE_ROUTE_ID, positionSlot: null },
-  ];
+  const identities = sessionRoutingIdentities(channels);
+  const targets = identities.map((identity) => ({
+    id: identity.id,
+    positionSlot: identity.positionSlot,
+  }));
   const rows = deviceId && channelCount
     ? routingRows(channelCount, targets, readTalkbackBindings(), deviceId)
     : [];
@@ -200,7 +205,23 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
     }
   };
 
+  const saveDefault = () => {
+    if (!deviceId) return;
+    const saved = captureAudioRoutingDefault(
+      readTalkbackBindings(),
+      identities,
+      deviceId,
+      channelCount,
+      new Date().toISOString(),
+    );
+    writeAudioRoutingDefault(saved);
+    if (sessionId) markRoutingDefaultApplied(sessionId, saved.savedAt);
+    setDefaultSaved(true);
+    setJustSaved(true);
+  };
+
   const assign = (channelIndex: number, talkbackId: string) => {
+    setJustSaved(false);
     const next = patchInput(
       readTalkbackBindings(),
       targets,
@@ -232,18 +253,32 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
           Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu. The color beside an input is that talkback’s color on the mixer and in captions.
         </p>
 
-        <Button
-          type="button"
-          onClick={() => {
-            const context = createInputAudioContext();
-            void context.resume();
-            void readInputs(context);
-          }}
-          disabled={busy !== null}
-        >
-          {busy === "list" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Read system inputs
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={() => {
+              const context = createInputAudioContext();
+              void context.resume();
+              void readInputs(context);
+            }}
+            disabled={busy !== null}
+          >
+            {busy === "list" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Read system inputs
+          </Button>
+          <Button type="button" variant="outline" onClick={saveDefault} disabled={!deviceId || busy !== null}>
+            Save as default
+          </Button>
+        </div>
+        {justSaved ? (
+          <p className="text-sm text-muted-foreground">
+            Saved. Every Live session in this browser starts with this routing.
+          </p>
+        ) : defaultSaved ? (
+          <p className="text-sm text-muted-foreground">
+            A default is saved. Every Live session in this browser starts with it.
+          </p>
+        ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         {inputs.length > 0 ? (
@@ -254,6 +289,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
               onValueChange={(value) => {
                 const context = createInputAudioContext();
                 void context.resume();
+                setJustSaved(false);
                 setDeviceId(value);
                 writeAudioInterfaceId(value);
                 void countChannels(value, context);
@@ -298,6 +334,7 @@ export function AudioRoutingPage({ channels, onClose, onBindingsChange }: AudioR
               deviceId={deviceId}
               revision={revision}
               onAssigned={() => {
+                setJustSaved(false);
                 setRevision((value) => value + 1);
                 onBindingsChange();
               }}

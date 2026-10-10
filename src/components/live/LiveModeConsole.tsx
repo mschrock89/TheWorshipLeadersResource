@@ -13,8 +13,20 @@ import {
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { isFohListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
-import { readAudioChannelCount, readAudioInterfaceId, readSmpteListens, type SmpteSource } from "@/lib/audioRouting";
+import { isFohListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import {
+  applyAudioRoutingDefault,
+  markRoutingDefaultApplied,
+  readAudioChannelCount,
+  readAudioInterfaceId,
+  readAudioRoutingDefault,
+  readSmpteListens,
+  routingDefaultAlreadyApplied,
+  sessionRoutingIdentities,
+  writeAudioChannelCount,
+  writeAudioInterfaceId,
+  type SmpteSource,
+} from "@/lib/audioRouting";
 import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
 import {
   buildTimecodeWindows,
@@ -241,6 +253,19 @@ export function LiveModeConsole({
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (videoOnly) return;
+    const sessionId = live.session?.id;
+    if (!sessionId || live.isLoading || live.channels.length === 0) return;
+    const saved = readAudioRoutingDefault();
+    if (!saved || routingDefaultAlreadyApplied(sessionId, saved.savedAt)) return;
+    writeTalkbackBindingStore(applyAudioRoutingDefault(saved, sessionRoutingIdentities(live.channels)));
+    writeAudioInterfaceId(saved.deviceId);
+    if (saved.channelCount) writeAudioChannelCount(saved.channelCount);
+    markRoutingDefaultApplied(sessionId, saved.savedAt);
+    setBindingRevision((value) => value + 1);
+  }, [live.channels, live.isLoading, live.session?.id, videoOnly]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1022,6 +1047,7 @@ export function LiveModeConsole({
 
       {routingOpen ? (
         <AudioRoutingPage
+          sessionId={live.session?.id || null}
           channels={live.channels}
           onClose={() => {
             setRoutingOpen(false);
