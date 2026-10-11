@@ -142,13 +142,10 @@ export function gatePlaybackSong(state: PlaybackGate, matchedSongId: string | nu
   if (!matchedSongId) {
     return { ...state, take: false as const };
   }
-  if (state.hold) {
-    if (state.lastSongId && matchedSongId !== state.lastSongId) {
-      return { currentId: matchedSongId, lastSongId: matchedSongId, hold: false, take: true as const };
-    }
+  if (state.hold && state.lastSongId === matchedSongId) {
     return {
       currentId: state.currentId,
-      lastSongId: state.lastSongId ?? matchedSongId,
+      lastSongId: state.lastSongId,
       hold: true,
       take: false as const,
     };

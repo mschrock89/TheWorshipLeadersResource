@@ -54,8 +54,9 @@ test("follows Playback during a song and ProPresenter once its timecode starts",
   assert.equal(duringSong?.itemId, "song");
   assert.ok(duringSong && duringSong.progress > 0.49 && duringSong.progress < 0.51);
 
-  const gap = matchTimecodeWindow(windows, smpteSortKey({ hours: 1, minutes: 5, seconds: 0, frames: 0 }, 30));
-  assert.equal(gap, null);
+  const stillInSlot = matchTimecodeWindow(windows, smpteSortKey({ hours: 1, minutes: 5, seconds: 0, frames: 0 }, 30));
+  assert.equal(stillInSlot?.itemId, "song");
+  assert.equal(stillInSlot?.progress, 1);
 
   const duringWelcome = matchTimecodeWindow(windows, smpteSortKey({ hours: 10, minutes: 1, seconds: 0, frames: 0 }, 30));
   assert.equal(duringWelcome?.itemId, "welcome");
@@ -89,6 +90,10 @@ test("assigns Playback songs every ten minutes from 01:00:00:00", () => {
   const windows = buildTimecodeWindows(items, 30);
   assert.equal(
     matchTimecodeWindow(windows, smpteSortKey({ hours: 1, minutes: 2, seconds: 0, frames: 0 }, 30))?.itemId,
+    "song-1",
+  );
+  assert.equal(
+    matchTimecodeWindow(windows, smpteSortKey({ hours: 1, minutes: 6, seconds: 0, frames: 0 }, 30))?.itemId,
     "song-1",
   );
   assert.equal(

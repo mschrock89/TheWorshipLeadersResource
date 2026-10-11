@@ -19,6 +19,7 @@ export type TimecodeWindow = {
   itemId: string;
   start: number;
   end: number;
+  progressEnd: number;
   source: TimecodeSource;
 };
 
@@ -158,17 +159,23 @@ export function buildTimecodeWindows(items: TimecodeFlowItem[], fps: number): Ti
 
   return anchored.map((entry, index) => {
     const next = anchored[index + 1];
+    const durationEnd = entry.item.duration_seconds && entry.item.duration_seconds > 0
+      ? entry.start + Math.round(entry.item.duration_seconds * rate)
+      : null;
+    const songSlot = entry.start + PLAYBACK_SONG_STEP_MINUTES * 60 * rate;
     let end = entry.start + 24 * 3600 * rate;
     if (entry.cue.end) end = smpteSortKey(entry.cue.end, rate);
-    else if (entry.item.duration_seconds && entry.item.duration_seconds > 0) {
-      end = entry.start + Math.round(entry.item.duration_seconds * rate);
-    } else if (next) end = next.start;
+    else if (entry.item.item_type === "song") end = songSlot;
+    else if (durationEnd) end = durationEnd;
+    else if (next) end = next.start;
     if (next && end > next.start) end = next.start;
     if (end <= entry.start) end = entry.start + 1;
+    const progressEnd = durationEnd && durationEnd > entry.start ? Math.min(durationEnd, end) : end;
     return {
       itemId: entry.item.id,
       start: entry.start,
       end,
+      progressEnd,
       source: entry.item.item_type === "song" ? "playback" : "propresenter",
     };
   });
@@ -181,10 +188,11 @@ export function matchTimecodeWindow(windows: TimecodeWindow[], key: number) {
     if (!best || window.start >= best.start) best = window;
   }
   if (!best) return null;
-  const span = Math.max(1, best.end - best.start);
+  const progressEnd = best.progressEnd > best.start ? best.progressEnd : best.end;
+  const span = Math.max(1, progressEnd - best.start);
   return {
     itemId: best.itemId,
-    progress: Math.min(1, Math.max(0, (key - best.start) / span)),
+    progress: Math.min(1, Math.max(0, (Math.min(key, progressEnd) - best.start) / span)),
   };
 }
 

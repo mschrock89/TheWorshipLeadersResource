@@ -55,9 +55,10 @@ test("matches the chosen channel, note, and value", () => {
 });
 
 test("holds a MIDI line until playback enters the next song", () => {
-  const held = gatePlaybackSong({ currentId: "welcome", lastSongId: null, hold: true }, "song-1");
-  assert.equal(held.take, false);
-  assert.equal(held.lastSongId, "song-1");
+  const firstSong = gatePlaybackSong({ currentId: "welcome", lastSongId: null, hold: true }, "song-1");
+  assert.equal(firstSong.take, true);
+  assert.equal(firstSong.currentId, "song-1");
+  assert.equal(firstSong.hold, false);
 
   const stillHeld = gatePlaybackSong(
     { currentId: "welcome", lastSongId: "song-1", hold: true },

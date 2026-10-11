@@ -1,4 +1,5 @@
 import {
+  captureUsesWorklet,
   createTalkbackTap,
   ensureTalkbackTap,
   openSystemInput,
@@ -28,16 +29,61 @@ type TapMessage = {
   channelCount?: number;
 };
 
+type AudioPlaneFrame = {
+  numberOfChannels: number;
+  numberOfFrames: number;
+  sampleRate: number;
+  copyTo: (destination: Float32Array, options: { planeIndex: number; format?: string }) => void;
+  close: () => void;
+};
+
+function trackProcessor(track: MediaStreamTrack) {
+  const Processor = (
+    globalThis as unknown as {
+      MediaStreamTrackProcessor?: new (init: { track: MediaStreamTrack }) => {
+        readable: ReadableStream<AudioPlaneFrame>;
+      };
+    }
+  ).MediaStreamTrackProcessor;
+  if (!Processor) return null;
+  try {
+    return new Processor({ track });
+  } catch {
+    return null;
+  }
+}
+
+function copyPlane(frame: AudioPlaneFrame, channelIndex: number) {
+  if (channelIndex >= frame.numberOfChannels || frame.numberOfFrames < 1) return null;
+  const planar = new Float32Array(frame.numberOfFrames);
+  const options = [
+    { planeIndex: channelIndex, format: "f32-planar" },
+    { planeIndex: channelIndex, format: "f32" },
+    { planeIndex: channelIndex },
+  ];
+  for (const option of options) {
+    try {
+      frame.copyTo(planar, option);
+      return planar;
+    } catch {
+      // This browser lays the frame out a different way.
+    }
+  }
+  return null;
+}
+
 export function startSmpteCapture(handlers: SmpteCaptureHandlers): () => void {
   let stopped = false;
   const releases: Array<() => void> = [];
   const timeouts: number[] = [];
+  const readers: Array<{ cancel: () => void }> = [];
   const context = handlers.audioContext;
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     for (const timeout of timeouts) window.clearTimeout(timeout);
+    for (const reader of readers) reader.cancel();
     for (const release of releases) {
       try {
         release();
@@ -69,14 +115,21 @@ export function startSmpteCapture(handlers: SmpteCaptureHandlers): () => void {
             opened.release();
             return;
           }
-          if (!opened.source) {
-            opened.release();
-            failed = true;
-            handlers.onStatus("error", "Could not open a SMPTE input.");
+          const highest = Math.max(...group.map((listen) => listen.channelIndex));
+          const needed = highest + 1;
+          if (!opened.source || !captureUsesWorklet(opened.heardChannelCount, opened.channelCount, needed)) {
+            const read = await readSmptePlanes(opened, group, handlers, readers, () => stopped);
+            if (read) openedAny = true;
+            else if (!stopped) {
+              failed = true;
+              handlers.onStatus(
+                "error",
+                "A SMPTE input did not appear. In Audio MIDI Setup, set the interface to 48 channels at 48 kHz, then reload Live.",
+              );
+            }
             continue;
           }
-          const highest = Math.max(...group.map((listen) => listen.channelIndex));
-          const node = createTalkbackTap(context, Math.max(opened.channelCount, highest + 1));
+          const node = createTalkbackTap(context, Math.max(opened.channelCount, needed));
           const silent = context.createGain();
           silent.gain.value = 0;
           opened.source.connect(node);
@@ -131,4 +184,73 @@ export function startSmpteCapture(handlers: SmpteCaptureHandlers): () => void {
   })();
 
   return stop;
+}
+
+async function readSmptePlanes(
+  opened: Awaited<ReturnType<typeof openSystemInput>>,
+  group: SmpteListen[],
+  handlers: SmpteCaptureHandlers,
+  readers: Array<{ cancel: () => void }>,
+  isStopped: () => boolean,
+) {
+  const track = opened.stream.getAudioTracks()[0];
+  const processor = track ? trackProcessor(track) : null;
+  if (!processor) {
+    opened.release();
+    return false;
+  }
+  const reader = processor.readable.getReader();
+  let cancelled = false;
+  readers.push({
+    cancel: () => {
+      cancelled = true;
+      void reader.cancel().catch(() => undefined);
+    },
+  });
+
+  const deliver = (frame: AudioPlaneFrame) => {
+    const rate = frame.sampleRate || 48000;
+    let saw = false;
+    for (const listen of group) {
+      if (listen.channelIndex >= frame.numberOfChannels) continue;
+      const samples = copyPlane(frame, listen.channelIndex);
+      if (!samples?.length) continue;
+      saw = true;
+      handlers.onSamples(listen.source, samples, rate);
+    }
+    return saw;
+  };
+
+  try {
+    const first = await reader.read();
+    if (isStopped() || cancelled || !first.value) {
+      first.value?.close();
+      opened.release();
+      return false;
+    }
+    const saw = deliver(first.value);
+    first.value.close();
+    if (!saw) {
+      opened.release();
+      return false;
+    }
+    void (async () => {
+      try {
+        while (!isStopped() && !cancelled) {
+          const next = await reader.read();
+          if (next.done || !next.value) break;
+          deliver(next.value);
+          next.value.close();
+        }
+      } catch {
+        // The reader was cancelled when listening stopped.
+      } finally {
+        opened.release();
+      }
+    })();
+    return true;
+  } catch {
+    opened.release();
+    return isStopped();
+  }
 }
