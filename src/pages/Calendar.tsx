@@ -41,6 +41,7 @@ import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
 } from "@/lib/constants";
+import { shortRosterName } from "@/lib/rosterName";
 import { canonicalSwapPosition } from "@/lib/swapPositions";
 import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import {
@@ -4520,19 +4521,29 @@ function BandRoster({
     }
     return 99;
   };
-  const getBandPositionPriority = (positions: string[]) => {
-    for (const pos of positions) {
-      const normalized = pos.toLowerCase().replace(/\s+/g, '_');
-      if (normalized.includes('drum')) return 0;
-      if (normalized.includes('bass')) return 1;
-      if (normalized === 'acoustic_1' || normalized === 'ag_1' || pos === 'Acoustic 1' || pos === 'AG 1') return 2;
-      if (normalized === 'acoustic_2' || normalized === 'ag_2' || pos === 'Acoustic 2' || pos === 'AG 2') return 3;
-      if (normalized === 'electric_1' || normalized === 'eg_1' || pos === 'Electric 1' || pos === 'EG 1') return 4;
-      if (normalized === 'electric_2' || normalized === 'eg_2' || pos === 'Electric 2' || pos === 'EG 2') return 5;
-      if (normalized.includes('key') || normalized.includes('piano')) return 6;
-      if (normalized.includes('acoustic')) return 3;
-    }
+  const bandRoleRank = (position: string, slot: string) => {
+    const normalized = position.toLowerCase().replace(/\s+/g, "_");
+    const slotName = slot.toLowerCase();
+    if (slotName === "drums" || normalized.includes("drum")) return 0;
+    if (slotName === "bass" || normalized.includes("bass")) return 1;
+    if (slotName === "ag_1" || normalized === "acoustic_1" || normalized === "ag_1") return 2;
+    if (slotName === "ag_2" || normalized === "acoustic_2" || normalized === "ag_2") return 3;
+    if (slotName === "eg_1" || normalized === "electric_1" || normalized === "eg_1") return 4;
+    if (slotName === "eg_2" || normalized === "electric_2" || normalized === "eg_2") return 5;
+    if (slotName === "eg_3") return 6;
+    if (slotName === "eg_4") return 7;
+    if (normalized === "electric_guitar" || normalized.includes("electric")) return 4;
+    if (normalized.includes("acoustic") || slotName.startsWith("ag_")) return 3;
+    if (slotName === "keys" || slotName === "piano" || normalized.includes("key") || normalized.includes("piano")) return 8;
     return 99;
+  };
+  const getBandPositionPriority = (positions: string[], slots: string[] = []) => {
+    const count = Math.max(positions.length, slots.length);
+    let best = 99;
+    for (let index = 0; index < count; index += 1) {
+      best = Math.min(best, bandRoleRank(positions[index] || "", slots[index] || ""));
+    }
+    return best;
   };
   const getSpeakerPositionPriority = (positions: string[]) => {
     for (const pos of positions) {
@@ -4555,7 +4566,7 @@ function BandRoster({
     const speakerMembers = members.filter(m => !isVocalist(m.positions) && isSpeaker(m.positions)).sort((a, b) => getSpeakerPositionPriority(a.positions) - getSpeakerPositionPriority(b.positions));
     const audioMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && isAudio(m.positions)).sort((a, b) => getAudioPositionPriority(a.positions) - getAudioPositionPriority(b.positions));
     const broadcastMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && !isAudio(m.positions) && isBroadcast(m.positions)).sort((a, b) => getBroadcastPositionPriority(a.positions) - getBroadcastPositionPriority(b.positions));
-    const bandMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && !isAudio(m.positions) && !isBroadcast(m.positions)).sort((a, b) => getBandPositionPriority(a.positions) - getBandPositionPriority(b.positions));
+    const bandMembers = members.filter(m => !isVocalist(m.positions) && !isSpeaker(m.positions) && !isAudio(m.positions) && !isBroadcast(m.positions)).sort((a, b) => getBandPositionPriority(a.positions, a.positionSlots) - getBandPositionPriority(b.positions, b.positionSlots));
     return {
       vocalists,
       speakerMembers,
@@ -4571,16 +4582,16 @@ function BandRoster({
           {member.memberName.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="min-w-0 flex-1 break-words text-foreground">
-        {member.memberName}
-        {member.isSwapped && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
+      <span className="flex min-w-0 flex-1 items-center text-foreground" title={member.memberName}>
+        <span className="truncate whitespace-nowrap">{shortRosterName(member.memberName)}</span>
+        {member.isSwapped && <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
             <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
-        {member.hasPendingSwap && !member.isSwapped && <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-ecc-yellow" title="Swap pending">
+        {member.hasPendingSwap && !member.isSwapped && <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-xs text-ecc-yellow" title="Swap pending">
             <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
       </span>
-      <span className={`min-w-0 max-w-[50%] break-words text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
+      <span className={`shrink-0 whitespace-nowrap text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
         {member.positions.map((p, idx) => {
         // Use position slot for more accurate labeling (eg_1, eg_2, ag_1, ag_2)
         const slot = member.positionSlots?.[idx]?.toLowerCase();
@@ -4621,12 +4632,11 @@ function BandRoster({
       : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
     const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
     const listClass = compact ? "space-y-0" : "space-y-1.5";
-    const showWorshipColumns = vocalists.length > 0 && bandMembers.length > 0;
     return <div className={compact ? "space-y-1.5" : "space-y-4"}>
         {title && <h3 className={compact ? "mb-1 border-b border-border pb-0.5 text-xs font-semibold text-primary" : "mb-3 border-b border-border pb-1 text-sm font-semibold text-primary"}>
             {title}
           </h3>}
-        <div className={`grid ${showWorshipColumns ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+        <div className={compact ? "space-y-1.5" : "space-y-3"}>
             {vocalists.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <MicVocal className={iconClass} />
@@ -5116,11 +5126,18 @@ function CustomServiceSongsPreview({
 const CUSTOM_ROSTER_BAND_ORDER: Record<string, number> = {
   drums: 0,
   bass: 1,
+  acoustic_guitar: 2,
   acoustic_1: 2,
   acoustic_2: 3,
+  electric_guitar: 4,
   electric_1: 4,
+  eg_1: 4,
   electric_2: 5,
-  keys: 6,
+  eg_2: 5,
+  eg_3: 6,
+  eg_4: 7,
+  keys: 8,
+  piano: 8,
 };
 const CUSTOM_ROSTER_AUDIO_ORDER: Record<string, number> = {
   sound_tech: 0, // FOH
@@ -5483,7 +5500,6 @@ function CustomServiceRoster({
     : "mb-2 flex items-center gap-1.5 text-sm font-medium text-blue-400";
   const iconClass = compact ? "h-3 w-3" : "h-3.5 w-3.5";
   const listClass = compact ? "space-y-0" : "space-y-1.5";
-  const showWorshipColumns = vocalists.length > 0 && bandMembers.length > 0;
   const showWorship = section === "all" || section === "worship";
   const showProduction = section === "all" || section === "production";
   const showVideo = section === "all" || section === "video";
@@ -5522,8 +5538,8 @@ function CustomServiceRoster({
           {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="min-w-0 flex-1 break-words text-foreground">{member.name}</span>
-      <span className={`min-w-0 max-w-[50%] break-words text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
+      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground" title={member.name}>{shortRosterName(member.name)}</span>
+      <span className={`shrink-0 whitespace-nowrap text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
         {visibleRoles.map((role) => canonicalSwapPosition(role) === "vocalist" ? "Vox" : POSITION_LABELS[role] || role).join(", ")}
       </span>
     </div>
@@ -5559,7 +5575,7 @@ function CustomServiceRoster({
       ) : null}
       <div className={compact ? "space-y-2" : "space-y-4"}>
         {showWorship && (vocalists.length > 0 || bandMembers.length > 0) && (
-          <div className={`grid ${showWorshipColumns ? "grid-cols-2" : "grid-cols-1"} ${compact ? "gap-x-3 gap-y-1.5" : "gap-x-4 gap-y-3"}`}>
+          <div className={compact ? "space-y-1.5" : "space-y-3"}>
             {vocalists.length > 0 && <div className="min-w-0">
                 <h4 className={sectionTitleClass}>
                   <MicVocal className={iconClass} />
