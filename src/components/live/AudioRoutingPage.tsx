@@ -87,6 +87,7 @@ export function SmpteInputSelect({
           channels.map((channel) => ({ id: channel.id, positionSlot: channel.position_slot })),
           deviceId,
           next === "none" ? null : Number(next),
+          source,
         );
         writeTalkbackBindingStore(store);
         onAssigned();
