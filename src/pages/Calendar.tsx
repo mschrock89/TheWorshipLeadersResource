@@ -41,7 +41,6 @@ import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
 } from "@/lib/constants";
-import { shortRosterName } from "@/lib/rosterName";
 import { canonicalSwapPosition } from "@/lib/swapPositions";
 import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import {
@@ -4583,8 +4582,7 @@ function BandRoster({
         </AvatarFallback>
       </Avatar>
       <span className="flex min-w-0 flex-1 items-center text-foreground" title={member.memberName}>
-        <span className="truncate whitespace-nowrap md:hidden">{shortRosterName(member.memberName)}</span>
-        <span className="hidden truncate whitespace-nowrap md:inline">{member.memberName}</span>
+        <span className="truncate whitespace-nowrap">{member.memberName}</span>
         {member.isSwapped && <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-xs text-green-500" title="Swap confirmed">
             <ArrowRightLeft className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
           </span>}
@@ -5539,10 +5537,7 @@ function CustomServiceRoster({
           {member.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
         </AvatarFallback>
       </Avatar>
-      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground" title={member.name}>
-        <span className="md:hidden">{shortRosterName(member.name)}</span>
-        <span className="hidden md:inline">{member.name}</span>
-      </span>
+      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-foreground" title={member.name}>{member.name}</span>
       <span className={`shrink-0 whitespace-nowrap text-right text-muted-foreground ${compact ? "text-[10px] leading-tight" : "text-xs"}`}>
         {visibleRoles.map((role) => canonicalSwapPosition(role) === "vocalist" ? "Vox" : POSITION_LABELS[role] || role).join(", ")}
       </span>
