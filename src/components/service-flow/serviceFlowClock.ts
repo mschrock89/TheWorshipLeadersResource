@@ -5,8 +5,46 @@ export type ServiceFlowClockItem = {
   item_type: string;
   title: string;
   duration_seconds: number | null;
+  notes?: string | null;
   song?: { title?: string | null } | null;
 };
+
+const SERVICE_START_LINE = /(?:^|\n)[ \t]*SERVICE START[ \t]*(?=\n|$)/i;
+
+/** The service start time is the end of a line marked SERVICE START. */
+export function itemMarksServiceStart(item: { notes?: string | null }) {
+  return SERVICE_START_LINE.test(item.notes || "");
+}
+
+export function notesWithoutServiceStart(notes: string | null | undefined) {
+  if (!notes) return "";
+  return notes
+    .replace(/(?:^|\n)[ \t]*SERVICE START[ \t]*(?=\n|$)/gi, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
+export function notesWithServiceStart(notes: string | null | undefined, enabled: boolean) {
+  if (!enabled) {
+    const stripped = notesWithoutServiceStart(notes);
+    return stripped || null;
+  }
+  if (itemMarksServiceStart({ notes })) return notes?.trim() || "SERVICE START";
+  const base = (notes || "").trim();
+  return base ? `${base}\nSERVICE START` : "SERVICE START";
+}
+
+/** Other lines to clear when this line becomes the one that ends at the service start. */
+export function otherServiceStartClears<T extends { id: string; notes?: string | null }>(
+  items: T[],
+  itemId: string,
+  nextNotes: string | null | undefined,
+): Array<{ id: string; notes: string | null }> {
+  if (nextNotes === undefined || !itemMarksServiceStart({ notes: nextNotes })) return [];
+  return items
+    .filter((item) => item.id !== itemId && itemMarksServiceStart(item))
+    .map((item) => ({ id: item.id, notes: notesWithServiceStart(item.notes, false) }));
+}
 
 export type ScheduledServiceStartSource = {
   customServiceStartTime?: string | null;
@@ -59,6 +97,51 @@ function isServiceStartHeader(title: string) {
     .replace(/\s+/g, " ")
     .trim();
   return normalized === "start" || normalized === "service start" || normalized === "start header";
+}
+
+/**
+ * Index of the first playable line that begins at the service start.
+ * A marked line wins: the service begins when that line ends.
+ * Otherwise the first line under a Start header begins at the service start.
+ * With neither, the rundown starts on the first line.
+ */
+export function serviceClockOriginIndex(items: ServiceFlowClockItem[]): number {
+  const markedIndex = items.findIndex(
+    (item) => item.item_type !== "header" && itemMarksServiceStart(item),
+  );
+  if (markedIndex >= 0) {
+    for (let index = markedIndex + 1; index < items.length; index += 1) {
+      if (items[index].item_type !== "header") return index;
+    }
+    return items.length;
+  }
+
+  let seenStartHeader = false;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.item_type === "header") {
+      if (isServiceStartHeader(item.title)) seenStartHeader = true;
+      continue;
+    }
+    if (seenStartHeader) return index;
+  }
+
+  return 0;
+}
+
+/** The line that finishes at the service start, such as Pre-Roll. */
+export function serviceStartBoundaryItem<T extends ServiceFlowClockItem>(items: T[]): T | null {
+  const origin = serviceClockOriginIndex(items);
+  for (let index = origin - 1; index >= 0; index -= 1) {
+    if (items[index].item_type !== "header") return items[index];
+  }
+  return null;
+}
+
+export function flowMarksServiceStart(items: ServiceFlowClockItem[]) {
+  return items.some((item) =>
+    item.item_type === "header" ? isServiceStartHeader(item.title) : itemMarksServiceStart(item),
+  );
 }
 
 function serviceTimeOverrideMatches(overrideMinistryType: string, ministryType: string): boolean {
@@ -117,34 +200,19 @@ export type ServiceFlowSpan = {
   serviceDurationSeconds: number;
 };
 
-/** How long pre-service runs before the Start header, and how long the service itself runs. */
+/** How long pre-service runs before the service begins, and how long the service itself runs. */
 export function measureServiceFlowSpan(items: ServiceFlowClockItem[]): ServiceFlowSpan {
-  let seenStartHeader = false;
-  let startItemIndex = -1;
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (item.item_type === "header") {
-      if (isServiceStartHeader(item.title)) seenStartHeader = true;
-      continue;
-    }
-    if (seenStartHeader) {
-      startItemIndex = index;
-      break;
-    }
-  }
+  const startItemIndex = serviceClockOriginIndex(items);
 
   let preServiceSeconds = 0;
-  if (startItemIndex >= 0) {
-    for (let index = 0; index < startItemIndex; index += 1) {
-      const item = items[index];
-      if (item.item_type === "header") continue;
-      preServiceSeconds += item.duration_seconds || 0;
-    }
+  for (let index = 0; index < startItemIndex; index += 1) {
+    const item = items[index];
+    if (item.item_type === "header") continue;
+    preServiceSeconds += item.duration_seconds || 0;
   }
 
   let serviceDurationSeconds = 0;
-  const durationStart = startItemIndex >= 0 ? startItemIndex : 0;
-  for (let index = durationStart; index < items.length; index += 1) {
+  for (let index = startItemIndex; index < items.length; index += 1) {
     const item = items[index];
     if (item.item_type === "header") continue;
     serviceDurationSeconds += item.duration_seconds || 0;
@@ -194,46 +262,43 @@ export function selectServiceTimeForLocalClock(
   return active?.label || windows[windows.length - 1].label;
 }
 
+export type ServiceFlowClockOptions = {
+  /**
+   * Wall-clock seconds when the line that ends at the service start actually
+   * began, such as the Pre-Roll MIDI note. Shifts every rundown time.
+   */
+  boundaryStartedAtSeconds?: number | null;
+};
+
 /**
- * Clock for each rundown line. The entered time is the first item under the
- * Start header. Pre-service lines before that header count backward by their
- * durations. Later lines count forward. With no Start header, the first line
- * starts at the entered time.
+ * Clock for each rundown line. The entered time is the service start.
+ * A line marked "service starts at the end" finishes at that time, so iPod
+ * and Pre-Roll before it count backward. Otherwise the first line under a
+ * Start header begins at that time. With neither, the first line starts then.
  */
 export function buildServiceFlowClockTimes(
   items: ServiceFlowClockItem[],
   startTime?: string | null,
+  options?: ServiceFlowClockOptions,
 ): Map<string, string> {
   const clockMap = new Map<string, string>();
-  const startSeconds = clockSourceToSeconds(startTime);
+  const startItemIndex = serviceClockOriginIndex(items);
+  const boundary = serviceStartBoundaryItem(items);
+  const liveStart = options?.boundaryStartedAtSeconds;
+  let startSeconds = clockSourceToSeconds(startTime);
+  if (liveStart != null && boundary && startItemIndex > 0) {
+    startSeconds = liveStart + (boundary.duration_seconds || 0);
+  }
   if (startSeconds === null) return clockMap;
 
-  let seenStartHeader = false;
-  let startItemIndex = -1;
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (item.item_type === "header") {
-      if (isServiceStartHeader(item.title)) seenStartHeader = true;
-      continue;
-    }
-    if (seenStartHeader) {
-      startItemIndex = index;
-      break;
-    }
-  }
-
   let secondsBeforeServiceStart = 0;
-  if (startItemIndex >= 0) {
-    for (let index = 0; index < startItemIndex; index += 1) {
-      const item = items[index];
-      if (item.item_type === "header") continue;
-      secondsBeforeServiceStart += item.duration_seconds || 0;
-    }
+  for (let index = 0; index < startItemIndex; index += 1) {
+    const item = items[index];
+    if (item.item_type === "header") continue;
+    secondsBeforeServiceStart += item.duration_seconds || 0;
   }
 
-  let runningSeconds = startItemIndex >= 0
-    ? startSeconds - secondsBeforeServiceStart
-    : startSeconds;
+  let runningSeconds = startSeconds - secondsBeforeServiceStart;
 
   for (const item of items) {
     if (item.item_type === "header") continue;

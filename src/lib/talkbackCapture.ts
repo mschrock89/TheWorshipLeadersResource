@@ -21,11 +21,23 @@ type CaptureHandlers = {
   audioContext: AudioContext;
   channels: TalkbackCaptureChannel[];
   transcribe: (blob: Blob) => Promise<string>;
+  /** When false, meters still run and no caption session is opened. */
+  transcripts?: boolean;
   onPartial?: (channelId: string, text: string) => void;
   onTranscript: (channelId: string, text: string) => void;
   onLevel: (channelId: string, level: number) => void;
   onStatus: (channelId: string, status: TalkbackCaptureStatus, message?: string) => void;
 };
+
+function idleTalkbackLive(): TalkbackLiveSession {
+  return {
+    warm() {},
+    push() {},
+    cancel() {},
+    end() {},
+    stop() {},
+  };
+}
 
 type ActiveUtterance = {
   recorder: MediaRecorder;
@@ -169,7 +181,8 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
   const cleanups: Array<() => void> = [];
   const recorders = new Map<string, ActiveUtterance>();
   const context = handlers.audioContext;
-  const live = startTalkbackLive({
+  const transcripts = handlers.transcripts !== false;
+  const live = transcripts ? startTalkbackLive({
     onPartial: (channelId, text) => {
       if (!stopped) handlers.onPartial?.(channelId, text);
     },
@@ -186,8 +199,8 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
         handlers.onStatus(channelId, "error", message);
       }
     },
-  });
-  live.warm(handlers.channels.map((channel) => channel.id));
+  }) : idleTalkbackLive();
+  if (transcripts) live.warm(handlers.channels.map((channel) => channel.id));
 
   const stop = () => {
     if (stopped) return;
@@ -215,7 +228,7 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
 
   void (async () => {
     const mimeType = preferredMimeType();
-    if (!mimeType) {
+    if (transcripts && !mimeType) {
       for (const channel of handlers.channels) {
         handlers.onStatus(channel.id, "error", "This browser cannot record talkback audio.");
       }
@@ -335,6 +348,11 @@ export function startTalkbackCapture(handlers: CaptureHandlers): () => void {
             analyser.getByteTimeDomainData(samples);
             const level = rmsFromTimeDomain(samples);
             handlers.onLevel(channel.id, level);
+            if (!transcripts) {
+              const speaking = phraseLevelIsVoice(level, phase === "hearing");
+              setPhase(speaking ? "hearing" : "listening");
+              return;
+            }
             const now = performance.now();
             let utterance = recorders.get(channel.id);
             const speaking = phraseLevelIsVoice(level, Boolean(utterance));

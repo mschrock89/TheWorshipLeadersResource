@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   hasProductionLiveAssignment,
   hasVideoLiveAssignment,
-  isFohListenerHosting,
+  isListenerHosting,
   liveChatRoomOf,
   resolveLiveAudience,
   rmsFromTimeDomain,
@@ -53,10 +53,10 @@ test("recognizes video ministry and camera positions", () => {
   assert.equal(hasVideoLiveAssignment([{ position: "sound_tech" }]), false);
 });
 
-test("treats a fresh FOH listener as the host and ignores MON", () => {
+test("treats a fresh FOH or MON listener as the host", () => {
   const now = Date.parse("2026-10-04T12:00:00.000Z");
   assert.equal(
-    isFohListenerHosting(
+    isListenerHosting(
       {
         listener_client_id: "foh-screen",
         listener_station: "foh",
@@ -67,7 +67,7 @@ test("treats a fresh FOH listener as the host and ignores MON", () => {
     true,
   );
   assert.equal(
-    isFohListenerHosting(
+    isListenerHosting(
       {
         listener_client_id: "mon-screen",
         listener_station: "mon",
@@ -75,10 +75,10 @@ test("treats a fresh FOH listener as the host and ignores MON", () => {
       },
       now,
     ),
-    false,
+    true,
   );
   assert.equal(
-    isFohListenerHosting(
+    isListenerHosting(
       {
         listener_client_id: "foh-screen",
         listener_station: "foh",

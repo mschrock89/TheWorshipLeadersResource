@@ -13,7 +13,7 @@ import {
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { isFohListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { isListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import {
   applyAudioRoutingDefault,
   markRoutingDefaultApplied,
@@ -71,6 +71,7 @@ import {
   measureServiceFlowSpan,
   normalizeClockSource,
   selectServiceTimeForLocalClock,
+  serviceStartBoundaryItem,
 } from "@/components/service-flow/serviceFlowClock";
 import { AudioRoutingPage, SmpteInputSelect } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
@@ -232,17 +233,28 @@ export function LiveModeConsole({
     if (saved) return saved;
     return scheduledServiceTimes[0] || null;
   }, [flow?.start_time, flowSpan, now, scheduledServiceTimes, serviceDate]);
-  const serviceTimeLabel = startTime
-    ? formatClockTime(clockSourceToSeconds(startTime) ?? 0)
-    : null;
+  const boundaryItem = useMemo(() => serviceStartBoundaryItem(items), [items]);
+  const liveBoundaryStart =
+    live.clockAnchor && boundaryItem && live.clockAnchor.itemId === boundaryItem.id
+      ? live.clockAnchor.startedAtSeconds
+      : null;
+  const serviceTimeLabel =
+    liveBoundaryStart != null && boundaryItem
+      ? formatClockTime(liveBoundaryStart + (boundaryItem.duration_seconds || 0))
+      : startTime
+        ? formatClockTime(clockSourceToSeconds(startTime) ?? 0)
+        : null;
   const localTimeLabel = now.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
   });
   const clockTimes = useMemo(
-    () => buildServiceFlowClockTimes(items, startTime),
-    [items, startTime],
+    () =>
+      buildServiceFlowClockTimes(items, startTime, {
+        boundaryStartedAtSeconds: liveBoundaryStart,
+      }),
+    [items, liveBoundaryStart, startTime],
   );
   const cue = findFlowCue(items, live.session?.current_item_id || null, resolvedTitles);
   const ministryLabel =
@@ -281,8 +293,6 @@ export function LiveModeConsole({
     return () => window.clearInterval(timer);
   }, [queryClient]);
 
-  const listeningRef = useRef(listening);
-  listeningRef.current = listening;
   const audioContextRef = useRef(audioContext);
   audioContextRef.current = audioContext;
 
@@ -297,20 +307,17 @@ export function LiveModeConsole({
   };
 
   useEffect(() => {
-    if (station === "foh" || !listeningRef.current) return;
-    setListening(false);
-    void audioContextRef.current?.close();
-    setAudioContext(null);
-    void releaseListener();
-  }, [releaseListener, station]);
+    if (!listening) return;
+    void live.claimListener(station);
+  }, [listening, live.claimListener, station]);
 
   useEffect(() => {
-    if (!listening || station !== "foh") return;
+    if (!listening) return;
     const timer = window.setInterval(() => {
       void heartbeatListener();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [heartbeatListener, listening, station]);
+  }, [heartbeatListener, listening]);
 
   const sawOwnClaim = useRef(false);
   useEffect(() => {
@@ -351,11 +358,12 @@ export function LiveModeConsole({
   flowItemsRef.current = items;
   const midiSettingsRef = useRef(midiSettings);
   midiSettingsRef.current = midiSettings;
+  const publishClockAnchorRef = useRef(live.publishClockAnchor);
+  publishClockAnchorRef.current = live.publishClockAnchor;
   const followRef = useRef(followTimecode);
   followRef.current = followTimecode;
   const hasMidiCues = items.some((item) => item.item_type !== "header" && parseNoteMidi(item.notes));
-  const listenMidi = station === "foh" && (midiMenuOpened || hasMidiCues);
-  timecodeTrack.current.follow = followTimecode && station === "foh";
+  const listenMidi = midiMenuOpened || (listening && hasMidiCues);
   timecodeTrack.current.windows = buildTimecodeWindows(items, timecodeTrack.current.fps);
   timecodeTrack.current.currentId = live.session?.current_item_id || null;
   timecodeTrack.current.setItem = (itemId) => {
@@ -364,8 +372,10 @@ export function LiveModeConsole({
   timecodeTrack.current.publish = live.publishTimecode;
   const isTimecodeHost =
     listening &&
-    station === "foh" &&
     live.session?.listener_client_id === live.clientId;
+  timecodeTrack.current.follow = followTimecode && isTimecodeHost;
+  const drivesLiveRef = useRef(false);
+  drivesLiveRef.current = isTimecodeHost;
 
   useEffect(() => {
     if (!isTimecodeHost || !audioContext) {
@@ -502,10 +512,20 @@ export function LiveModeConsole({
       onNote: (event) => {
         if (!active) return;
         setLastMidi(event);
+        if (!drivesLiveRef.current) return;
         const settings = midiSettingsRef.current;
-        if (!followRef.current || event.channel !== settings.channel) return;
+        if (event.channel !== settings.channel) return;
         const match = findMidiCueItem(flowItemsRef.current, event, settings.channel);
         if (!match) return;
+        const boundary = serviceStartBoundaryItem(flowItemsRef.current);
+        if (boundary && match.id === boundary.id) {
+          publishClockAnchorRef.current({
+            itemId: boundary.id,
+            startedAtSeconds: localClockSeconds(new Date()),
+            at: Date.now(),
+          });
+        }
+        if (!followRef.current) return;
         const state = timecodeTrack.current;
         if (match.item_type === "song") {
           state.holdPlayback = false;
@@ -535,6 +555,19 @@ export function LiveModeConsole({
     };
   }, [listenMidi, midiSettings.inputId]);
 
+  useEffect(() => {
+    const anchor = live.clockAnchor;
+    if (!anchor) return;
+    const timer = window.setInterval(() => {
+      publishClockAnchorRef.current({
+        itemId: anchor.itemId,
+        startedAtSeconds: anchor.startedAtSeconds,
+        at: anchor.at,
+      });
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [live.clockAnchor]);
+
   const videoSlotRef = useRef<{
     itemId: string;
     nextItemId: string;
@@ -542,7 +575,7 @@ export function LiveModeConsole({
     durationMs: number;
   } | null>(null);
   useEffect(() => {
-    if (station !== "foh" || !followTimecode || (!isTimecodeHost && midiStatus !== "listening")) {
+    if (!followTimecode || !isTimecodeHost) {
       videoSlotRef.current = null;
       return;
     }
@@ -577,9 +610,16 @@ export function LiveModeConsole({
       state.setItem(pending.nextItemId);
     }, Math.max(0, remaining));
     return () => window.clearTimeout(timer);
-  }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id, midiStatus, station]);
+  }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id]);
 
-  const fohHosting = isFohListenerHosting(live.session, now.getTime());
+  const hostActive = isListenerHosting(live.session, now.getTime());
+  const hostStation =
+    live.session?.listener_station === "foh" || live.session?.listener_station === "mon"
+      ? live.session.listener_station
+      : null;
+  const weAreHost = listening && live.session?.listener_client_id === live.clientId;
+  const followingHost =
+    hostActive && !weAreHost && hostStation ? liveStationLabel(hostStation) : null;
 
   const calendarHref = `/calendar?date=${serviceDate}&campus=${campusId}&ministry=${ministryType}`;
   const activeChatRoom: LiveChatRoom = videoOnly ? "video" : chatRoom;
@@ -715,7 +755,7 @@ export function LiveModeConsole({
   const flowProgress = cueIsFresh && timecodeCue?.itemId === live.session?.current_item_id ? timecodeCue.progress : null;
   const publishedMidi = cueIsFresh && timecodeCue?.label?.startsWith("MIDI ") ? timecodeCue.label : null;
   const smpteReadout =
-    station === "foh" && listening
+    listening
       ? smpteStatus === "locked" && smpteLabel
         ? `SMPTE ${smpteLabel}`
         : smpteStatus === "error"
@@ -727,7 +767,7 @@ export function LiveModeConsole({
         ? `SMPTE ${timecodeCue.label}`
         : null;
   const midiReadout =
-    station === "foh" && listenMidi
+    listenMidi
       ? midiStatus === "error"
         ? midiMessage || "MIDI needs a check"
         : lastMidi
@@ -784,54 +824,48 @@ export function LiveModeConsole({
                 </button>
               ))}
             </div>
-            {station === "foh" ? (
-              <Button
-                type="button"
-                variant={listening ? "secondary" : "default"}
-                className="h-10"
-                onClick={() => {
-                  if (listening) {
-                    stopListening();
-                    return;
-                  }
-                  const context = createInputAudioContext();
-                  void context.resume();
-                  setAudioContext(context);
-                  setListening(true);
-                  void live.claimListener();
-                }}
-              >
-                <Radio className={cn("h-4 w-4", listening && "text-primary")} />
-                {listening ? "Stop" : "Listen"}
-              </Button>
-            ) : (
+            <Button
+              type="button"
+              variant={listening ? "secondary" : "default"}
+              className="h-10"
+              onClick={() => {
+                if (listening) {
+                  stopListening();
+                  return;
+                }
+                const context = createInputAudioContext();
+                void context.resume();
+                setAudioContext(context);
+                setListening(true);
+                void live.claimListener(station);
+              }}
+            >
+              <Radio className={cn("h-4 w-4", listening && "text-primary")} />
+              {listening ? "Stop" : "Listen"}
+            </Button>
+            {followingHost ? (
               <div
-                className={cn(
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm font-semibold",
-                  fohHosting ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground",
-                )}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-semibold text-primary"
                 aria-live="polite"
               >
-                <Radio className={cn("h-4 w-4", fohHosting && "text-primary")} />
-                {fohHosting ? "Following FOH" : "Waiting for FOH"}
+                <Radio className="h-4 w-4 text-primary" />
+                Following {followingHost}
               </div>
-            )}
-            {station === "foh" ? (
-              <Button
-                type="button"
-                variant={followTimecode ? "secondary" : "outline"}
-                className="h-10"
-                onClick={() => setFollowTimecode((value) => !value)}
-              >
-                {followTimecode ? "Following" : "Follow"}
-              </Button>
             ) : null}
-            {station === "foh" && !readAudioInterfaceId() ? (
+            <Button
+              type="button"
+              variant={followTimecode ? "secondary" : "outline"}
+              className="h-10"
+              onClick={() => setFollowTimecode((value) => !value)}
+            >
+              {followTimecode ? "Following" : "Follow"}
+            </Button>
+            {!readAudioInterfaceId() ? (
               <Button type="button" variant="outline" className="h-10 shrink-0" onClick={() => setRoutingOpen(true)}>
                 SMPTE input
               </Button>
             ) : null}
-            {station === "foh" && readAudioInterfaceId() ? (
+            {readAudioInterfaceId() ? (
               <SmpteInputSelect
                 source="playback"
                 channels={live.channels}
@@ -846,9 +880,11 @@ export function LiveModeConsole({
             <Button type="button" variant="outline" size="icon" aria-label="Audio routing" onClick={() => setRoutingOpen(true)}>
               <AudioLines className="h-4 w-4" />
             </Button>
-            <Button type="button" variant="outline" size="icon" aria-label="Talkback setup" onClick={() => setSetupOpen(true)}>
-              <Settings2 className="h-4 w-4" />
-            </Button>
+            {TALKBACK_TRANSCRIPT_ENABLED ? (
+              <Button type="button" variant="outline" size="icon" aria-label="Talkback setup" onClick={() => setSetupOpen(true)}>
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            ) : null}
           </div>
         </div>
         <LiveNowTitle
@@ -898,66 +934,72 @@ export function LiveModeConsole({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col landscape:flex-row">
-        <section className="flex min-h-0 flex-[1.35] flex-col landscape:flex-1">
-          <div className="shrink-0 border-b border-border px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {ministryLabel} · {serviceLabel}
-              {station === "mon"
-                ? fohHosting
-                  ? " · Following FOH"
-                  : ""
-                : listening
-                  ? " · This screen is listening"
-                  : fohHosting
-                    ? " · FOH is listening"
-                    : ""}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-border px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {ministryLabel} · {serviceLabel}
+            {weAreHost
+              ? " · This screen is listening"
+              : followingHost
+                ? ` · Following ${followingHost}`
+                : ""}
+          </p>
+          <p className="mt-1 text-2xl font-bold leading-tight">
+            {cue.currentTitle || "Cue the service flow"}
+          </p>
+          {cue.nextTitle ? (
+            <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
+          ) : null}
+          {smpteReadout ? (
+            <p
+              className={cn(
+                "mt-1 text-sm font-semibold tabular-nums",
+                smpteStatus === "error" && listening ? "text-destructive" : "text-primary",
+              )}
+            >
+              {smpteReadout}
             </p>
-            <p className="mt-1 text-2xl font-bold leading-tight">
-              {cue.currentTitle || "Cue the service flow"}
+          ) : null}
+          {midiReadout ? (
+            <p
+              className={cn(
+                "mt-1 text-sm font-semibold tabular-nums",
+                midiStatus === "error" && listenMidi ? "text-destructive" : "text-primary",
+              )}
+            >
+              {midiReadout}
             </p>
-            {cue.nextTitle ? (
-              <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
-            ) : null}
-            {smpteReadout ? (
-              <p
-                className={cn(
-                  "mt-1 text-sm font-semibold tabular-nums",
-                  smpteStatus === "error" && station === "foh" ? "text-destructive" : "text-primary",
-                )}
-              >
-                {smpteReadout}
-              </p>
-            ) : null}
-            {midiReadout ? (
-              <p
-                className={cn(
-                  "mt-1 text-sm font-semibold tabular-nums",
-                  midiStatus === "error" && station === "foh" ? "text-destructive" : "text-primary",
-                )}
-              >
-                {midiReadout}
-              </p>
-            ) : null}
-          </div>
-          {live.isLoading ? (
-            <div className="flex flex-1 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <TalkbackBoard
-              channels={live.channels}
-              lines={live.lines}
-              listening={listening}
-              audioContext={audioContext}
-              bindingRevision={bindingRevision}
-              onTranscript={live.addLine}
-              onOpenSetup={() => setRoutingOpen(true)}
-            />
-          )}
-        </section>
+          ) : null}
+        </div>
+        <div className={cn("flex min-h-0 flex-1 flex-col", TALKBACK_TRANSCRIPT_ENABLED && "landscape:flex-row")}>
+          {TALKBACK_TRANSCRIPT_ENABLED ? (
+            <section className="flex min-h-0 flex-[1.35] flex-col landscape:flex-1">
+              {live.isLoading ? (
+                <div className="flex flex-1 items-center justify-center py-6">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <TalkbackBoard
+                  channels={live.channels}
+                  lines={live.lines}
+                  listening={listening}
+                  audioContext={audioContext}
+                  bindingRevision={bindingRevision}
+                  onTranscript={live.addLine}
+                  onOpenSetup={() => setRoutingOpen(true)}
+                />
+              )}
+            </section>
+          ) : null}
 
-        <section className="flex h-[42dvh] min-h-[16rem] flex-col border-t border-border landscape:h-auto landscape:min-h-0 landscape:w-[min(28rem,46%)] landscape:flex-1 landscape:border-l landscape:border-t-0">
+          <section
+            className={cn(
+              "flex min-h-0 flex-1 flex-col border-border",
+              TALKBACK_TRANSCRIPT_ENABLED
+                ? "h-[42dvh] min-h-[16rem] border-t landscape:h-auto landscape:w-[min(28rem,46%)] landscape:border-l landscape:border-t-0"
+                : "border-t-0",
+            )}
+          >
           <div className="grid shrink-0 grid-cols-3 border-b border-border">
             {dockTabs.map(([value, label]) => (
               <button
@@ -979,6 +1021,7 @@ export function LiveModeConsole({
               items={items}
               titles={resolvedTitles}
               clockTimes={clockTimes}
+              serviceStartItemId={boundaryItem?.id || null}
               currentItemId={live.session?.current_item_id || null}
               progress={flowProgress}
               isLoading={flowLoading || (!!flow?.id && itemsLoading)}
@@ -1043,6 +1086,7 @@ export function LiveModeConsole({
           ) : null}
           {tab === "notes" ? <LiveNotesPanel notes={live.notes} onSave={live.saveNotes} /> : null}
         </section>
+        </div>
       </div>
 
       {routingOpen ? (

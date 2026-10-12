@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ChannelColorPicker } from "@/components/live/ChannelColorPicker";
 import { cn } from "@/lib/cn";
 import { readChannelColorStore, resolveChannelTone } from "@/lib/channelColors";
-import { resolveTalkbackBinding } from "@/lib/liveMode";
+import { resolveTalkbackBinding, TALKBACK_TRANSCRIPT_ENABLED } from "@/lib/liveMode";
 import { startTalkbackCapture } from "@/lib/talkbackCapture";
 import { transcribeTalkbackChunk } from "@/lib/transcribeTalkback";
 import type { LiveChatMessage, LiveTalkbackChannel, LiveTalkbackLine } from "@/hooks/useLiveSession";
@@ -339,6 +339,7 @@ export function TalkbackBoard({
     return startTalkbackCapture({
       audioContext,
       channels: armed,
+      transcripts: TALKBACK_TRANSCRIPT_ENABLED,
       transcribe: transcribeTalkbackChunk,
       onPartial: (channelId, text) => {
         const trimmed = text.trim();
@@ -391,7 +392,7 @@ export function TalkbackBoard({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={cn("flex min-h-0 flex-col", TALKBACK_TRANSCRIPT_ENABLED && "flex-1")}>
       {armed.length === 0 && (
         <button
           type="button"
@@ -475,7 +476,9 @@ export function TalkbackBoard({
         })}
       </div>
 
-      <TalkbackChat variant="transcript" channels={channels} lines={lines} drafts={drafts} bindingRevision={bindingRevision} />
+      {TALKBACK_TRANSCRIPT_ENABLED ? (
+        <TalkbackChat variant="transcript" channels={channels} lines={lines} drafts={drafts} bindingRevision={bindingRevision} />
+      ) : null}
     </div>
   );
 }

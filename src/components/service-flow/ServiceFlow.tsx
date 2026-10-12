@@ -4,10 +4,11 @@ import { Music4, Video, Megaphone, Mic2, Circle, UserRound } from "lucide-react"
 import { cn } from "@/lib/cn";
 import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
 import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
+import { notesWithoutServiceStart } from "./serviceFlowClock";
 import type { ServiceFlowPrintLayout } from "./printServiceFlowDocument";
 
 function printableNotes(notes: string | null | undefined) {
-  return notesWithoutMidiCue(notesWithoutTimecodeCue(notes));
+  return notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(notes)));
 }
 
 export type ServiceItem = {

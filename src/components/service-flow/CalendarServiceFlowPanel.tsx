@@ -50,7 +50,11 @@ import {
 } from "./resolveServiceFlowPlaceholders";
 import {
   buildServiceFlowClockTimes,
+  flowMarksServiceStart,
   normalizeClockSource,
+  serviceStartBoundaryItem,
+  notesWithServiceStart,
+  otherServiceStartClears,
   resolveScheduledServiceStartTime,
 } from "./serviceFlowClock";
 
@@ -562,25 +566,29 @@ export function CalendarServiceFlowPanel({
         manualTitleLockRef.current.add(itemId);
       }
 
-      const nextItems = localItemsRef.current.map((entry) =>
-        entry.id === itemId
-          ? {
-              ...entry,
-              item_type: updates.item_type || entry.item_type,
-              title: nextTitle,
-              duration_seconds:
-                updates.duration_seconds !== undefined
-                  ? updates.duration_seconds
-                  : entry.duration_seconds,
-              sequence_order: updates.sequence_order ?? entry.sequence_order,
-              song_id: updates.song_id !== undefined ? updates.song_id : entry.song_id,
-              song_key: updates.song_key !== undefined ? updates.song_key : entry.song_key,
-              vocalist_id:
-                updates.vocalist_id !== undefined ? updates.vocalist_id : entry.vocalist_id,
-              notes: nextNotes,
-            }
-          : entry,
-      );
+      const clearedStarts = otherServiceStartClears(localItemsRef.current, itemId, nextNotes);
+      const clearedIds = new Set(clearedStarts.map((entry) => entry.id));
+      const nextItems = localItemsRef.current.map((entry) => {
+        if (entry.id === itemId) {
+          return {
+            ...entry,
+            item_type: updates.item_type || entry.item_type,
+            title: nextTitle,
+            duration_seconds:
+              updates.duration_seconds !== undefined
+                ? updates.duration_seconds
+                : entry.duration_seconds,
+            sequence_order: updates.sequence_order ?? entry.sequence_order,
+            song_id: updates.song_id !== undefined ? updates.song_id : entry.song_id,
+            song_key: updates.song_key !== undefined ? updates.song_key : entry.song_key,
+            vocalist_id:
+              updates.vocalist_id !== undefined ? updates.vocalist_id : entry.vocalist_id,
+            notes: nextNotes,
+          };
+        }
+        if (!clearedIds.has(entry.id)) return entry;
+        return { ...entry, notes: notesWithServiceStart(entry.notes, false) };
+      });
       localItemsRef.current = nextItems;
       setLocalItems(nextItems);
 
@@ -596,6 +604,22 @@ export function CalendarServiceFlowPanel({
         vocalist_id: updates.vocalist_id !== undefined ? updates.vocalist_id : item.vocalist_id,
         notes: nextNotes,
       });
+      for (const cleared of clearedStarts) {
+        const other = nextItems.find((entry) => entry.id === cleared.id);
+        if (!other) continue;
+        await saveItem.mutateAsync({
+          id: other.id,
+          service_flow_id: activeFlowId,
+          item_type: other.item_type,
+          title: other.title,
+          duration_seconds: other.duration_seconds,
+          sequence_order: other.sequence_order,
+          song_id: other.song_id,
+          song_key: other.song_key,
+          vocalist_id: other.vocalist_id,
+          notes: cleared.notes,
+        });
+      }
     },
     [activeFlowId, readOnly, saveItem],
   );
@@ -798,6 +822,10 @@ export function CalendarServiceFlowPanel({
     () => buildServiceFlowClockTimes(localItems, startTime),
     [localItems, startTime],
   );
+  const serviceStartItemId = useMemo(
+    () => serviceStartBoundaryItem(localItems)?.id || null,
+    [localItems],
+  );
 
   const handlePrint = useCallback((layout: ServiceFlowPrintLayout) => {
     if (localItems.length === 0 || isPrinting) return;
@@ -874,7 +902,10 @@ export function CalendarServiceFlowPanel({
           </h3>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <label
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+            title="Flag the line that ends at this time, such as Pre-Roll. iPod and other lines before it stay before the service."
+          >
             Start
             <Input
               type="time"
@@ -928,6 +959,11 @@ export function CalendarServiceFlowPanel({
           </DropdownMenu>
         </div>
       </div>
+      {startTime && !flowMarksServiceStart(localItems) && localItems.length > 0 ? (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Flag the line that ends at the start time, such as Pre-Roll. iPod and the other lines before it stay before the service.
+        </p>
+      ) : null}
 
       {isInitialLoading ? (
         <div className="space-y-2">
@@ -983,6 +1019,7 @@ export function CalendarServiceFlowPanel({
                   onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
                   clockTime={clockTimesByItemId.get(item.id)}
+                  endsAtServiceStart={item.id === serviceStartItemId}
                   smpteLabel={flowTimecodeLabels(localItems).get(item.id) || null}
                   isDragging={draggedItem?.id === item.id}
                 />

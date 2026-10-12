@@ -3,6 +3,7 @@ import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import type { Service, ServiceItem, ServiceSection } from "./ServiceFlow";
 import { formatTotalDuration } from "./DurationInput";
 import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
+import { notesWithoutServiceStart } from "./serviceFlowClock";
 import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 
 function isAnnouncementsContext(title: string, sectionTitle: string) {
@@ -144,7 +145,7 @@ export function buildServiceFlowPreview(params: {
       currentSection = {
         id: item.id,
         title: item.title,
-        notes: notesWithoutMidiCue(item.notes) || undefined,
+        notes: notesWithoutServiceStart(notesWithoutMidiCue(item.notes)) || undefined,
         items: [],
       };
       sections.push(currentSection);
@@ -168,7 +169,7 @@ export function buildServiceFlowPreview(params: {
       key: item.song_key || undefined,
       leader: formatLeader(item),
       smpte: smpteLabels.get(item.id),
-      notes: notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)) || undefined,
+      notes: notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes))) || undefined,
     });
   }
 

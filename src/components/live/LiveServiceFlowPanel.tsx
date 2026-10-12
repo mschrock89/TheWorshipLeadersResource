@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatDuration } from "@/components/service-flow/DurationInput";
 import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
+import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   formatMidiCueLabel,
@@ -23,6 +24,7 @@ type LiveServiceFlowPanelProps = {
   items: ServiceFlowItem[];
   titles?: Map<string, string>;
   clockTimes: Map<string, string>;
+  serviceStartItemId?: string | null;
   currentItemId: string | null;
   progress?: number | null;
   isLoading: boolean;
@@ -77,6 +79,7 @@ export function LiveServiceFlowPanel({
   items,
   titles,
   clockTimes,
+  serviceStartItemId = null,
   currentItemId,
   progress = null,
   isLoading,
@@ -293,7 +296,7 @@ export function LiveServiceFlowPanel({
       <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3">
         {items.map((item) => {
           if (item.item_type === "header") {
-            const headerNotes = notesWithoutMidiCue(item.notes);
+            const headerNotes = notesWithoutServiceStart(notesWithoutMidiCue(item.notes));
             return (
               <li key={item.id} className="px-2 pt-3">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
@@ -312,7 +315,8 @@ export function LiveServiceFlowPanel({
           const singers = isSong ? vocalistNames(item) : "";
           const title = itemTitle(item, titles);
           const midiLabel = midiLabels.get(item.id) || "";
-          const notes = notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes));
+          const notes = notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)));
+          const endsAtServiceStart = item.id === serviceStartItemId;
           return (
             <li key={item.id}>
               <button
@@ -333,6 +337,11 @@ export function LiveServiceFlowPanel({
                   {clockTime ? (
                     <span className="shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">
                       {clockTime}
+                    </span>
+                  ) : null}
+                  {endsAtServiceStart ? (
+                    <span className="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                      Ends at start
                     </span>
                   ) : null}
                   <span className="min-w-0 flex-1 truncate text-base font-semibold">{title}</span>

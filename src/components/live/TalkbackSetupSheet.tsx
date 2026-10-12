@@ -10,6 +10,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { LiveTalkbackChannel } from "@/hooks/useLiveSession";
+import { TALKBACK_TRANSCRIPT_ENABLED } from "@/lib/liveMode";
 
 type TalkbackSetupSheetProps = {
   open: boolean;
@@ -57,9 +58,11 @@ export function TalkbackSetupSheet({
             >
               Audio routing
             </Button>
-            <Button type="button" variant="ghost" onClick={onClearLines}>
-              Clear captions
-            </Button>
+            {TALKBACK_TRANSCRIPT_ENABLED ? (
+              <Button type="button" variant="ghost" onClick={onClearLines}>
+                Clear captions
+              </Button>
+            ) : null}
           </div>
 
           <ul className="space-y-3">

@@ -1,3 +1,6 @@
+/** Mic captions and channel meters are parked. SMPTE listening stays. */
+export const TALKBACK_TRANSCRIPT_ENABLED = false;
+
 export const LIVE_STATIONS = ["foh", "mon"] as const;
 export type LiveStation = (typeof LIVE_STATIONS)[number];
 
@@ -136,9 +139,10 @@ export function liveStationLabel(station: LiveStation) {
   return station === "foh" ? "FOH" : "MON";
 }
 
-const FOH_LISTENER_FRESH_MS = 20_000;
+const LISTENER_FRESH_MS = 20_000;
 
-export function isFohListenerHosting(
+/** FOH or MON can host. A fresh heartbeat means that screen is the one listening. */
+export function isListenerHosting(
   session: {
     listener_client_id?: string | null;
     listener_station?: string | null;
@@ -146,11 +150,10 @@ export function isFohListenerHosting(
   } | null | undefined,
   nowMs: number,
 ) {
-  if (!session?.listener_client_id || session.listener_station !== "foh" || !session.listener_heartbeat) {
-    return false;
-  }
+  if (!session?.listener_client_id || !session.listener_heartbeat) return false;
+  if (session.listener_station !== "foh" && session.listener_station !== "mon") return false;
   const heartbeat = new Date(session.listener_heartbeat).getTime();
-  return Number.isFinite(heartbeat) && nowMs - heartbeat < FOH_LISTENER_FRESH_MS;
+  return Number.isFinite(heartbeat) && nowMs - heartbeat < LISTENER_FRESH_MS;
 }
 
 export function readLiveStation(): LiveStation {

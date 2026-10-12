@@ -28,6 +28,44 @@ export type LiveTimecodeCue = {
   clientId: string;
 };
 
+export type LiveClockAnchor = {
+  itemId: string;
+  startedAtSeconds: number;
+  at: number;
+  clientId: string;
+};
+
+function clockAnchorKey(sessionId: string) {
+  return `wlr-service-flow-clock-anchor:${sessionId}`;
+}
+
+function readClockAnchor(sessionId: string | null): LiveClockAnchor | null {
+  if (!sessionId || typeof window === "undefined") return null;
+  try {
+    const raw = JSON.parse(window.sessionStorage.getItem(clockAnchorKey(sessionId)) || "");
+    if (typeof raw?.itemId !== "string" || !raw.itemId) return null;
+    if (!Number.isFinite(raw.startedAtSeconds) || !Number.isFinite(raw.at)) return null;
+    return {
+      itemId: raw.itemId,
+      startedAtSeconds: raw.startedAtSeconds,
+      at: raw.at,
+      clientId: typeof raw.clientId === "string" ? raw.clientId : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeClockAnchor(sessionId: string | null, anchor: LiveClockAnchor | null) {
+  if (!sessionId || typeof window === "undefined") return;
+  const key = clockAnchorKey(sessionId);
+  if (!anchor) {
+    window.sessionStorage.removeItem(key);
+    return;
+  }
+  window.sessionStorage.setItem(key, JSON.stringify(anchor));
+}
+
 type LiveSessionParams = {
   campusId: string | null;
   ministryType: string;
@@ -79,6 +117,7 @@ export function useLiveSession({
   const recentLines = useRef(new Map<string, { text: string; at: number }>());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [timecodeCue, setTimecodeCue] = useState<LiveTimecodeCue | null>(null);
+  const [clockAnchor, setClockAnchor] = useState<LiveClockAnchor | null>(null);
 
   const sessionKey = useMemo(
     () => ["live-session", resourceAppKey, campusId, ministryType, serviceDate, customServiceId || null, draftSetId || null] as const,
@@ -204,6 +243,7 @@ export function useLiveSession({
 
   useEffect(() => {
     setTimecodeCue(null);
+    setClockAnchor(readClockAnchor(sessionId));
   }, [sessionId]);
 
   useEffect(() => {
@@ -268,6 +308,24 @@ export function useLiveSession({
         if (!payload || payload.clientId === clientId) return;
         setTimecodeCue((current) => (current && current.at > payload.at ? current : payload));
       })
+      .on("broadcast", { event: "clock-anchor" }, (message: { payload?: LiveClockAnchor }) => {
+        const payload = message.payload;
+        if (!payload || payload.clientId === clientId) return;
+        if (typeof payload.itemId !== "string" || !Number.isFinite(payload.startedAtSeconds)) return;
+        setClockAnchor((current) => {
+          if (current && current.at > payload.at) return current;
+          if (
+            current &&
+            current.at === payload.at &&
+            current.itemId === payload.itemId &&
+            current.startedAtSeconds === payload.startedAtSeconds
+          ) {
+            return current;
+          }
+          writeClockAnchor(sessionId, payload);
+          return payload;
+        });
+      })
       .subscribe();
     channelRef.current = channel;
 
@@ -295,12 +353,12 @@ export function useLiveSession({
   );
 
   const claimListener = useCallback(
-    async () => {
+    async (station: "foh" | "mon") => {
       if (!sessionId) return;
       const listener_heartbeat = new Date().toISOString();
       const patch = {
         listener_client_id: clientId,
-        listener_station: "foh" as const,
+        listener_station: station,
         listener_heartbeat,
       };
       patchSession(patch);
@@ -350,6 +408,30 @@ export function useLiveSession({
       });
     },
     [clientId],
+  );
+
+  const publishClockAnchor = useCallback(
+    (anchor: Omit<LiveClockAnchor, "clientId">) => {
+      const next = { ...anchor, clientId };
+      setClockAnchor((current) => {
+        if (
+          current &&
+          current.itemId === next.itemId &&
+          current.startedAtSeconds === next.startedAtSeconds &&
+          current.at === next.at
+        ) {
+          return current;
+        }
+        return next;
+      });
+      writeClockAnchor(sessionId, next);
+      void channelRef.current?.send({
+        type: "broadcast",
+        event: "clock-anchor",
+        payload: next,
+      });
+    },
+    [clientId, sessionId],
   );
 
   const setCurrentItem = useCallback(
@@ -502,7 +584,9 @@ export function useLiveSession({
     currentUserId: user?.id ?? null,
     notes: notesQuery.data ?? null,
     timecodeCue,
+    clockAnchor,
     publishTimecode,
+    publishClockAnchor,
     isLoading: sessionQuery.isLoading || (!!sessionId && channelsQuery.isLoading),
     accessDenied: isForbidden(sessionQuery.error),
     schemaMissing: isMissingLiveSchema(sessionQuery.error),

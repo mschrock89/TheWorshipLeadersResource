@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { GripVertical, X, Music, StickyNote } from "lucide-react";
+import { Flag, GripVertical, X, Music, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DurationInput } from "./DurationInput";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ServiceFlowItem as ServiceFlowItemType } from "@/hooks/useServiceFlow";
 import { notesWithMidiCue, notesWithoutMidiCue, parseNoteMidi } from "@/lib/serviceFlowMidi";
+import {
+  itemMarksServiceStart,
+  notesWithServiceStart,
+  notesWithoutServiceStart,
+} from "./serviceFlowClock";
 
 interface ServiceFlowItemProps {
   item: ServiceFlowItemType;
@@ -15,9 +20,50 @@ interface ServiceFlowItemProps {
   onDelete: (itemId: string) => void;
   displayTitle?: string;
   clockTime?: string | null;
+  endsAtServiceStart?: boolean;
   smpteLabel?: string | null;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
   isDragging?: boolean;
+}
+
+function ServiceStartControl({
+  active,
+  showLabel,
+  onToggle,
+}: {
+  active: boolean;
+  showLabel: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      {showLabel ? (
+        <span className="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          Ends at start
+        </span>
+      ) : null}
+      <Button
+        type="button"
+        variant={active ? "default" : "ghost"}
+        size="icon"
+        className={cn("h-6 w-6", !active && "text-muted-foreground hover:text-foreground")}
+        onClick={onToggle}
+        title={
+          active
+            ? "Service starts when this line ends. Click to clear."
+            : "Service starts when this line ends"
+        }
+        aria-pressed={active}
+        aria-label={
+          active
+            ? "Service starts when this line ends. Clear the mark."
+            : "Mark that the service starts when this line ends"
+        }
+      >
+        <Flag className="h-3.5 w-3.5" />
+      </Button>
+    </>
+  );
 }
 
 function TimecodeNote({ label }: { label: string | null }) {
@@ -37,11 +83,12 @@ function FlowItemNotes({
   onCommit: (notes: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => notesWithoutMidiCue(notes));
-  const savedNotes = notesWithoutMidiCue(notes);
+  const visibleNotes = notesWithoutServiceStart(notesWithoutMidiCue(notes));
+  const [draft, setDraft] = useState(visibleNotes);
+  const savedNotes = visibleNotes;
 
   useEffect(() => {
-    if (!editing) setDraft(notesWithoutMidiCue(notes));
+    if (!editing) setDraft(notesWithoutServiceStart(notesWithoutMidiCue(notes)));
   }, [editing, notes]);
 
   const commit = () => {
@@ -51,7 +98,7 @@ function FlowItemNotes({
   };
 
   const cancel = () => {
-    setDraft(notes || "");
+    setDraft(notesWithoutServiceStart(notesWithoutMidiCue(notes)));
     setEditing(false);
   };
 
@@ -66,7 +113,7 @@ function FlowItemNotes({
           savedNotes && "text-foreground",
         )}
         onClick={() => {
-          setDraft(notes || "");
+          setDraft(notesWithoutServiceStart(notesWithoutMidiCue(notes)));
           setEditing(true);
         }}
         title={savedNotes ? "Edit note or SMPTE cue" : "Add a note or SMPTE cue"}
@@ -117,6 +164,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
   onDelete,
   displayTitle,
   clockTime,
+  endsAtServiceStart = false,
   smpteLabel = null,
   dragHandleProps,
   isDragging,
@@ -157,9 +205,15 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
   };
 
   const commitNotes = (notes: string | null) => {
-    const next = notesWithMidiCue(notes, parseNoteMidi(item.notes));
+    const kept = notesWithServiceStart(notes, itemMarksServiceStart(item));
+    const next = notesWithMidiCue(kept, parseNoteMidi(item.notes));
     if ((next || "") === (item.notes?.trim() || "")) return;
     onUpdate(item.id, { notes: next });
+  };
+
+  const marksServiceStart = itemMarksServiceStart(item);
+  const toggleServiceStart = () => {
+    onUpdate(item.id, { notes: notesWithServiceStart(item.notes, !marksServiceStart) });
   };
 
   const resolvedTitle = visibleTitle;
@@ -252,6 +306,11 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
             {clockTime}
           </span>
         ) : null}
+        <ServiceStartControl
+          active={marksServiceStart}
+          showLabel={endsAtServiceStart || marksServiceStart}
+          onToggle={toggleServiceStart}
+        />
         <Music className="h-4 w-4 text-muted-foreground flex-shrink-0" />
         {isEditingTitle ? (
           <Input
@@ -342,6 +401,11 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
           {clockTime}
         </span>
       ) : null}
+      <ServiceStartControl
+        active={marksServiceStart}
+        showLabel={endsAtServiceStart || marksServiceStart}
+        onToggle={toggleServiceStart}
+      />
       {isEditingTitle ? (
         <Input
           value={titleDraft}

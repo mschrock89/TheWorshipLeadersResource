@@ -3,9 +3,13 @@ import test from "node:test";
 import {
   buildServiceFlowClockTimes,
   formatClockTime,
+  itemMarksServiceStart,
   listScheduledServiceTimes,
   measureServiceFlowSpan,
+  notesWithServiceStart,
+  notesWithoutServiceStart,
   selectServiceTimeForLocalClock,
+  serviceStartBoundaryItem,
   resolveScheduledServiceStartTime,
 } from "./serviceFlowClock.ts";
 
@@ -58,6 +62,45 @@ test("an announcements line before the Start header stays in pre-service", () =>
 
   assert.equal(clocks.get("host"), "6:29 PM");
   assert.equal(clocks.get("welcome"), "6:30 PM");
+});
+
+test("a marked line ends at the service start, so earlier lines stay before it", () => {
+  const items = [
+    { id: "ipod", item_type: "item", title: "iPod Music", duration_seconds: 10 * 60 },
+    { id: "preroll", item_type: "item", title: "Pre-Roll", duration_seconds: 3 * 60, notes: "SERVICE START" },
+    { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 2 * 60 },
+  ];
+  const clocks = buildServiceFlowClockTimes(items, "16:00");
+
+  assert.equal(clocks.get("ipod"), "3:47 PM");
+  assert.equal(clocks.get("preroll"), "3:57 PM");
+  assert.equal(clocks.get("welcome"), "4:00 PM");
+  assert.equal(serviceStartBoundaryItem(items)?.id, "preroll");
+  assert.equal(measureServiceFlowSpan(items).preServiceSeconds, 13 * 60);
+  assert.equal(measureServiceFlowSpan(items).serviceDurationSeconds, 2 * 60);
+});
+
+test("the pre-roll MIDI time shifts every clock so that line still ends at the service start", () => {
+  const clocks = buildServiceFlowClockTimes(
+    [
+      { id: "ipod", item_type: "item", title: "iPod Music", duration_seconds: 10 * 60 },
+      { id: "preroll", item_type: "item", title: "Pre-Roll", duration_seconds: 3 * 60, notes: "MIDI C4\nSERVICE START" },
+      { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 2 * 60 },
+    ],
+    "16:00",
+    { boundaryStartedAtSeconds: 15 * 3600 + 58 * 60 },
+  );
+
+  assert.equal(clocks.get("ipod"), "3:48 PM");
+  assert.equal(clocks.get("preroll"), "3:58 PM");
+  assert.equal(clocks.get("welcome"), "4:01 PM");
+});
+
+test("the service start mark stays out of visible notes and off other lines", () => {
+  assert.equal(itemMarksServiceStart({ notes: "Hold\nSERVICE START" }), true);
+  assert.equal(notesWithoutServiceStart("Hold\nSERVICE START\nMIDI C4"), "Hold\nMIDI C4");
+  assert.equal(notesWithServiceStart("Hold\nMIDI C4", true), "Hold\nMIDI C4\nSERVICE START");
+  assert.equal(notesWithServiceStart("Hold\nSERVICE START", false), "Hold");
 });
 
 test("an empty start time leaves the clock off", () => {

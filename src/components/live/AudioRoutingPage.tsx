@@ -251,7 +251,7 @@ export function AudioRoutingPage({ sessionId, channels, onClose, onBindingsChang
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p className="text-sm text-muted-foreground">
-          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu. The color beside an input is that talkback’s color on the mixer and in captions.
+          Inputs come from this Mac’s Audio MIDI Setup and Sound settings. Pick the interface that receives the sound board, then choose the Playback SMPTE input. Playback moves the songs. ProPresenter moves the other lines with MIDI notes from the service flow MIDI menu. The color beside an input is that talkback’s color on the mixer.
         </p>
 
         <div className="flex flex-wrap items-center gap-2">

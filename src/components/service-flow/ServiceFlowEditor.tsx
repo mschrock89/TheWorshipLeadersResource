@@ -65,8 +65,13 @@ import { formatTotalDuration } from "./DurationInput";
 import {
   buildServiceFlowClockTimes,
   clockSourceToSeconds,
+  flowMarksServiceStart,
   formatClockTime,
+  serviceStartBoundaryItem,
   normalizeClockSource,
+  notesWithServiceStart,
+  notesWithoutServiceStart,
+  otherServiceStartClears,
   resolveScheduledServiceStartTime,
 } from "./serviceFlowClock";
 import { cn } from "@/lib/cn";
@@ -909,6 +914,10 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
     () => buildServiceFlowClockTimes(localItems, scheduledStartTime),
     [localItems, scheduledStartTime],
   );
+  const serviceStartItemId = useMemo(
+    () => serviceStartBoundaryItem(localItems)?.id || null,
+    [localItems],
+  );
 
   const scheduledRoleNames = useMemo(
     () => buildScheduledRoleNames(combinedScheduledRoster),
@@ -1017,20 +1026,24 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
 
       const nextTitle = updates.title !== undefined ? updates.title : item.title;
       const nextNotes = updates.notes !== undefined ? updates.notes : item.notes;
+      const clearedStarts = otherServiceStartClears(localItems, itemId, nextNotes);
+      const clearedIds = new Set(clearedStarts.map((entry) => entry.id));
       setLocalItems((current) =>
-        current.map((entry) =>
-          entry.id === itemId
-            ? {
-                ...entry,
-                title: nextTitle,
-                notes: nextNotes,
-                duration_seconds:
-                  updates.duration_seconds !== undefined
-                    ? updates.duration_seconds
-                    : entry.duration_seconds,
-              }
-            : entry,
-        ),
+        current.map((entry) => {
+          if (entry.id === itemId) {
+            return {
+              ...entry,
+              title: nextTitle,
+              notes: nextNotes,
+              duration_seconds:
+                updates.duration_seconds !== undefined
+                  ? updates.duration_seconds
+                  : entry.duration_seconds,
+            };
+          }
+          if (!clearedIds.has(entry.id)) return entry;
+          return { ...entry, notes: notesWithServiceStart(entry.notes, false) };
+        }),
       );
 
       await saveItem.mutateAsync({
@@ -1045,6 +1058,22 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         vocalist_id: updates.vocalist_id !== undefined ? updates.vocalist_id : item.vocalist_id,
         notes: nextNotes,
       });
+      for (const cleared of clearedStarts) {
+        const other = localItems.find((entry) => entry.id === cleared.id);
+        if (!other) continue;
+        await saveItem.mutateAsync({
+          id: other.id,
+          service_flow_id: activeServiceFlowId,
+          item_type: other.item_type,
+          title: other.title,
+          duration_seconds: other.duration_seconds,
+          sequence_order: other.sequence_order,
+          song_id: other.song_id,
+          song_key: other.song_key,
+          vocalist_id: other.vocalist_id,
+          notes: cleared.notes,
+        });
+      }
     },
     [localItems, activeServiceFlowId, saveItem]
   );
@@ -1202,7 +1231,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         currentSection = {
           id: item.id,
           title: item.title,
-          notes: notesWithoutMidiCue(item.notes) || undefined,
+          notes: notesWithoutServiceStart(notesWithoutMidiCue(item.notes)) || undefined,
           items: [],
         };
         sections.push(currentSection);
@@ -1219,7 +1248,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
         key: item.song_key || undefined,
         leader: formatLeader(item),
         smpte: smpteLabels.get(item.id),
-        notes: notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)) || undefined,
+        notes: notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes))) || undefined,
       });
     });
 
@@ -1331,6 +1360,11 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
             <span className="font-medium tabular-nums">
               {formatClockTime(clockSourceToSeconds(scheduledStartTime) || 0)}
             </span>
+            {!flowMarksServiceStart(localItems) ? (
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                Flag the line that ends at this time, such as Pre-Roll.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1418,6 +1452,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
                   onDelete={handleDeleteItem}
                   displayTitle={resolvedItemTitlesById.get(item.id)}
                   clockTime={clockTimesByItemId.get(item.id)}
+                  endsAtServiceStart={item.id === serviceStartItemId}
                   smpteLabel={flowTimecodeLabels(localItems).get(item.id) || null}
                   isDragging={draggedItem?.id === item.id}
                 />
