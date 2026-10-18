@@ -47,14 +47,55 @@ export function midiNoteNumber(token: string) {
   return note >= 0 && note <= 127 ? note : null;
 }
 
-export function parseMidiNoteOn(data: ArrayLike<number>): MidiNoteEvent | null {
-  if (data.length < 3) return null;
-  const status = data[0];
-  const note = data[1];
-  const velocity = data[2];
+function noteOn(status: number, note: number, velocity: number): MidiNoteEvent | null {
   if ((status & 0xf0) !== 0x90) return null;
   if (note < 0 || note > 127 || velocity <= 0 || velocity > 127) return null;
   return { channel: (status & 0x0f) + 1, note, velocity };
+}
+
+/** Every note-on in the buffer. A packet often starts with a clock, a note-off, or an earlier cue. */
+export function parseMidiNoteOns(data: ArrayLike<number>): MidiNoteEvent[] {
+  const notes: MidiNoteEvent[] = [];
+  let index = 0;
+  let running: number | null = null;
+  while (index < data.length) {
+    const byte = data[index];
+    if (byte >= 0xf8) {
+      index += 1;
+      continue;
+    }
+    let status: number;
+    if (byte >= 0x80) {
+      status = byte;
+      running = status < 0xf0 ? status : null;
+      index += 1;
+    } else if (running == null) {
+      break;
+    } else {
+      status = running;
+    }
+    if (status >= 0xf0) {
+      if (status === 0xf0) {
+        while (index < data.length && data[index] !== 0xf7) index += 1;
+        if (index < data.length) index += 1;
+      } else if (status === 0xf2) {
+        index += 2;
+      } else if (status === 0xf1 || status === 0xf3) {
+        index += 1;
+      }
+      continue;
+    }
+    const size = (status & 0xf0) === 0xc0 || (status & 0xf0) === 0xd0 ? 1 : 2;
+    if (index + size > data.length) break;
+    const note = noteOn(status, data[index], size === 2 ? data[index + 1] : 0);
+    if (note) notes.push(note);
+    index += size;
+  }
+  return notes;
+}
+
+export function parseMidiNoteOn(data: ArrayLike<number>): MidiNoteEvent | null {
+  return parseMidiNoteOns(data)[0] ?? null;
 }
 
 export function parseNoteMidi(notes: string | null | undefined): FlowMidiCue | null {
@@ -107,12 +148,20 @@ export function findMidiCueItem<T extends { id: string; item_type: string; notes
   event: MidiNoteEvent,
   channel: number,
 ) {
+  // Playback fires one note (often G-1) and uses velocity for the slide.
+  // An earlier "any velocity" line must not swallow the exact cue after it.
+  let wildcard: T | null = null;
   for (const item of items) {
     if (item.item_type === "header") continue;
     const cue = parseNoteMidi(item.notes);
-    if (cue && midiCueMatches(cue, event, channel)) return item;
+    if (!cue || !midiCueMatches({ note: cue.note, velocity: null }, event, channel)) continue;
+    if (cue.velocity == null) {
+      if (!wildcard) wildcard = item;
+      continue;
+    }
+    if (event.velocity === cue.velocity) return item;
   }
-  return null;
+  return wildcard;
 }
 
 export function readMidiFollowSettings(): MidiFollowSettings {

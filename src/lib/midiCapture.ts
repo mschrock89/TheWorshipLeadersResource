@@ -1,4 +1,4 @@
-import { parseMidiNoteOn, type MidiNoteEvent } from "./serviceFlowMidi.ts";
+import { parseMidiNoteOns, type MidiNoteEvent } from "./serviceFlowMidi.ts";
 
 export type MidiInputInfo = {
   id: string;
@@ -37,12 +37,24 @@ export function startMidiCapture(handlers: MidiCaptureHandlers) {
     for (const port of targets) {
       port.onmidimessage = (message) => {
         if (stopped || !message.data) return;
-        const note = parseMidiNoteOn(message.data);
-        if (note) handlers.onNote(note);
+        for (const note of parseMidiNoteOns(message.data)) handlers.onNote(note);
       };
+      void port.open?.();
       ports.add(port);
     }
     handlers.onStatus("listening");
+  };
+
+  const fail = () => {
+    if (!stopped) handlers.onStatus("error", "MIDI access was blocked.");
+  };
+
+  const listen = (access: MIDIAccess) => {
+    if (stopped) return;
+    bind(access);
+    access.onstatechange = () => {
+      if (!stopped) bind(access);
+    };
   };
 
   if (!navigator.requestMIDIAccess) {
@@ -50,18 +62,10 @@ export function startMidiCapture(handlers: MidiCaptureHandlers) {
     return () => {};
   }
 
-  navigator.requestMIDIAccess().then(
-    (access) => {
-      if (stopped) return;
-      bind(access);
-      access.onstatechange = () => {
-        if (!stopped) bind(access);
-      };
-    },
-    () => {
-      if (!stopped) handlers.onStatus("error", "MIDI access was blocked.");
-    },
-  );
+  // Mesh is a virtual port. Browsers hide those unless software ports are requested.
+  navigator.requestMIDIAccess({ software: true }).then(listen, () => {
+    navigator.requestMIDIAccess().then(listen, fail);
+  });
 
   return () => {
     stopped = true;

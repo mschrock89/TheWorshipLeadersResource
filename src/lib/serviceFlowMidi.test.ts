@@ -10,6 +10,7 @@ import {
   notesWithMidiCue,
   notesWithoutMidiCue,
   parseMidiNoteOn,
+  parseMidiNoteOns,
   parseNoteMidi,
 } from "./serviceFlowMidi.ts";
 
@@ -41,6 +42,11 @@ test("matches the chosen channel, note, and value", () => {
   assert.equal(parseMidiNoteOn([0x90, 60, 127])?.note, 60);
   assert.equal(parseMidiNoteOn([0x80, 60, 0]), null);
   assert.equal(parseMidiNoteOn([0x90, 60, 0]), null);
+  assert.equal(parseMidiNoteOn([0xfe, 0x80, 60, 0, 0x90, 67, 100])?.note, 67);
+  assert.deepEqual(
+    parseMidiNoteOns([0x90, 7, 1, 0x80, 7, 0, 0x90, 7, 2]).map((event) => event.velocity),
+    [1, 2],
+  );
 
   const match = findMidiCueItem(
     [
@@ -52,6 +58,16 @@ test("matches the chosen channel, note, and value", () => {
     1,
   );
   assert.equal(match?.id, "welcome");
+
+  const slide = findMidiCueItem(
+    [
+      { id: "any", item_type: "item", notes: "MIDI G-1" },
+      { id: "slide-2", item_type: "item", notes: "MIDI G-1 2" },
+    ],
+    { channel: 1, note: 7, velocity: 2 },
+    1,
+  );
+  assert.equal(slide?.id, "slide-2");
 });
 
 test("holds a MIDI line until playback enters the next song", () => {
