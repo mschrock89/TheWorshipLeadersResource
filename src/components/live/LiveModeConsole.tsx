@@ -119,17 +119,21 @@ export function LiveModeConsole({
   const [station, setStation] = useState<LiveStation>(() => readLiveStation());
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [audioKick, setAudioKick] = useState(0);
   const [setupOpen, setSetupOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
   const [bindingRevision, setBindingRevision] = useState(0);
   const [followTimecode, setFollowTimecode] = useState(true);
   const [smpteStatus, setSmpteStatus] = useState<"idle" | "listening" | "locked" | "error">("idle");
+  const smpteStatusRef = useRef(smpteStatus);
+  smpteStatusRef.current = smpteStatus;
   const [smpteLabel, setSmpteLabel] = useState<string | null>(null);
   const [midiSettings, setMidiSettings] = useState<MidiFollowSettings>(readMidiFollowSettings);
   const [midiInputs, setMidiInputs] = useState<MidiInputInfo[]>([]);
   const [midiStatus, setMidiStatus] = useState<"idle" | "listening" | "error">("idle");
   const [midiMessage, setMidiMessage] = useState<string | null>(null);
   const [lastMidi, setLastMidi] = useState<MidiNoteEvent | null>(null);
+  const [midiFit, setMidiFit] = useState<"channel" | "none" | "paused" | null>(null);
   const [midiMenuOpened, setMidiMenuOpened] = useState(false);
   const saveFlowItem = useSaveServiceFlowItem();
   const [tab, setTab] = useState<DockTab>("flow");
@@ -307,12 +311,45 @@ export function LiveModeConsole({
   };
 
   useEffect(() => {
-    if (!listening) return;
+    if (TALKBACK_TRANSCRIPT_ENABLED || videoOnly) return;
+    let context: AudioContext | null = null;
+    let stopped = false;
+
+    let retried = false;
+    const arm = () => {
+      if (stopped || readSmpteListens(readTalkbackBindings()).length === 0) return;
+      if (!context || context.state === "closed") {
+        context = createInputAudioContext();
+        setAudioContext(context);
+        setListening(true);
+      }
+      void context.resume();
+      if (!retried && smpteStatusRef.current === "error") {
+        retried = true;
+        setAudioKick((value) => value + 1);
+      }
+    };
+
+    arm();
+    window.addEventListener("pointerdown", arm, true);
+    window.addEventListener("keydown", arm, true);
+    return () => {
+      stopped = true;
+      window.removeEventListener("pointerdown", arm, true);
+      window.removeEventListener("keydown", arm, true);
+      void context?.close();
+      setAudioContext((current) => (current === context ? null : current));
+      setListening(false);
+    };
+  }, [bindingRevision, videoOnly]);
+
+  useEffect(() => {
+    if (!TALKBACK_TRANSCRIPT_ENABLED || !listening) return;
     void live.claimListener(station);
   }, [listening, live.claimListener, station]);
 
   useEffect(() => {
-    if (!listening) return;
+    if (!TALKBACK_TRANSCRIPT_ENABLED || !listening) return;
     const timer = window.setInterval(() => {
       void heartbeatListener();
     }, 5000);
@@ -321,7 +358,7 @@ export function LiveModeConsole({
 
   const sawOwnClaim = useRef(false);
   useEffect(() => {
-    if (!listening) {
+    if (!TALKBACK_TRANSCRIPT_ENABLED || !listening) {
       sawOwnClaim.current = false;
       return;
     }
@@ -363,19 +400,19 @@ export function LiveModeConsole({
   const followRef = useRef(followTimecode);
   followRef.current = followTimecode;
   const hasMidiCues = items.some((item) => item.item_type !== "header" && parseNoteMidi(item.notes));
-  const listenMidi = midiMenuOpened || (listening && hasMidiCues);
+  const midiAvailable = typeof navigator.requestMIDIAccess === "function";
+  // MIDI notes do not need the SMPTE Listen host. Capture whenever this browser can hear them.
+  const listenMidi = midiMenuOpened || (midiAvailable && hasMidiCues);
   timecodeTrack.current.windows = buildTimecodeWindows(items, timecodeTrack.current.fps);
   timecodeTrack.current.currentId = live.session?.current_item_id || null;
   timecodeTrack.current.setItem = (itemId) => {
     void live.setCurrentItem(itemId);
   };
   timecodeTrack.current.publish = live.publishTimecode;
-  const isTimecodeHost =
-    listening &&
-    live.session?.listener_client_id === live.clientId;
+  const isTimecodeHost = TALKBACK_TRANSCRIPT_ENABLED
+    ? listening && live.session?.listener_client_id === live.clientId
+    : listening;
   timecodeTrack.current.follow = followTimecode && isTimecodeHost;
-  const drivesLiveRef = useRef(false);
-  drivesLiveRef.current = isTimecodeHost;
 
   useEffect(() => {
     if (!isTimecodeHost || !audioContext) {
@@ -490,7 +527,7 @@ export function LiveModeConsole({
       window.clearInterval(watch);
       stop();
     };
-  }, [audioContext, bindingRevision, isTimecodeHost]);
+  }, [audioContext, audioKick, bindingRevision, isTimecodeHost]);
 
   useEffect(() => {
     if (!listenMidi) {
@@ -512,11 +549,16 @@ export function LiveModeConsole({
       onNote: (event) => {
         if (!active) return;
         setLastMidi(event);
-        if (!drivesLiveRef.current) return;
         const settings = midiSettingsRef.current;
-        if (event.channel !== settings.channel) return;
+        if (event.channel !== settings.channel) {
+          setMidiFit("channel");
+          return;
+        }
         const match = findMidiCueItem(flowItemsRef.current, event, settings.channel);
-        if (!match) return;
+        if (!match) {
+          setMidiFit("none");
+          return;
+        }
         const boundary = serviceStartBoundaryItem(flowItemsRef.current);
         if (boundary && match.id === boundary.id) {
           publishClockAnchorRef.current({
@@ -525,7 +567,11 @@ export function LiveModeConsole({
             at: Date.now(),
           });
         }
-        if (!followRef.current) return;
+        if (TALKBACK_TRANSCRIPT_ENABLED && !followRef.current) {
+          setMidiFit("paused");
+          return;
+        }
+        setMidiFit(null);
         const state = timecodeTrack.current;
         if (match.item_type === "song") {
           state.holdPlayback = false;
@@ -766,12 +812,23 @@ export function LiveModeConsole({
       : cueIsFresh && timecodeCue?.label && !publishedMidi
         ? `SMPTE ${timecodeCue.label}`
         : null;
+  const midiHeard = lastMidi
+    ? `MIDI ${formatMidiCueLabel({ note: lastMidi.note, velocity: lastMidi.velocity })}`
+    : null;
   const midiReadout =
     listenMidi
       ? midiStatus === "error"
         ? midiMessage || "MIDI needs a check"
-        : lastMidi
-          ? `MIDI ${formatMidiCueLabel({ note: lastMidi.note, velocity: lastMidi.velocity })}`
+        : midiHeard
+          ? `${midiHeard}${
+              midiFit === "channel"
+                ? ` on channel ${lastMidi?.channel}`
+                : midiFit === "none"
+                  ? " · no matching line"
+                  : midiFit === "paused"
+                    ? " · follow is off"
+                    : ""
+            }`
           : midiStatus === "listening"
             ? "MIDI waiting"
             : null
@@ -806,60 +863,64 @@ export function LiveModeConsole({
           </Link>
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
           <div className="ml-auto flex items-center gap-2 overflow-x-auto">
-            <div className="flex rounded-lg bg-muted p-0.5">
-              {(["foh", "mon"] as const).map((option) => (
-                <button
-                  key={option}
+            {TALKBACK_TRANSCRIPT_ENABLED ? (
+              <>
+                <div className="flex rounded-lg bg-muted p-0.5">
+                  {(["foh", "mon"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        setStation(option);
+                        writeLiveStation(option);
+                      }}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-sm font-bold",
+                        station === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+                      )}
+                    >
+                      {liveStationLabel(option)}
+                    </button>
+                  ))}
+                </div>
+                <Button
                   type="button"
+                  variant={listening ? "secondary" : "default"}
+                  className="h-10"
                   onClick={() => {
-                    setStation(option);
-                    writeLiveStation(option);
+                    if (listening) {
+                      stopListening();
+                      return;
+                    }
+                    const context = createInputAudioContext();
+                    void context.resume();
+                    setAudioContext(context);
+                    setListening(true);
+                    void live.claimListener(station);
                   }}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-bold",
-                    station === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
-                  )}
                 >
-                  {liveStationLabel(option)}
-                </button>
-              ))}
-            </div>
-            <Button
-              type="button"
-              variant={listening ? "secondary" : "default"}
-              className="h-10"
-              onClick={() => {
-                if (listening) {
-                  stopListening();
-                  return;
-                }
-                const context = createInputAudioContext();
-                void context.resume();
-                setAudioContext(context);
-                setListening(true);
-                void live.claimListener(station);
-              }}
-            >
-              <Radio className={cn("h-4 w-4", listening && "text-primary")} />
-              {listening ? "Stop" : "Listen"}
-            </Button>
-            {followingHost ? (
-              <div
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-semibold text-primary"
-                aria-live="polite"
-              >
-                <Radio className="h-4 w-4 text-primary" />
-                Following {followingHost}
-              </div>
+                  <Radio className={cn("h-4 w-4", listening && "text-primary")} />
+                  {listening ? "Stop" : "Listen"}
+                </Button>
+                {followingHost ? (
+                  <div
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-semibold text-primary"
+                    aria-live="polite"
+                  >
+                    <Radio className="h-4 w-4 text-primary" />
+                    Following {followingHost}
+                  </div>
+                ) : null}
+                <Button
+                  type="button"
+                  variant={followTimecode ? "secondary" : "outline"}
+                  className="h-10"
+                  onClick={() => setFollowTimecode((value) => !value)}
+                >
+                  {followTimecode ? "Following" : "Follow"}
+                </Button>
+              </>
             ) : null}
-            <Button
-              type="button"
-              variant={followTimecode ? "secondary" : "outline"}
-              className="h-10"
-              onClick={() => setFollowTimecode((value) => !value)}
-            >
-              {followTimecode ? "Following" : "Follow"}
-            </Button>
             {!readAudioInterfaceId() ? (
               <Button type="button" variant="outline" className="h-10 shrink-0" onClick={() => setRoutingOpen(true)}>
                 SMPTE input
@@ -938,11 +999,13 @@ export function LiveModeConsole({
         <div className="shrink-0 border-b border-border px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {ministryLabel} · {serviceLabel}
-            {weAreHost
-              ? " · This screen is listening"
-              : followingHost
-                ? ` · Following ${followingHost}`
-                : ""}
+            {TALKBACK_TRANSCRIPT_ENABLED
+              ? weAreHost
+                ? " · This screen is listening"
+                : followingHost
+                  ? ` · Following ${followingHost}`
+                  : ""
+              : ""}
           </p>
           <p className="mt-1 text-2xl font-bold leading-tight">
             {cue.currentTitle || "Cue the service flow"}

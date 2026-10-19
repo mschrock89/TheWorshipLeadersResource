@@ -230,7 +230,7 @@ export function LiveServiceFlowPanel({
                     }`
                   : midiStatus === "listening"
                     ? "Waiting for a note"
-                    : "Open this menu on the FOH screen to listen"}
+                    : "Waiting for this browser to hear a note"}
             </p>
             <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.75rem] gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span>Line</span>
