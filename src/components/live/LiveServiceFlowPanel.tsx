@@ -97,16 +97,15 @@ export function LiveServiceFlowPanel({
   const currentRef = useRef<HTMLButtonElement | null>(null);
   const [pendingCues, setPendingCues] = useState<Map<string, FlowMidiCue | null>>(new Map());
   const playable = useMemo(() => items.filter((item) => item.item_type !== "header"), [items]);
-  const midiLabels = useMemo(() => {
-    const labels = new Map<string, string>();
-    playable.forEach((item, playableIndex) => {
-      const pending = pendingCues.get(item.id);
-      const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
-      if (cue) labels.set(item.id, formatMidiCueLabel(cue));
-    });
-    return labels;
-  }, [pendingCues, playable]);
-  const midiArmed = midiLabels.size > 0;
+  const midiArmed = useMemo(
+    () =>
+      playable.some((item, playableIndex) => {
+        const pending = pendingCues.get(item.id);
+        const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
+        return cue != null;
+      }),
+    [pendingCues, playable],
+  );
 
   useEffect(() => {
     currentRef.current?.scrollIntoView({ block: "nearest" });
@@ -315,7 +314,6 @@ export function LiveServiceFlowPanel({
           const clockTime = clockTimes.get(item.id) || "";
           const singers = isSong ? vocalistNames(item) : "";
           const title = itemTitle(item, titles);
-          const midiLabel = midiLabels.get(item.id) || "";
           const notes = notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)));
           const endsAtServiceStart = item.id === serviceStartItemId;
           return (
@@ -364,9 +362,6 @@ export function LiveServiceFlowPanel({
                     ) : null}
                     {singers ? <span className="min-w-0 text-sm font-medium">{singers}</span> : null}
                   </span>
-                ) : null}
-                {midiLabel ? (
-                  <span className="text-sm font-semibold tabular-nums text-primary">MIDI {midiLabel}</span>
                 ) : null}
                 {notes ? (
                   <span className="whitespace-pre-wrap text-xs text-muted-foreground">{notes}</span>

@@ -5,9 +5,11 @@ import {
   formatClockTime,
   itemMarksServiceStart,
   listScheduledServiceTimes,
+  liveClockAnchorApplies,
   measureServiceFlowSpan,
   notesWithServiceStart,
   notesWithoutServiceStart,
+  resolveLiveServiceStartTime,
   selectServiceTimeForLocalClock,
   serviceStartBoundaryItem,
   resolveScheduledServiceStartTime,
@@ -195,4 +197,61 @@ test("the live clock follows the service that local time is in", () => {
   assert.equal(selectServiceTimeForLocalClock(times, 9 * 3600 + 30 * 60, span), "09:00");
   assert.equal(selectServiceTimeForLocalClock(times, 10 * 3600 + 50 * 60, span), "11:00");
   assert.equal(selectServiceTimeForLocalClock(times, 13 * 3600, span), "11:00");
+});
+
+test("live follows the scheduled service for today even when the flow saved an earlier start", () => {
+  const times = ["08:00", "10:00", "12:00"];
+  const span = { preServiceSeconds: 0, serviceDurationSeconds: 90 * 60 };
+
+  assert.equal(
+    resolveLiveServiceStartTime({
+      scheduledTimes: times,
+      savedStartTime: "08:00",
+      nowSeconds: 9 * 3600 + 15 * 60,
+      serviceDate: "2026-10-18",
+      today: "2026-10-18",
+      span,
+    }),
+    "08:00",
+  );
+  assert.equal(
+    resolveLiveServiceStartTime({
+      scheduledTimes: times,
+      savedStartTime: "08:00",
+      nowSeconds: 10 * 3600 + 5 * 60,
+      serviceDate: "2026-10-18",
+      today: "2026-10-18",
+      span,
+    }),
+    "10:00",
+  );
+  assert.equal(
+    resolveLiveServiceStartTime({
+      scheduledTimes: times,
+      savedStartTime: "08:00",
+      nowSeconds: 19 * 3600,
+      serviceDate: "2026-10-18",
+      today: "2026-10-18",
+      span,
+    }),
+    "12:00",
+  );
+  assert.equal(
+    resolveLiveServiceStartTime({
+      scheduledTimes: times,
+      savedStartTime: "08:00",
+      nowSeconds: 19 * 3600,
+      serviceDate: "2026-10-19",
+      today: "2026-10-18",
+      span,
+    }),
+    "08:00",
+  );
+});
+
+test("a pre-roll cue only shifts the service the clock is currently in", () => {
+  const times = ["08:00", "10:00", "12:00"];
+  assert.equal(liveClockAnchorApplies(12 * 3600 + 4 * 60, "12:00", times), true);
+  assert.equal(liveClockAnchorApplies(10 * 3600, "12:00", times), false);
+  assert.equal(liveClockAnchorApplies(8 * 3600 + 2 * 60, "08:00", times), true);
 });

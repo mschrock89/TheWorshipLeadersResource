@@ -3715,6 +3715,47 @@ export type Database = {
         }
         Relationships: []
       }
+      song_map_cues: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          offset_seconds: number
+          service_flow_item_id: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          offset_seconds: number
+          service_flow_item_id: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          offset_seconds?: number
+          service_flow_item_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "song_map_cues_service_flow_item_id_fkey"
+            columns: ["service_flow_item_id"]
+            isOneToOne: false
+            referencedRelation: "service_flow_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       songs: {
         Row: {
           audio_url: string | null

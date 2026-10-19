@@ -25,7 +25,7 @@ function normalizeServiceMinistry(value: string | null) {
 
 export default function LiveMode() {
   const { user, isLoading: authLoading, isProductionManager } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const campusContext = useCampusSelectionOptional();
   const ministryContext = useMinistrySelectionOptional();
   const { data: userCampuses = [], isLoading: userCampusesLoading } = useUserCampuses(user?.id);
@@ -58,14 +58,6 @@ export default function LiveMode() {
   const draftSetId = searchParams.get("draftSetId");
   const campusName = campusOptions.find((campus) => campus.id === campusId)?.name || "Campus";
 
-  const updateScope = (patch: { campusId?: string; ministryType?: string; serviceDate?: string }) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("date", patch.serviceDate || serviceDate);
-    next.set("campus", patch.campusId || campusId || "");
-    next.set("ministry", patch.ministryType || ministryType);
-    setSearchParams(next, { replace: true });
-  };
-
   if (authLoading || userCampusesLoading || (isProductionManager && allCampusesLoading)) {
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-background">
@@ -86,12 +78,10 @@ export default function LiveMode() {
     <LiveModeConsole
       campusId={campusId}
       campusName={campusName}
-      campuses={campusOptions}
       ministryType={ministryType}
       serviceDate={serviceDate}
       customServiceId={customServiceId}
       draftSetId={draftSetId}
-      onScopeChange={updateScope}
     />
   );
 }

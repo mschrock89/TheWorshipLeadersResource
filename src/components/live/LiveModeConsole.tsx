@@ -1,24 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
-import { ArrowLeft, AudioLines, Loader2, Radio, Settings2 } from "lucide-react";
+import { ArrowLeft, Loader2, Radio, Settings2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-import { CompactSelectValue } from "@/components/ui/compact-select-value";
-import { MINISTRY_TYPES, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { isListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import {
   applyAudioRoutingDefault,
   markRoutingDefaultApplied,
-  readAudioChannelCount,
-  readAudioInterfaceId,
   readAudioRoutingDefault,
   readSmpteListens,
   routingDefaultAlreadyApplied,
@@ -52,6 +43,7 @@ import { startSmpteCapture } from "@/lib/smpteCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
+import { useSongMapCues } from "@/hooks/useSongMapCues";
 import { useSaveServiceFlowItem, useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
@@ -68,27 +60,27 @@ import {
   clockSourceToSeconds,
   formatClockTime,
   listScheduledServiceTimes,
+  liveClockAnchorApplies,
   localClockSeconds,
   measureServiceFlowSpan,
   normalizeClockSource,
-  selectServiceTimeForLocalClock,
+  resolveLiveServiceStartTime,
   serviceStartBoundaryItem,
 } from "@/components/service-flow/serviceFlowClock";
-import { AudioRoutingPage, SmpteInputSelect } from "./AudioRoutingPage";
+import { AudioRoutingPage } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
 import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
 import { findFlowCue, LiveServiceFlowPanel } from "./LiveServiceFlowPanel";
 import { LiveNotesPanel } from "./LiveNotesPanel";
+import { SongMapBar } from "./SongMapBar";
 
 type LiveModeConsoleProps = {
   campusId: string;
   campusName: string;
-  campuses: Array<{ id: string; name: string }>;
   ministryType: string;
   serviceDate: string;
   customServiceId: string | null;
   draftSetId: string | null;
-  onScopeChange: (patch: { campusId?: string; ministryType?: string; serviceDate?: string }) => void;
 };
 
 type DockTab = "flow" | "chat" | "notes";
@@ -96,12 +88,10 @@ type DockTab = "flow" | "chat" | "notes";
 export function LiveModeConsole({
   campusId,
   campusName,
-  campuses,
   ministryType,
   serviceDate,
   customServiceId,
   draftSetId,
-  onScopeChange,
 }: LiveModeConsoleProps) {
   const queryClient = useQueryClient();
   const access = useLiveModeAccess(campusId);
@@ -134,6 +124,7 @@ export function LiveModeConsole({
   const [midiStatus, setMidiStatus] = useState<"idle" | "listening" | "error">("idle");
   const [midiMessage, setMidiMessage] = useState<string | null>(null);
   const [lastMidi, setLastMidi] = useState<MidiNoteEvent | null>(null);
+  const [songMapRun, setSongMapRun] = useState<{ itemId: string; startedAt: number } | null>(null);
   const [midiFit, setMidiFit] = useState<"channel" | "none" | "paused" | null>(null);
   const [midiMenuOpened, setMidiMenuOpened] = useState(false);
   const saveFlowItem = useSaveServiceFlowItem();
@@ -150,6 +141,11 @@ export function LiveModeConsole({
     customServiceId,
   );
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(flow?.id || null);
+  const songItemIds = useMemo(
+    () => items.filter((item) => item.item_type === "song").map((item) => item.id),
+    [items],
+  );
+  const songMap = useSongMapCues(flow?.id || null, songItemIds);
   const rosterDate = useMemo(() => {
     const [year, month, day] = serviceDate.split("-").map(Number);
     if (!year || !month || !day) return null;
@@ -229,23 +225,33 @@ export function LiveModeConsole({
     [campusesWithTimes, campusId, customServiceStartTime, ministryType, serviceDate, serviceTimeOverrides],
   );
   const flowSpan = useMemo(() => measureServiceFlowSpan(items), [items]);
-  const startTime = useMemo(() => {
-    const saved = normalizeClockSource(flow?.start_time);
-    const viewingToday = serviceDate === localDateIso(now);
-    if (scheduledServiceTimes.length > 1 && viewingToday) {
-      return selectServiceTimeForLocalClock(scheduledServiceTimes, localClockSeconds(now), flowSpan);
-    }
-    if (saved) return saved;
-    return scheduledServiceTimes[0] || null;
-  }, [flow?.start_time, flowSpan, now, scheduledServiceTimes, serviceDate]);
+  const startTime = useMemo(
+    () =>
+      resolveLiveServiceStartTime({
+        scheduledTimes: scheduledServiceTimes,
+        savedStartTime: flow?.start_time,
+        nowSeconds: localClockSeconds(now),
+        serviceDate,
+        today: localDateIso(now),
+        span: flowSpan,
+      }),
+    [flow?.start_time, flowSpan, now, scheduledServiceTimes, serviceDate],
+  );
   const boundaryItem = useMemo(() => serviceStartBoundaryItem(items), [items]);
   const liveBoundaryStart =
     live.clockAnchor && boundaryItem && live.clockAnchor.itemId === boundaryItem.id
       ? live.clockAnchor.startedAtSeconds
       : null;
-  const serviceTimeLabel =
+  const anchorServiceStart =
     liveBoundaryStart != null && boundaryItem
-      ? formatClockTime(liveBoundaryStart + (boundaryItem.duration_seconds || 0))
+      ? liveBoundaryStart + (boundaryItem.duration_seconds || 0)
+      : null;
+  const anchorApplies =
+    anchorServiceStart != null &&
+    liveClockAnchorApplies(anchorServiceStart, startTime, scheduledServiceTimes);
+  const serviceTimeLabel =
+    anchorApplies && anchorServiceStart != null
+      ? formatClockTime(anchorServiceStart)
       : startTime
         ? formatClockTime(clockSourceToSeconds(startTime) ?? 0)
         : null;
@@ -257,9 +263,9 @@ export function LiveModeConsole({
   const clockTimes = useMemo(
     () =>
       buildServiceFlowClockTimes(items, startTime, {
-        boundaryStartedAtSeconds: liveBoundaryStart,
+        boundaryStartedAtSeconds: anchorApplies ? liveBoundaryStart : null,
       }),
-    [items, liveBoundaryStart, startTime],
+    [anchorApplies, items, liveBoundaryStart, startTime],
   );
   const cue = findFlowCue(items, live.session?.current_item_id || null, resolvedTitles);
   const ministryLabel =
@@ -560,6 +566,9 @@ export function LiveModeConsole({
           setMidiFit("none");
           return;
         }
+        if (match.item_type === "song") {
+          setSongMapRun({ itemId: match.id, startedAt: Date.now() });
+        }
         const boundary = serviceStartBoundaryItem(flowItemsRef.current);
         if (boundary && match.id === boundary.id) {
           publishClockAnchorRef.current({
@@ -722,56 +731,16 @@ export function LiveModeConsole({
     return (
       <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
         <header className="shrink-0 border-b border-border bg-card">
-          <div className="flex items-center gap-2 px-3 py-2">
-            <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-2 hover:bg-muted">
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-1.5 hover:bg-muted">
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-          </div>
-          <LiveNowTitle
-            campusName={campusName}
-            serviceTimeLabel={serviceTimeLabel}
-            localTimeLabel={localTimeLabel}
-          />
-          <div className="flex gap-2 overflow-x-auto px-3 pb-2">
-            {campuses.length > 1 ? (
-              <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
-                <SelectTrigger className="h-9 w-40 shrink-0" aria-label={campusName || "Campus"}>
-                  <CompactSelectValue label={campuses.find((campus) => campus.id === campusId)?.name || campusName} placeholder="Campus" />
-                </SelectTrigger>
-                <SelectContent>
-                  {campuses.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-            <input
-              type="date"
-              value={serviceDate}
-              aria-label="Service date"
-              onChange={(event) => {
-                if (event.target.value) onScopeChange({ serviceDate: event.target.value });
-              }}
-              className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
+            <LiveNowTitle
+              campusName={campusName}
+              serviceTimeLabel={serviceTimeLabel}
+              localTimeLabel={localTimeLabel}
             />
-            <Select value={ministryType} onValueChange={(value) => onScopeChange({ ministryType: value })}>
-              <SelectTrigger className="h-9 w-44 shrink-0" aria-label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label || "Service"}>
-                <CompactSelectValue
-                  label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label}
-                  placeholder="Service"
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </header>
         <div className="shrink-0 border-b border-border px-3">
@@ -851,16 +820,23 @@ export function LiveModeConsole({
     setMidiSettings(settings);
     writeMidiFollowSettings(settings);
   };
+  const currentItem = items.find((item) => item.id === live.session?.current_item_id) || null;
+  const currentSong = currentItem?.item_type === "song" ? currentItem : null;
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       <header className="shrink-0 border-b border-border bg-card">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-2 hover:bg-muted">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-1.5 hover:bg-muted">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-          <div className="ml-auto flex items-center gap-2 overflow-x-auto">
+          <LiveNowTitle
+            campusName={campusName}
+            serviceTimeLabel={serviceTimeLabel}
+            localTimeLabel={localTimeLabel}
+          />
+          <div className="flex items-center gap-2 overflow-x-auto">
             {TALKBACK_TRANSCRIPT_ENABLED ? (
               <>
                 <div className="flex rounded-lg bg-muted p-0.5">
@@ -919,77 +895,12 @@ export function LiveModeConsole({
                 </Button>
               </>
             ) : null}
-            {!readAudioInterfaceId() ? (
-              <Button type="button" variant="outline" className="h-10 shrink-0" onClick={() => setRoutingOpen(true)}>
-                SMPTE input
-              </Button>
-            ) : null}
-            {readAudioInterfaceId() ? (
-              <SmpteInputSelect
-                source="playback"
-                channels={live.channels}
-                channelCount={readAudioChannelCount()}
-                deviceId={readAudioInterfaceId()}
-                revision={bindingRevision}
-                labeled
-                onAssigned={() => setBindingRevision((value) => value + 1)}
-                className="h-10 w-40 shrink-0"
-              />
-            ) : null}
-            <Button type="button" variant="outline" size="icon" aria-label="Audio routing" onClick={() => setRoutingOpen(true)}>
-              <AudioLines className="h-4 w-4" />
-            </Button>
             {TALKBACK_TRANSCRIPT_ENABLED ? (
               <Button type="button" variant="outline" size="icon" aria-label="Talkback setup" onClick={() => setSetupOpen(true)}>
                 <Settings2 className="h-4 w-4" />
               </Button>
             ) : null}
           </div>
-        </div>
-        <LiveNowTitle
-          campusName={campusName}
-          serviceTimeLabel={serviceTimeLabel}
-          localTimeLabel={localTimeLabel}
-        />
-        <div className="flex gap-2 overflow-x-auto px-3 pb-2">
-          {campuses.length > 1 ? (
-            <Select value={campusId} onValueChange={(value) => onScopeChange({ campusId: value })}>
-              <SelectTrigger className="h-9 w-40 shrink-0" aria-label={campusName || "Campus"}>
-                <CompactSelectValue label={campuses.find((campus) => campus.id === campusId)?.name || campusName} placeholder="Campus" />
-              </SelectTrigger>
-              <SelectContent>
-                {campuses.map((campus) => (
-                  <SelectItem key={campus.id} value={campus.id}>
-                    {campus.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <input
-            type="date"
-            value={serviceDate}
-            aria-label="Service date"
-            onChange={(event) => {
-              if (event.target.value) onScopeChange({ serviceDate: event.target.value });
-            }}
-            className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm"
-          />
-          <Select value={ministryType} onValueChange={(value) => onScopeChange({ ministryType: value })}>
-            <SelectTrigger className="h-9 w-44 shrink-0" aria-label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label || "Service"}>
-              <CompactSelectValue
-                label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministryType)?.label}
-                placeholder="Service"
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </header>
 
@@ -1008,6 +919,22 @@ export function LiveModeConsole({
           <p className="mt-1 text-2xl font-bold leading-tight">
             {cue.currentTitle || "Cue the service flow"}
           </p>
+          {currentSong && currentSong.duration_seconds ? (
+            <SongMapBar
+              key={currentSong.id}
+              durationSeconds={currentSong.duration_seconds}
+              startedAt={songMapRun?.itemId === currentSong.id ? songMapRun.startedAt : null}
+              cues={songMap.cues.filter((entry) => entry.serviceFlowItemId === currentSong.id)}
+              schemaMissing={songMap.schemaMissing}
+              onSave={(draft) =>
+                songMap.saveCue({
+                  ...draft,
+                  serviceFlowItemId: currentSong.id,
+                })
+              }
+              onDelete={songMap.deleteCue}
+            />
+          ) : null}
           {cue.nextTitle ? (
             <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
           ) : null}
@@ -1201,8 +1128,8 @@ function LiveNowTitle({
   localTimeLabel: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-4 pb-3">
-      <h1 className="min-w-0 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">
+    <>
+      <h1 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-foreground">
         <span className="font-medium text-muted-foreground">You are live @</span> {campusName}
         {serviceTimeLabel ? (
           <>
@@ -1211,11 +1138,11 @@ function LiveNowTitle({
           </>
         ) : null}
       </h1>
-      <div className="shrink-0 rounded-xl border border-border bg-background px-3 py-2 text-right shadow-sm">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Local time</p>
-        <p className="text-base font-bold tabular-nums leading-none">{localTimeLabel}</p>
+      <div className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-right">
+        <p className="text-[9px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">Local</p>
+        <p className="mt-0.5 text-sm font-bold tabular-nums leading-none">{localTimeLabel}</p>
       </div>
-    </div>
+    </>
   );
 }
 

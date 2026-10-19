@@ -226,6 +226,53 @@ export function localClockSeconds(date: Date): number {
 }
 
 /**
+ * Today's rundown follows the campus and ministry schedule. A saved flow time
+ * is only a fallback when this date has no scheduled starts, or when Live is
+ * open on another day.
+ */
+export function resolveLiveServiceStartTime({
+  scheduledTimes,
+  savedStartTime,
+  nowSeconds,
+  serviceDate,
+  today,
+  span,
+}: {
+  scheduledTimes: string[];
+  savedStartTime?: string | null;
+  nowSeconds: number;
+  serviceDate: string;
+  today: string;
+  span?: Partial<ServiceFlowSpan>;
+}): string | null {
+  if (scheduledTimes.length > 0 && serviceDate === today) {
+    return selectServiceTimeForLocalClock(scheduledTimes, nowSeconds, span);
+  }
+  return normalizeClockSource(savedStartTime) || scheduledTimes[0] || null;
+}
+
+/**
+ * A pre-roll cue may shift this service's clocks. A cue from an earlier
+ * service must not keep the rundown on that service after the clock moves on.
+ */
+export function liveClockAnchorApplies(
+  anchorServiceStartSeconds: number,
+  selectedStart: string | null,
+  scheduledTimes: string[],
+): boolean {
+  const selected = clockSourceToSeconds(selectedStart);
+  if (selected == null || !Number.isFinite(anchorServiceStartSeconds)) return false;
+  const delta = Math.abs(anchorServiceStartSeconds - selected);
+  const otherDistances = uniqueClockTimes(scheduledTimes)
+    .map(clockSourceToSeconds)
+    .filter((seconds): seconds is number => seconds != null && seconds !== selected)
+    .map((seconds) => Math.abs(anchorServiceStartSeconds - seconds));
+  const nearestOther = otherDistances.length > 0 ? Math.min(...otherDistances) : Number.POSITIVE_INFINITY;
+  const limit = nearestOther === Number.POSITIVE_INFINITY ? 45 * 60 : Math.max(45 * 60, nearestOther / 2);
+  return delta <= limit && delta <= nearestOther;
+}
+
+/**
  * Which service the local clock is in. The next service takes over when its
  * pre-service begins. Before the first service, and after the last one ends,
  * the nearest service stays selected.
