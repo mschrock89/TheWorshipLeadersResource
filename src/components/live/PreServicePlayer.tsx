@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { liveStationLabel, type LiveStation } from "@/lib/liveMode";
 import {
+  PRE_SERVICE_FADE_IN_MS,
   PRE_SERVICE_FADE_MS,
   formatTrackOffset,
   playlistPeriodLabel,
@@ -126,7 +127,7 @@ export function PreServicePlayer({
   const handledFade = useRef<number | null>(null);
   const handledRestart = useRef<number | null>(null);
   const resumePoint = useRef<{ trackId: string; offsetMs: number } | null>(null);
-  const playFromRef = useRef<(index: number, offsetMs: number) => Promise<void>>(async () => {});
+  const playFromRef = useRef<(index: number, offsetMs: number, fadeInMs?: number) => Promise<void>>(async () => {});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<PlaybackPhase>("idle");
   const [trackIndex, setTrackIndex] = useState(0);
@@ -160,14 +161,14 @@ export function PreServicePlayer({
     return audioRef.current;
   };
 
-  playFromRef.current = async (index: number, offsetMs: number) => {
+  playFromRef.current = async (index: number, offsetMs: number, fadeInMs = 0) => {
     const track = tracksRef.current[index];
     const audio = ensureAudio();
     if (!track) return;
     window.cancelAnimationFrame(fadeFrame.current);
     fadingRef.current = false;
     pausedRef.current = false;
-    audio.volume = volumeRef.current;
+    audio.volume = fadeInMs > 0 ? 0 : volumeRef.current;
     if (loadedUrl.current !== track.url) {
       loadedUrl.current = track.url;
       audio.src = track.url;
@@ -181,6 +182,15 @@ export function PreServicePlayer({
     indexRef.current = index;
     setTrackIndex(index);
     setPhase("playing");
+    if (fadeInMs > 0) {
+      const started = performance.now();
+      const step = (frame: number) => {
+        const amount = Math.min(1, (frame - started) / fadeInMs);
+        audio.volume = volumeRef.current * amount;
+        if (amount < 1) fadeFrame.current = window.requestAnimationFrame(step);
+      };
+      fadeFrame.current = window.requestAnimationFrame(step);
+    }
   };
 
   useEffect(() => {
@@ -202,6 +212,7 @@ export function PreServicePlayer({
     }
     if (current !== "playing") return;
     const audio = ensureAudio();
+    window.cancelAnimationFrame(fadeFrame.current);
     setPhase("fading");
     fadingRef.current = true;
     const from = audio.volume;
@@ -257,7 +268,7 @@ export function PreServicePlayer({
     }
     setPhase("idle");
     if (tracksRef.current[restartIndex]) {
-      void playFromRef.current(restartIndex, restartOffsetMs)
+      void playFromRef.current(restartIndex, restartOffsetMs, PRE_SERVICE_FADE_IN_MS)
         .then(() => {
           if (resumePoint.current === held) resumePoint.current = null;
         })
@@ -313,6 +324,7 @@ export function PreServicePlayer({
   const togglePlay = () => {
     const audio = audioRef.current;
     if (phase === "playing" && audio) {
+      window.cancelAnimationFrame(fadeFrame.current);
       audio.pause();
       pausedRef.current = true;
       setPhase("idle");
