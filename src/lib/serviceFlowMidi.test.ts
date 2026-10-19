@@ -6,6 +6,7 @@ import {
   findMidiCueItem,
   formatStoredMidiCue,
   gatePlaybackSong,
+  isPreServiceRestartCue,
   playbackHoldForMidiCue,
   midiCueMatches,
   midiNoteName,
@@ -106,6 +107,9 @@ test("maps G1 values 1 through 12 onto the service flow in order", () => {
     findMidiCueItem(items, { channel: 1, note: 60, velocity: 9 }, 1)?.id,
     "psa",
   );
+  assert.equal(isPreServiceRestartCue({ channel: 1, note: 43, velocity: 1 }, 1), true);
+  assert.equal(isPreServiceRestartCue({ channel: 1, note: 43, velocity: 2 }, 1), false);
+  assert.equal(isPreServiceRestartCue({ channel: 2, note: 43, velocity: 1 }, 1), false);
 });
 
 test("keeps a MIDI cue while Playback is still on the same song", () => {

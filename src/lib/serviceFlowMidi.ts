@@ -148,6 +148,11 @@ export function defaultLiveMidiCue(playableIndex: number): FlowMidiCue | null {
   return { note: LIVE_DEFAULT_MIDI_NOTE, velocity };
 }
 
+/** G1 value 1 returns Live to the first pre-service line after a service. */
+export function isPreServiceRestartCue(event: MidiNoteEvent, channel: number) {
+  return midiCueMatches({ note: LIVE_DEFAULT_MIDI_NOTE, velocity: 1 }, event, channel);
+}
+
 export function effectiveMidiCue(notes: string | null | undefined, playableIndex: number): FlowMidiCue | null {
   return parseNoteMidi(notes) ?? defaultLiveMidiCue(playableIndex);
 }

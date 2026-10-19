@@ -29,6 +29,7 @@ import {
   findMidiCueItem,
   formatMidiCueLabel,
   gatePlaybackSong,
+  isPreServiceRestartCue,
   playbackHoldForMidiCue,
   notesWithMidiCue,
   parseNoteMidi,
@@ -269,6 +270,7 @@ export function LiveModeConsole({
   const boundaryItem = useMemo(() => serviceStartBoundaryItem(items), [items]);
   const preRollItem = useMemo(() => findPreRollItem(items), [items]);
   const [preRollCueAt, setPreRollCueAt] = useState<number | null>(null);
+  const [preServiceRestartAt, setPreServiceRestartAt] = useState<number | null>(null);
   const preRollItemIdRef = useRef<string | null>(null);
   preRollItemIdRef.current = preRollItem?.id ?? null;
   const markPreRollCueRef = useRef<(at: number) => void>(() => {});
@@ -605,6 +607,10 @@ export function LiveModeConsole({
         if (event.channel !== settings.channel) {
           setMidiFit("channel");
           return;
+        }
+        if (isPreServiceRestartCue(event, settings.channel)) {
+          setPreServiceRestartAt(Date.now());
+          setPreRollCueAt(null);
         }
         const match = findMidiCueItem(flowItemsRef.current, event, settings.channel);
         if (!match) {
@@ -1048,6 +1054,7 @@ export function LiveModeConsole({
             preRollAtMs={preRollAtMs}
             preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
             fadeAt={preRollCueAt}
+            restartAt={preServiceRestartAt}
             onPeriodChange={playlist.setPeriod}
             onUpload={playlist.uploadFiles}
             onRemove={playlist.removeTrack}

@@ -25,6 +25,7 @@ type PreServicePlayerProps = {
   preRollAtMs: number | null;
   preRollLabel: string | null;
   fadeAt: number | null;
+  restartAt: number | null;
   onPeriodChange: (period: { year: number; trimester: number }) => void;
   onUpload: (files: File[]) => Promise<void>;
   onRemove: (track: PreServiceTrack) => Promise<void>;
@@ -106,6 +107,7 @@ export function PreServicePlayer({
   preRollAtMs,
   preRollLabel,
   fadeAt,
+  restartAt,
   onPeriodChange,
   onUpload,
   onRemove,
@@ -119,9 +121,11 @@ export function PreServicePlayer({
   const indexRef = useRef(0);
   const loadedUrl = useRef("");
   const fadingRef = useRef(false);
+  const pausedRef = useRef(false);
   const fadeFrame = useRef(0);
   const handledFade = useRef<number | null>(null);
-  const fadedPreRoll = useRef<number | null>(null);
+  const handledRestart = useRef<number | null>(null);
+  const resumePoint = useRef<{ trackId: string; offsetMs: number } | null>(null);
   const playFromRef = useRef<(index: number, offsetMs: number) => Promise<void>>(async () => {});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<PlaybackPhase>("idle");
@@ -129,6 +133,7 @@ export function PreServicePlayer({
   const [volume, setVolume] = useState(volumeRef.current);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [manualPlayback, setManualPlayback] = useState(false);
+  const [preRollHeld, setPreRollHeld] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   phaseRef.current = phase;
   volumeRef.current = volume;
@@ -161,6 +166,7 @@ export function PreServicePlayer({
     if (!track) return;
     window.cancelAnimationFrame(fadeFrame.current);
     fadingRef.current = false;
+    pausedRef.current = false;
     audio.volume = volumeRef.current;
     if (loadedUrl.current !== track.url) {
       loadedUrl.current = track.url;
@@ -187,7 +193,7 @@ export function PreServicePlayer({
   useEffect(() => {
     if (fadeAt == null || fadeAt === handledFade.current) return;
     handledFade.current = fadeAt;
-    if (preRollAtMs != null) fadedPreRoll.current = preRollAtMs;
+    setPreRollHeld(true);
     const current = phaseRef.current;
     if (current === "idle") {
       ensureAudio().pause();
@@ -208,15 +214,45 @@ export function PreServicePlayer({
         return;
       }
       audio.pause();
+      const track = tracksRef.current[indexRef.current];
+      if (track) {
+        resumePoint.current = {
+          trackId: track.id,
+          offsetMs: Math.round(audio.currentTime * 1000),
+        };
+      }
       audio.volume = volumeRef.current;
       fadingRef.current = false;
+      pausedRef.current = false;
       setPhase("done");
     };
     fadeFrame.current = window.requestAnimationFrame(step);
   }, [fadeAt]);
 
-  const heldForCurrentPreRoll =
-    fadedPreRoll.current != null && preRollAtMs != null && Math.abs(preRollAtMs - fadedPreRoll.current) < 60_000;
+  useEffect(() => {
+    if (restartAt == null || restartAt === handledRestart.current) return;
+    handledRestart.current = restartAt;
+    window.cancelAnimationFrame(fadeFrame.current);
+    fadingRef.current = false;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.volume = volumeRef.current;
+    }
+    setPreRollHeld(false);
+    setManualPlayback(false);
+    pausedRef.current = false;
+    const held = resumePoint.current;
+    if (held) {
+      const index = tracksRef.current.findIndex((track) => track.id === held.trackId);
+      if (index >= 0) {
+        indexRef.current = index;
+        setTrackIndex(index);
+      } else {
+        resumePoint.current = null;
+      }
+    }
+    setPhase("idle");
+  }, [restartAt]);
 
   const arm = async () => {
     setManualPlayback(false);
@@ -224,12 +260,28 @@ export function PreServicePlayer({
       setLibraryOpen(true);
       return;
     }
-    if (heldForCurrentPreRoll) {
+    if (preRollHeld) {
       setPhase("done");
       return;
     }
     const audio = ensureAudio();
-    const opener = tracks[0];
+    if (pausedRef.current && !audio.ended) {
+      await audio.play();
+      pausedRef.current = false;
+      setPhase("playing");
+      return;
+    }
+    const held = resumePoint.current;
+    if (held) {
+      const heldIndex = tracks.findIndex((track) => track.id === held.trackId);
+      if (heldIndex >= 0) {
+        resumePoint.current = null;
+        await playFromRef.current(heldIndex, held.offsetMs);
+        return;
+      }
+      resumePoint.current = null;
+    }
+    const opener = tracks[trackIndex] || tracks[0];
     if (opener && loadedUrl.current !== opener.url) {
       loadedUrl.current = opener.url;
       audio.src = opener.url;
@@ -243,13 +295,15 @@ export function PreServicePlayer({
       audio.volume = volumeRef.current;
     }
     audio.volume = volumeRef.current;
-    await playFromRef.current(0, 0);
+    const startIndex = tracks[trackIndex] ? trackIndex : 0;
+    await playFromRef.current(startIndex, 0);
   };
 
   const togglePlay = () => {
     const audio = audioRef.current;
     if (phase === "playing" && audio) {
       audio.pause();
+      pausedRef.current = true;
       setPhase("idle");
       return;
     }
@@ -286,10 +340,23 @@ export function PreServicePlayer({
       return;
     }
     setManualPlayback(true);
-    void playFromRef.current(0, 0).catch(() => {
+    resumePoint.current = null;
+    void playFromRef.current(trackIndex, 0).catch(() => {
       setManualPlayback(false);
       setPhase("idle");
     });
+  };
+
+  const selectTrack = (index: number) => {
+    window.cancelAnimationFrame(fadeFrame.current);
+    fadingRef.current = false;
+    audioRef.current?.pause();
+    pausedRef.current = false;
+    resumePoint.current = null;
+    indexRef.current = index;
+    setTrackIndex(index);
+    setManualPlayback(false);
+    if (!preRollHeld) setPhase("idle");
   };
 
   const changeVolume = (next: number) => {
@@ -319,7 +386,7 @@ export function PreServicePlayer({
           size="icon"
           className="h-12 w-12 shrink-0 rounded-full"
           onClick={togglePlay}
-          disabled={isLoading || schemaMissing}
+          disabled={isLoading || schemaMissing || preRollHeld}
           aria-label={phase === "playing" || phase === "fading" ? "Pause pre-service music" : "Start pre-service music"}
         >
           {phase === "playing" || phase === "fading" ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
@@ -353,13 +420,20 @@ export function PreServicePlayer({
               size="sm"
               className="h-8 px-2"
               onClick={startTest}
-              disabled={isLoading || schemaMissing || tracks.length === 0}
+              disabled={isLoading || schemaMissing || tracks.length === 0 || preRollHeld}
               title="Start this playlist from the first song without waiting for the schedule"
             >
               <Play className="h-3.5 w-3.5" />
               Test now
             </Button>
-            <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={resync} disabled={tracks.length === 0}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              onClick={resync}
+              disabled={tracks.length === 0 || preRollHeld}
+            >
               <RotateCcw className="h-3.5 w-3.5" />
               Resync
             </Button>
@@ -449,9 +523,22 @@ export function PreServicePlayer({
           ) : (
             <ol className="mt-3 max-h-52 space-y-1 overflow-y-auto">
               {tracks.map((track, index) => (
-                <li key={track.id} className="flex items-center gap-2 rounded-md px-1 py-1">
+                <li
+                  key={track.id}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-1 py-1",
+                    index === trackIndex && "bg-primary/10",
+                  )}
+                >
                   <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm">{track.title}</span>
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:text-primary"
+                    aria-label={`Start playlist with ${track.title}`}
+                    onClick={() => selectTrack(index)}
+                  >
+                    {track.title}
+                  </button>
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {formatTrackOffset(track.durationMs)}
                   </span>
