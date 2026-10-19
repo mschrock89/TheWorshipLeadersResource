@@ -73,6 +73,17 @@ export function SongMapBar({
     openDraft(songMapOffsetFromRatio(ratio, durationSeconds));
   };
 
+  const nudgeDraft = (seconds: -1 | 1) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const offsetSeconds = Math.min(
+        durationSeconds,
+        Math.max(0, Math.round(current.offsetSeconds) + seconds),
+      );
+      return { ...current, offsetSeconds };
+    });
+  };
+
   const togglePlayback = () => {
     if (startedAt == null) return;
     const at = Date.now();
@@ -118,15 +129,17 @@ export function SongMapBar({
       <div className="flex min-w-0 items-baseline gap-4">
         <p className="min-w-0 flex-1 truncate text-2xl font-bold leading-tight">{title}</p>
         {prompt ? (
-          <p
+          <button
+            type="button"
             className={cn(
-              "max-w-[50%] shrink-0 truncate rounded-md px-2.5 py-1 text-base font-bold",
+              "max-w-[50%] shrink-0 cursor-pointer truncate rounded-md px-2.5 py-1 text-base font-bold",
               prompt.kind === "mix" ? "bg-amber-500/15 text-amber-600 dark:text-amber-300" : "bg-primary/15 text-primary",
             )}
             title={`${songMapKindLabel(prompt.kind)} · ${prompt.body}`}
+            onClick={() => openDraft(prompt.offsetSeconds, prompt)}
           >
             {songMapKindLabel(prompt.kind)} · {prompt.body}
-          </p>
+          </button>
         ) : null}
       </div>
       <div className="relative mt-2">
@@ -154,7 +167,11 @@ export function SongMapBar({
                     cue.kind === "mix" ? "bg-amber-400" : "bg-primary",
                     (playingCue?.id === cue.id || selectedId === cue.id) && "h-5 w-2",
                   )}
-                  style={{ left: `${(cue.offsetSeconds / durationSeconds) * 100}%` }}
+                  style={{
+                    left: `${
+                      ((draft?.id === cue.id ? draft.offsetSeconds : cue.offsetSeconds) / durationSeconds) * 100
+                    }%`,
+                  }}
                   onClick={(event) => {
                     event.stopPropagation();
                     openDraft(cue.offsetSeconds, cue);
@@ -225,6 +242,27 @@ export function SongMapBar({
             <span className="text-xs font-semibold tabular-nums text-muted-foreground">
               {formatSongMapTime(draft.offsetSeconds)}
             </span>
+            <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              Nudge
+            </span>
+            <button
+              type="button"
+              disabled={draft.offsetSeconds <= 0}
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs font-bold tabular-nums text-foreground disabled:opacity-40"
+              onClick={() => nudgeDraft(-1)}
+              aria-label="Move marker back one second"
+            >
+              −1s
+            </button>
+            <button
+              type="button"
+              disabled={draft.offsetSeconds >= durationSeconds}
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs font-bold tabular-nums text-foreground disabled:opacity-40"
+              onClick={() => nudgeDraft(1)}
+              aria-label="Move marker forward one second"
+            >
+              +1s
+            </button>
           </div>
           {durationSeconds > 0 ? (
             <input

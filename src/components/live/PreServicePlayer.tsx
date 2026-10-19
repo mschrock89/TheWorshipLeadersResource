@@ -124,16 +124,19 @@ export function PreServicePlayer({
   const fadedPreRoll = useRef<number | null>(null);
   const followedPreRoll = useRef<number | null>(null);
   const unlocked = useRef(false);
+  const manualPlaybackRef = useRef(false);
   const playFromRef = useRef<(index: number, offsetMs: number) => Promise<void>>(async () => {});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<PlaybackPhase>("idle");
   const [trackIndex, setTrackIndex] = useState(0);
   const [volume, setVolume] = useState(volumeRef.current);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [manualPlayback, setManualPlayback] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [removingId, setRemovingId] = useState<string | null>(null);
   phaseRef.current = phase;
   volumeRef.current = volume;
+  manualPlaybackRef.current = manualPlayback;
 
   const durations = useMemo(() => tracks.map((track) => track.durationMs), [tracks]);
   const durationKey = durations.join(",");
@@ -150,11 +153,12 @@ export function PreServicePlayer({
       audio.setAttribute("playsinline", "true");
       audio.onended = () => {
         if (fadingRef.current) return;
-        const next = indexRef.current + 1;
-        if (next >= tracksRef.current.length) {
+        const trackCount = tracksRef.current.length;
+        if (trackCount === 0) {
           setPhase("done");
           return;
         }
+        const next = (indexRef.current + 1) % trackCount;
         void playFromRef.current(next, 0).catch(() => setPhase("idle"));
       };
       audioRef.current = audio;
@@ -229,6 +233,7 @@ export function PreServicePlayer({
   useEffect(() => {
     if (fadeAt == null || fadeAt === handledFade.current) return;
     handledFade.current = fadeAt;
+    if (manualPlaybackRef.current) return;
     if (preRollAtMs != null) fadedPreRoll.current = preRollAtMs;
     const current = phaseRef.current;
     if (current === "waiting" || current === "idle") {
@@ -261,6 +266,7 @@ export function PreServicePlayer({
     fadedPreRoll.current != null && preRollAtMs != null && Math.abs(preRollAtMs - fadedPreRoll.current) < 60_000;
 
   const arm = async () => {
+    setManualPlayback(false);
     if (tracks.length === 0) {
       setLibraryOpen(true);
       return;
@@ -311,6 +317,7 @@ export function PreServicePlayer({
   };
 
   const resync = () => {
+    setManualPlayback(false);
     if (preRollAtMs == null) {
       void playFromRef.current(0, 0).catch(() => setPhase("idle"));
       return;
@@ -329,6 +336,18 @@ export function PreServicePlayer({
     void playFromRef.current(fresh.trackIndex, fresh.offsetMs).catch(() => setPhase("idle"));
   };
 
+  const startTest = () => {
+    if (tracks.length === 0) {
+      setLibraryOpen(true);
+      return;
+    }
+    setManualPlayback(true);
+    void playFromRef.current(0, 0).catch(() => {
+      setManualPlayback(false);
+      setPhase("idle");
+    });
+  };
+
   const changeVolume = (next: number) => {
     const level = Math.min(1, Math.max(0, next));
     setVolume(level);
@@ -345,6 +364,7 @@ export function PreServicePlayer({
     preRollLabel,
     trackCount: tracks.length,
     currentTitle: currentTrack?.title || null,
+    manualPlayback,
   });
   const periodMatchesService = year === serviceYear && trimester === serviceTrimester;
 
@@ -384,6 +404,18 @@ export function PreServicePlayer({
             />
           </label>
           <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-2"
+              onClick={startTest}
+              disabled={isLoading || schemaMissing || tracks.length === 0}
+              title="Start this playlist from the first song without waiting for the schedule"
+            >
+              <Play className="h-3.5 w-3.5" />
+              Test now
+            </Button>
             <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={resync} disabled={tracks.length === 0}>
               <RotateCcw className="h-3.5 w-3.5" />
               Resync
@@ -529,6 +561,7 @@ function describePlayback({
   preRollLabel,
   trackCount,
   currentTitle,
+  manualPlayback,
 }: {
   phase: PlaybackPhase;
   plan: ReturnType<typeof playlistPlaybackPlan> | null;
@@ -536,8 +569,14 @@ function describePlayback({
   preRollLabel: string | null;
   trackCount: number;
   currentTitle: string | null;
+  manualPlayback: boolean;
 }) {
   if (trackCount === 0) return "Upload MP3s to replace the iPod.";
+  if (manualPlayback) {
+    if (phase === "done") return "Manual test finished.";
+    if (phase === "idle") return "Manual test paused.";
+    return "Manual test playing from the top.";
+  }
   if (preRollAtMs == null || !plan) return "Play from the top until a service time is set.";
   const endLabel = preRollLabel || clockLabel(preRollAtMs);
   if (phase === "fading") return `Fading out for Pre-Roll at ${endLabel}.`;
