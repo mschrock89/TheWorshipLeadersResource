@@ -15,26 +15,28 @@ import {
   parseNoteMidi,
 } from "./serviceFlowMidi.ts";
 
-test("names MIDI notes the way ProPresenter lists them", () => {
-  assert.equal(midiNoteName(0), "C-1");
-  assert.equal(midiNoteName(60), "C4");
-  assert.equal(midiNoteNumber("C4"), 60);
-  assert.equal(midiNoteNumber("Db4"), 61);
+test("names MIDI notes the way Playback lists them", () => {
+  assert.equal(midiNoteName(0), "C-2");
+  assert.equal(midiNoteName(43), "G1");
+  assert.equal(midiNoteName(60), "C3");
+  assert.equal(midiNoteNumber("G1"), 43);
+  assert.equal(midiNoteNumber("C3"), 60);
+  assert.equal(midiNoteNumber("Db3"), 61);
   assert.equal(midiNoteNumber("60"), 60);
 });
 
 test("reads a MIDI note and value from a service flow note", () => {
-  assert.deepEqual(parseNoteMidi("Welcome\nMIDI C3 127"), { note: 48, velocity: 127 });
+  assert.deepEqual(parseNoteMidi("Welcome\nMIDI C2 127"), { note: 48, velocity: 127 });
   assert.deepEqual(parseNoteMidi("MIDI 48"), { note: 48, velocity: null });
   assert.equal(parseNoteMidi("Check the MIDI cable"), null);
-  assert.equal(formatStoredMidiCue({ note: 60, velocity: 127 }), "MIDI C4 127");
-  assert.equal(notesWithoutMidiCue("Hold the walk\nMIDI C4 127"), "Hold the walk");
-  assert.equal(notesWithMidiCue("Hold the walk\nMIDI C3 10", { note: 62, velocity: 100 }), "Hold the walk\nMIDI D4 100");
-  assert.equal(notesWithMidiCue("MIDI C4 127", null), null);
+  assert.equal(formatStoredMidiCue({ note: 60, velocity: 127 }), "MIDI C3 127");
+  assert.equal(notesWithoutMidiCue("Hold the walk\nMIDI C3 127"), "Hold the walk");
+  assert.equal(notesWithMidiCue("Hold the walk\nMIDI C2 10", { note: 62, velocity: 100 }), "Hold the walk\nMIDI D3 100");
+  assert.equal(notesWithMidiCue("MIDI C3 127", null), null);
 });
 
 test("matches the chosen channel, note, and value", () => {
-  const cue = parseNoteMidi("MIDI C4 127");
+  const cue = parseNoteMidi("MIDI C3 127");
   assert.ok(cue);
   assert.equal(midiCueMatches(cue, { channel: 1, note: 60, velocity: 127 }, 1), true);
   assert.equal(midiCueMatches(cue, { channel: 1, note: 60, velocity: 64 }, 1), false);
@@ -51,9 +53,9 @@ test("matches the chosen channel, note, and value", () => {
 
   const match = findMidiCueItem(
     [
-      { id: "header", item_type: "header", notes: "MIDI C4 127" },
-      { id: "welcome", item_type: "item", notes: "MIDI C4 127" },
-      { id: "song", item_type: "song", notes: "MIDI D4 127" },
+      { id: "header", item_type: "header", notes: "MIDI C3 127" },
+      { id: "welcome", item_type: "item", notes: "MIDI C3 127" },
+      { id: "song", item_type: "song", notes: "MIDI D3 127" },
     ],
     { channel: 1, note: 60, velocity: 127 },
     1,
@@ -62,8 +64,8 @@ test("matches the chosen channel, note, and value", () => {
 
   const slide = findMidiCueItem(
     [
-      { id: "any", item_type: "item", notes: "MIDI G-1" },
-      { id: "slide-2", item_type: "item", notes: "MIDI G-1 2" },
+      { id: "any", item_type: "item", notes: "MIDI G-2" },
+      { id: "slide-2", item_type: "item", notes: "MIDI G-2 2" },
     ],
     { channel: 1, note: 7, velocity: 2 },
     1,

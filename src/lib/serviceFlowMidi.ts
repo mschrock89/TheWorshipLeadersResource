@@ -26,7 +26,8 @@ const MIDI_SETTINGS_KEY = "wlr-service-flow-midi";
 
 export function midiNoteName(note: number) {
   const pitch = ((note % 12) + 12) % 12;
-  const octave = Math.floor(note / 12) - 1;
+  // Playback calls middle C (note 60) C3, one octave below the C4 convention.
+  const octave = Math.floor(note / 12) - 2;
   return `${NOTE_NAMES[pitch]}${octave}`;
 }
 
@@ -43,7 +44,7 @@ export function midiNoteNumber(token: string) {
   const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[letter];
   if (semitone == null) return null;
   const offset = accidental === "#" ? 1 : accidental === "b" ? -1 : 0;
-  const note = (Number(match[3]) + 1) * 12 + semitone + offset;
+  const note = (Number(match[3]) + 2) * 12 + semitone + offset;
   return note >= 0 && note <= 127 ? note : null;
 }
 
@@ -148,7 +149,7 @@ export function findMidiCueItem<T extends { id: string; item_type: string; notes
   event: MidiNoteEvent,
   channel: number,
 ) {
-  // Playback fires one note (often G-1) and uses velocity for the slide.
+  // Playback fires one note (often a low G) and uses velocity for the slide.
   // An earlier "any velocity" line must not swallow the exact cue after it.
   let wildcard: T | null = null;
   for (const item of items) {
