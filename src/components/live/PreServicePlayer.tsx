@@ -242,9 +242,13 @@ export function PreServicePlayer({
     setManualPlayback(false);
     pausedRef.current = false;
     const held = resumePoint.current;
+    let restartIndex = tracksRef.current[indexRef.current] ? indexRef.current : 0;
+    let restartOffsetMs = 0;
     if (held) {
       const index = tracksRef.current.findIndex((track) => track.id === held.trackId);
       if (index >= 0) {
+        restartIndex = index;
+        restartOffsetMs = held.offsetMs;
         indexRef.current = index;
         setTrackIndex(index);
       } else {
@@ -252,6 +256,13 @@ export function PreServicePlayer({
       }
     }
     setPhase("idle");
+    if (tracksRef.current[restartIndex]) {
+      void playFromRef.current(restartIndex, restartOffsetMs)
+        .then(() => {
+          if (resumePoint.current === held) resumePoint.current = null;
+        })
+        .catch(() => setPhase("idle"));
+    }
   }, [restartAt]);
 
   const arm = async () => {
