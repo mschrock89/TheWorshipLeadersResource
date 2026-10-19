@@ -138,6 +138,20 @@ export function notesWithMidiCue(notes: string | null | undefined, cue: FlowMidi
   return stripped ? `${stripped}\n${token}` : token;
 }
 
+/** Playback's Live map: G1, value 1 on the first line, then 2, 3, up through 12. */
+export const LIVE_DEFAULT_MIDI_NOTE = midiNoteNumber("G1") ?? 43;
+export const LIVE_DEFAULT_MIDI_VELOCITIES = 12;
+
+export function defaultLiveMidiCue(playableIndex: number): FlowMidiCue | null {
+  const velocity = playableIndex + 1;
+  if (!Number.isInteger(playableIndex) || velocity < 1 || velocity > LIVE_DEFAULT_MIDI_VELOCITIES) return null;
+  return { note: LIVE_DEFAULT_MIDI_NOTE, velocity };
+}
+
+export function effectiveMidiCue(notes: string | null | undefined, playableIndex: number): FlowMidiCue | null {
+  return parseNoteMidi(notes) ?? defaultLiveMidiCue(playableIndex);
+}
+
 export function midiCueMatches(cue: FlowMidiCue, event: MidiNoteEvent, channel: number) {
   if (event.channel !== channel) return false;
   if (event.note !== cue.note) return false;
@@ -152,17 +166,23 @@ export function findMidiCueItem<T extends { id: string; item_type: string; notes
   // Playback fires one note (often a low G) and uses velocity for the slide.
   // An earlier "any velocity" line must not swallow the exact cue after it.
   let wildcard: T | null = null;
+  let fallback: T | null = null;
+  let playableIndex = -1;
   for (const item of items) {
     if (item.item_type === "header") continue;
-    const cue = parseNoteMidi(item.notes);
+    playableIndex += 1;
+    const explicit = parseNoteMidi(item.notes);
+    const cue = explicit ?? defaultLiveMidiCue(playableIndex);
     if (!cue || !midiCueMatches({ note: cue.note, velocity: null }, event, channel)) continue;
     if (cue.velocity == null) {
       if (!wildcard) wildcard = item;
       continue;
     }
-    if (event.velocity === cue.velocity) return item;
+    if (event.velocity !== cue.velocity) continue;
+    if (explicit) return item;
+    if (!fallback) fallback = item;
   }
-  return wildcard;
+  return fallback ?? wildcard;
 }
 
 export function readMidiFollowSettings(): MidiFollowSettings {

@@ -400,7 +400,7 @@ export function LiveModeConsole({
   publishClockAnchorRef.current = live.publishClockAnchor;
   const followRef = useRef(followTimecode);
   followRef.current = followTimecode;
-  const hasMidiCues = items.some((item) => item.item_type !== "header" && parseNoteMidi(item.notes));
+  const hasMidiCues = items.some((item) => item.item_type !== "header");
   const midiAvailable = typeof navigator.requestMIDIAccess === "function";
   // MIDI notes do not need the SMPTE Listen host. Capture whenever this browser can hear them.
   const listenMidi = midiMenuOpened || (midiAvailable && hasMidiCues);

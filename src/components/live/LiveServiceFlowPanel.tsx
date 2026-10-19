@@ -6,6 +6,7 @@ import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  effectiveMidiCue,
   formatMidiCueLabel,
   MIDI_NOTE_OPTIONS,
   notesWithoutMidiCue,
@@ -98,13 +99,13 @@ export function LiveServiceFlowPanel({
   const playable = useMemo(() => items.filter((item) => item.item_type !== "header"), [items]);
   const midiLabels = useMemo(() => {
     const labels = new Map<string, string>();
-    for (const item of items) {
+    playable.forEach((item, playableIndex) => {
       const pending = pendingCues.get(item.id);
-      const cue = pending === undefined ? parseNoteMidi(item.notes) : pending;
+      const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
       if (cue) labels.set(item.id, formatMidiCueLabel(cue));
-    }
+    });
     return labels;
-  }, [items, pendingCues]);
+  }, [pendingCues, playable]);
   const midiArmed = midiLabels.size > 0;
 
   useEffect(() => {
@@ -176,7 +177,7 @@ export function LiveServiceFlowPanel({
             <div className="border-b border-border px-3 py-2">
               <p className="text-sm font-semibold">MIDI follow</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                ProPresenter sends a note for each line. Choose the note and value. Playback SMPTE still moves the songs.
+                Playback sends G1. Value 1 is the first line, then 2, 3, and on through 12. A saved note replaces that.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 px-3 py-2">
@@ -238,9 +239,9 @@ export function LiveServiceFlowPanel({
               <span>Value</span>
             </div>
             <ul className="max-h-80 overflow-y-auto pb-2">
-              {playable.map((item) => {
+              {playable.map((item, playableIndex) => {
                 const pending = pendingCues.get(item.id);
-                const cue = pending === undefined ? parseNoteMidi(item.notes) : pending;
+                const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
                 const title = itemTitle(item, titles);
                 return (
                   <li

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  defaultLiveMidiCue,
+  effectiveMidiCue,
   findMidiCueItem,
   formatStoredMidiCue,
   gatePlaybackSong,
@@ -71,6 +73,39 @@ test("matches the chosen channel, note, and value", () => {
     1,
   );
   assert.equal(slide?.id, "slide-2");
+});
+
+test("maps G1 values 1 through 12 onto the service flow in order", () => {
+  const items = [
+    { id: "pre", item_type: "header", notes: null },
+    { id: "ipod", item_type: "item", notes: null },
+    { id: "preroll", item_type: "item", notes: null },
+    { id: "announce", item_type: "header", notes: null },
+    { id: "host", item_type: "item", notes: null },
+    { id: "psa", item_type: "item", notes: "MIDI C3 9" },
+  ];
+  assert.deepEqual(defaultLiveMidiCue(0), { note: 43, velocity: 1 });
+  assert.deepEqual(defaultLiveMidiCue(11), { note: 43, velocity: 12 });
+  assert.equal(defaultLiveMidiCue(12), null);
+  assert.deepEqual(effectiveMidiCue(null, 3), { note: 43, velocity: 4 });
+  assert.deepEqual(effectiveMidiCue("MIDI C3 9", 3), { note: 60, velocity: 9 });
+
+  assert.equal(
+    findMidiCueItem(items, { channel: 1, note: 43, velocity: 1 }, 1)?.id,
+    "ipod",
+  );
+  assert.equal(
+    findMidiCueItem(items, { channel: 1, note: 43, velocity: 3 }, 1)?.id,
+    "host",
+  );
+  assert.equal(
+    findMidiCueItem(items, { channel: 1, note: 43, velocity: 4 }, 1)?.id,
+    undefined,
+  );
+  assert.equal(
+    findMidiCueItem(items, { channel: 1, note: 60, velocity: 9 }, 1)?.id,
+    "psa",
+  );
 });
 
 test("keeps a MIDI cue while Playback is still on the same song", () => {
