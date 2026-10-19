@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Pause, Play } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   activeSongMapCue,
@@ -17,6 +18,7 @@ type SongMapDraft = {
 };
 
 type SongMapBarProps = {
+  title: string;
   durationSeconds: number;
   startedAt: number | null;
   cues: SongMapCue[];
@@ -26,6 +28,7 @@ type SongMapBarProps = {
 };
 
 export function SongMapBar({
+  title,
   durationSeconds,
   startedAt,
   cues,
@@ -37,18 +40,20 @@ export function SongMapBar({
   const [draft, setDraft] = useState<SongMapDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
+  const [pausedDurationMs, setPausedDurationMs] = useState(0);
 
   useEffect(() => {
     if (startedAt == null) return;
-    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(timer);
   }, [startedAt]);
 
+  const elapsedAt = pausedAt ?? now;
   const elapsed =
     startedAt == null || durationSeconds <= 0
       ? 0
-      : Math.min(durationSeconds, Math.max(0, (now - startedAt) / 1000));
+      : Math.min(durationSeconds, Math.max(0, (elapsedAt - startedAt - pausedDurationMs) / 1000));
   const progress = durationSeconds > 0 ? elapsed / durationSeconds : 0;
   const playingCue = startedAt == null ? null : activeSongMapCue(cues, elapsed);
   const selectedCue = cues.find((cue) => cue.id === selectedId) || null;
@@ -66,6 +71,18 @@ export function SongMapBar({
 
   const placeAt = (ratio: number) => {
     openDraft(songMapOffsetFromRatio(ratio, durationSeconds));
+  };
+
+  const togglePlayback = () => {
+    if (startedAt == null) return;
+    const at = Date.now();
+    if (pausedAt == null) {
+      setPausedAt(at);
+      return;
+    }
+    setPausedDurationMs((total) => total + Math.max(0, at - pausedAt));
+    setPausedAt(null);
+    setNow(at);
   };
 
   const save = async () => {
@@ -97,18 +114,22 @@ export function SongMapBar({
   };
 
   return (
-    <div className="mt-2">
-      <div className={cn("relative", prompt && "pt-7")}>
+    <div>
+      <div className="flex min-w-0 items-baseline gap-4">
+        <p className="min-w-0 flex-1 truncate text-2xl font-bold leading-tight">{title}</p>
         {prompt ? (
           <p
             className={cn(
-              "absolute left-0 top-0 max-w-full truncate rounded-md px-2 py-1 text-xs font-semibold",
+              "max-w-[50%] shrink-0 truncate rounded-md px-2.5 py-1 text-base font-bold",
               prompt.kind === "mix" ? "bg-amber-500/15 text-amber-600 dark:text-amber-300" : "bg-primary/15 text-primary",
             )}
+            title={`${songMapKindLabel(prompt.kind)} · ${prompt.body}`}
           >
             {songMapKindLabel(prompt.kind)} · {prompt.body}
           </p>
         ) : null}
+      </div>
+      <div className="relative mt-2">
         <div
           className="relative h-3 cursor-pointer rounded-full bg-muted"
           onClick={(event) => {
@@ -150,6 +171,16 @@ export function SongMapBar({
         </div>
       </div>
       <div className="mt-1 flex items-center gap-2 text-[11px] font-semibold tabular-nums text-muted-foreground">
+        <button
+          type="button"
+          disabled={startedAt == null}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
+          onClick={togglePlayback}
+          aria-label={pausedAt == null ? "Pause song duration" : "Resume song duration"}
+          title={startedAt == null ? "Song duration starts with MIDI" : pausedAt == null ? "Pause duration" : "Resume duration"}
+        >
+          {pausedAt == null ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+        </button>
         <span>{startedAt == null ? "MIDI" : formatSongMapTime(elapsed)}</span>
         <span className="ml-auto">{durationSeconds > 0 ? formatSongMapTime(durationSeconds) : "No duration"}</span>
         <button

@@ -988,12 +988,10 @@ export function LiveModeConsole({
                   : ""
               : ""}
           </p>
-          <p className="mt-1 text-2xl font-bold leading-tight">
-            {cue.currentTitle || "Cue the service flow"}
-          </p>
           {currentSong && currentSong.duration_seconds ? (
             <SongMapBar
-              key={currentSong.id}
+              key={`${currentSong.id}:${songMapRun?.itemId === currentSong.id ? songMapRun.startedAt : "waiting"}`}
+              title={cue.currentTitle || "Cue the service flow"}
               durationSeconds={currentSong.duration_seconds}
               startedAt={songMapRun?.itemId === currentSong.id ? songMapRun.startedAt : null}
               cues={songMap.cues.filter((entry) => entry.serviceFlowItemId === currentSong.id)}
@@ -1006,7 +1004,11 @@ export function LiveModeConsole({
               }
               onDelete={songMap.deleteCue}
             />
-          ) : null}
+          ) : (
+            <p className="mt-1 text-2xl font-bold leading-tight">
+              {cue.currentTitle || "Cue the service flow"}
+            </p>
+          )}
           {cue.nextTitle ? (
             <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
           ) : null}
