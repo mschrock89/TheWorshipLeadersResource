@@ -187,6 +187,27 @@ export const MIDI_NOTE_OPTIONS = Array.from({ length: 128 }, (_, note) => ({
   label: midiNoteName(note),
 }));
 
+/**
+ * A MIDI cue while Playback is still inside a song must stick.
+ * Remember that song and hold until its timecode actually changes.
+ */
+export function playbackHoldForMidiCue<T extends { id: string; item_type: string }>(
+  state: { playbackSongId: string | null; currentId: string | null },
+  items: T[],
+  match: { id: string; item_type: string },
+) {
+  const songId = (id: string | null) =>
+    id != null && items.some((item) => item.id === id && item.item_type === "song") ? id : null;
+  const playingId = songId(state.playbackSongId) || songId(state.currentId);
+  if (playingId && playingId !== match.id) {
+    return { playbackSongId: playingId, hold: true };
+  }
+  if (match.item_type === "song") {
+    return { playbackSongId: match.id, hold: false };
+  }
+  return { playbackSongId: state.playbackSongId, hold: true };
+}
+
 export function gatePlaybackSong(state: PlaybackGate, matchedSongId: string | null) {
   if (!matchedSongId) {
     return { ...state, take: false as const };

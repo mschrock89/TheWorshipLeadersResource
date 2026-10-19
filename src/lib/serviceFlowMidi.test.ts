@@ -4,6 +4,7 @@ import {
   findMidiCueItem,
   formatStoredMidiCue,
   gatePlaybackSong,
+  playbackHoldForMidiCue,
   midiCueMatches,
   midiNoteName,
   midiNoteNumber,
@@ -68,6 +69,41 @@ test("matches the chosen channel, note, and value", () => {
     1,
   );
   assert.equal(slide?.id, "slide-2");
+});
+
+test("keeps a MIDI cue while Playback is still on the same song", () => {
+  const items = [
+    { id: "song-1", item_type: "song" },
+    { id: "prayer", item_type: "item" },
+    { id: "song-2", item_type: "song" },
+  ];
+  const prayer = playbackHoldForMidiCue(
+    { playbackSongId: "song-1", currentId: "song-1" },
+    items,
+    { id: "prayer", item_type: "item" },
+  );
+  assert.equal(prayer.hold, true);
+  assert.equal(prayer.playbackSongId, "song-1");
+  const stillOnSong = gatePlaybackSong(
+    { currentId: "prayer", lastSongId: prayer.playbackSongId, hold: prayer.hold },
+    "song-1",
+  );
+  assert.equal(stillOnSong.take, false);
+  assert.equal(stillOnSong.currentId, "prayer");
+
+  const nextSong = playbackHoldForMidiCue(
+    { playbackSongId: "song-1", currentId: "song-1" },
+    items,
+    { id: "song-2", item_type: "song" },
+  );
+  assert.equal(nextSong.hold, true);
+  assert.equal(nextSong.playbackSongId, "song-1");
+  const notYanked = gatePlaybackSong(
+    { currentId: "song-2", lastSongId: nextSong.playbackSongId, hold: nextSong.hold },
+    "song-1",
+  );
+  assert.equal(notYanked.take, false);
+  assert.equal(notYanked.currentId, "song-2");
 });
 
 test("holds a MIDI line until playback enters the next song", () => {

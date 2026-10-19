@@ -38,6 +38,7 @@ import {
   findMidiCueItem,
   formatMidiCueLabel,
   gatePlaybackSong,
+  playbackHoldForMidiCue,
   notesWithMidiCue,
   parseNoteMidi,
   readMidiFollowSettings,
@@ -573,12 +574,9 @@ export function LiveModeConsole({
         }
         setMidiFit(null);
         const state = timecodeTrack.current;
-        if (match.item_type === "song") {
-          state.holdPlayback = false;
-          state.playbackSongId = match.id;
-        } else {
-          state.holdPlayback = true;
-        }
+        const held = playbackHoldForMidiCue(state, flowItemsRef.current, match);
+        state.holdPlayback = held.hold;
+        state.playbackSongId = held.playbackSongId;
         const cue = parseNoteMidi(match.notes);
         if (state.currentId !== match.id) {
           state.currentId = match.id;
