@@ -309,12 +309,64 @@ export function selectServiceTimeForLocalClock(
   return active?.label || windows[windows.length - 1].label;
 }
 
+/** ProPresenter fires Pre-Roll at this minute. That start is the beginning of service. */
+export const PRE_ROLL_FIRE_MINUTE = 54;
+
+export function isPreRollTitle(title?: string | null) {
+  const normalized = (title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+  return /\bpre\s*roll\b/.test(normalized);
+}
+
+export function findPreRollItem<T extends ServiceFlowClockItem>(items: T[]): T | null {
+  return (
+    items.find(
+      (item) =>
+        item.item_type !== "header" &&
+        (isPreRollTitle(item.title) || isPreRollTitle(item.song?.title)),
+    ) ?? null
+  );
+}
+
+/** Seconds from midnight when Pre-Roll fires for a scheduled service time. */
+export function preRollFireSeconds(serviceStartSeconds: number, minute = PRE_ROLL_FIRE_MINUTE) {
+  const day = 24 * 60 * 60;
+  const normalized = ((serviceStartSeconds % day) + day) % day;
+  const hourStart = normalized - (normalized % 3600);
+  const currentMinute = Math.floor((normalized % 3600) / 60);
+  const raw = currentMinute >= minute ? hourStart + minute * 60 : hourStart - (60 - minute) * 60;
+  return ((raw % day) + day) % day;
+}
+
+/** How long before the scheduled hour Pre-Roll actually starts. */
+export function preRollLeadSeconds(serviceStartSeconds: number, minute = PRE_ROLL_FIRE_MINUTE) {
+  const day = 24 * 60 * 60;
+  const start = ((serviceStartSeconds % day) + day) % day;
+  const fire = preRollFireSeconds(start, minute);
+  return (start - fire + day) % day;
+}
+
+function shortestSignedDelta(fromSeconds: number, toSeconds: number) {
+  const day = 24 * 60 * 60;
+  let delta = toSeconds - fromSeconds;
+  delta = ((delta % day) + day) % day;
+  if (delta > day / 2) delta -= day;
+  return delta;
+}
+
 export type ServiceFlowClockOptions = {
   /**
    * Wall-clock seconds when the line that ends at the service start actually
    * began, such as the Pre-Roll MIDI note. Shifts every rundown time.
    */
   boundaryStartedAtSeconds?: number | null;
+  /**
+   * Snap the Pre-Roll line so it starts at this minute. 54 matches the
+   * ProPresenter calendar. A live MIDI time wins over this plan.
+   */
+  preRollFireMinute?: number | null;
 };
 
 /**
@@ -322,6 +374,7 @@ export type ServiceFlowClockOptions = {
  * A line marked "service starts at the end" finishes at that time, so iPod
  * and Pre-Roll before it count backward. Otherwise the first line under a
  * Start header begins at that time. With neither, the first line starts then.
+ * When a fire minute is set, every clock shifts so Pre-Roll starts then.
  */
 export function buildServiceFlowClockTimes(
   items: ServiceFlowClockItem[],
@@ -346,12 +399,28 @@ export function buildServiceFlowClockTimes(
   }
 
   let runningSeconds = startSeconds - secondsBeforeServiceStart;
+  const starts = new Map<string, number>();
 
   for (const item of items) {
     if (item.item_type === "header") continue;
-    clockMap.set(item.id, formatClockTime(runningSeconds));
+    starts.set(item.id, runningSeconds);
     runningSeconds += item.duration_seconds || 0;
   }
 
+  const fireMinute = options?.preRollFireMinute;
+  const scheduledStart = clockSourceToSeconds(startTime);
+  if (fireMinute != null && liveStart == null && scheduledStart != null) {
+    const preRoll = findPreRollItem(items);
+    const preRollStart = preRoll ? starts.get(preRoll.id) : undefined;
+    if (preRoll && preRollStart != null) {
+      const fire = preRollFireSeconds(scheduledStart, fireMinute);
+      const delta = shortestSignedDelta(preRollStart, fire);
+      if (delta !== 0) {
+        for (const [id, seconds] of starts) starts.set(id, seconds + delta);
+      }
+    }
+  }
+
+  for (const [id, seconds] of starts) clockMap.set(id, formatClockTime(seconds));
   return clockMap;
 }

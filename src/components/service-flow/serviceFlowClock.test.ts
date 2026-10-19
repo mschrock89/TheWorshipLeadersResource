@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildServiceFlowClockTimes,
+  findPreRollItem,
   formatClockTime,
   itemMarksServiceStart,
+  preRollFireSeconds,
+  preRollLeadSeconds,
   listScheduledServiceTimes,
   liveClockAnchorApplies,
   measureServiceFlowSpan,
@@ -80,6 +83,54 @@ test("a marked line ends at the service start, so earlier lines stay before it",
   assert.equal(serviceStartBoundaryItem(items)?.id, "preroll");
   assert.equal(measureServiceFlowSpan(items).preServiceSeconds, 13 * 60);
   assert.equal(measureServiceFlowSpan(items).serviceDurationSeconds, 2 * 60);
+});
+
+test("pre-roll starts at :54, the beginning of service", () => {
+  const items = [
+    { id: "ipod", item_type: "item", title: "iPod Music", duration_seconds: 10 * 60 },
+    { id: "preroll", item_type: "item", title: "Pre-Roll Video", duration_seconds: 5 * 60, notes: "SERVICE START" },
+    { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 2 * 60 },
+  ];
+  const clocks = buildServiceFlowClockTimes(items, "09:00", { preRollFireMinute: 54 });
+
+  assert.equal(findPreRollItem(items)?.id, "preroll");
+  assert.equal(clocks.get("ipod"), "8:44 AM");
+  assert.equal(clocks.get("preroll"), "8:54 AM");
+  assert.equal(clocks.get("welcome"), "8:59 AM");
+  assert.equal(preRollFireSeconds(9 * 3600), 8 * 3600 + 54 * 60);
+  assert.equal(preRollFireSeconds(11 * 3600), 10 * 3600 + 54 * 60);
+  assert.equal(preRollLeadSeconds(9 * 3600), 6 * 60);
+});
+
+test("a six-minute pre-roll already lands on :54 for an on-the-hour service", () => {
+  const clocks = buildServiceFlowClockTimes(
+    [
+      { id: "ipod", item_type: "item", title: "iPod Music", duration_seconds: 10 * 60 },
+      { id: "preroll", item_type: "item", title: "Pre-Roll", duration_seconds: 6 * 60, notes: "SERVICE START" },
+      { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 2 * 60 },
+    ],
+    "09:00",
+    { preRollFireMinute: 54 },
+  );
+
+  assert.equal(clocks.get("ipod"), "8:44 AM");
+  assert.equal(clocks.get("preroll"), "8:54 AM");
+  assert.equal(clocks.get("welcome"), "9:00 AM");
+});
+
+test("a live pre-roll cue keeps the actual time instead of snapping back to :54", () => {
+  const clocks = buildServiceFlowClockTimes(
+    [
+      { id: "ipod", item_type: "item", title: "iPod Music", duration_seconds: 10 * 60 },
+      { id: "preroll", item_type: "item", title: "Pre-Roll", duration_seconds: 5 * 60, notes: "SERVICE START" },
+      { id: "welcome", item_type: "item", title: "Welcome", duration_seconds: 2 * 60 },
+    ],
+    "09:00",
+    { preRollFireMinute: 54, boundaryStartedAtSeconds: 8 * 3600 + 56 * 60 },
+  );
+
+  assert.equal(clocks.get("preroll"), "8:56 AM");
+  assert.equal(clocks.get("welcome"), "9:01 AM");
 });
 
 test("the pre-roll MIDI time shifts every clock so that line still ends at the service start", () => {

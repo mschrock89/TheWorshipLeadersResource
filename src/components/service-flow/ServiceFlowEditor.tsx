@@ -67,6 +67,7 @@ import {
   clockSourceToSeconds,
   flowMarksServiceStart,
   formatClockTime,
+  PRE_ROLL_FIRE_MINUTE,
   serviceStartBoundaryItem,
   normalizeClockSource,
   notesWithServiceStart,
@@ -911,7 +912,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   ]);
 
   const clockTimesByItemId = useMemo(
-    () => buildServiceFlowClockTimes(localItems, scheduledStartTime),
+    () => buildServiceFlowClockTimes(localItems, scheduledStartTime, { preRollFireMinute: PRE_ROLL_FIRE_MINUTE }),
     [localItems, scheduledStartTime],
   );
   const serviceStartItemId = useMemo(
@@ -1362,7 +1363,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
             </span>
             {!flowMarksServiceStart(localItems) ? (
               <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Flag the line that ends at this time, such as Pre-Roll.
+                Pre-Roll starts at :54, the beginning of service. Flag that line so earlier items stay before it.
               </p>
             ) : null}
           </div>

@@ -51,6 +51,7 @@ import {
 import {
   buildServiceFlowClockTimes,
   flowMarksServiceStart,
+  PRE_ROLL_FIRE_MINUTE,
   normalizeClockSource,
   serviceStartBoundaryItem,
   notesWithServiceStart,
@@ -819,7 +820,7 @@ export function CalendarServiceFlowPanel({
   ]);
 
   const clockTimesByItemId = useMemo(
-    () => buildServiceFlowClockTimes(localItems, startTime),
+    () => buildServiceFlowClockTimes(localItems, startTime, { preRollFireMinute: PRE_ROLL_FIRE_MINUTE }),
     [localItems, startTime],
   );
   const serviceStartItemId = useMemo(
@@ -904,7 +905,7 @@ export function CalendarServiceFlowPanel({
         <div className="flex shrink-0 items-center gap-2">
           <label
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-            title="Flag the line that ends at this time, such as Pre-Roll. iPod and other lines before it stay before the service."
+            title="Pre-Roll starts at :54, the beginning of service. Flag that line so iPod and other earlier lines stay before it."
           >
             Start
             <Input
@@ -961,7 +962,7 @@ export function CalendarServiceFlowPanel({
       </div>
       {startTime && !flowMarksServiceStart(localItems) && localItems.length > 0 ? (
         <p className="mb-3 text-xs text-muted-foreground">
-          Flag the line that ends at the start time, such as Pre-Roll. iPod and the other lines before it stay before the service.
+          Pre-Roll starts at :54, the beginning of service. Flag that line so iPod and the other lines before it stay earlier.
         </p>
       ) : null}
 

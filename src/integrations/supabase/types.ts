@@ -2748,6 +2748,85 @@ export type Database = {
           },
         ]
       }
+      pre_service_playlist_tracks: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          id: string
+          playlist_id: string
+          sort_order: number
+          storage_path: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms: number
+          id?: string
+          playlist_id: string
+          sort_order: number
+          storage_path: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          id?: string
+          playlist_id?: string
+          sort_order?: number
+          storage_path?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_service_playlist_tracks_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "pre_service_playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_service_playlists: {
+        Row: {
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          station: string
+          trimester: number
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          station: string
+          trimester: number
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          station?: string
+          trimester?: number
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_service_playlists_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address: string | null

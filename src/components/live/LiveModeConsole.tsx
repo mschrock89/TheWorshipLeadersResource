@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ArrowLeft, Loader2, Radio, Settings2 } from "lucide-react";
@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { isListenerHosting, liveChatRoomOf, liveStationLabel, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { isListenerHosting, isLiveStation, LIVE_STATIONS, liveChatRoomOf, liveStationLabel, liveStationUsesPreServicePlayer, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import {
   applyAudioRoutingDefault,
   markRoutingDefaultApplied,
@@ -58,21 +58,28 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   buildServiceFlowClockTimes,
   clockSourceToSeconds,
+  findPreRollItem,
   formatClockTime,
   listScheduledServiceTimes,
   liveClockAnchorApplies,
   localClockSeconds,
   measureServiceFlowSpan,
   normalizeClockSource,
+  PRE_ROLL_FIRE_MINUTE,
+  preRollFireSeconds,
+  preRollLeadSeconds,
   resolveLiveServiceStartTime,
   serviceStartBoundaryItem,
 } from "@/components/service-flow/serviceFlowClock";
+import { localServiceTimestamp } from "@/lib/preServicePlaylist";
+import { usePreServicePlaylist } from "@/hooks/usePreServicePlaylist";
 import { AudioRoutingPage } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
 import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
 import { findFlowCue, LiveServiceFlowPanel } from "./LiveServiceFlowPanel";
 import { LiveNotesPanel } from "./LiveNotesPanel";
 import { SongMapBar } from "./SongMapBar";
+import { PreServicePlayer } from "./PreServicePlayer";
 
 type LiveModeConsoleProps = {
   campusId: string;
@@ -224,7 +231,29 @@ export function LiveModeConsole({
       }),
     [campusesWithTimes, campusId, customServiceStartTime, ministryType, serviceDate, serviceTimeOverrides],
   );
+  const playlist = usePreServicePlaylist({
+    campusId,
+    station,
+    serviceDate,
+    enabled: !videoOnly && liveStationUsesPreServicePlayer(station),
+  });
   const flowSpan = useMemo(() => measureServiceFlowSpan(items), [items]);
+  const playlistLeadSeconds = useMemo(() => {
+    if (playlist.durationMs <= 0) return 0;
+    const fireLead = scheduledServiceTimes.reduce((max, time) => {
+      const seconds = clockSourceToSeconds(time);
+      if (seconds == null) return max;
+      return Math.max(max, preRollLeadSeconds(seconds));
+    }, 0);
+    return Math.ceil(playlist.durationMs / 1000) + fireLead;
+  }, [playlist.durationMs, scheduledServiceTimes]);
+  const selectionSpan = useMemo(
+    () => ({
+      preServiceSeconds: Math.max(flowSpan.preServiceSeconds, playlistLeadSeconds),
+      serviceDurationSeconds: flowSpan.serviceDurationSeconds,
+    }),
+    [flowSpan, playlistLeadSeconds],
+  );
   const startTime = useMemo(
     () =>
       resolveLiveServiceStartTime({
@@ -233,11 +262,17 @@ export function LiveModeConsole({
         nowSeconds: localClockSeconds(now),
         serviceDate,
         today: localDateIso(now),
-        span: flowSpan,
+        span: selectionSpan,
       }),
-    [flow?.start_time, flowSpan, now, scheduledServiceTimes, serviceDate],
+    [flow?.start_time, now, scheduledServiceTimes, selectionSpan, serviceDate],
   );
   const boundaryItem = useMemo(() => serviceStartBoundaryItem(items), [items]);
+  const preRollItem = useMemo(() => findPreRollItem(items), [items]);
+  const [preRollCueAt, setPreRollCueAt] = useState<number | null>(null);
+  const preRollItemIdRef = useRef<string | null>(null);
+  preRollItemIdRef.current = preRollItem?.id ?? null;
+  const markPreRollCueRef = useRef<(at: number) => void>(() => {});
+  markPreRollCueRef.current = (at: number) => setPreRollCueAt(at);
   const liveBoundaryStart =
     live.clockAnchor && boundaryItem && live.clockAnchor.itemId === boundaryItem.id
       ? live.clockAnchor.startedAtSeconds
@@ -249,12 +284,21 @@ export function LiveModeConsole({
   const anchorApplies =
     anchorServiceStart != null &&
     liveClockAnchorApplies(anchorServiceStart, startTime, scheduledServiceTimes);
+  const scheduledStartSeconds = clockSourceToSeconds(startTime);
+  const plannedPreRollStart =
+    preRollItem && scheduledStartSeconds != null ? preRollFireSeconds(scheduledStartSeconds) : null;
   const serviceTimeLabel =
-    anchorApplies && anchorServiceStart != null
-      ? formatClockTime(anchorServiceStart)
-      : startTime
-        ? formatClockTime(clockSourceToSeconds(startTime) ?? 0)
-        : null;
+    anchorApplies && liveBoundaryStart != null && preRollItem
+      ? formatClockTime(liveBoundaryStart)
+      : anchorApplies && anchorServiceStart != null
+        ? formatClockTime(anchorServiceStart)
+        : plannedPreRollStart != null
+          ? formatClockTime(plannedPreRollStart)
+          : startTime
+            ? formatClockTime(scheduledStartSeconds ?? 0)
+            : null;
+  const preRollAtMs =
+    plannedPreRollStart == null ? null : localServiceTimestamp(serviceDate, plannedPreRollStart);
   const localTimeLabel = now.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -264,6 +308,7 @@ export function LiveModeConsole({
     () =>
       buildServiceFlowClockTimes(items, startTime, {
         boundaryStartedAtSeconds: anchorApplies ? liveBoundaryStart : null,
+        preRollFireMinute: PRE_ROLL_FIRE_MINUTE,
       }),
     [anchorApplies, items, liveBoundaryStart, startTime],
   );
@@ -569,6 +614,9 @@ export function LiveModeConsole({
         if (match.item_type === "song") {
           setSongMapRun({ itemId: match.id, startedAt: Date.now() });
         }
+        if (preRollItemIdRef.current && match.id === preRollItemIdRef.current) {
+          markPreRollCueRef.current(Date.now());
+        }
         const boundary = serviceStartBoundaryItem(flowItemsRef.current);
         if (boundary && match.id === boundary.id) {
           publishClockAnchorRef.current({
@@ -621,6 +669,30 @@ export function LiveModeConsole({
     return () => window.clearInterval(timer);
   }, [live.clockAnchor]);
 
+  useEffect(() => {
+    const cue = live.timecodeCue;
+    if (!preRollItem || !cue || cue.itemId !== preRollItem.id) return;
+    if (Date.now() - cue.at > 10_000) return;
+    setPreRollCueAt((current) => current ?? cue.at);
+  }, [live.timecodeCue, preRollItem]);
+
+  const sessionItemId = live.session?.current_item_id ?? null;
+  const lastSessionItemId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const previous = lastSessionItemId.current;
+    lastSessionItemId.current = sessionItemId;
+    if (previous === undefined || previous === sessionItemId) return;
+    if (preRollItem && sessionItemId === preRollItem.id) {
+      setPreRollCueAt((current) => current ?? Date.now());
+    }
+  }, [preRollItem, sessionItemId]);
+
+  useEffect(() => {
+    if (preRollCueAt == null || !preRollItem || sessionItemId === preRollItem.id) return;
+    if (Date.now() - preRollCueAt < 10_000) return;
+    setPreRollCueAt(null);
+  }, [preRollCueAt, preRollItem, sessionItemId]);
+
   const videoSlotRef = useRef<{
     itemId: string;
     nextItemId: string;
@@ -666,10 +738,7 @@ export function LiveModeConsole({
   }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id]);
 
   const hostActive = isListenerHosting(live.session, now.getTime());
-  const hostStation =
-    live.session?.listener_station === "foh" || live.session?.listener_station === "mon"
-      ? live.session.listener_station
-      : null;
+  const hostStation = isLiveStation(live.session?.listener_station) ? live.session.listener_station : null;
   const weAreHost = listening && live.session?.listener_client_id === live.clientId;
   const followingHost =
     hostActive && !weAreHost && hostStation ? liveStationLabel(hostStation) : null;
@@ -835,28 +904,29 @@ export function LiveModeConsole({
             campusName={campusName}
             serviceTimeLabel={serviceTimeLabel}
             localTimeLabel={localTimeLabel}
-          />
-          <div className="flex items-center gap-2 overflow-x-auto">
+            trailing={
+              <div className="flex items-center gap-2 overflow-x-auto">
+            <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Live position">
+              {LIVE_STATIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={station === option}
+                  onClick={() => {
+                    setStation(option);
+                    writeLiveStation(option);
+                  }}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm font-bold",
+                    station === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  {liveStationLabel(option)}
+                </button>
+              ))}
+            </div>
             {TALKBACK_TRANSCRIPT_ENABLED ? (
               <>
-                <div className="flex rounded-lg bg-muted p-0.5">
-                  {(["foh", "mon"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        setStation(option);
-                        writeLiveStation(option);
-                      }}
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-sm font-bold",
-                        station === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
-                      )}
-                    >
-                      {liveStationLabel(option)}
-                    </button>
-                  ))}
-                </div>
                 <Button
                   type="button"
                   variant={listening ? "secondary" : "default"}
@@ -901,6 +971,8 @@ export function LiveModeConsole({
               </Button>
             ) : null}
           </div>
+            }
+          />
         </div>
       </header>
 
@@ -959,6 +1031,27 @@ export function LiveModeConsole({
             </p>
           ) : null}
         </div>
+        {liveStationUsesPreServicePlayer(station) ? (
+          <PreServicePlayer
+            station={station}
+            year={playlist.year}
+            trimester={playlist.trimester}
+            serviceYear={playlist.serviceYear}
+            serviceTrimester={playlist.serviceTrimester}
+            tracks={playlist.tracks}
+            isLoading={playlist.isLoading}
+            schemaMissing={playlist.schemaMissing}
+            uploading={playlist.uploading}
+            uploadLabel={playlist.uploadLabel}
+            preRollAtMs={preRollAtMs}
+            preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
+            fadeAt={preRollCueAt}
+            onPeriodChange={playlist.setPeriod}
+            onUpload={playlist.uploadFiles}
+            onRemove={playlist.removeTrack}
+            onMove={playlist.moveTrack}
+          />
+        ) : null}
         <div className={cn("flex min-h-0 flex-1 flex-col", TALKBACK_TRANSCRIPT_ENABLED && "landscape:flex-row")}>
           {TALKBACK_TRANSCRIPT_ENABLED ? (
             <section className="flex min-h-0 flex-[1.35] flex-col landscape:flex-1">
@@ -1025,6 +1118,7 @@ export function LiveModeConsole({
               onMidiSettings={updateMidiSettings}
               onAssignMidi={assignMidi}
               onSelect={(itemId) => {
+                if (itemId && itemId === preRollItem?.id) setPreRollCueAt(Date.now());
                 const state = timecodeTrack.current;
                 const item = items.find((entry) => entry.id === itemId);
                 if (!item || item.item_type === "song") {
@@ -1122,10 +1216,12 @@ function LiveNowTitle({
   campusName,
   serviceTimeLabel,
   localTimeLabel,
+  trailing,
 }: {
   campusName: string;
   serviceTimeLabel: string | null;
   localTimeLabel: string;
+  trailing?: ReactNode;
 }) {
   return (
     <>
@@ -1138,9 +1234,10 @@ function LiveNowTitle({
           </>
         ) : null}
       </h1>
-      <div className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-right">
-        <p className="text-[9px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">Local</p>
-        <p className="mt-0.5 text-sm font-bold tabular-nums leading-none">{localTimeLabel}</p>
+      {trailing}
+      <div className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right">
+        <p className="text-[11.7px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">Local</p>
+        <p className="mt-0.5 text-[18.2px] font-bold tabular-nums leading-none">{localTimeLabel}</p>
       </div>
     </>
   );

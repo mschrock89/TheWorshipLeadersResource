@@ -51,7 +51,7 @@ export function LiveNotesPanel({ notes, onSave }: LiveNotesPanelProps) {
           Shared notes
         </p>
         <p className="text-xs text-muted-foreground">
-          {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : "FOH and MON"}
+          {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : "FOH, MON, and BCAST"}
         </p>
       </div>
       <Textarea
