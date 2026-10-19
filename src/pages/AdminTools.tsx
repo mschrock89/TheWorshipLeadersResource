@@ -20,7 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
+import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -673,6 +673,15 @@ export default function AdminTools() {
       icon: ScrollText,
       href: "/service-scripts",
     },
+    ...(!isStudentApp
+      ? [{
+          id: "pre-service-playlists",
+          title: "Pre-Service Playlists",
+          description: "Upload and arrange FOH and broadcast music by campus and trimester.",
+          icon: ListMusic,
+          href: "/pre-service-playlists",
+        }]
+      : []),
     {
       id: "service-schedule",
       title: "Service Schedule",

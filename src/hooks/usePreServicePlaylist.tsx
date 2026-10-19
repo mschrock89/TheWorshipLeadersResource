@@ -70,11 +70,13 @@ export function usePreServicePlaylist({
   station,
   serviceDate,
   enabled,
+  selectedPeriod,
 }: {
   campusId: string;
   station: LiveStation;
   serviceDate: string;
   enabled: boolean;
+  selectedPeriod?: { year: number; trimester: 1 | 2 | 3 };
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -86,7 +88,7 @@ export function usePreServicePlaylist({
 
   const periodQuery = useQuery({
     queryKey: ["pre-service-period", campusId, serviceDate],
-    enabled: active,
+    enabled: active && !selectedPeriod,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rotation_periods")
@@ -104,8 +106,8 @@ export function usePreServicePlaylist({
     },
   });
 
-  const servicePeriod = periodQuery.data ?? fallbackPlaylistPeriod(serviceDate);
-  const period = pickedPeriod ?? servicePeriod;
+  const servicePeriod = selectedPeriod ?? periodQuery.data ?? fallbackPlaylistPeriod(serviceDate);
+  const period = selectedPeriod ?? pickedPeriod ?? servicePeriod;
 
   const playlistQuery = useQuery({
     queryKey: ["pre-service-playlist", campusId, playlistStation, period.year, period.trimester],
