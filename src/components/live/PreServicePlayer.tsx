@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Loader2, Pause, Play, RotateCcw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -31,7 +31,7 @@ type PreServicePlayerProps = {
   onMove: (trackId: string, direction: -1 | 1) => Promise<void>;
 };
 
-type PlaybackPhase = "idle" | "waiting" | "playing" | "fading" | "done";
+type PlaybackPhase = "idle" | "playing" | "fading" | "done";
 
 const VOLUME_KEY = "wlr-preservice-volume";
 
@@ -122,9 +122,6 @@ export function PreServicePlayer({
   const fadeFrame = useRef(0);
   const handledFade = useRef<number | null>(null);
   const fadedPreRoll = useRef<number | null>(null);
-  const followedPreRoll = useRef<number | null>(null);
-  const unlocked = useRef(false);
-  const manualPlaybackRef = useRef(false);
   const playFromRef = useRef<(index: number, offsetMs: number) => Promise<void>>(async () => {});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<PlaybackPhase>("idle");
@@ -132,18 +129,10 @@ export function PreServicePlayer({
   const [volume, setVolume] = useState(volumeRef.current);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [manualPlayback, setManualPlayback] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const [removingId, setRemovingId] = useState<string | null>(null);
   phaseRef.current = phase;
   volumeRef.current = volume;
-  manualPlaybackRef.current = manualPlayback;
 
-  const durations = useMemo(() => tracks.map((track) => track.durationMs), [tracks]);
-  const durationKey = durations.join(",");
-  const plan = useMemo(
-    () => (preRollAtMs == null ? null : playlistPlaybackPlan(durations, now, preRollAtMs)),
-    [durationKey, durations, now, preRollAtMs],
-  );
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
 
   const ensureAudio = () => {
@@ -183,17 +172,10 @@ export function PreServicePlayer({
     const target = Math.min(Math.max(0, offsetMs / 1000), Math.max(0, duration - 0.05));
     await seekTo(audio, target);
     await audio.play();
-    unlocked.current = true;
-    if (preRollAtMs != null) followedPreRoll.current = preRollAtMs;
     indexRef.current = index;
     setTrackIndex(index);
     setPhase("playing");
   };
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -203,40 +185,11 @@ export function PreServicePlayer({
   }, []);
 
   useEffect(() => {
-    if (phase !== "waiting" || preRollAtMs == null) return;
-    const fresh = playlistPlaybackPlan(durations, Date.now(), preRollAtMs);
-    if (fresh.finished) {
-      setPhase("done");
-      return;
-    }
-    const delay = Math.max(0, fresh.startAtMs - Date.now());
-    const timer = window.setTimeout(() => {
-      const atStart = playlistPlaybackPlan(durations, Date.now(), preRollAtMs);
-      if (atStart.finished) {
-        setPhase("done");
-        return;
-      }
-      void playFromRef.current(atStart.trackIndex, atStart.offsetMs).catch(() => setPhase("idle"));
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [durationKey, durations, phase, preRollAtMs]);
-
-  useEffect(() => {
-    if (phase !== "done" || preRollAtMs == null || !unlocked.current) return;
-    if (followedPreRoll.current === preRollAtMs) return;
-    const fresh = playlistPlaybackPlan(durations, Date.now(), preRollAtMs);
-    if (fresh.finished) return;
-    followedPreRoll.current = preRollAtMs;
-    setPhase("waiting");
-  }, [durationKey, durations, phase, preRollAtMs]);
-
-  useEffect(() => {
     if (fadeAt == null || fadeAt === handledFade.current) return;
     handledFade.current = fadeAt;
-    if (manualPlaybackRef.current) return;
     if (preRollAtMs != null) fadedPreRoll.current = preRollAtMs;
     const current = phaseRef.current;
-    if (current === "waiting" || current === "idle") {
+    if (current === "idle") {
       ensureAudio().pause();
       setPhase("done");
       return;
@@ -275,9 +228,8 @@ export function PreServicePlayer({
       setPhase("done");
       return;
     }
-    const fresh = preRollAtMs == null ? null : playlistPlaybackPlan(durations, Date.now(), preRollAtMs);
     const audio = ensureAudio();
-    const opener = tracks[fresh && !fresh.finished ? fresh.trackIndex : 0];
+    const opener = tracks[0];
     if (opener && loadedUrl.current !== opener.url) {
       loadedUrl.current = opener.url;
       audio.src = opener.url;
@@ -291,19 +243,7 @@ export function PreServicePlayer({
       audio.volume = volumeRef.current;
     }
     audio.volume = volumeRef.current;
-    if (fresh?.finished) {
-      setPhase("done");
-      return;
-    }
-    if (!fresh) {
-      await playFromRef.current(0, 0);
-      return;
-    }
-    if (fresh.startAtMs <= Date.now()) {
-      await playFromRef.current(fresh.trackIndex, fresh.offsetMs);
-      return;
-    }
-    setPhase("waiting");
+    await playFromRef.current(0, 0);
   };
 
   const togglePlay = () => {
@@ -322,7 +262,11 @@ export function PreServicePlayer({
       void playFromRef.current(0, 0).catch(() => setPhase("idle"));
       return;
     }
-    const fresh = playlistPlaybackPlan(durations, Date.now(), preRollAtMs);
+    const fresh = playlistPlaybackPlan(
+      tracksRef.current.map((track) => track.durationMs),
+      Date.now(),
+      preRollAtMs,
+    );
     if (fresh.finished) {
       audioRef.current?.pause();
       setPhase("done");
@@ -330,7 +274,7 @@ export function PreServicePlayer({
     }
     if (fresh.startAtMs > Date.now()) {
       audioRef.current?.pause();
-      setPhase("waiting");
+      setPhase("idle");
       return;
     }
     void playFromRef.current(fresh.trackIndex, fresh.offsetMs).catch(() => setPhase("idle"));
@@ -359,7 +303,6 @@ export function PreServicePlayer({
   const years = [serviceYear - 1, serviceYear, serviceYear + 1];
   const status = describePlayback({
     phase,
-    plan,
     preRollAtMs,
     preRollLabel,
     trackCount: tracks.length,
@@ -376,7 +319,7 @@ export function PreServicePlayer({
           size="icon"
           className="h-12 w-12 shrink-0 rounded-full"
           onClick={togglePlay}
-          disabled={isLoading || schemaMissing || (!!plan?.finished && phase !== "playing" && phase !== "fading")}
+          disabled={isLoading || schemaMissing}
           aria-label={phase === "playing" || phase === "fading" ? "Pause pre-service music" : "Start pre-service music"}
         >
           {phase === "playing" || phase === "fading" ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
@@ -556,7 +499,6 @@ export function PreServicePlayer({
 
 function describePlayback({
   phase,
-  plan,
   preRollAtMs,
   preRollLabel,
   trackCount,
@@ -564,7 +506,6 @@ function describePlayback({
   manualPlayback,
 }: {
   phase: PlaybackPhase;
-  plan: ReturnType<typeof playlistPlaybackPlan> | null;
   preRollAtMs: number | null;
   preRollLabel: string | null;
   trackCount: number;
@@ -572,24 +513,20 @@ function describePlayback({
   manualPlayback: boolean;
 }) {
   if (trackCount === 0) return "Upload MP3s to replace the iPod.";
+  if (phase === "fading") {
+    const endLabel = preRollLabel || (preRollAtMs == null ? null : clockLabel(preRollAtMs));
+    return endLabel ? `Fading out for Pre-Roll at ${endLabel}.` : "Fading out for Pre-Roll.";
+  }
   if (manualPlayback) {
     if (phase === "done") return "Manual test finished.";
     if (phase === "idle") return "Manual test paused.";
     return "Manual test playing from the top.";
   }
-  if (preRollAtMs == null || !plan) return "Play from the top until a service time is set.";
+  if (preRollAtMs == null) return "Ready. Start the playlist manually.";
   const endLabel = preRollLabel || clockLabel(preRollAtMs);
-  if (phase === "fading") return `Fading out for Pre-Roll at ${endLabel}.`;
-  if (phase === "done" || plan.finished) return `Pre-Roll at ${endLabel} has this playlist stopped.`;
-  if (phase === "waiting" || plan.startAtMs > Date.now()) {
-    return `First song starts at ${clockLabel(plan.startAtMs)} so the last song ends at ${endLabel}.`;
-  }
-  const where =
-    plan.trackIndex === 0
-      ? `${formatTrackOffset(plan.offsetMs)} into the first song`
-      : `${formatTrackOffset(plan.offsetMs)} into song ${plan.trackIndex + 1}`;
+  if (phase === "done") return `Pre-Roll at ${endLabel} has this playlist stopped.`;
   if (phase === "playing") {
-    return currentTitle ? `Playing. Last song ends at ${endLabel}.` : `Last song ends at ${endLabel}.`;
+    return currentTitle ? `Playing. Pre-Roll at ${endLabel} will fade it out.` : `Pre-Roll at ${endLabel} will fade it out.`;
   }
-  return `Starts ${where}. Last song ends at ${endLabel}.`;
+  return `Ready. Start manually; Pre-Roll at ${endLabel} will fade it out.`;
 }
