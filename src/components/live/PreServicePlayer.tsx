@@ -36,6 +36,7 @@ type PreServicePlayerProps = {
 type PlaybackPhase = "idle" | "playing" | "fading" | "done";
 
 const VOLUME_KEY = "wlr-preservice-volume";
+const TEST_NOW_ENABLED = false;
 
 function readVolume() {
   if (typeof window === "undefined") return 0.85;
@@ -507,18 +508,20 @@ export function PreServicePlayer({
             />
           </label>
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              onClick={startTest}
-              disabled={isLoading || schemaMissing || tracks.length === 0 || preRollHeld}
-              title="Start this playlist from the first song without waiting for the schedule"
-            >
-              <Play className="h-3.5 w-3.5" />
-              Test now
-            </Button>
+            {TEST_NOW_ENABLED ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-2"
+                onClick={startTest}
+                disabled={isLoading || schemaMissing || tracks.length === 0 || preRollHeld}
+                title="Start this playlist from the first song without waiting for the schedule"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Test now
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
