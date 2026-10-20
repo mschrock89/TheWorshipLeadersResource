@@ -73,6 +73,7 @@ import {
   serviceStartBoundaryItem,
 } from "@/components/service-flow/serviceFlowClock";
 import { localServiceTimestamp } from "@/lib/preServicePlaylist";
+import { useEndServiceAmbientTrack } from "@/hooks/useEndServiceAmbientTrack";
 import { usePreServicePlaylist } from "@/hooks/usePreServicePlaylist";
 import { AudioRoutingPage } from "./AudioRoutingPage";
 import { TalkbackBoard, TalkbackChat } from "./TalkbackBoard";
@@ -80,6 +81,7 @@ import { TalkbackSetupSheet } from "./TalkbackSetupSheet";
 import { findFlowCue, LiveServiceFlowPanel } from "./LiveServiceFlowPanel";
 import { LiveNotesPanel } from "./LiveNotesPanel";
 import { SongMapBar } from "./SongMapBar";
+import { EndServiceAmbientPlayer } from "./EndServiceAmbientPlayer";
 import { PreServicePlayer } from "./PreServicePlayer";
 
 type LiveModeConsoleProps = {
@@ -236,6 +238,11 @@ export function LiveModeConsole({
     campusId,
     station,
     serviceDate,
+    enabled: !videoOnly && liveStationUsesPreServicePlayer(station),
+  });
+  const ambientTrack = useEndServiceAmbientTrack({
+    campusId,
+    station,
     enabled: !videoOnly && liveStationUsesPreServicePlayer(station),
   });
   const flowSpan = useMemo(() => measureServiceFlowSpan(items), [items]);
@@ -1040,26 +1047,33 @@ export function LiveModeConsole({
           ) : null}
         </div>
         {liveStationUsesPreServicePlayer(station) ? (
-          <PreServicePlayer
-            station={station}
-            year={playlist.year}
-            trimester={playlist.trimester}
-            serviceYear={playlist.serviceYear}
-            serviceTrimester={playlist.serviceTrimester}
-            tracks={playlist.tracks}
-            isLoading={playlist.isLoading}
-            schemaMissing={playlist.schemaMissing}
-            uploading={playlist.uploading}
-            uploadLabel={playlist.uploadLabel}
-            preRollAtMs={preRollAtMs}
-            preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
-            fadeAt={preRollCueAt}
-            restartAt={preServiceRestartAt}
-            onPeriodChange={playlist.setPeriod}
-            onUpload={playlist.uploadFiles}
-            onRemove={playlist.removeTrack}
-            onMove={playlist.moveTrack}
-          />
+          <>
+            <PreServicePlayer
+              station={station}
+              year={playlist.year}
+              trimester={playlist.trimester}
+              serviceYear={playlist.serviceYear}
+              serviceTrimester={playlist.serviceTrimester}
+              tracks={playlist.tracks}
+              isLoading={playlist.isLoading}
+              schemaMissing={playlist.schemaMissing}
+              uploading={playlist.uploading}
+              uploadLabel={playlist.uploadLabel}
+              preRollAtMs={preRollAtMs}
+              preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
+              fadeAt={preRollCueAt}
+              restartAt={preServiceRestartAt}
+              onPeriodChange={playlist.setPeriod}
+              onUpload={playlist.uploadFiles}
+              onRemove={playlist.removeTrack}
+              onMove={playlist.moveTrack}
+            />
+            <EndServiceAmbientPlayer
+              track={ambientTrack.track}
+              isLoading={ambientTrack.isLoading}
+              schemaMissing={ambientTrack.schemaMissing}
+            />
+          </>
         ) : null}
         <div className={cn("flex min-h-0 flex-1 flex-col", TALKBACK_TRANSCRIPT_ENABLED && "landscape:flex-row")}>
           {TALKBACK_TRANSCRIPT_ENABLED ? (

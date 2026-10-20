@@ -10,6 +10,7 @@ import {
   Music2,
   Trash2,
   UploadCloud,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useEndServiceAmbientTrack } from "@/hooks/useEndServiceAmbientTrack";
 import { usePreServicePlaylist } from "@/hooks/usePreServicePlaylist";
 import { cn } from "@/lib/cn";
 import {
@@ -32,6 +34,7 @@ const CAMPUS_KEY = "pre-service-playlist-admin-campus";
 export default function PreServicePlaylistsAdmin() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const ambientFileRef = useRef<HTMLInputElement | null>(null);
   const { isAdmin, isLoading: authLoading } = useAuth();
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const currentPeriod = fallbackPlaylistPeriod(new Date().toISOString().slice(0, 10));
@@ -54,6 +57,11 @@ export default function PreServicePlaylistsAdmin() {
     serviceDate: `${year}-${String((trimester - 1) * 4 + 1).padStart(2, "0")}-01`,
     enabled: isAdmin && Boolean(selectedCampusId),
     selectedPeriod: { year, trimester },
+  });
+  const ambient = useEndServiceAmbientTrack({
+    campusId: selectedCampusId,
+    station,
+    enabled: isAdmin && Boolean(selectedCampusId),
   });
 
   const chooseCampus = (value: string) => {
@@ -93,9 +101,9 @@ export default function PreServicePlaylistsAdmin() {
       </Button>
 
       <div className="mb-7">
-        <h1 className="font-display text-3xl font-bold text-foreground">Pre-Service Playlists</h1>
+        <h1 className="font-display text-3xl font-bold text-foreground">Service Audio</h1>
         <p className="mt-2 text-muted-foreground">
-          Build the FOH and broadcast playlists that play before service. Each campus and trimester has its own list.
+          Manage the music that plays before service and during end-of-service prayer.
         </p>
       </div>
 
@@ -314,6 +322,86 @@ export default function PreServicePlaylistsAdmin() {
               </li>
             ))}
           </ol>
+        )}
+      </section>
+
+      <section className="mt-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary">
+              <Volume2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">End-of-Service Ambient Track</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                One track for prayer at the end of service. It stays in place until you replace it.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+            {station === "foh" ? "FOH" : "Broadcast"}
+          </span>
+        </div>
+
+        {ambient.schemaMissing ? (
+          <div className="mt-5 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <p className="font-semibold text-destructive">Ambient track storage is not installed</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Apply the latest Supabase migration, then refresh this page.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-border p-3">
+            <Music2 className="h-5 w-5 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">
+                {ambient.isLoading ? "Loading…" : ambient.track?.title || "No ambient track uploaded"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {ambient.track
+                  ? formatTrackOffset(ambient.track.durationMs)
+                  : "Upload one MP3 for this campus and output."}
+              </p>
+            </div>
+            {ambient.track ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  if (window.confirm(`Remove “${ambient.track?.title}”?`)) void ambient.removeTrack();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              disabled={ambient.uploading || ambient.isLoading || !selectedCampusId}
+              onClick={() => ambientFileRef.current?.click()}
+            >
+              {ambient.uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <UploadCloud className="h-4 w-4" />
+              )}
+              {ambient.track ? "Replace MP3" : "Upload MP3"}
+            </Button>
+            <input
+              ref={ambientFileRef}
+              type="file"
+              accept="audio/mpeg,.mp3"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void ambient.uploadFile(file);
+              }}
+            />
+          </div>
         )}
       </section>
     </div>

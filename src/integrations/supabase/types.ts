@@ -2748,6 +2748,50 @@ export type Database = {
           },
         ]
       }
+      end_service_ambient_tracks: {
+        Row: {
+          campus_id: string
+          created_at: string
+          created_by: string | null
+          duration_ms: number
+          id: string
+          station: string
+          storage_path: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          created_by?: string | null
+          duration_ms: number
+          id?: string
+          station: string
+          storage_path: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number
+          id?: string
+          station?: string
+          storage_path?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "end_service_ambient_tracks_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pre_service_playlist_tracks: {
         Row: {
           created_at: string

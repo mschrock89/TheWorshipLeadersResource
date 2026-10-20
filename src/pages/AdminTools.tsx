@@ -676,8 +676,8 @@ export default function AdminTools() {
     ...(!isStudentApp
       ? [{
           id: "pre-service-playlists",
-          title: "Pre-Service Playlists",
-          description: "Upload and arrange FOH and broadcast music by campus and trimester.",
+          title: "Service Audio",
+          description: "Manage pre-service playlists and the end-of-service prayer track.",
           icon: ListMusic,
           href: "/pre-service-playlists",
         }]

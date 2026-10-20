@@ -123,12 +123,16 @@ export function PreServicePlayer({
   const loadedUrl = useRef("");
   const fadingRef = useRef(false);
   const pausedRef = useRef(false);
+  const advancingRef = useRef(false);
   const fadeFrame = useRef(0);
   const fadeInRef = useRef<{ startedAt: number; durationMs: number } | null>(null);
   const handledFade = useRef<number | null>(null);
   const handledRestart = useRef<number | null>(null);
   const resumePoint = useRef<{ trackId: string; offsetMs: number } | null>(null);
-  const playFromRef = useRef<(index: number, offsetMs: number, fadeInMs?: number) => Promise<void>>(async () => {});
+  const playbackAttempt = useRef(0);
+  const playFromRef = useRef<(index: number, offsetMs: number, fadeInMs?: number) => Promise<boolean>>(
+    async () => false,
+  );
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [phase, setPhase] = useState<PlaybackPhase>("idle");
   const [trackIndex, setTrackIndex] = useState(0);
@@ -147,15 +151,30 @@ export function PreServicePlayer({
       const audio = new Audio();
       audio.preload = "auto";
       audio.setAttribute("playsinline", "true");
+      audio.onpause = () => {
+        if (!audio.paused || fadingRef.current || phaseRef.current !== "playing") return;
+        pausedRef.current = true;
+        setPhase("idle");
+      };
       audio.onended = () => {
-        if (fadingRef.current) return;
+        if (fadingRef.current || advancingRef.current) return;
         const trackCount = tracksRef.current.length;
         if (trackCount === 0) {
           setPhase("done");
           return;
         }
         const next = (indexRef.current + 1) % trackCount;
-        void playFromRef.current(next, 0).catch(() => setPhase("idle"));
+        // Move the playlist cursor before loading the next file. Keeping it on
+        // the selected opener during that async load can replay the opener if
+        // the browser delivers another terminal media event.
+        advancingRef.current = true;
+        indexRef.current = next;
+        setTrackIndex(next);
+        void playFromRef.current(next, 0)
+          .catch(() => setPhase("idle"))
+          .finally(() => {
+            advancingRef.current = false;
+          });
       };
       audioRef.current = audio;
     }
@@ -165,10 +184,12 @@ export function PreServicePlayer({
   playFromRef.current = async (index: number, offsetMs: number, fadeInMs = 0) => {
     const track = tracksRef.current[index];
     const audio = ensureAudio();
-    if (!track) return;
+    if (!track) return false;
+    const attempt = ++playbackAttempt.current;
     window.cancelAnimationFrame(fadeFrame.current);
     fadingRef.current = false;
     pausedRef.current = false;
+    audio.muted = false;
     const activeFadeIn = fadeInRef.current;
     const activeFadeAmount = activeFadeIn
       ? Math.min(1, (performance.now() - activeFadeIn.startedAt) / activeFadeIn.durationMs)
@@ -179,11 +200,24 @@ export function PreServicePlayer({
       audio.src = track.url;
       audio.load();
     }
-    await waitForMetadata(audio);
+    try {
+      await waitForMetadata(audio);
+    } catch (error) {
+      if (attempt !== playbackAttempt.current) return false;
+      throw error;
+    }
+    if (attempt !== playbackAttempt.current) return false;
     const duration = Number.isFinite(audio.duration) ? audio.duration : track.durationMs / 1000;
     const target = Math.min(Math.max(0, offsetMs / 1000), Math.max(0, duration - 0.05));
     await seekTo(audio, target);
-    await audio.play();
+    if (attempt !== playbackAttempt.current) return false;
+    try {
+      await audio.play();
+    } catch (error) {
+      if (attempt !== playbackAttempt.current) return false;
+      throw error;
+    }
+    if (attempt !== playbackAttempt.current) return false;
     indexRef.current = index;
     setTrackIndex(index);
     setPhase("playing");
@@ -192,6 +226,7 @@ export function PreServicePlayer({
     }
     if (fadeInRef.current) {
       const step = (frame: number) => {
+        if (attempt !== playbackAttempt.current) return;
         const fade = fadeInRef.current;
         if (!fade) return;
         const amount = Math.min(1, (frame - fade.startedAt) / fade.durationMs);
@@ -205,11 +240,14 @@ export function PreServicePlayer({
       };
       fadeFrame.current = window.requestAnimationFrame(step);
     }
+    return true;
   };
 
   useEffect(() => {
     return () => {
+      playbackAttempt.current += 1;
       window.cancelAnimationFrame(fadeFrame.current);
+      advancingRef.current = false;
       audioRef.current?.pause();
     };
   }, []);
@@ -217,6 +255,7 @@ export function PreServicePlayer({
   useEffect(() => {
     if (fadeAt == null || fadeAt === handledFade.current) return;
     handledFade.current = fadeAt;
+    const attempt = ++playbackAttempt.current;
     setPreRollHeld(true);
     const current = phaseRef.current;
     if (current === "idle") {
@@ -233,6 +272,7 @@ export function PreServicePlayer({
     const from = audio.volume;
     const started = performance.now();
     const step = (frame: number) => {
+      if (attempt !== playbackAttempt.current) return;
       const amount = Math.min(1, (frame - started) / PRE_SERVICE_FADE_MS);
       audio.volume = from * (1 - amount);
       if (amount < 1) {
@@ -258,9 +298,11 @@ export function PreServicePlayer({
   useEffect(() => {
     if (restartAt == null || restartAt === handledRestart.current) return;
     handledRestart.current = restartAt;
+    playbackAttempt.current += 1;
     window.cancelAnimationFrame(fadeFrame.current);
     fadeInRef.current = null;
     fadingRef.current = false;
+    advancingRef.current = false;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.volume = volumeRef.current;
@@ -285,8 +327,8 @@ export function PreServicePlayer({
     setPhase("idle");
     if (tracksRef.current[restartIndex]) {
       void playFromRef.current(restartIndex, restartOffsetMs, PRE_SERVICE_FADE_IN_MS)
-        .then(() => {
-          if (resumePoint.current === held) resumePoint.current = null;
+        .then((started) => {
+          if (started && resumePoint.current === held) resumePoint.current = null;
         })
         .catch(() => setPhase("idle"));
     }
@@ -340,6 +382,7 @@ export function PreServicePlayer({
   const togglePlay = () => {
     const audio = audioRef.current;
     if (phase === "playing" && audio) {
+      playbackAttempt.current += 1;
       window.cancelAnimationFrame(fadeFrame.current);
       fadeInRef.current = null;
       audio.volume = volumeRef.current;
@@ -363,11 +406,17 @@ export function PreServicePlayer({
       preRollAtMs,
     );
     if (fresh.finished) {
+      playbackAttempt.current += 1;
+      window.cancelAnimationFrame(fadeFrame.current);
+      fadeInRef.current = null;
       audioRef.current?.pause();
       setPhase("done");
       return;
     }
     if (fresh.startAtMs > Date.now()) {
+      playbackAttempt.current += 1;
+      window.cancelAnimationFrame(fadeFrame.current);
+      fadeInRef.current = null;
       audioRef.current?.pause();
       setPhase("idle");
       return;
@@ -389,9 +438,11 @@ export function PreServicePlayer({
   };
 
   const selectTrack = (index: number) => {
+    playbackAttempt.current += 1;
     window.cancelAnimationFrame(fadeFrame.current);
     fadeInRef.current = null;
     fadingRef.current = false;
+    advancingRef.current = false;
     audioRef.current?.pause();
     pausedRef.current = false;
     resumePoint.current = null;
