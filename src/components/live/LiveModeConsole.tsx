@@ -1038,9 +1038,12 @@ export function LiveModeConsole({
             />
           </>
         ) : null}
-        <div className="shrink-0 border-b border-border px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            {ministryLabel} · {serviceLabel}
+        <div className="relative shrink-0 overflow-hidden border-b border-primary/50 bg-gradient-to-r from-primary/20 via-primary/10 to-card px-5 py-4 shadow-[inset_4px_0_0_hsl(var(--primary)),0_8px_24px_hsl(var(--primary)/0.08)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary via-primary/40 to-transparent" />
+          <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+            <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary))]" />
+            <span>
+              {ministryLabel} · {serviceLabel}
             {TALKBACK_TRANSCRIPT_ENABLED
               ? weAreHost
                 ? " · This screen is listening"
@@ -1048,6 +1051,7 @@ export function LiveModeConsole({
                   ? ` · Following ${followingHost}`
                   : ""
               : ""}
+            </span>
           </p>
           {currentSong && currentSong.duration_seconds ? (
             <SongMapBar
@@ -1066,12 +1070,12 @@ export function LiveModeConsole({
               onDelete={songMap.deleteCue}
             />
           ) : (
-            <p className="mt-1 text-2xl font-bold leading-tight">
+            <p className="mt-2 text-3xl font-extrabold leading-tight tracking-tight drop-shadow-sm">
               {cue.currentTitle || "Cue the service flow"}
             </p>
           )}
           {cue.nextTitle ? (
-            <p className="mt-1 truncate text-sm text-muted-foreground">Next · {cue.nextTitle}</p>
+            <p className="mt-1.5 truncate text-base font-medium text-muted-foreground">Next · {cue.nextTitle}</p>
           ) : null}
           {smpteReadout ? (
             <p
