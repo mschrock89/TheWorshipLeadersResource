@@ -1,5 +1,5 @@
 export const PRE_SERVICE_BUCKET = "pre-service-audio";
-export const PRE_SERVICE_FADE_MS = 5_000;
+export const PRE_SERVICE_FADE_MS = 3_000;
 export const PRE_SERVICE_FADE_IN_MS = 3_000;
 export const PRE_SERVICE_STATIONS = ["foh", "bcast"] as const;
 export type PreServiceStation = (typeof PRE_SERVICE_STATIONS)[number];
