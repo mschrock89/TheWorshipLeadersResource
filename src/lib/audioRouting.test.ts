@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyAudioRoutingDefault,
-  assignSmpteInput,
   captureAudioRoutingDefault,
   parseAudioRoutingDefault,
   patchInput,
-  PLAYBACK_SMPTE_ROUTE_ID,
-  PROPRESENTER_SMPTE_ROUTE_ID,
   routingRows,
   sessionRoutingIdentities,
   type RoutingStore,
@@ -49,29 +46,6 @@ test("moves a talkback when it is patched to a new input", () => {
   assert.equal(store.byChannelId.wl.channelIndex, 3);
 });
 
-test("selects separate ProPresenter and Playback SMPTE inputs", () => {
-  const withSmpte = [
-    ...targets,
-    { id: PROPRESENTER_SMPTE_ROUTE_ID, positionSlot: null },
-    { id: PLAYBACK_SMPTE_ROUTE_ID, positionSlot: null },
-  ];
-  let store = patchInput(emptyStore(), withSmpte, "board", 0, "wl");
-  store = assignSmpteInput(store, targets, "board", 1, "propresenter");
-  store = assignSmpteInput(store, targets, "board", 2, "playback");
-  let rows = routingRows(4, withSmpte, store, "board");
-  assert.equal(rows[0].talkbackId, "wl");
-  assert.equal(rows[1].talkbackId, PROPRESENTER_SMPTE_ROUTE_ID);
-  assert.equal(rows[2].talkbackId, PLAYBACK_SMPTE_ROUTE_ID);
-
-  store = assignSmpteInput(store, targets, "board", 1, "playback");
-  rows = routingRows(4, withSmpte, store, "board");
-  assert.equal(rows[1].talkbackId, PLAYBACK_SMPTE_ROUTE_ID);
-  assert.equal(store.byChannelId[PROPRESENTER_SMPTE_ROUTE_ID], undefined);
-
-  store = assignSmpteInput(store, targets, "board", null, "playback");
-  assert.equal(store.byChannelId[PLAYBACK_SMPTE_ROUTE_ID], undefined);
-});
-
 test("clears an input without removing the other patches", () => {
   let store = patchInput(emptyStore(), targets, "board", 0, "wl");
   store = patchInput(store, targets, "board", 1, "pastor");
@@ -91,8 +65,6 @@ test("saves a routing default and starts the next session from it", () => {
   let store = patchInput(emptyStore(), previous, "board", 0, "old-wl");
   store = patchInput(store, previous, "board", 4, "old-drums");
   store = patchInput(store, previous, "board", 7, "old-choir");
-  store = assignSmpteInput(store, previous, "board", 11, "playback");
-  store = assignSmpteInput(store, previous, "board", 12, "propresenter");
 
   const saved = captureAudioRoutingDefault(store, previous, "board", 48, "2026-10-10T12:00:00.000Z");
   const next = sessionRoutingIdentities([
@@ -108,8 +80,6 @@ test("saves a routing default and starts the next session from it", () => {
   assert.equal(rows[0].talkbackId, "new-wl");
   assert.equal(rows[4].talkbackId, "new-drums");
   assert.equal(rows[7].talkbackId, "new-choir");
-  assert.equal(rows[11].talkbackId, PLAYBACK_SMPTE_ROUTE_ID);
-  assert.equal(rows[12].talkbackId, PROPRESENTER_SMPTE_ROUTE_ID);
   assert.equal(started.bySlot.vocalist_1.channelIndex, 0);
 });
 

@@ -4,7 +4,6 @@ import type { Service, ServiceItem, ServiceSection } from "./ServiceFlow";
 import { formatTotalDuration } from "./DurationInput";
 import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
 import { notesWithoutServiceStart } from "./serviceFlowClock";
-import { flowTimecodeLabels, notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 
 function isAnnouncementsContext(title: string, sectionTitle: string) {
   const compact = (value: string) =>
@@ -138,7 +137,6 @@ export function buildServiceFlowPreview(params: {
   };
 
   let totalDuration = 0;
-  const smpteLabels = flowTimecodeLabels(params.items);
 
   for (const item of params.items) {
     if (item.item_type === "header") {
@@ -168,8 +166,7 @@ export function buildServiceFlowPreview(params: {
       bpm: item.song?.bpm || undefined,
       key: item.song_key || undefined,
       leader: formatLeader(item),
-      smpte: smpteLabels.get(item.id),
-      notes: notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes))) || undefined,
+      notes: notesWithoutServiceStart(notesWithoutMidiCue(item.notes)) || undefined,
     });
   }
 

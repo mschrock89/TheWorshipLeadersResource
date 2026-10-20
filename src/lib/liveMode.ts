@@ -1,4 +1,4 @@
-/** Mic captions and channel meters are parked. SMPTE listening stays. */
+/** Mic captions and channel meters are parked. */
 export const TALKBACK_TRANSCRIPT_ENABLED = false;
 
 export const LIVE_STATIONS = ["foh", "mon", "bcast"] as const;

@@ -19,11 +19,10 @@ export type LiveTalkbackLine = Database["public"]["Tables"]["live_talkback_lines
 export type LiveChatMessage = Database["public"]["Tables"]["live_chat_messages"]["Row"];
 export type LiveSessionNotes = Database["public"]["Tables"]["live_session_notes"]["Row"];
 
-export type LiveTimecodeCue = {
+export type LiveFlowCue = {
   itemId: string | null;
   progress: number;
   label: string;
-  fps: number;
   at: number;
   clientId: string;
 };
@@ -116,7 +115,7 @@ export function useLiveSession({
   const clientId = useMemo(() => getLiveClientId(), []);
   const recentLines = useRef(new Map<string, { text: string; at: number }>());
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const [timecodeCue, setTimecodeCue] = useState<LiveTimecodeCue | null>(null);
+  const [flowCue, setFlowCue] = useState<LiveFlowCue | null>(null);
   const [clockAnchor, setClockAnchor] = useState<LiveClockAnchor | null>(null);
 
   const sessionKey = useMemo(
@@ -242,7 +241,7 @@ export function useLiveSession({
   );
 
   useEffect(() => {
-    setTimecodeCue(null);
+    setFlowCue(null);
     setClockAnchor(readClockAnchor(sessionId));
   }, [sessionId]);
 
@@ -303,10 +302,10 @@ export function useLiveSession({
           queryClient.setQueryData(notesKey, payload.new as LiveSessionNotes);
         },
       )
-      .on("broadcast", { event: "smpte" }, (message: { payload?: LiveTimecodeCue }) => {
+      .on("broadcast", { event: "flow-cue" }, (message: { payload?: LiveFlowCue }) => {
         const payload = message.payload;
         if (!payload || payload.clientId === clientId) return;
-        setTimecodeCue((current) => (current && current.at > payload.at ? current : payload));
+        setFlowCue((current) => (current && current.at > payload.at ? current : payload));
       })
       .on("broadcast", { event: "clock-anchor" }, (message: { payload?: LiveClockAnchor }) => {
         const payload = message.payload;
@@ -397,13 +396,13 @@ export function useLiveSession({
       .eq("listener_client_id", clientId);
   }, [clientId, patchSession, sessionId]);
 
-  const publishTimecode = useCallback(
-    (cue: Omit<LiveTimecodeCue, "clientId">) => {
+  const publishFlowCue = useCallback(
+    (cue: Omit<LiveFlowCue, "clientId">) => {
       const next = { ...cue, clientId };
-      setTimecodeCue(next);
+      setFlowCue(next);
       void channelRef.current?.send({
         type: "broadcast",
-        event: "smpte",
+        event: "flow-cue",
         payload: next,
       });
     },
@@ -583,9 +582,9 @@ export function useLiveSession({
     chatMessages: chatQuery.data || [],
     currentUserId: user?.id ?? null,
     notes: notesQuery.data ?? null,
-    timecodeCue,
+    flowCue,
     clockAnchor,
-    publishTimecode,
+    publishFlowCue,
     publishClockAnchor,
     isLoading: sessionQuery.isLoading || (!!sessionId && channelsQuery.isLoading),
     accessDenied: isForbidden(sessionQuery.error),

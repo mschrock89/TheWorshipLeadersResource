@@ -11,26 +11,15 @@ import {
   applyAudioRoutingDefault,
   markRoutingDefaultApplied,
   readAudioRoutingDefault,
-  readSmpteListens,
   routingDefaultAlreadyApplied,
   sessionRoutingIdentities,
   writeAudioChannelCount,
   writeAudioInterfaceId,
-  type SmpteSource,
 } from "@/lib/audioRouting";
-import { formatSmpte, LtcDecoder, smpteSortKey } from "@/lib/smpteLtc";
-import {
-  buildTimecodeWindows,
-  matchTimecodeWindow,
-  videoSlotForItem,
-  type TimecodeWindow,
-} from "@/lib/serviceFlowTimecode";
 import {
   findMidiCueItem,
   formatMidiCueLabel,
-  gatePlaybackSong,
   isPreServiceRestartCue,
-  playbackHoldForMidiCue,
   notesWithMidiCue,
   parseNoteMidi,
   readMidiFollowSettings,
@@ -40,7 +29,6 @@ import {
   type MidiNoteEvent,
 } from "@/lib/serviceFlowMidi";
 import { startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
-import { startSmpteCapture } from "@/lib/smpteCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
@@ -120,15 +108,10 @@ export function LiveModeConsole({
   const [station, setStation] = useState<LiveStation>(() => readLiveStation());
   const [listening, setListening] = useState(false);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const [audioKick, setAudioKick] = useState(0);
   const [setupOpen, setSetupOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
   const [bindingRevision, setBindingRevision] = useState(0);
-  const [followTimecode, setFollowTimecode] = useState(true);
-  const [smpteStatus, setSmpteStatus] = useState<"idle" | "listening" | "locked" | "error">("idle");
-  const smpteStatusRef = useRef(smpteStatus);
-  smpteStatusRef.current = smpteStatus;
-  const [smpteLabel, setSmpteLabel] = useState<string | null>(null);
+  const [followCues, setFollowCues] = useState(true);
   const [midiSettings, setMidiSettings] = useState<MidiFollowSettings>(readMidiFollowSettings);
   const [midiInputs, setMidiInputs] = useState<MidiInputInfo[]>([]);
   const [midiStatus, setMidiStatus] = useState<"idle" | "listening" | "error">("idle");
@@ -372,39 +355,6 @@ export function LiveModeConsole({
   };
 
   useEffect(() => {
-    if (TALKBACK_TRANSCRIPT_ENABLED || videoOnly) return;
-    let context: AudioContext | null = null;
-    let stopped = false;
-
-    let retried = false;
-    const arm = () => {
-      if (stopped || readSmpteListens(readTalkbackBindings()).length === 0) return;
-      if (!context || context.state === "closed") {
-        context = createInputAudioContext();
-        setAudioContext(context);
-        setListening(true);
-      }
-      void context.resume();
-      if (!retried && smpteStatusRef.current === "error") {
-        retried = true;
-        setAudioKick((value) => value + 1);
-      }
-    };
-
-    arm();
-    window.addEventListener("pointerdown", arm, true);
-    window.addEventListener("keydown", arm, true);
-    return () => {
-      stopped = true;
-      window.removeEventListener("pointerdown", arm, true);
-      window.removeEventListener("keydown", arm, true);
-      void context?.close();
-      setAudioContext((current) => (current === context ? null : current));
-      setListening(false);
-    };
-  }, [bindingRevision, videoOnly]);
-
-  useEffect(() => {
     if (!TALKBACK_TRANSCRIPT_ENABLED || !listening) return;
     void live.claimListener(station);
   }, [listening, live.claimListener, station]);
@@ -436,21 +386,10 @@ export function LiveModeConsole({
     }
   }, [audioContext, listening, live.clientId, live.session?.listener_client_id]);
 
-  const timecodeTrack = useRef({
-    follow: false,
-    windows: [] as TimecodeWindow[],
-    fps: 30,
+  const flowTrack = useRef({
     currentId: null as string | null,
-    suppressItemId: null as string | null,
-    lastSend: 0,
-    lastUi: 0,
-    lastFrameAt: 0,
-    lastBySource: { propresenter: 0, playback: 0 } as Record<SmpteSource, number>,
-    labels: { propresenter: null, playback: null } as Record<SmpteSource, string | null>,
-    playbackSongId: null as string | null,
-    holdPlayback: false,
     setItem: (_itemId: string) => {},
-    publish: (_cue: { itemId: string | null; progress: number; label: string; fps: number; at: number }) => {},
+    publish: (_cue: { itemId: string | null; progress: number; label: string; at: number }) => {},
   });
   const flowItemsRef = useRef(items);
   flowItemsRef.current = items;
@@ -458,137 +397,16 @@ export function LiveModeConsole({
   midiSettingsRef.current = midiSettings;
   const publishClockAnchorRef = useRef(live.publishClockAnchor);
   publishClockAnchorRef.current = live.publishClockAnchor;
-  const followRef = useRef(followTimecode);
-  followRef.current = followTimecode;
+  const followRef = useRef(followCues);
+  followRef.current = followCues;
   const hasMidiCues = items.some((item) => item.item_type !== "header");
   const midiAvailable = typeof navigator.requestMIDIAccess === "function";
-  // MIDI notes do not need the SMPTE Listen host. Capture whenever this browser can hear them.
   const listenMidi = midiMenuOpened || (midiAvailable && hasMidiCues);
-  timecodeTrack.current.windows = buildTimecodeWindows(items, timecodeTrack.current.fps);
-  timecodeTrack.current.currentId = live.session?.current_item_id || null;
-  timecodeTrack.current.setItem = (itemId) => {
+  flowTrack.current.currentId = live.session?.current_item_id || null;
+  flowTrack.current.setItem = (itemId) => {
     void live.setCurrentItem(itemId);
   };
-  timecodeTrack.current.publish = live.publishTimecode;
-  const isTimecodeHost = TALKBACK_TRANSCRIPT_ENABLED
-    ? listening && live.session?.listener_client_id === live.clientId
-    : listening;
-  timecodeTrack.current.follow = followTimecode && isTimecodeHost;
-
-  useEffect(() => {
-    if (!isTimecodeHost || !audioContext) {
-      setSmpteStatus("idle");
-      setSmpteLabel(null);
-      return;
-    }
-    const listens = readSmpteListens(readTalkbackBindings());
-    if (listens.length === 0) {
-      setSmpteStatus("error");
-      setSmpteLabel("Choose the Playback SMPTE input.");
-      return;
-    }
-    let active = true;
-    const decoders = new Map<SmpteSource, { decoder: LtcDecoder; rate: number }>();
-    setSmpteStatus("listening");
-    setSmpteLabel(null);
-    const paintLabels = () => {
-      const labels = timecodeTrack.current.labels;
-      const parts = [
-        labels.propresenter ? `ProP ${labels.propresenter}` : "",
-        labels.playback ? `Playback ${labels.playback}` : "",
-      ].filter(Boolean);
-      setSmpteLabel(parts.join(" · ") || null);
-    };
-    const stop = startSmpteCapture({
-      audioContext,
-      listens,
-      onStatus: (status, message) => {
-        if (!active) return;
-        if (status === "error") {
-          setSmpteStatus("error");
-          setSmpteLabel(message || "Could not open a SMPTE input.");
-          return;
-        }
-        setSmpteStatus((current) => (current === "locked" ? current : "listening"));
-      },
-      onSamples: (source, samples, sampleRate) => {
-        if (!active) return;
-        const existing = decoders.get(source);
-        const entry = !existing || existing.rate !== sampleRate
-          ? { decoder: new LtcDecoder(sampleRate), rate: sampleRate }
-          : existing;
-        if (entry !== existing) decoders.set(source, entry);
-        const stamp = entry.decoder.push(samples);
-        if (!stamp) return;
-        const state = timecodeTrack.current;
-        const nowMs = performance.now();
-        state.lastFrameAt = nowMs;
-        state.lastBySource[source] = nowMs;
-        if (stamp.fps !== state.fps) {
-          state.fps = stamp.fps;
-          state.windows = buildTimecodeWindows(flowItemsRef.current, stamp.fps);
-        }
-        const key = smpteSortKey(stamp, stamp.fps);
-        const scoped = state.windows.filter((window) => window.source === source);
-        const match = matchTimecodeWindow(scoped, key);
-        const label = formatSmpte(stamp);
-        state.labels[source] = label;
-        let itemChanged = false;
-        if (source === "playback" && state.follow) {
-          const gated = gatePlaybackSong(
-            {
-              currentId: state.currentId,
-              lastSongId: state.playbackSongId,
-              hold: state.holdPlayback,
-            },
-            match?.itemId ?? null,
-          );
-          state.playbackSongId = gated.lastSongId;
-          state.holdPlayback = gated.hold;
-          if (gated.take && gated.currentId) {
-            itemChanged = true;
-            state.currentId = gated.currentId;
-            state.setItem(gated.currentId);
-          }
-        }
-        if (nowMs - state.lastUi > 80) {
-          state.lastUi = nowMs;
-          setSmpteStatus("locked");
-          paintLabels();
-        }
-        if (source === "playback" && state.follow && (itemChanged || nowMs - state.lastSend > 200)) {
-          state.lastSend = nowMs;
-          state.publish({
-            itemId: match?.itemId ?? null,
-            progress: match?.progress ?? 0,
-            label,
-            fps: stamp.fps,
-            at: Date.now(),
-          });
-        }
-      },
-    });
-    const watch = window.setInterval(() => {
-      const state = timecodeTrack.current;
-      if (!active || !state.lastFrameAt) return;
-      const nowMs = performance.now();
-      let cleared = false;
-      for (const source of ["propresenter", "playback"] as const) {
-        if (!state.labels[source] || nowMs - state.lastBySource[source] <= 1500) continue;
-        state.labels[source] = null;
-        cleared = true;
-      }
-      if (cleared) paintLabels();
-      if (nowMs - state.lastFrameAt > 1500) {
-        setSmpteStatus((current) => (current === "locked" ? "listening" : current));
-      }
-    }, 400);
-    return () => {
-      active = false;
-      window.clearInterval(watch);
-      stop();
-    };
-  }, [audioContext, audioKick, bindingRevision, isTimecodeHost]);
+  flowTrack.current.publish = live.publishFlowCue;
 
   useEffect(() => {
     if (!listenMidi) {
@@ -643,10 +461,7 @@ export function LiveModeConsole({
           return;
         }
         setMidiFit(null);
-        const state = timecodeTrack.current;
-        const held = playbackHoldForMidiCue(state, flowItemsRef.current, match);
-        state.holdPlayback = held.hold;
-        state.playbackSongId = held.playbackSongId;
+        const state = flowTrack.current;
         const cue = parseNoteMidi(match.notes);
         if (state.currentId !== match.id) {
           state.currentId = match.id;
@@ -657,7 +472,6 @@ export function LiveModeConsole({
             itemId: match.id,
             progress: 0,
             label: `MIDI ${formatMidiCueLabel(cue)}`,
-            fps: state.fps,
             at: Date.now(),
           });
         }
@@ -683,11 +497,11 @@ export function LiveModeConsole({
   }, [live.clockAnchor]);
 
   useEffect(() => {
-    const cue = live.timecodeCue;
+    const cue = live.flowCue;
     if (!preRollItem || !cue || cue.itemId !== preRollItem.id) return;
     if (Date.now() - cue.at > 10_000) return;
     setPreRollCueAt((current) => current ?? cue.at);
-  }, [live.timecodeCue, preRollItem]);
+  }, [live.flowCue, preRollItem]);
 
   const sessionItemId = live.session?.current_item_id ?? null;
   const lastSessionItemId = useRef<string | null | undefined>(undefined);
@@ -705,50 +519,6 @@ export function LiveModeConsole({
     if (Date.now() - preRollCueAt < 10_000) return;
     setPreRollCueAt(null);
   }, [preRollCueAt, preRollItem, sessionItemId]);
-
-  const videoSlotRef = useRef<{
-    itemId: string;
-    nextItemId: string;
-    startedAt: number;
-    durationMs: number;
-  } | null>(null);
-  useEffect(() => {
-    if (!followTimecode || !isTimecodeHost) {
-      videoSlotRef.current = null;
-      return;
-    }
-    const slot = videoSlotForItem(items, live.session?.current_item_id || null);
-    if (!slot) return;
-    const existing = videoSlotRef.current;
-    if (!existing || existing.itemId !== slot.itemId) {
-      videoSlotRef.current = {
-        itemId: slot.itemId,
-        nextItemId: slot.nextItemId,
-        startedAt: performance.now(),
-        durationMs: slot.durationSeconds * 1000,
-      };
-    } else {
-      existing.nextItemId = slot.nextItemId;
-      existing.durationMs = slot.durationSeconds * 1000;
-    }
-    const pending = videoSlotRef.current;
-    const remaining = pending.durationMs - (performance.now() - pending.startedAt);
-    const timer = window.setTimeout(() => {
-      const state = timecodeTrack.current;
-      if (!state.follow || state.currentId !== pending.itemId) return;
-      state.suppressItemId = pending.itemId;
-      state.currentId = pending.nextItemId;
-      const nextItem = flowItemsRef.current.find((item) => item.id === pending.nextItemId);
-      if (nextItem?.item_type === "song") {
-        state.holdPlayback = false;
-        state.playbackSongId = nextItem.id;
-      } else {
-        state.holdPlayback = true;
-      }
-      state.setItem(pending.nextItemId);
-    }, Math.max(0, remaining));
-    return () => window.clearTimeout(timer);
-  }, [followTimecode, isTimecodeHost, items, live.session?.current_item_id]);
 
   const hostActive = isListenerHosting(live.session, now.getTime());
   const hostStation = isLiveStation(live.session?.listener_station) ? live.session.listener_station : null;
@@ -845,22 +615,10 @@ export function LiveModeConsole({
     );
   }
 
-  const timecodeCue = live.timecodeCue;
-  const cueIsFresh = !!timecodeCue && now.getTime() - timecodeCue.at < 2500;
-  const flowProgress = cueIsFresh && timecodeCue?.itemId === live.session?.current_item_id ? timecodeCue.progress : null;
-  const publishedMidi = cueIsFresh && timecodeCue?.label?.startsWith("MIDI ") ? timecodeCue.label : null;
-  const smpteReadout =
-    listening
-      ? smpteStatus === "locked" && smpteLabel
-        ? `SMPTE ${smpteLabel}`
-        : smpteStatus === "error"
-          ? smpteLabel || "SMPTE input needs a check"
-          : smpteStatus === "listening"
-            ? "SMPTE waiting"
-            : null
-      : cueIsFresh && timecodeCue?.label && !publishedMidi
-        ? `SMPTE ${timecodeCue.label}`
-        : null;
+  const flowCue = live.flowCue;
+  const cueIsFresh = !!flowCue && now.getTime() - flowCue.at < 2500;
+  const flowProgress = cueIsFresh && flowCue?.itemId === live.session?.current_item_id ? flowCue.progress : null;
+  const publishedMidi = cueIsFresh && flowCue?.label?.startsWith("MIDI ") ? flowCue.label : null;
   const midiHeard = lastMidi
     ? `MIDI ${formatMidiCueLabel({ note: lastMidi.note, velocity: lastMidi.velocity })}`
     : null;
@@ -989,11 +747,11 @@ export function LiveModeConsole({
                 ) : null}
                 <Button
                   type="button"
-                  variant={followTimecode ? "secondary" : "outline"}
+                  variant={followCues ? "secondary" : "outline"}
                   className="h-10"
-                  onClick={() => setFollowTimecode((value) => !value)}
+                  onClick={() => setFollowCues((value) => !value)}
                 >
-                  {followTimecode ? "Following" : "Follow"}
+                  {followCues ? "Following" : "Follow"}
                 </Button>
               </>
             ) : null}
@@ -1077,16 +835,6 @@ export function LiveModeConsole({
           {cue.nextTitle ? (
             <p className="mt-1.5 truncate text-base font-medium text-muted-foreground">Next · {cue.nextTitle}</p>
           ) : null}
-          {smpteReadout ? (
-            <p
-              className={cn(
-                "mt-1 text-sm font-semibold tabular-nums",
-                smpteStatus === "error" && listening ? "text-destructive" : "text-primary",
-              )}
-            >
-              {smpteReadout}
-            </p>
-          ) : null}
           {midiReadout ? (
             <p
               className={cn(
@@ -1165,14 +913,7 @@ export function LiveModeConsole({
               onAssignMidi={assignMidi}
               onSelect={(itemId) => {
                 if (itemId && itemId === preRollItem?.id) setPreRollCueAt(Date.now());
-                const state = timecodeTrack.current;
-                const item = items.find((entry) => entry.id === itemId);
-                if (!item || item.item_type === "song") {
-                  state.holdPlayback = false;
-                  if (item?.item_type === "song") state.playbackSongId = item.id;
-                } else {
-                  state.holdPlayback = true;
-                }
+                const state = flowTrack.current;
                 state.currentId = itemId;
                 void live.setCurrentItem(itemId);
               }}

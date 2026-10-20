@@ -1,5 +1,4 @@
 import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
-import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import { notesWithoutServiceStart } from "./serviceFlowClock";
 import type { Service } from "./ServiceFlow";
 
@@ -23,7 +22,7 @@ function escapeHtml(value: string) {
 }
 
 function printableNotes(notes: string | null | undefined) {
-  return notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(notes)));
+  return notesWithoutServiceStart(notesWithoutMidiCue(notes));
 }
 
 function formatServiceDate(date: string) {

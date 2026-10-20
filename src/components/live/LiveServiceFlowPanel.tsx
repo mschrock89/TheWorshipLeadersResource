@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatDuration } from "@/components/service-flow/DurationInput";
-import { notesWithoutTimecodeCue } from "@/lib/serviceFlowTimecode";
 import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -314,7 +313,7 @@ export function LiveServiceFlowPanel({
           const clockTime = clockTimes.get(item.id) || "";
           const singers = isSong ? vocalistNames(item) : "";
           const title = itemTitle(item, titles);
-          const notes = notesWithoutServiceStart(notesWithoutMidiCue(notesWithoutTimecodeCue(item.notes)));
+          const notes = notesWithoutServiceStart(notesWithoutMidiCue(item.notes));
           const endsAtServiceStart = item.id === serviceStartItemId;
           return (
             <li key={item.id}>
