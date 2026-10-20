@@ -919,24 +919,43 @@ export function LiveModeConsole({
             localTimeLabel={localTimeLabel}
             trailing={
               <div className="flex items-center gap-2 overflow-x-auto">
-            <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Live position">
-              {LIVE_STATIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={station === option}
-                  onClick={() => {
-                    setStation(option);
-                    writeLiveStation(option);
-                  }}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-bold",
-                    station === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
-                  )}
-                >
-                  {liveStationLabel(option)}
-                </button>
-              ))}
+            <div
+              className="flex shrink-0 items-center gap-1 rounded-xl border border-primary/35 bg-primary/10 p-1 shadow-sm"
+              role="group"
+              aria-label="Live position"
+            >
+              <span className="px-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-primary">
+                Position
+              </span>
+              <div className="flex rounded-lg bg-background/70 p-0.5">
+                {LIVE_STATIONS.map((option) => {
+                  const isActive = station === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setStation(option);
+                        writeLiveStation(option);
+                      }}
+                      className={cn(
+                        "relative rounded-md px-3 py-1.5 text-sm font-bold transition-all",
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {isActive ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground shadow-[0_0_0_2px_hsl(var(--primary-foreground)/0.2)]" />
+                        ) : null}
+                        {liveStationLabel(option)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             {TALKBACK_TRANSCRIPT_ENABLED ? (
               <>
@@ -990,6 +1009,35 @@ export function LiveModeConsole({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
+        {liveStationUsesPreServicePlayer(station) ? (
+          <>
+            <PreServicePlayer
+              station={station}
+              year={playlist.year}
+              trimester={playlist.trimester}
+              serviceYear={playlist.serviceYear}
+              serviceTrimester={playlist.serviceTrimester}
+              tracks={playlist.tracks}
+              isLoading={playlist.isLoading}
+              schemaMissing={playlist.schemaMissing}
+              uploading={playlist.uploading}
+              uploadLabel={playlist.uploadLabel}
+              preRollAtMs={preRollAtMs}
+              preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
+              fadeAt={preRollCueAt}
+              restartAt={preServiceRestartAt}
+              onPeriodChange={playlist.setPeriod}
+              onUpload={playlist.uploadFiles}
+              onRemove={playlist.removeTrack}
+              onMove={playlist.moveTrack}
+            />
+            <EndServiceAmbientPlayer
+              track={ambientTrack.track}
+              isLoading={ambientTrack.isLoading}
+              schemaMissing={ambientTrack.schemaMissing}
+            />
+          </>
+        ) : null}
         <div className="shrink-0 border-b border-border px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {ministryLabel} · {serviceLabel}
@@ -1046,35 +1094,6 @@ export function LiveModeConsole({
             </p>
           ) : null}
         </div>
-        {liveStationUsesPreServicePlayer(station) ? (
-          <>
-            <PreServicePlayer
-              station={station}
-              year={playlist.year}
-              trimester={playlist.trimester}
-              serviceYear={playlist.serviceYear}
-              serviceTrimester={playlist.serviceTrimester}
-              tracks={playlist.tracks}
-              isLoading={playlist.isLoading}
-              schemaMissing={playlist.schemaMissing}
-              uploading={playlist.uploading}
-              uploadLabel={playlist.uploadLabel}
-              preRollAtMs={preRollAtMs}
-              preRollLabel={plannedPreRollStart == null ? null : formatClockTime(plannedPreRollStart)}
-              fadeAt={preRollCueAt}
-              restartAt={preServiceRestartAt}
-              onPeriodChange={playlist.setPeriod}
-              onUpload={playlist.uploadFiles}
-              onRemove={playlist.removeTrack}
-              onMove={playlist.moveTrack}
-            />
-            <EndServiceAmbientPlayer
-              track={ambientTrack.track}
-              isLoading={ambientTrack.isLoading}
-              schemaMissing={ambientTrack.schemaMissing}
-            />
-          </>
-        ) : null}
         <div className={cn("flex min-h-0 flex-1 flex-col", TALKBACK_TRANSCRIPT_ENABLED && "landscape:flex-row")}>
           {TALKBACK_TRANSCRIPT_ENABLED ? (
             <section className="flex min-h-0 flex-[1.35] flex-col landscape:flex-1">
