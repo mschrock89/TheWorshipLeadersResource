@@ -83,6 +83,11 @@ type LiveModeConsoleProps = {
 
 type DockTab = "flow" | "chat" | "notes";
 
+/** Temporary: Murfreesboro Central is not using the Live media players. */
+function liveMediaPlayersHidden(campusName: string) {
+  return campusName === "Murfreesboro Central";
+}
+
 export function LiveModeConsole({
   campusId,
   campusName,
@@ -776,7 +781,7 @@ export function LiveModeConsole({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {liveStationUsesPreServicePlayer(station) ? (
+        {liveStationUsesPreServicePlayer(station) && !liveMediaPlayersHidden(campusName) ? (
           <>
             <PreServicePlayer
               station={station}
