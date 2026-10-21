@@ -28,7 +28,7 @@ import {
   type MidiFollowSettings,
   type MidiNoteEvent,
 } from "@/lib/serviceFlowMidi";
-import { startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
+import { openMidiAccess, readMidiPermission, startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
@@ -120,6 +120,10 @@ export function LiveModeConsole({
   const [songMapRun, setSongMapRun] = useState<{ itemId: string; startedAt: number } | null>(null);
   const [midiFit, setMidiFit] = useState<"channel" | "none" | "paused" | null>(null);
   const [midiMenuOpened, setMidiMenuOpened] = useState(false);
+  const [midiPermissionGranted, setMidiPermissionGranted] = useState(false);
+  const [midiRetry, setMidiRetry] = useState(0);
+  const midiAccessPromise = useRef<Promise<MIDIAccess> | null>(null);
+  const midiRequestStarted = useRef(false);
   const saveFlowItem = useSaveServiceFlowItem();
   const [tab, setTab] = useState<DockTab>("flow");
   const [chatRoom, setChatRoom] = useState<LiveChatRoom>("production");
@@ -403,12 +407,22 @@ export function LiveModeConsole({
   followRef.current = followCues;
   const hasMidiCues = items.some((item) => item.item_type !== "header");
   const midiAvailable = typeof navigator.requestMIDIAccess === "function";
-  const listenMidi = midiMenuOpened || (midiAvailable && hasMidiCues);
+  const listenMidi = midiAvailable && (midiMenuOpened || (midiPermissionGranted && hasMidiCues));
   flowTrack.current.currentId = live.session?.current_item_id || null;
   flowTrack.current.setItem = (itemId) => {
     void live.setCurrentItem(itemId);
   };
   flowTrack.current.publish = live.publishFlowCue;
+
+  useEffect(() => {
+    let active = true;
+    void readMidiPermission().then((state) => {
+      if (active && state === "granted") setMidiPermissionGranted(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!listenMidi) {
@@ -418,6 +432,7 @@ export function LiveModeConsole({
     }
     let active = true;
     const stop = startMidiCapture({
+      accessPromise: midiAccessPromise.current,
       inputId: midiSettings.inputId,
       onInputs: (inputs) => {
         if (active) setMidiInputs(inputs);
@@ -490,7 +505,7 @@ export function LiveModeConsole({
       active = false;
       stop();
     };
-  }, [listenMidi, midiSettings.inputId]);
+  }, [listenMidi, midiRetry, midiSettings.inputId]);
 
   useEffect(() => {
     const anchor = live.clockAnchor;
@@ -917,8 +932,15 @@ export function LiveModeConsole({
               midiMessage={midiMessage}
               lastMidi={lastMidi}
               onOpenMidi={() => {
+                if (!midiRequestStarted.current && (!midiAccessPromise.current || midiStatus === "error")) {
+                  midiRequestStarted.current = true;
+                  midiAccessPromise.current = openMidiAccess();
+                  setMidiRetry((attempt) => attempt + 1);
+                  queueMicrotask(() => {
+                    midiRequestStarted.current = false;
+                  });
+                }
                 setMidiMenuOpened(true);
-                void navigator.requestMIDIAccess?.();
               }}
               onMidiSettings={updateMidiSettings}
               onAssignMidi={assignMidi}

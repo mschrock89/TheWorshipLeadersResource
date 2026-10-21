@@ -12,7 +12,30 @@ type MidiCaptureHandlers = {
   onStatus: (status: "listening" | "error", message?: string) => void;
 };
 
-export function startMidiCapture(handlers: MidiCaptureHandlers) {
+/** Call this inside a click. Chrome ignores MIDI permission requests that start on page load. */
+export function openMidiAccess() {
+  if (!navigator.requestMIDIAccess) {
+    return Promise.reject(new DOMException("This browser cannot read MIDI.", "NotSupportedError"));
+  }
+  const request = navigator.requestMIDIAccess.bind(navigator);
+  return request({ software: true }).catch((error: unknown) => {
+    const name = error instanceof DOMException ? error.name : "";
+    // Another call from the rejection is no longer part of the click, so Chrome blocks it.
+    if (name === "SecurityError" || name === "NotAllowedError" || name === "InvalidStateError") throw error;
+    return request();
+  });
+}
+
+export function readMidiPermission() {
+  const permissions = navigator.permissions;
+  if (!permissions?.query) return Promise.resolve("unknown" as const);
+  return permissions
+    .query({ name: "midi" as PermissionName })
+    .then((status) => status.state)
+    .catch(() => "unknown" as const);
+}
+
+export function startMidiCapture(handlers: MidiCaptureHandlers & { accessPromise?: Promise<MIDIAccess> | null }) {
   let stopped = false;
   const ports = new Set<MIDIInput>();
 
@@ -63,8 +86,15 @@ export function startMidiCapture(handlers: MidiCaptureHandlers) {
   }
 
   // Mesh is a virtual port. Browsers hide those unless software ports are requested.
-  navigator.requestMIDIAccess({ software: true }).then(listen, () => {
-    navigator.requestMIDIAccess().then(listen, fail);
+  const pending = handlers.accessPromise ?? openMidiAccess();
+  pending.then(listen, (error: unknown) => {
+    if (stopped) return;
+    const name = error instanceof DOMException ? error.name : "";
+    if (name === "SecurityError" || name === "NotAllowedError") {
+      handlers.onStatus("error", "MIDI access was blocked. Allow MIDI for this site, then open MIDI again.");
+      return;
+    }
+    fail();
   });
 
   return () => {
