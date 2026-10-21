@@ -83,7 +83,9 @@ export function formatTrackOffset(ms: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export const SERVICE_AUDIO_ACCEPT = "audio/mpeg,audio/mp3,.mp3,audio/mp4,audio/x-m4a,audio/m4a,.m4a";
+// audio/* has to come first. Android and some desktop dialogs only honor the
+// first type, and audio/mpeg leaves .m4a files greyed out.
+export const SERVICE_AUDIO_ACCEPT = "audio/*,.m4a,.mp3,audio/mp4,audio/x-m4a,audio/mpeg,audio/aac";
 
 export type ServiceAudioFile = {
   extension: "mp3" | "m4a";
@@ -94,12 +96,13 @@ export type ServiceAudioFile = {
 export function serviceAudioFile(file: { name: string; type: string }): ServiceAudioFile | null {
   const name = file.name.toLowerCase();
   const type = file.type.toLowerCase();
-  if (name.endsWith(".m4a") || type === "audio/x-m4a" || type === "audio/m4a") {
+  if (name.endsWith(".m4a")) return { extension: "m4a", contentType: "audio/mp4" };
+  if (name.endsWith(".mp3")) return { extension: "mp3", contentType: "audio/mpeg" };
+  // Phones often label an .m4a as audio/mp4 or audio/aac and drop the extension.
+  if (type === "audio/x-m4a" || type === "audio/m4a" || type === "audio/mp4" || type === "audio/aac" || type === "audio/x-aac") {
     return { extension: "m4a", contentType: "audio/mp4" };
   }
-  if (name.endsWith(".mp3") || type === "audio/mpeg" || type === "audio/mp3") {
-    return { extension: "mp3", contentType: "audio/mpeg" };
-  }
+  if (type === "audio/mpeg" || type === "audio/mp3") return { extension: "mp3", contentType: "audio/mpeg" };
   return null;
 }
 

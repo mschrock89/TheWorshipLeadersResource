@@ -55,7 +55,11 @@ test("mp3 and m4a files become track titles", () => {
     extension: "m4a",
     contentType: "audio/mp4",
   });
-  assert.equal(serviceAudioFile({ name: "clip.mp4", type: "audio/mp4" }), null);
+  assert.deepEqual(serviceAudioFile({ name: "Voice Memo", type: "audio/mp4" }), {
+    extension: "m4a",
+    contentType: "audio/mp4",
+  });
+  assert.equal(serviceAudioFile({ name: "clip.mp4", type: "video/mp4" }), null);
   assert.equal(serviceAudioFile({ name: "notes.txt", type: "text/plain" }), null);
   assert.equal(trackTitleFromFileName("Pre Service/Great Are You Lord.mp3"), "Great Are You Lord");
   assert.equal(trackTitleFromFileName("Pre Service/Great Are You Lord.m4a"), "Great Are You Lord");
