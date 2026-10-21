@@ -19,7 +19,7 @@ import {
 import {
   findMidiCueItem,
   formatMidiCueLabel,
-  isPreServiceRestartCue,
+  midiCueMatches,
   notesWithMidiCue,
   parseNoteMidi,
   readMidiFollowSettings,
@@ -261,6 +261,7 @@ export function LiveModeConsole({
   const preRollItem = useMemo(() => findPreRollItem(items), [items]);
   const [preRollCueAt, setPreRollCueAt] = useState<number | null>(null);
   const [preServiceRestartAt, setPreServiceRestartAt] = useState<number | null>(null);
+  const [endServicePlayAt, setEndServicePlayAt] = useState<number | null>(null);
   const preRollItemIdRef = useRef<string | null>(null);
   preRollItemIdRef.current = preRollItem?.id ?? null;
   const markPreRollCueRef = useRef<(at: number) => void>(() => {});
@@ -433,13 +434,18 @@ export function LiveModeConsole({
           setMidiFit("channel");
           return;
         }
-        if (isPreServiceRestartCue(event, settings.channel)) {
+        const preServiceHit =
+          settings.preServiceCue != null && midiCueMatches(settings.preServiceCue, event, settings.channel);
+        const endServiceHit =
+          settings.endServiceCue != null && midiCueMatches(settings.endServiceCue, event, settings.channel);
+        if (preServiceHit) {
           setPreServiceRestartAt(Date.now());
           setPreRollCueAt(null);
         }
+        if (endServiceHit) setEndServicePlayAt(Date.now());
         const match = findMidiCueItem(flowItemsRef.current, event, settings.channel);
         if (!match) {
-          setMidiFit("none");
+          setMidiFit(preServiceHit || endServiceHit ? null : "none");
           return;
         }
         if (match.item_type === "song") {
@@ -793,6 +799,7 @@ export function LiveModeConsole({
               track={ambientTrack.track}
               isLoading={ambientTrack.isLoading}
               schemaMissing={ambientTrack.schemaMissing}
+              playAt={endServicePlayAt}
             />
           </>
         ) : null}

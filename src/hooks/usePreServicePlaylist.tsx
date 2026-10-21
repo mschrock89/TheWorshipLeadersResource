@@ -6,7 +6,7 @@ import { liveStationLabel, type LiveStation } from "@/lib/liveMode";
 import {
   PRE_SERVICE_BUCKET,
   fallbackPlaylistPeriod,
-  isMp3File,
+  serviceAudioFile,
   isPreServiceStation,
   playlistPeriodLabel,
   trackTitleFromFileName,
@@ -44,7 +44,7 @@ function readDurationMs(file: File) {
     const finish = (error?: Error, durationMs?: number) => {
       window.clearTimeout(timer);
       URL.revokeObjectURL(url);
-      if (error || !durationMs) reject(error || new Error("Could not read that MP3."));
+      if (error || !durationMs) reject(error || new Error("Could not read that audio file."));
       else resolve(durationMs);
     };
     const timer = window.setTimeout(() => finish(new Error(`Could not read ${file.name}.`)), 15_000);
@@ -177,11 +177,14 @@ export function usePreServicePlaylist({
   };
 
   const uploadFiles = async (files: File[]) => {
-    const mp3s = files.filter(isMp3File);
-    if (mp3s.length === 0) {
+    const audioFiles = files.flatMap((file) => {
+      const audio = serviceAudioFile(file);
+      return audio ? [{ file, ...audio }] : [];
+    });
+    if (audioFiles.length === 0) {
       toast({
-        title: "MP3s only",
-        description: "Choose MP3 files for the pre-service playlist.",
+        title: "MP3 or M4A only",
+        description: "Choose MP3 or M4A files for the pre-service playlist.",
         variant: "destructive",
       });
       return;
@@ -190,13 +193,13 @@ export function usePreServicePlaylist({
     try {
       const playlistId = await ensurePlaylistId();
       let order = (tracks.at(-1)?.sortOrder ?? -1) + 1;
-      for (let index = 0; index < mp3s.length; index += 1) {
-        const file = mp3s[index];
-        setUploadLabel(`Uploading ${index + 1} of ${mp3s.length}`);
+      for (let index = 0; index < audioFiles.length; index += 1) {
+        const { file, extension, contentType } = audioFiles[index];
+        setUploadLabel(`Uploading ${index + 1} of ${audioFiles.length}`);
         const fileDuration = await readDurationMs(file);
-        const storagePath = `${campusId}/${playlistStation}/${period.year}/t${period.trimester}/${crypto.randomUUID()}.mp3`;
+        const storagePath = `${campusId}/${playlistStation}/${period.year}/t${period.trimester}/${crypto.randomUUID()}.${extension}`;
         const { error: uploadError } = await supabase.storage.from(PRE_SERVICE_BUCKET).upload(storagePath, file, {
-          contentType: "audio/mpeg",
+          contentType,
           cacheControl: "31536000",
           upsert: false,
         });
@@ -220,7 +223,7 @@ export function usePreServicePlaylist({
         description: `${liveStationLabel(station)} · ${playlistPeriodLabel(period.year, period.trimester)}`,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not save those MP3s.";
+      const message = error instanceof Error ? error.message : "Could not save those audio files.";
       toast({ title: "Upload failed", description: message, variant: "destructive" });
     } finally {
       setUploading(false);

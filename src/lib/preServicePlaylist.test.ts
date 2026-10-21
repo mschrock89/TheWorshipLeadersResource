@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   fallbackPlaylistPeriod,
   formatTrackOffset,
-  isMp3File,
+  serviceAudioFile,
   playlistPlaybackPlan,
   trackTitleFromFileName,
 } from "./preServicePlaylist.ts";
@@ -42,9 +42,22 @@ test("trimester fallback splits the year into three saved periods", () => {
   assert.deepEqual(fallbackPlaylistPeriod("2026-10-19"), { year: 2026, trimester: 3 });
 });
 
-test("mp3 names become track titles", () => {
-  assert.equal(isMp3File({ name: "Oceans.mp3", type: "" }), true);
-  assert.equal(isMp3File({ name: "notes.txt", type: "text/plain" }), false);
+test("mp3 and m4a files become track titles", () => {
+  assert.deepEqual(serviceAudioFile({ name: "Oceans.mp3", type: "" }), {
+    extension: "mp3",
+    contentType: "audio/mpeg",
+  });
+  assert.deepEqual(serviceAudioFile({ name: "Oceans.m4a", type: "audio/mp4" }), {
+    extension: "m4a",
+    contentType: "audio/mp4",
+  });
+  assert.deepEqual(serviceAudioFile({ name: "Oceans.M4A", type: "" }), {
+    extension: "m4a",
+    contentType: "audio/mp4",
+  });
+  assert.equal(serviceAudioFile({ name: "clip.mp4", type: "audio/mp4" }), null);
+  assert.equal(serviceAudioFile({ name: "notes.txt", type: "text/plain" }), null);
   assert.equal(trackTitleFromFileName("Pre Service/Great Are You Lord.mp3"), "Great Are You Lord");
+  assert.equal(trackTitleFromFileName("Pre Service/Great Are You Lord.m4a"), "Great Are You Lord");
   assert.equal(formatTrackOffset(72_400), "1:12");
 });

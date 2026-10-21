@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { liveStationLabel, type LiveStation } from "@/lib/liveMode";
 import {
-  isMp3File,
+  serviceAudioFile,
   isPreServiceStation,
   trackTitleFromFileName,
   type PreServiceStation,
@@ -35,7 +35,7 @@ function readDurationMs(file: File) {
     const finish = (error?: Error, durationMs?: number) => {
       window.clearTimeout(timer);
       URL.revokeObjectURL(url);
-      if (error || !durationMs) reject(error || new Error("Could not read that MP3."));
+      if (error || !durationMs) reject(error || new Error("Could not read that audio file."));
       else resolve(durationMs);
     };
     const timer = window.setTimeout(() => finish(new Error(`Could not read ${file.name}.`)), 15_000);
@@ -97,10 +97,11 @@ export function useEndServiceAmbientTrack({
 
   const uploadFile = async (file: File) => {
     if (!ambientStation) return;
-    if (!isMp3File(file)) {
+    const audio = serviceAudioFile(file);
+    if (!audio) {
       toast({
-        title: "MP3s only",
-        description: "Choose an MP3 for the end-of-service ambient track.",
+        title: "MP3 or M4A only",
+        description: "Choose an MP3 or M4A for the end-of-service ambient track.",
         variant: "destructive",
       });
       return;
@@ -115,11 +116,11 @@ export function useEndServiceAmbientTrack({
       const userId = userData.user?.id;
       if (!userId) throw new Error("Sign in again before uploading.");
 
-      newPath = `${campusId}/${ambientStation}/${crypto.randomUUID()}.mp3`;
+      newPath = `${campusId}/${ambientStation}/${crypto.randomUUID()}.${audio.extension}`;
       const { error: uploadError } = await supabase.storage
         .from(END_SERVICE_AUDIO_BUCKET)
         .upload(newPath, file, {
-          contentType: "audio/mpeg",
+          contentType: audio.contentType,
           cacheControl: "31536000",
           upsert: false,
         });
@@ -149,7 +150,7 @@ export function useEndServiceAmbientTrack({
       if (newPath) await supabase.storage.from(END_SERVICE_AUDIO_BUCKET).remove([newPath]);
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Could not save that MP3.",
+        description: error instanceof Error ? error.message : "Could not save that audio file.",
         variant: "destructive",
       });
     } finally {

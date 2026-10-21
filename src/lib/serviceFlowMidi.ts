@@ -12,6 +12,10 @@ export type MidiNoteEvent = {
 export type MidiFollowSettings = {
   channel: number;
   inputId: string | null;
+  /** Note that starts the pre-service playlist. Null waits until a note is chosen. */
+  preServiceCue: FlowMidiCue | null;
+  /** Note that starts the end-of-service prayer track. */
+  endServiceCue: FlowMidiCue | null;
 };
 
 export type PlaybackGate = {
@@ -148,9 +152,41 @@ export function defaultLiveMidiCue(playableIndex: number): FlowMidiCue | null {
   return { note: LIVE_DEFAULT_MIDI_NOTE, velocity };
 }
 
+/** Saved on this screen until someone picks another note. Matches the old G1 value 1 restart. */
+export const DEFAULT_PRE_SERVICE_MIDI_CUE: FlowMidiCue = {
+  note: LIVE_DEFAULT_MIDI_NOTE,
+  velocity: 1,
+};
+
 /** G1 value 1 returns Live to the first pre-service line after a service. */
 export function isPreServiceRestartCue(event: MidiNoteEvent, channel: number) {
-  return midiCueMatches({ note: LIVE_DEFAULT_MIDI_NOTE, velocity: 1 }, event, channel);
+  return midiCueMatches(DEFAULT_PRE_SERVICE_MIDI_CUE, event, channel);
+}
+
+function storedMidiCue(value: unknown): FlowMidiCue | null {
+  if (!value || typeof value !== "object") return null;
+  const note = Number((value as { note?: unknown }).note);
+  if (!Number.isInteger(note) || note < 0 || note > 127) return null;
+  const velocity = (value as { velocity?: unknown }).velocity;
+  if (velocity == null) return { note, velocity: null };
+  const parsed = Number(velocity);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 127) return { note, velocity: null };
+  return { note, velocity: parsed };
+}
+
+export function normalizeMidiFollowSettings(raw: unknown): MidiFollowSettings {
+  const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const channel = Number(record.channel);
+  return {
+    channel: channel >= 1 && channel <= 16 ? channel : 1,
+    inputId: typeof record.inputId === "string" && record.inputId ? record.inputId : null,
+    preServiceCue: Object.prototype.hasOwnProperty.call(record, "preServiceCue")
+      ? storedMidiCue(record.preServiceCue)
+      : { ...DEFAULT_PRE_SERVICE_MIDI_CUE },
+    endServiceCue: Object.prototype.hasOwnProperty.call(record, "endServiceCue")
+      ? storedMidiCue(record.endServiceCue)
+      : null,
+  };
 }
 
 export function effectiveMidiCue(notes: string | null | undefined, playableIndex: number): FlowMidiCue | null {
@@ -191,16 +227,11 @@ export function findMidiCueItem<T extends { id: string; item_type: string; notes
 }
 
 export function readMidiFollowSettings(): MidiFollowSettings {
-  if (typeof window === "undefined") return { channel: 1, inputId: null };
+  if (typeof window === "undefined") return normalizeMidiFollowSettings(null);
   try {
-    const raw = JSON.parse(window.localStorage.getItem(MIDI_SETTINGS_KEY) || "");
-    const channel = Number(raw?.channel);
-    return {
-      channel: channel >= 1 && channel <= 16 ? channel : 1,
-      inputId: typeof raw?.inputId === "string" && raw.inputId ? raw.inputId : null,
-    };
+    return normalizeMidiFollowSettings(JSON.parse(window.localStorage.getItem(MIDI_SETTINGS_KEY) || "null"));
   } catch {
-    return { channel: 1, inputId: null };
+    return normalizeMidiFollowSettings(null);
   }
 }
 

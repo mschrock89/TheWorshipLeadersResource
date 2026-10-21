@@ -18,10 +18,12 @@ export function EndServiceAmbientPlayer({
   track,
   isLoading,
   schemaMissing,
+  playAt = null,
 }: {
   track: EndServiceAmbientTrack | null;
   isLoading: boolean;
   schemaMissing: boolean;
+  playAt?: number | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -29,6 +31,7 @@ export function EndServiceAmbientPlayer({
   const [volume, setVolume] = useState(readVolume);
   const trackId = track?.id;
   const trackUrl = track?.url;
+  const handledPlay = useRef<number | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -45,6 +48,16 @@ export function EndServiceAmbientPlayer({
       audio.load();
     }
   }, [trackId, trackUrl]);
+
+  useEffect(() => {
+    if (playAt == null || playAt === handledPlay.current) return;
+    const audio = audioRef.current;
+    if (!audio || !trackUrl) return;
+    handledPlay.current = playAt;
+    audio.currentTime = 0;
+    setElapsedMs(0);
+    void audio.play().catch(() => setPlaying(false));
+  }, [playAt, trackUrl]);
 
   const toggle = async () => {
     const audio = audioRef.current;

@@ -7,6 +7,7 @@ import {
   formatStoredMidiCue,
   gatePlaybackSong,
   isPreServiceRestartCue,
+  normalizeMidiFollowSettings,
   playbackHoldForMidiCue,
   midiCueMatches,
   midiNoteName,
@@ -110,6 +111,29 @@ test("maps G1 values 1 through 12 onto the service flow in order", () => {
   assert.equal(isPreServiceRestartCue({ channel: 1, note: 43, velocity: 1 }, 1), true);
   assert.equal(isPreServiceRestartCue({ channel: 1, note: 43, velocity: 2 }, 1), false);
   assert.equal(isPreServiceRestartCue({ channel: 2, note: 43, velocity: 1 }, 1), false);
+});
+
+test("playlist MIDI notes stay with this screen and can be cleared", () => {
+  const saved = normalizeMidiFollowSettings({ channel: 2, inputId: "bus-1" });
+  assert.deepEqual(saved.preServiceCue, { note: 43, velocity: 1 });
+  assert.equal(saved.endServiceCue, null);
+
+  const chosen = normalizeMidiFollowSettings({
+    channel: 2,
+    inputId: "bus-1",
+    preServiceCue: { note: 60, velocity: 12 },
+    endServiceCue: { note: 62, velocity: null },
+  });
+  assert.equal(chosen.channel, 2);
+  assert.deepEqual(chosen.preServiceCue, { note: 60, velocity: 12 });
+  assert.deepEqual(chosen.endServiceCue, { note: 62, velocity: null });
+
+  const cleared = normalizeMidiFollowSettings({
+    preServiceCue: null,
+    endServiceCue: { note: 200, velocity: 1 },
+  });
+  assert.equal(cleared.preServiceCue, null);
+  assert.equal(cleared.endServiceCue, null);
 });
 
 test("keeps a MIDI cue while Playback is still on the same song", () => {

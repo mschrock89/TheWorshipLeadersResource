@@ -26,6 +26,7 @@ import {
   fallbackPlaylistPeriod,
   formatTrackOffset,
   playlistPeriodLabel,
+  SERVICE_AUDIO_ACCEPT,
   type PreServiceStation,
 } from "@/lib/preServicePlaylist";
 
@@ -223,7 +224,7 @@ export default function PreServicePlaylistsAdmin() {
               <UploadCloud className="mb-3 h-8 w-8 text-primary" />
             )}
             <span className="font-semibold">
-              {playlist.uploadLabel || "Drop MP3s here or choose files"}
+              {playlist.uploadLabel || "Drop MP3 or M4A files here or choose files"}
             </span>
             <span className="mt-1 text-sm text-muted-foreground">
               Select multiple songs to add them in file order.
@@ -233,7 +234,7 @@ export default function PreServicePlaylistsAdmin() {
         <input
           ref={fileRef}
           type="file"
-          accept="audio/mpeg,.mp3"
+          accept={SERVICE_AUDIO_ACCEPT}
           multiple
           className="hidden"
           onChange={(event) => {
@@ -269,7 +270,7 @@ export default function PreServicePlaylistsAdmin() {
           <div className="mt-4 rounded-lg bg-muted/40 px-4 py-10 text-center">
             <Music2 className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 font-medium">No songs in this playlist</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload MP3s above to create it.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload MP3 or M4A files above to create it.</p>
           </div>
         ) : (
           <ol className="mt-4 divide-y divide-border rounded-lg border border-border">
@@ -360,7 +361,7 @@ export default function PreServicePlaylistsAdmin() {
               <p className="text-xs text-muted-foreground">
                 {ambient.track
                   ? formatTrackOffset(ambient.track.durationMs)
-                  : "Upload one MP3 for this campus and output."}
+                  : "Upload one MP3 or M4A for this campus and output."}
               </p>
             </div>
             {ambient.track ? (
@@ -388,12 +389,12 @@ export default function PreServicePlaylistsAdmin() {
               ) : (
                 <UploadCloud className="h-4 w-4" />
               )}
-              {ambient.track ? "Replace MP3" : "Upload MP3"}
+              {ambient.track ? "Replace audio" : "Upload audio"}
             </Button>
             <input
               ref={ambientFileRef}
               type="file"
-              accept="audio/mpeg,.mp3"
+              accept={SERVICE_AUDIO_ACCEPT}
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];

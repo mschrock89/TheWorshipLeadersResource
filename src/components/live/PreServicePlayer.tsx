@@ -9,6 +9,7 @@ import {
   formatTrackOffset,
   playlistPeriodLabel,
   playlistPlaybackPlan,
+  SERVICE_AUDIO_ACCEPT,
 } from "@/lib/preServicePlaylist";
 import type { PreServiceTrack } from "@/hooks/usePreServicePlaylist";
 
@@ -591,12 +592,12 @@ export function PreServicePlayer({
               onClick={() => fileRef.current?.click()}
             >
               {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              {uploadLabel || "Upload MP3s"}
+              {uploadLabel || "Upload MP3 or M4A"}
             </Button>
             <input
               ref={fileRef}
               type="file"
-              accept="audio/mpeg,.mp3"
+              accept={SERVICE_AUDIO_ACCEPT}
               multiple
               className="hidden"
               onChange={(event) => {
@@ -695,7 +696,7 @@ function describePlayback({
   currentTitle: string | null;
   manualPlayback: boolean;
 }) {
-  if (trackCount === 0) return "Upload MP3s to replace the iPod.";
+  if (trackCount === 0) return "Upload MP3 or M4A files to replace the iPod.";
   if (phase === "fading") {
     const endLabel = preRollLabel || (preRollAtMs == null ? null : clockLabel(preRollAtMs));
     return endLabel ? `Fading out for Pre-Roll at ${endLabel}.` : "Fading out for Pre-Roll.";
