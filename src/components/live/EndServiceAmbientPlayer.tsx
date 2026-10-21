@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { EndServiceAmbientTrack } from "@/hooks/useEndServiceAmbientTrack";
-import { formatTrackOffset } from "@/lib/preServicePlaylist";
+import { formatTrackOffset, PRE_SERVICE_FADE_MS } from "@/lib/preServicePlaylist";
 
 const VOLUME_KEY = "wlr-end-service-ambient-volume";
 
@@ -19,23 +19,46 @@ export function EndServiceAmbientPlayer({
   isLoading,
   schemaMissing,
   playAt = null,
+  fadeAt = null,
 }: {
   track: EndServiceAmbientTrack | null;
   isLoading: boolean;
   schemaMissing: boolean;
   playAt?: number | null;
+  fadeAt?: number | null;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [volume, setVolume] = useState(readVolume);
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
   const trackId = track?.id;
   const trackUrl = track?.url;
   const handledPlay = useRef<number | null>(null);
+  const handledFade = useRef<number | null>(null);
+  const fadingRef = useRef(false);
+  const fadeFrame = useRef(0);
+
+  const restoreVolume = () => {
+    window.cancelAnimationFrame(fadeFrame.current);
+    fadingRef.current = false;
+    if (audioRef.current) audioRef.current.volume = volumeRef.current;
+  };
+
+  useEffect(() => {
+    if (fadingRef.current) return;
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
+  useEffect(() => {
+    return () => window.cancelAnimationFrame(fadeFrame.current);
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    restoreVolume();
     audio.pause();
     audio.currentTime = 0;
     setPlaying(false);
@@ -54,18 +77,44 @@ export function EndServiceAmbientPlayer({
     const audio = audioRef.current;
     if (!audio || !trackUrl) return;
     handledPlay.current = playAt;
+    restoreVolume();
     audio.currentTime = 0;
     setElapsedMs(0);
     void audio.play().catch(() => setPlaying(false));
   }, [playAt, trackUrl]);
 
+  useEffect(() => {
+    if (fadeAt == null || fadeAt === handledFade.current) return;
+    handledFade.current = fadeAt;
+    const audio = audioRef.current;
+    if (!audio || audio.paused) return;
+    window.cancelAnimationFrame(fadeFrame.current);
+    fadingRef.current = true;
+    const from = audio.volume;
+    const started = performance.now();
+    const step = (frame: number) => {
+      const amount = Math.min(1, (frame - started) / PRE_SERVICE_FADE_MS);
+      audio.volume = from * (1 - amount);
+      if (amount < 1) {
+        fadeFrame.current = window.requestAnimationFrame(step);
+        return;
+      }
+      audio.pause();
+      audio.volume = volumeRef.current;
+      fadingRef.current = false;
+    };
+    fadeFrame.current = window.requestAnimationFrame(step);
+  }, [fadeAt]);
+
   const toggle = async () => {
     const audio = audioRef.current;
     if (!audio || !track) return;
     if (!audio.paused) {
+      restoreVolume();
       audio.pause();
       return;
     }
+    restoreVolume();
     try {
       await audio.play();
     } catch {
@@ -76,6 +125,7 @@ export function EndServiceAmbientPlayer({
   const restart = () => {
     const audio = audioRef.current;
     if (!audio || !track) return;
+    restoreVolume();
     audio.currentTime = 0;
     setElapsedMs(0);
     void audio.play().catch(() => setPlaying(false));
@@ -97,7 +147,6 @@ export function EndServiceAmbientPlayer({
         ref={audioRef}
         preload="metadata"
         playsInline
-        volume={volume}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={(event) => setElapsedMs(Math.round(event.currentTarget.currentTime * 1000))}

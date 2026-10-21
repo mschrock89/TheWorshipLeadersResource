@@ -262,6 +262,7 @@ export function LiveModeConsole({
   const [preRollCueAt, setPreRollCueAt] = useState<number | null>(null);
   const [preServiceRestartAt, setPreServiceRestartAt] = useState<number | null>(null);
   const [endServicePlayAt, setEndServicePlayAt] = useState<number | null>(null);
+  const [ambientFadeAt, setAmbientFadeAt] = useState<number | null>(null);
   const preRollItemIdRef = useRef<string | null>(null);
   preRollItemIdRef.current = preRollItem?.id ?? null;
   const markPreRollCueRef = useRef<(at: number) => void>(() => {});
@@ -439,8 +440,10 @@ export function LiveModeConsole({
         const endServiceHit =
           settings.endServiceCue != null && midiCueMatches(settings.endServiceCue, event, settings.channel);
         if (preServiceHit) {
-          setPreServiceRestartAt(Date.now());
+          const at = Date.now();
+          setPreServiceRestartAt(at);
           setPreRollCueAt(null);
+          setAmbientFadeAt(at);
         }
         if (endServiceHit) setEndServicePlayAt(Date.now());
         const match = findMidiCueItem(flowItemsRef.current, event, settings.channel);
@@ -800,6 +803,7 @@ export function LiveModeConsole({
               isLoading={ambientTrack.isLoading}
               schemaMissing={ambientTrack.schemaMissing}
               playAt={endServicePlayAt}
+              fadeAt={ambientFadeAt}
             />
           </>
         ) : null}

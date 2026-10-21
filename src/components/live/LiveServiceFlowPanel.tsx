@@ -243,7 +243,7 @@ export function LiveServiceFlowPanel({
               <p className="text-sm font-semibold">MIDI follow</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Playback sends G1. Value 1 is the first line, then 2, 3, and on through 12. A saved note replaces that.
-                Pre-Service and End of Service Prayer start on the notes chosen below.
+                Pre-Service and End of Service Prayer start on the notes chosen below. The Pre-Service note fades the prayer track out over 1.5 seconds.
               </p>
             </div>
             <div className="grid shrink-0 grid-cols-2 gap-2 px-3 py-2">
