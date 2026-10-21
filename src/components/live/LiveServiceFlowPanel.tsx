@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBottomScreenInset } from "@/hooks/useBottomScreenInset";
 import { cn } from "@/lib/cn";
 import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatDuration } from "@/components/service-flow/DurationInput";
@@ -63,6 +64,60 @@ function cuesEqual(left: FlowMidiCue | null, right: FlowMidiCue | null) {
   return left.note === right.note && left.velocity === right.velocity;
 }
 
+function MidiAssignmentRow({
+  title,
+  cue,
+  onChange,
+}: {
+  title: string;
+  cue: FlowMidiCue | null;
+  onChange: (cue: FlowMidiCue | null) => void;
+}) {
+  return (
+    <li className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.75rem] items-center gap-2 px-3 py-1">
+      <span className="truncate text-sm font-medium">{title}</span>
+      <select
+        aria-label={`${title} MIDI note`}
+        value={cue ? String(cue.note) : ""}
+        onChange={(event) => {
+          const nextNote = event.target.value;
+          if (!nextNote) {
+            onChange(null);
+            return;
+          }
+          const velocity = cue ? (cue.velocity == null ? "" : String(cue.velocity)) : "127";
+          onChange(cueFromMenu(nextNote, velocity));
+        }}
+        className="h-8 rounded-md border border-input bg-background px-1.5 text-sm"
+      >
+        <option value="">None</option>
+        {MIDI_NOTE_OPTIONS.map((option) => (
+          <option key={option.note} value={option.note}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={`${title} MIDI value`}
+        value={cue?.velocity == null ? "" : String(cue.velocity)}
+        disabled={!cue}
+        onChange={(event) => {
+          if (!cue) return;
+          onChange(cueFromMenu(String(cue.note), event.target.value));
+        }}
+        className="h-8 rounded-md border border-input bg-background px-1.5 text-sm disabled:opacity-50"
+      >
+        <option value="">Any</option>
+        {Array.from({ length: 127 }, (_, index) => index + 1).map((velocity) => (
+          <option key={velocity} value={velocity}>
+            {velocity}
+          </option>
+        ))}
+      </select>
+    </li>
+  );
+}
+
 function cueFromMenu(note: string, velocity: string): FlowMidiCue | null {
   if (!note) return null;
   const parsedNote = Number(note);
@@ -94,16 +149,19 @@ export function LiveServiceFlowPanel({
   onSelect,
 }: LiveServiceFlowPanelProps) {
   const currentRef = useRef<HTMLButtonElement | null>(null);
+  const { inset: bottomInset, viewportHeight } = useBottomScreenInset();
   const [pendingCues, setPendingCues] = useState<Map<string, FlowMidiCue | null>>(new Map());
   const playable = useMemo(() => items.filter((item) => item.item_type !== "header"), [items]);
   const midiArmed = useMemo(
     () =>
+      midiSettings.preServiceCue != null ||
+      midiSettings.endServiceCue != null ||
       playable.some((item, playableIndex) => {
         const pending = pendingCues.get(item.id);
         const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
         return cue != null;
       }),
-    [pendingCues, playable],
+    [midiSettings.endServiceCue, midiSettings.preServiceCue, pendingCues, playable],
   );
 
   useEffect(() => {
@@ -171,14 +229,24 @@ export function LiveServiceFlowPanel({
           >
             MIDI
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-[min(26rem,calc(100vw-1.5rem))] p-0">
-            <div className="border-b border-border px-3 py-2">
+          <PopoverContent
+            align="end"
+            collisionPadding={{ top: 12, right: 12, bottom: bottomInset + 12, left: 12 }}
+            className="flex w-[min(26rem,calc(100vw-1.5rem))] flex-col overflow-hidden p-0"
+            style={
+              viewportHeight > 0
+                ? { maxHeight: Math.max(240, viewportHeight - bottomInset - 24) }
+                : undefined
+            }
+          >
+            <div className="shrink-0 border-b border-border px-3 py-2">
               <p className="text-sm font-semibold">MIDI follow</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Playback sends G1. Value 1 is the first line, then 2, 3, and on through 12. A saved note replaces that.
+                Pre-Service and End of Service Prayer start on the notes chosen below.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 px-3 py-2">
+            <div className="grid shrink-0 grid-cols-2 gap-2 px-3 py-2">
               <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Channel
                 <select
@@ -217,7 +285,7 @@ export function LiveServiceFlowPanel({
             </div>
             <p
               className={cn(
-                "px-3 pb-2 text-xs",
+                "shrink-0 px-3 pb-2 text-xs",
                 midiStatus === "error" ? "text-destructive" : "text-muted-foreground",
               )}
             >
@@ -231,61 +299,33 @@ export function LiveServiceFlowPanel({
                     ? "Waiting for a note"
                     : "Waiting for this browser to hear a note"}
             </p>
-            <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.75rem] gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_5.5rem_4.75rem] gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span>Line</span>
               <span>Note</span>
               <span>Value</span>
             </div>
-            <ul className="max-h-80 overflow-y-auto pb-2">
+            <ul className="max-h-80 min-h-0 shrink overflow-y-auto overscroll-contain pb-3">
+              <MidiAssignmentRow
+                title="Pre-Service Playlist"
+                cue={midiSettings.preServiceCue}
+                onChange={(cue) => onMidiSettings({ ...midiSettings, preServiceCue: cue })}
+              />
+              <MidiAssignmentRow
+                title="End of Service Prayer"
+                cue={midiSettings.endServiceCue}
+                onChange={(cue) => onMidiSettings({ ...midiSettings, endServiceCue: cue })}
+              />
               {playable.map((item, playableIndex) => {
                 const pending = pendingCues.get(item.id);
                 const cue = pending === undefined ? effectiveMidiCue(item.notes, playableIndex) : pending;
                 const title = itemTitle(item, titles);
                 return (
-                  <li
+                  <MidiAssignmentRow
                     key={item.id}
-                    className="grid grid-cols-[minmax(0,1fr)_5.5rem_4.75rem] items-center gap-2 px-3 py-1"
-                  >
-                    <span className="truncate text-sm font-medium">{title}</span>
-                    <select
-                      aria-label={`${title} MIDI note`}
-                      value={cue ? String(cue.note) : ""}
-                      onChange={(event) => {
-                        const nextNote = event.target.value;
-                        if (!nextNote) {
-                          assignCue(item.id, null);
-                          return;
-                        }
-                        const velocity = cue ? (cue.velocity == null ? "" : String(cue.velocity)) : "127";
-                        assignCue(item.id, cueFromMenu(nextNote, velocity));
-                      }}
-                      className="h-8 rounded-md border border-input bg-background px-1.5 text-sm"
-                    >
-                      <option value="">None</option>
-                      {MIDI_NOTE_OPTIONS.map((option) => (
-                        <option key={option.note} value={option.note}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={`${title} MIDI value`}
-                      value={cue?.velocity == null ? "" : String(cue.velocity)}
-                      disabled={!cue}
-                      onChange={(event) => {
-                        if (!cue) return;
-                        assignCue(item.id, cueFromMenu(String(cue.note), event.target.value));
-                      }}
-                      className="h-8 rounded-md border border-input bg-background px-1.5 text-sm disabled:opacity-50"
-                    >
-                      <option value="">Any</option>
-                      {Array.from({ length: 127 }, (_, index) => index + 1).map((velocity) => (
-                        <option key={velocity} value={velocity}>
-                          {velocity}
-                        </option>
-                      ))}
-                    </select>
-                  </li>
+                    title={title}
+                    cue={cue}
+                    onChange={(next) => assignCue(item.id, next)}
+                  />
                 );
               })}
             </ul>
