@@ -220,10 +220,6 @@ export function LiveServiceFlowPanel({
         >
           <PopoverTrigger
             aria-label="MIDI notes"
-            onPointerDown={() => onOpenMidi?.()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") onOpenMidi?.();
-            }}
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
               midiArmed
