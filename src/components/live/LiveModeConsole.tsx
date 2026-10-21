@@ -28,7 +28,7 @@ import {
   type MidiFollowSettings,
   type MidiNoteEvent,
 } from "@/lib/serviceFlowMidi";
-import { startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
+import { requestSoftwareMidiAccess, startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useLiveSession } from "@/hooks/useLiveSession";
@@ -917,6 +917,7 @@ export function LiveModeConsole({
               midiMessage={midiMessage}
               lastMidi={lastMidi}
               onOpenMidi={() => {
+                requestSoftwareMidiAccess();
                 setMidiMenuOpened(true);
               }}
               onMidiSettings={updateMidiSettings}
