@@ -112,6 +112,7 @@ export function useTeamSchedule(
   options?: {
     startDate?: string;
     endDate?: string;
+    enabled?: boolean;
   },
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
@@ -122,6 +123,7 @@ export function useTeamSchedule(
 
   return useQuery({
     queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(","), startDate, endDate],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       let query = supabase
         .from("team_schedule")

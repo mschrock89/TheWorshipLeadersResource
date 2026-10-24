@@ -17,6 +17,9 @@ import {
 import { useTeamSchedule, useTeamMembers, useWorshipTeams, TeamScheduleEntry } from "@/hooks/useTeamSchedule";
 import { useAuth } from "@/hooks/useAuth";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
+import { useUserCampuses } from "@/hooks/useCampuses";
+import { useRotationPeriodsForCampus } from "@/hooks/useTeamBuilder";
+import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 
 
 const teamIcons: Record<string, React.ElementType> = {
@@ -332,9 +335,30 @@ function VolunteerScheduleView() {
   );
 }
 
+function formatRotationRange(startDate?: string | null, endDate?: string | null) {
+  if (!startDate || !endDate) return null;
+  const start = parseISO(startDate);
+  const end = parseISO(endDate);
+  const sameYear = start.getFullYear() === end.getFullYear();
+  return `${format(start, sameYear ? "MMMM" : "MMMM yyyy")} - ${format(end, sameYear ? "MMMM" : "MMMM yyyy")}`;
+}
+
 export default function Schedule() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { canManageTeam } = useAuth();
+  const { user, canManageTeam } = useAuth();
+  const campusContext = useCampusSelectionOptional();
+  const { data: userCampuses = [] } = useUserCampuses(user?.id);
+  const campusIdForPeriod = useMemo(() => {
+    const selectedCampusId = campusContext?.selectedCampusId;
+    if (selectedCampusId && selectedCampusId !== "network-wide") return selectedCampusId;
+    return userCampuses.find((entry) => entry.campus_id)?.campus_id ?? null;
+  }, [campusContext?.selectedCampusId, userCampuses]);
+  const { data: periods = [], isLoading: periodsLoading } = useRotationPeriodsForCampus(campusIdForPeriod);
+  const activePeriod = useMemo(
+    () => periods.find((period) => period.is_active) ?? null,
+    [periods],
+  );
+  const activePeriodRange = formatRotationRange(activePeriod?.start_date, activePeriod?.end_date);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -344,7 +368,9 @@ export default function Schedule() {
   const {
     data: schedule,
     isLoading: scheduleLoading
-  } = useTeamSchedule("T1 2026");
+  } = useTeamSchedule(activePeriod?.name, undefined, undefined, {
+    enabled: Boolean(activePeriod?.name),
+  });
   const {
     data: allMembers,
     isLoading: membersLoading
@@ -407,7 +433,7 @@ export default function Schedule() {
     if (!teamId) return [];
     return allMembers?.filter(m => m.team_id === teamId) || [];
   };
-  const isLoading = scheduleLoading || membersLoading;
+  const isLoading = periodsLoading || scheduleLoading || membersLoading;
 
   // Show simplified view for volunteers (users who cannot manage team)
   // Show simplified view for users who cannot manage team (volunteers)
@@ -435,14 +461,20 @@ export default function Schedule() {
 
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold">{showVolunteerView ? "My Schedule" : "Team Schedule"}</h1>
-          {!showVolunteerView && <p className="text-muted-foreground">T1 2026 Rotation • January - April</p>}
+          {!showVolunteerView && activePeriod && (
+            <p className="text-muted-foreground">
+              {activePeriod.name} Rotation{activePeriodRange ? ` • ${activePeriodRange}` : ""}
+            </p>
+          )}
         </div>
 
         {showVolunteerView ? (
           <VolunteerScheduleView />
         ) : (
           <>
-            {isLoading ? <div className="flex items-center justify-center py-12">
+            {!isLoading && !activePeriod ? (
+              <p className="text-muted-foreground">No active trimester is available for this campus.</p>
+            ) : isLoading ? <div className="flex items-center justify-center py-12">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
               </div> : <Tabs defaultValue={months[0]?.month} className="w-full">
                 <TabsList className="mb-4 w-full justify-start overflow-x-auto">
