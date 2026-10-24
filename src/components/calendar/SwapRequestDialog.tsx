@@ -20,10 +20,10 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Users, User, ArrowLeftRight, Loader2, UserPlus } from "lucide-react";
+import { CalendarIcon, Users, User, ArrowLeftRight, Loader2 } from "lucide-react";
 import { format, addDays, subDays } from "date-fns";
 import { cn, parseLocalDate, isWeekend, getWeekendPairDate, formatDateForDB, formatPositionLabel } from "@/lib/utils";
-import { useCreateSwapRequest, usePositionMembersForDate, usePositionMembersForCover, useUserScheduledDates } from "@/hooks/useSwapRequests";
+import { useCreateSwapRequest, usePositionMembersForDate, useUserScheduledDates } from "@/hooks/useSwapRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { useProfile } from "@/hooks/useProfiles";
@@ -32,7 +32,6 @@ import { toast } from "sonner";
 interface SwapRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  requestMode: "swap" | "fill_in";
   originalDate: Date;
   position: string;
   teamId: string;
@@ -50,7 +49,6 @@ type Step = "type" | "details";
 export function SwapRequestDialog({
   open,
   onOpenChange,
-  requestMode,
   originalDate,
   position,
   teamId,
@@ -95,26 +93,11 @@ export function SwapRequestDialog({
     isVocalistSwap ? userGender : undefined
   );
   
-  // For COVER/FILL-IN requests: use campus-based query (no swap date needed)
-  const { data: coverPositionMembers, isLoading: loadingCoverMembers } = usePositionMembersForCover(
-    normalizedSwapPosition,
-    user?.id,
-    effectiveCampusId || undefined,
-    rotationPeriodId || undefined,
-    ministryType || undefined,
-    isVocalistSwap ? userGender : undefined
-  );
-  
-  // Use the correct members list based on request mode
   const positionMembers = useMemo(
-    () => requestMode === "fill_in"
-      ? coverPositionMembers
-      : swapDate
-        ? swapPositionMembers
-        : [],
-    [coverPositionMembers, requestMode, swapDate, swapPositionMembers],
+    () => (swapDate ? swapPositionMembers : []),
+    [swapDate, swapPositionMembers],
   );
-  const loadingMembers = requestMode === "fill_in" ? loadingCoverMembers : loadingSwapMembers;
+  const loadingMembers = loadingSwapMembers;
   const sortedPositionMembers = useMemo(() => {
     const deduped = (positionMembers || [])
       .filter((member) => member.user_id)
@@ -173,19 +156,19 @@ export function SwapRequestDialog({
     try {
       await createSwapRequest.mutateAsync({
         original_date: format(originalDate, "yyyy-MM-dd"),
-        swap_date: requestMode === "swap" && swapType === "direct" && swapDate ? format(swapDate, "yyyy-MM-dd") : null,
+        swap_date: swapType === "direct" && swapDate ? format(swapDate, "yyyy-MM-dd") : null,
         target_user_id: swapType === "direct" ? targetUserId : null,
         position,
         team_id: teamId,
         message: message || null,
-        request_type: requestMode,
+        request_type: "swap",
         campus_id: effectiveCampusId || null,
         ministry_type: ministryType || null,
       });
 
-      const successMessage = requestMode === "fill_in"
-        ? (swapType === "open" ? "Cover request posted to your position group!" : "Cover request sent!")
-        : (swapType === "open" ? "Swap request posted to your position group!" : "Swap request sent!");
+      const successMessage = swapType === "open"
+        ? "Swap request posted to your position group!"
+        : "Swap request sent!";
       
       toast.success(successMessage);
       handleClose();
@@ -195,23 +178,15 @@ export function SwapRequestDialog({
     }
   };
 
-  // For cover requests, only need target user (no swap date needed)
-  // For swap requests, open doesn't need anything; direct needs both user and date
-  const canSubmit = requestMode === "fill_in"
-    ? (swapType === "open" || (swapType === "direct" && targetUserId))
-    : (swapType === "open" || (swapType === "direct" && targetUserId && swapDate));
+  const canSubmit = swapType === "open" || (swapType === "direct" && Boolean(targetUserId) && Boolean(swapDate));
 
   const getStepDescription = () => {
     if (step === "type") {
-      return requestMode === "fill_in"
-        ? "Choose how you want to request a cover"
-        : "Choose how you want to request a swap";
+      return "Choose how you want to request a swap";
     }
     return swapType === "open"
       ? "Post a request to your position group"
-      : requestMode === "fill_in"
-        ? "Request someone specific to cover for you"
-        : "Request a direct swap with someone";
+      : "Request a direct swap with someone";
   };
 
   return (
@@ -219,12 +194,8 @@ export function SwapRequestDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {requestMode === "fill_in" ? (
-              <UserPlus className="h-5 w-5" />
-            ) : (
-              <ArrowLeftRight className="h-5 w-5" />
-            )}
-            {requestMode === "fill_in" ? "Request Cover" : "Request Swap"}
+            <ArrowLeftRight className="h-5 w-5" />
+            Request Swap
           </DialogTitle>
           <DialogDescription>{getStepDescription()}</DialogDescription>
         </DialogHeader>
@@ -281,9 +252,7 @@ export function SwapRequestDialog({
                     Request from specific person
                   </Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {requestMode === "fill_in" 
-                      ? "Ask a specific person to cover for you"
-                      : "Propose a date swap with someone specific"}
+                    Propose a date swap with someone specific
                   </p>
                 </div>
               </div>
@@ -305,9 +274,7 @@ export function SwapRequestDialog({
               <Label htmlFor="message">Message (optional)</Label>
               <Textarea
                 id="message"
-                placeholder={requestMode === "fill_in" 
-                  ? "Add any details about why you need coverage..." 
-                  : "Add any details about why you need to swap..."}
+                placeholder="Add any details about why you need to swap..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
@@ -326,8 +293,7 @@ export function SwapRequestDialog({
               </p>
             </div>
 
-            {/* Only show date picker for swap requests, not cover requests */}
-            {requestMode === "swap" && <div className="space-y-2">
+            <div className="space-y-2">
               <Label>Date you can play instead</Label>
               <Popover>
                 <PopoverTrigger asChild>
@@ -414,16 +380,16 @@ export function SwapRequestDialog({
                   </div>
                 </PopoverContent>
               </Popover>
-            </div>}
+            </div>
 
             <div className="space-y-2">
-              <Label>{requestMode === "fill_in" ? "Who do you want to ask for coverage?" : "Who do you want to swap with?"}</Label>
+              <Label>Who do you want to swap with?</Label>
               {isVocalistSwap && (
                 <p className="text-xs text-muted-foreground">
                   Only same-campus, same-ministry vocalist matches should appear here.
                 </p>
               )}
-              {requestMode === "swap" && !swapDate ? (
+              {!swapDate ? (
                 <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                   Pick the weekend you can play first to see eligible swap matches.
                 </div>

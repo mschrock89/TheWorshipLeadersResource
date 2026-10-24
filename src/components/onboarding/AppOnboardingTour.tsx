@@ -90,7 +90,7 @@ function AppOnboardingTourContent() {
         target: '[data-tour="calendar-page"]',
         title: "How to request a swap",
         description:
-          "From Calendar, open one of your scheduled dates and tap Swap in the service card. That starts a request so someone else can cover or trade with you.",
+          "From Calendar, open one of your scheduled dates and tap Swap in the service card. That starts a request so someone else can trade dates with you.",
       },
     ];
 

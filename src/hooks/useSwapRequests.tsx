@@ -346,9 +346,11 @@ export function useCreateSwapRequest() {
       campus_id?: string | null;
       ministry_type?: string | null;
     }) => {
-      // Defensive normalization: a request with a swap_date is always a direct swap.
-      const normalizedRequestType: SwapRequestType =
-        request.swap_date ? "swap" : (request.request_type || "swap");
+      if (request.request_type === "fill_in") {
+        throw new Error("Cover requests are no longer available. Request a swap instead.");
+      }
+      // New requests are always swaps. A date on the request marks a direct swap.
+      const normalizedRequestType: SwapRequestType = "swap";
       const normalizedMinistryType =
         resolveSwapMinistryType(request.position, request.ministry_type || undefined) ||
         request.ministry_type ||

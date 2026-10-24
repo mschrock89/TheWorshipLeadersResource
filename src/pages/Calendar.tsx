@@ -50,7 +50,6 @@ import {
   useUpsertServiceTimeOverride,
 } from "@/hooks/useServiceTimeOverrides";
 import { SwapButton } from "@/components/calendar/SwapButton";
-import { CoverButton } from "@/components/calendar/CoverButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
@@ -481,7 +480,6 @@ function StandardCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
-  const [isCoverOpen, setIsCoverOpen] = useState(false);
   const hasHydratedFromUrl = useRef(false);
   const skipAutoSelectFromUrlRef = useRef(false);
   const lastAutoSelectFilterKeyRef = useRef<string | null>(null);
@@ -2129,10 +2127,7 @@ function StandardCalendar() {
                 actions={
                   <>
                     {showScheduledTeamLabel && swapOffer ? (
-                      <>
-                        <SwapButton onClick={() => setIsSwapOpen(true)} />
-                        <CoverButton onClick={() => setIsCoverOpen(true)} />
-                      </>
+                      <SwapButton onClick={() => setIsSwapOpen(true)} />
                     ) : null}
                     {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 ? (
                       <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>
@@ -2850,25 +2845,12 @@ function StandardCalendar() {
                     </div>)}
                 </CalendarDayWidget>
 
-            {/* Swap/Cover dialogs use the date this person currently holds, including a date they received in an earlier swap. */}
+            {/* The swap dialog uses the date this person currently holds, including a date they received in an earlier swap. */}
                 {swapOffer && (
                   <div className="hidden">
                     <SwapRequestDialog
                       open={isSwapOpen}
                       onOpenChange={setIsSwapOpen}
-                      requestMode="swap"
-                      originalDate={selectedDate}
-                      position={swapOffer.position}
-                      teamId={swapOffer.teamId}
-                      teamName={swapOffer.teamName}
-                      campusId={swapOffer.campusId}
-                      ministryType={swapOffer.ministryType}
-                      rotationPeriodId={swapOffer.rotationPeriodId}
-                    />
-                    <SwapRequestDialog
-                      open={isCoverOpen}
-                      onOpenChange={setIsCoverOpen}
-                      requestMode="fill_in"
                       originalDate={selectedDate}
                       position={swapOffer.position}
                       teamId={swapOffer.teamId}
