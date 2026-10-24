@@ -1180,18 +1180,18 @@ export default function Feed({
             </Card>
           ) : null}
 
-          <Card className={cn("border-white/10 bg-transparent shadow-none", isCampFeed && "rounded-none border-x-0")}>
-            <CardContent className="flex flex-col gap-4 px-0 pb-0 pt-0 sm:flex-row sm:items-center sm:justify-between">
+          <Card className="border-0 bg-transparent shadow-none">
+            <CardContent className="flex flex-col gap-3 px-0 pb-0 pt-0 sm:flex-row sm:items-center sm:justify-between">
               <Tabs
                 value={activeTab}
                 onValueChange={(value) => setActiveTab(value as FeedTab)}
                 className={cn("max-w-full", isCampFeed && "overflow-x-auto")}
               >
                 <TabsList className={cn(
-                  "h-auto justify-start gap-1 border border-white/10 bg-black/20 p-1.5",
+                  "h-auto justify-start gap-1 border-0 bg-transparent p-0 shadow-none",
                   isCampFeed
-                    ? "w-max min-w-full flex-nowrap rounded-none border-x-0"
-                    : "w-full flex-wrap rounded-2xl sm:w-auto",
+                    ? "w-max min-w-full flex-nowrap rounded-none"
+                    : "w-full flex-wrap sm:w-auto",
                 )}>
                   {Object.entries(categoryLabels).map(([value, label]) => (
                     <TabsTrigger
@@ -1206,7 +1206,7 @@ export default function Feed({
               </Tabs>
 
               {!isCampFeed ? (
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-muted-foreground">
+                <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Filter className="h-4 w-4" />
                   Showing {visiblePosts.length} post{visiblePosts.length === 1 ? "" : "s"}
                 </div>
