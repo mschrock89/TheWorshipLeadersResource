@@ -110,7 +110,13 @@ export function BottomNav() {
               ? "grid-cols-6"
               : navItems.length === 5
                 ? "grid-cols-5"
-                : "grid-cols-4"
+                : navItems.length === 3
+                  ? "grid-cols-3"
+                  : navItems.length === 2
+                    ? "grid-cols-2"
+                    : navItems.length === 1
+                      ? "grid-cols-1"
+                      : "grid-cols-4"
         )}
       >
         {navItems.map(({ to, icon: Icon, label, badge, tourId }) => {
