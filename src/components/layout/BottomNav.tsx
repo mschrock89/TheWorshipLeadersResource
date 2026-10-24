@@ -16,6 +16,7 @@ import { useUnreadMessages } from "@/hooks/useUnreadMessages";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { cn } from "@/lib/cn";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useKeyboardOffset } from "@/hooks/useKeyboardOffset";
@@ -50,6 +51,9 @@ export function BottomNav() {
   const campNavItem: NavItem[] = isStudentApp && activeCamp
     ? [{ to: "/camp", icon: Tent, label: "Camp" }]
     : [];
+  const bibleNavItem: NavItem[] = BIBLE_READER_ENABLED
+    ? [{ to: "/bible", icon: BookOpen, label: "Bible" }]
+    : [];
 
   if (BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname)) {
     return null;
@@ -58,7 +62,7 @@ export function BottomNav() {
   const navItems: NavItem[] = user
     ? isAuditionCandidate
       ? [
-          { to: "/bible", icon: BookOpen, label: "Bible" },
+          ...bibleNavItem,
           ...campNavItem,
           { to: "/feed", icon: Newspaper, label: "Feed" },
           ...(!isStudentApp ? [{ to: "/songs", icon: Music, label: "Songs" }] : []),
@@ -66,14 +70,14 @@ export function BottomNav() {
         ]
       : isStudentBase
       ? [
-          { to: "/bible", icon: BookOpen, label: "Bible" },
+          ...bibleNavItem,
           { to: "/feed", icon: Newspaper, label: "Feed" },
           ...(isStudentApp ? [{ to: "/attendance", icon: MapPinned, label: "Attendance" }] : []),
           { to: "/resources", icon: Music, label: "Audio" },
           { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar", badge: isApprover ? pendingApprovalCount : undefined },
         ]
       : [
-        { to: "/bible", icon: BookOpen, label: "Bible" },
+        ...bibleNavItem,
         ...campNavItem,
         { to: "/chat", icon: MessageCircle, label: "Chat", badge: totalUnread },
         { to: "/feed", icon: Newspaper, label: "Feed" },

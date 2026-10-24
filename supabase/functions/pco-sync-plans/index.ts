@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { refreshTokenIfNeededEncrypted } from "../_shared/pco-encryption.ts";
+import { campusIdFromServiceTypeName } from "../_shared/pcoCampus.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -314,71 +315,8 @@ serve(async (req) => {
     console.log('Available campuses:', campuses?.map(c => c.name).join(', '));
 
     // Function to determine campus_id from service_type_name
-    const getCampusIdFromServiceType = (serviceTypeName: string): string | null => {
-      if (!campuses || campuses.length === 0) return connection.campus_id;
-      
-      const lowerName = serviceTypeName.toLowerCase();
-      
-      // Check for exact or partial matches
-      for (const campus of campuses) {
-        const campusLower = campus.name.toLowerCase();
-        // Check if service type contains campus name
-        if (lowerName.includes(campusLower)) {
-          return campus.id;
-        }
-        // Handle common abbreviations and variations
-        if (campusLower === 'tullahoma' && (lowerName.includes('tullahoma') || lowerName === 'tullahoma worship')) {
-          return campus.id;
-        }
-        if (campusLower === 'shelbyville' && lowerName.includes('shelbyville')) {
-          return campus.id;
-        }
-        if (campusLower === 'cannon county' && (lowerName.includes('cannon') || lowerName.includes('cannon county'))) {
-          return campus.id;
-        }
-        if (campusLower === 'murfreesboro north' && (lowerName.includes('murfreesboro north') || lowerName.includes('boro north'))) {
-          return campus.id;
-        }
-        if (campusLower === 'murfreesboro central' && (lowerName.includes('murfreesboro central') || lowerName === 'murfreesboro central')) {
-          return campus.id;
-        }
-      }
-      
-      // Default mappings for known service types
-      // Network-wide events (no specific campus)
-      if (lowerName.includes('worship night') || lowerName.includes('all team') || lowerName.includes('prayer night')) {
-        return null; // Network-wide, no specific campus
-      }
-      
-      // Student ministry events - map based on abbreviations in parentheses
-      if (lowerName.includes('ms worship') || lowerName.includes('eon') || lowerName.includes('hs worship') || lowerName.includes('encounter') || lowerName.includes('er') || lowerName.includes('evident')) {
-        // Handle abbreviations like "HS Worship (CC)" for Cannon County
-        if (lowerName.includes('(cc)') || lowerName.includes(' cc)')) {
-          const cannonCounty = campuses.find(c => c.name.toLowerCase().includes('cannon'));
-          if (cannonCounty) return cannonCounty.id;
-        }
-        
-        // Handle Boro abbreviation for Murfreesboro Central
-        if (lowerName.includes('(boro)') || lowerName.includes(' boro)') || lowerName.includes('eon boro') || lowerName.includes('ms worship boro')) {
-          const central = campuses.find(c => c.name.toLowerCase().includes('central'));
-          if (central) return central.id;
-        }
-        
-        // Check if it specifies a campus name directly
-        for (const campus of campuses) {
-          if (lowerName.includes(campus.name.toLowerCase())) {
-            return campus.id;
-          }
-        }
-        
-        // Default student events to central if no campus specified
-        const central = campuses.find(c => c.name.toLowerCase().includes('central'));
-        return central?.id || connection.campus_id;
-      }
-      
-      // Default fallback to user's connected campus
-      return connection.campus_id;
-    };
+    const getCampusIdFromServiceType = (serviceTypeName: string): string | null =>
+      campusIdFromServiceTypeName(serviceTypeName, campuses, connection.campus_id);
 
     // Calculate date range based on sync mode
     const today = new Date();

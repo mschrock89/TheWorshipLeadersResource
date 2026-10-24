@@ -423,6 +423,11 @@ serve(async (req: Request): Promise<Response> => {
           metadata: {
             resourceAppKey: swapRequest.resource_app_key || "worship",
             ministryType: leaderAudience.ministryType,
+            vars: {
+              requester: requester?.full_name || "Someone",
+              accepter: accepter?.full_name || "someone",
+              date: formatDate(swapRequest.original_date),
+            },
           },
         }),
       });

@@ -1,9 +1,9 @@
 import { format } from "date-fns";
-import { POSITION_LABELS } from "./constants";
-import { formatDateForDB, parseLocalDate } from "./dateUtils";
+import { POSITION_LABELS } from "./constants.ts";
+import { formatDateForDB, parseLocalDate } from "./dateUtils.ts";
 
-export { cn } from "./cn";
-export { formatDateForDB, parseLocalDate } from "./dateUtils";
+export { cn } from "./cn.ts";
+export { formatDateForDB, parseLocalDate } from "./dateUtils.ts";
 
 /**
  * Get the weekend pair (Saturday and Sunday) for a given date.

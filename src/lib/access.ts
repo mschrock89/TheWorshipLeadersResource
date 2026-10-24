@@ -1,4 +1,5 @@
 import { POSITION_SLOTS } from "./constants.ts";
+import { BIBLE_READER_ENABLED } from "./bible.ts";
 
 export const AUDITION_CANDIDATE_ROLE = "audition_candidate";
 export const STUDENT_BASE_ROLE = "student";
@@ -40,7 +41,7 @@ export const AUDITION_ALLOWED_PATHS = new Set([
 ]);
 
 export const STUDENT_ALLOWED_PATHS = new Set([
-  "/bible",
+  ...(BIBLE_READER_ENABLED ? ["/bible"] : []),
   "/calendar",
   "/camp",
   "/feed",

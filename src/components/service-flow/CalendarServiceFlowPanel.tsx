@@ -15,6 +15,8 @@ import {
   type ServiceFlowItem as ServiceFlowItemType,
 } from "@/hooks/useServiceFlow";
 import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
+import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
+import { recurringServiceTimesForDate } from "@/lib/campusMinistrySchedule";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
 import { useAuth } from "@/hooks/useAuth";
 import { useCanOpenLiveMode } from "@/hooks/useCanOpenLiveMode";
@@ -261,6 +263,7 @@ export function CalendarServiceFlowPanel({
   }, [effectiveMinistryType, scheduledRoster, speakerRoster]);
 
   const { data: campuses = [] } = useCampuses();
+  const { data: ministrySchedules = [] } = useCampusMinistrySchedules();
   const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
     campusId: flowCampusId || undefined,
     startDate: date,
@@ -344,18 +347,31 @@ export function CalendarServiceFlowPanel({
     setDraggedItem(null);
   }, [contextKey]);
 
-  const suggestedStartTime = useMemo(
-    () =>
-      resolveScheduledServiceStartTime({
-        customServiceStartTime,
-        serviceDate: date,
-        ministryType: effectiveMinistryType,
-        campusId: flowCampusId,
-        campus: campuses.find((campus) => campus.id === flowCampusId),
-        overrides: serviceTimeOverrides,
-      }),
-    [campuses, customServiceStartTime, date, effectiveMinistryType, flowCampusId, serviceTimeOverrides],
-  );
+  const suggestedStartTime = useMemo(() => {
+    const recurringServiceTimes = recurringServiceTimesForDate(
+      ministrySchedules,
+      flowCampusId,
+      effectiveMinistryType,
+      date,
+    );
+    return resolveScheduledServiceStartTime({
+      customServiceStartTime,
+      serviceDate: date,
+      ministryType: effectiveMinistryType,
+      campusId: flowCampusId,
+      campus: campuses.find((campus) => campus.id === flowCampusId),
+      overrides: serviceTimeOverrides,
+      ...(recurringServiceTimes ? { recurringServiceTimes } : {}),
+    });
+  }, [
+    campuses,
+    customServiceStartTime,
+    date,
+    effectiveMinistryType,
+    flowCampusId,
+    ministrySchedules,
+    serviceTimeOverrides,
+  ]);
   const savedStartTime = normalizeClockSource(serviceFlow?.start_time);
 
   useEffect(() => {

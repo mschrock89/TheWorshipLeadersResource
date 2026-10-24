@@ -158,6 +158,7 @@ export interface SupportTeamPushContent {
   message: string;
   link: string;
   actions: Array<{ action: string; title: string }>;
+  templateVars: Record<string, string>;
 }
 
 export async function resolveSetlistConfirmLink(
@@ -204,6 +205,13 @@ export function buildSupportTeamPushContent(params: {
   const link = params.confirmLink || "/my-setlists?confirm=1";
   const actions = [{ action: "confirm", title: "Confirm" }];
 
+  const templateVarsFor = (dateLabel: string): Record<string, string> => ({
+    team: params.teamName,
+    ministry: ministryLabel,
+    date_range: dateLabel,
+    dates: dateLabel,
+  });
+
   if (params.ministryType === "video") {
     const formattedDate = formatLongServiceDate(params.scheduleDate);
     return {
@@ -212,6 +220,7 @@ export function buildSupportTeamPushContent(params: {
         `You're scheduled to serve with ${params.teamName} ${ministryLabel} on ${formattedDate}. Confirm here.`,
       link,
       actions,
+      templateVars: templateVarsFor(formattedDate),
     };
   }
 
@@ -231,6 +240,7 @@ export function buildSupportTeamPushContent(params: {
         : `You're scheduled to serve with ${params.teamName} ${ministryLabel} on ${dateLabel}. Confirm here.`,
       link,
       actions,
+      templateVars: templateVarsFor(dateLabel),
     };
   }
 
@@ -241,6 +251,7 @@ export function buildSupportTeamPushContent(params: {
       `You're scheduled to serve with ${params.teamName} ${ministryLabel} on ${formattedDate}. Confirm here.`,
     link,
     actions,
+    templateVars: templateVarsFor(formattedDate),
   };
 }
 

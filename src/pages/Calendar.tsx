@@ -29,6 +29,7 @@ import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useSongsForDate } from "@/hooks/useSongs";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useUserSwapsForDate } from "@/hooks/useUserSwapsForDate";
 import { useUserSwaps, getSwapStatusForDate } from "@/hooks/useUserSwaps";
@@ -68,8 +69,14 @@ import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { cn } from "@/lib/utils";
+import {
+  configuredServiceWeekdays,
+  ministryUsesCampusWeekendDefaults,
+  recurringServiceTimesForDate,
+  scheduleMinistryType,
+} from "@/lib/campusMinistrySchedule";
 import { toast } from "sonner";
-import { buildBibleHref } from "@/lib/bible";
+import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
@@ -260,6 +267,16 @@ const getNextCampusWeekendServiceDate = (
   return null;
 };
 
+const getNextMatchingWeekday = (from: Date, weekdays: number[]) => {
+  const allowed = new Set(weekdays);
+  const start = startOfLocalDay(from);
+  for (let offset = 0; offset < 14; offset += 1) {
+    const date = addDays(start, offset);
+    if (allowed.has(date.getDay())) return date;
+  }
+  return null;
+};
+
 const getNextUpcomingServiceDate = ({
   from,
   ministryFilter,
@@ -267,6 +284,7 @@ const getNextUpcomingServiceDate = ({
   campus,
   scheduledDates,
   extraDates,
+  serviceWeekdays,
 }: {
   from: Date;
   ministryFilter: string;
@@ -274,6 +292,7 @@ const getNextUpcomingServiceDate = ({
   campus: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null;
   scheduledDates: string[];
   extraDates: string[];
+  serviceWeekdays?: number[] | null;
 }) => {
   const todayStr = formatDateForStorage(from);
   const candidates: string[] = [];
@@ -281,7 +300,10 @@ const getNextUpcomingServiceDate = ({
     if (dateStr && dateStr >= todayStr) candidates.push(dateStr);
   };
 
-  if (WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) && campusFilter !== "network-wide") {
+  if (serviceWeekdays && serviceWeekdays.length > 0 && campusFilter !== "network-wide") {
+    const nextConfigured = getNextMatchingWeekday(from, serviceWeekdays);
+    if (nextConfigured) addIfUpcoming(formatDateForStorage(nextConfigured));
+  } else if (WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) && campusFilter !== "network-wide") {
     const nextWeekend = getNextCampusWeekendServiceDate(from, campus);
     if (nextWeekend) addIfUpcoming(formatDateForStorage(nextWeekend));
   } else if (MIDWEEK_SERVICE_MINISTRY_FILTERS.has(ministryFilter)) {
@@ -760,6 +782,10 @@ function StandardCalendar() {
     data: campuses = []
   } = useCampuses();
   const {
+    data: ministrySchedules = [],
+    isFetched: ministrySchedulesFetched,
+  } = useCampusMinistrySchedules();
+  const {
     data: userCampuses = []
   } = useUserCampuses(user?.id);
   const { data: roles = [] } = useUserRoles(user?.id);
@@ -869,28 +895,40 @@ function StandardCalendar() {
     });
 
     const serviceTimesByCampus = new Map<string, { campusName: string; times: string[] }>();
+    const scheduleMinistry = scheduleMinistryType(ministryFilter);
+    const showCampusWeekendDefaults =
+      ministryFilter === "all" || ministryUsesCampusWeekendDefaults(ministryFilter);
 
-    if (isSaturday || isSunday) {
-      let relevantCampuses = campuses.filter((campus) => {
-        if (isSaturday) return campus.has_saturday_service;
-        if (isSunday) return campus.has_sunday_service;
-        return false;
-      });
+    let relevantCampuses = campuses;
+    if (isCampusAdmin && campusFilter !== "network-wide") {
+      relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
+    } else if (campusFilter && campusFilter !== "network-wide") {
+      relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
+    }
 
-      if (isCampusAdmin && campusFilter !== "network-wide") {
-        relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
-      } else if (campusFilter && campusFilter !== "network-wide") {
-        relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
+    relevantCampuses.forEach((campus) => {
+      const recurring = scheduleMinistry
+        ? recurringServiceTimesForDate(ministrySchedules, campus.id, scheduleMinistry, dateStr)
+        : null;
+      if (recurring) {
+        if (recurring.length > 0) {
+          serviceTimesByCampus.set(campus.id, {
+            campusName: campus.name,
+            times: [...recurring],
+          });
+        }
+        return;
       }
 
-      relevantCampuses.forEach((campus) => {
-        const defaultTimes = isSaturday ? campus.saturday_service_time : campus.sunday_service_time;
-        serviceTimesByCampus.set(campus.id, {
-          campusName: campus.name,
-          times: defaultTimes ? [...defaultTimes] : [],
-        });
+      if (!showCampusWeekendDefaults || (!isSaturday && !isSunday)) return;
+      if (isSaturday && !campus.has_saturday_service) return;
+      if (isSunday && !campus.has_sunday_service) return;
+      const defaultTimes = isSaturday ? campus.saturday_service_time : campus.sunday_service_time;
+      serviceTimesByCampus.set(campus.id, {
+        campusName: campus.name,
+        times: defaultTimes ? [...defaultTimes] : [],
       });
-    }
+    });
 
     relevantOverrides.forEach((override) => {
       const campusName = campuses.find((campus) => campus.id === override.campus_id)?.name || "Campus";
@@ -943,6 +981,7 @@ function StandardCalendar() {
     const campusReady = campusFilter === "network-wide" || Boolean(selectedCampusConfig);
     if (!campusReady) return;
     if (!usesRecurringServiceDay && !upcomingScheduleFetched) return;
+    if (!ministrySchedulesFetched) return;
 
     const filterKey = `${campusFilter}|${ministryFilter}`;
     if (lastAutoSelectFilterKeyRef.current === filterKey) return;
@@ -980,6 +1019,11 @@ function StandardCalendar() {
       campus: selectedCampusConfig,
       scheduledDates,
       extraDates,
+      serviceWeekdays: configuredServiceWeekdays(
+        ministrySchedules,
+        campusFilter === "network-wide" ? null : campusFilter,
+        ministryFilter,
+      ),
     });
     if (!nextServiceDate) {
       lastAutoSelectFilterKeyRef.current = filterKey;
@@ -995,6 +1039,8 @@ function StandardCalendar() {
     customServices,
     filteredServiceTimeOverrides,
     ministryFilter,
+    ministrySchedules,
+    ministrySchedulesFetched,
     selectedCampusConfig,
     teamSchedule,
     upcomingScheduleFetched,
@@ -2319,14 +2365,16 @@ function StandardCalendar() {
                               {selectedTeachingWeek.themes_manual.join(", ")}
                             </span>
                           ) : null}
-                          <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
-                            <Link to={buildBibleHref(
-                              formatTeachingReference(selectedTeachingWeek),
-                              selectedTeachingWeek.translation || "ESV",
-                            )}>
-                              Read Passage
-                            </Link>
-                          </Button>
+                          {BIBLE_READER_ENABLED ? (
+                            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                              <Link to={buildBibleHref(
+                                formatTeachingReference(selectedTeachingWeek),
+                                selectedTeachingWeek.translation || "ESV",
+                              )}>
+                                Read Passage
+                              </Link>
+                            </Button>
+                          ) : null}
                         </div>
                         {selectedTeachingWeek.ai_summary ? (
                           <p className="mt-1 text-xs text-muted-foreground">{selectedTeachingWeek.ai_summary}</p>

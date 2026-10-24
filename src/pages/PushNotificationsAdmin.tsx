@@ -1,9 +1,7 @@
-import { useMemo, useState } from "react";
-import { Bell, Plus, Trash2, Pencil, Search, ArrowLeft, Info } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Bell, Plus, Trash2, Search, ArrowLeft, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -11,18 +9,33 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useCapabilities } from "@/hooks/useCapabilities";
 import { CAPABILITIES } from "@/lib/capabilities";
 import {
+  describeWhen,
+  extractTemplateKeys,
+  fillerFor,
+  missingFillers,
+  splitPushTemplate,
+  uniqueKeys,
+} from "@/lib/pushMessageTemplate";
+import {
   PUSH_CATEGORIES,
-  parseTemplateVariables,
-  renderPushTemplate,
   useDeletePushDefinition,
   usePushDefinitions,
   useRecentPushLogs,
@@ -59,7 +72,7 @@ type EditorState = {
   title_template: string;
   body_template: string;
   deep_link_url: string;
-  template_variables: string;
+  template_variables: string[];
   enabled: boolean;
   content_from_db: boolean;
   is_system: boolean;
@@ -77,9 +90,9 @@ function emptyEditor(category = "Custom"): EditorState {
     title_template: "",
     body_template: "",
     deep_link_url: "",
-    template_variables: "",
+    template_variables: [],
     enabled: true,
-    content_from_db: true,
+    content_from_db: false,
     is_system: false,
     sort_order: 500,
   };
@@ -96,7 +109,7 @@ function fromRow(row: PushDefinitionRow): EditorState {
     title_template: row.title_template,
     body_template: row.body_template,
     deep_link_url: row.deep_link_url || "",
-    template_variables: (row.template_variables || []).join(", "),
+    template_variables: row.template_variables || [],
     enabled: row.enabled,
     content_from_db: row.content_from_db,
     is_system: row.is_system,
@@ -104,59 +117,169 @@ function fromRow(row: PushDefinitionRow): EditorState {
   };
 }
 
-function PreviewPhone({ title, body }: { title: string; body: string }) {
+function FilledText({ template, className }: { template: string; className?: string }) {
+  const parts = splitPushTemplate(template);
+  if (parts.length === 0) {
+    return <span className={className}>Write a message…</span>;
+  }
   return (
-    <div className="rounded-2xl border bg-muted/40 p-3 shadow-sm">
-      <div className="rounded-xl bg-background p-3 shadow-sm">
+    <span className={className}>
+      {parts.map((part, index) =>
+        part.type === "text" ? (
+          <span key={index}>{part.value}</span>
+        ) : (
+          <span
+            key={index}
+            className="whitespace-nowrap rounded bg-primary/15 px-0.5 text-primary"
+            title={fillerFor(part.key).detail}
+          >
+            {fillerFor(part.key).sample}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
+function NotificationPreview({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border bg-muted/40 p-3">
+      <div className="rounded-xl border bg-background p-3 shadow-sm">
         <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
           <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary">
             <Bell className="h-3 w-3" />
           </span>
           App · now
         </div>
-        <p className="text-sm font-semibold leading-snug text-foreground">{title || "Title"}</p>
-        <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{body || "Message body"}</p>
+        <p className="text-sm font-semibold leading-snug text-foreground">
+          <FilledText template={title || "Title"} />
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          <FilledText template={body || "Message"} />
+        </p>
       </div>
     </div>
   );
 }
 
-function EditorPanel({
+function TokenField({
+  value,
+  onChange,
+  onFocus,
+  rows,
+  placeholder,
+  inputRef,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  rows: number;
+  placeholder: string;
+  inputRef: RefObject<HTMLTextAreaElement>;
+  autoFocus?: boolean;
+}) {
+  const highlighted = splitPushTemplate(value);
+  return (
+    <div className="grid rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
+      <div
+        aria-hidden
+        className="pointer-events-none col-start-1 row-start-1 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-6 text-foreground"
+      >
+        {value ? (
+          highlighted.map((part, index) =>
+            part.type === "text" ? (
+              <span key={index}>{part.value}</span>
+            ) : (
+              <span key={index} className="rounded-sm bg-primary/20 text-primary">
+                {`{{${part.key}}}`}
+              </span>
+            ),
+          )
+        ) : (
+          <span className="text-muted-foreground">{placeholder}</span>
+        )}
+        {value.endsWith("\n") ? "\n" : ""}
+      </div>
+      <textarea
+        ref={inputRef}
+        value={value}
+        rows={rows}
+        autoFocus={autoFocus}
+        onFocus={onFocus}
+        onChange={(event) => onChange(event.target.value)}
+        className="col-start-1 row-start-1 w-full resize-y bg-transparent px-3 py-2 text-sm leading-6 text-transparent caret-foreground outline-none"
+        style={{ WebkitTextFillColor: "transparent" }}
+        spellCheck={false}
+      />
+    </div>
+  );
+}
+
+function MessageEditor({
   initial,
   isNew,
+  open,
   onClose,
 }: {
   initial: EditorState;
   isNew: boolean;
+  open: boolean;
   onClose: () => void;
 }) {
   const [form, setForm] = useState(initial);
+  const [advancedOpen, setAdvancedOpen] = useState(isNew);
+  const [activeField, setActiveField] = useState<"title" | "body">("body");
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const message = bodyRef.current;
+    if (!message) return;
+    const end = message.value.length;
+    message.setSelectionRange(end, end);
+  }, []);
   const upsert = useUpsertPushDefinition();
   const remove = useDeletePushDefinition();
 
-  const sampleVars = useMemo(() => {
-    const vars: Record<string, string> = {};
-    for (const key of parseTemplateVariables(form.template_variables)) {
-      vars[key] = sampleValue(key);
-    }
-    // Also pick up any placeholders present in templates but not listed.
-    const found = new Set<string>();
-    const re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
-    for (const text of [form.title_template, form.body_template, form.deep_link_url]) {
-      let match: RegExpExecArray | null;
-      while ((match = re.exec(text))) found.add(match[1]);
-    }
-    for (const key of found) {
-      if (!(key in vars)) vars[key] = sampleValue(key);
-    }
-    return vars;
-  }, [form.template_variables, form.title_template, form.body_template, form.deep_link_url]);
-
-  const previewTitle = renderPushTemplate(form.title_template, sampleVars);
-  const previewBody = renderPushTemplate(form.body_template, sampleVars);
-
   const set = <K extends keyof EditorState>(key: K, value: EditorState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  const fillerKeys = useMemo(() => {
+    const found = extractTemplateKeys(
+      `${form.title_template}\n${form.body_template}\n${form.deep_link_url}`,
+    );
+    const starters = isNew ? ["name", "date", "campus", "team", "position"] : [];
+    return uniqueKeys([...form.template_variables, ...found, ...starters]).filter(
+      (key) => key !== "set_id" && key !== "original_url",
+    );
+  }, [form.template_variables, form.title_template, form.body_template, form.deep_link_url, isNew]);
+
+  const dropped = missingFillers(
+    [form.title_template, form.body_template],
+    initial.template_variables,
+  );
+
+  const insertFiller = (key: string) => {
+    const token = `{{${key}}}`;
+    const field = activeField;
+    const current = field === "title" ? form.title_template : form.body_template;
+    const element = field === "title" ? titleRef.current : bodyRef.current;
+    const start = element?.selectionStart ?? current.length;
+    const end = element?.selectionEnd ?? current.length;
+    const prefix = current.slice(0, start);
+    const suffix = current.slice(end);
+    const needsSpaceBefore = prefix.length > 0 && !/\s$/.test(prefix);
+    const needsSpaceAfter = suffix.length > 0 && !/^\s/.test(suffix);
+    const insertion = `${needsSpaceBefore ? " " : ""}${token}${needsSpaceAfter ? " " : ""}`;
+    const next = prefix + insertion + current.slice(end);
+    set(field === "title" ? "title_template" : "body_template", next);
+    const cursor = start + insertion.length;
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(cursor, cursor);
+    });
+  };
 
   const canSave =
     form.key.trim().length > 0 &&
@@ -166,159 +289,186 @@ function EditorPanel({
     form.body_template.trim().length > 0;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-xl">{isNew ? "Add push notification" : `Edit: ${initial.label}`}</CardTitle>
-            <CardDescription className="mt-1">
-              Use {"{{variable}}"} placeholders for dynamic text. Turn on “Use these templates live” when you want
-              sends to use this copy.
-            </CardDescription>
-          </div>
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2">
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{isNew ? "New notification" : `Edit ${initial.label}`}</DialogTitle>
+          <DialogDescription>
+            Write the title and message people receive. Highlighted details — names, dates, and roles — fill in for each person.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
           <div className="space-y-4">
+            {isNew && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="push-name">Name</Label>
+                  <Input
+                    id="push-name"
+                    value={form.label}
+                    onChange={(event) => {
+                      const label = event.target.value;
+                      set("label", label);
+                      if (!form.is_system) set("key", slugifyKey(label));
+                    }}
+                    placeholder="Weekend reminder"
+                  />
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  <Select value={form.category} onValueChange={(value) => set("category", value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PUSH_CATEGORIES.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
             <div>
-              <Label>Name</Label>
-              <Input
-                value={form.label}
-                onChange={(e) => {
-                  const label = e.target.value;
-                  set("label", label);
-                  if (isNew && !form.is_system) set("key", slugifyKey(label));
-                }}
-                placeholder="e.g. Setlist Posted"
+              <Label htmlFor="push-title">Title</Label>
+              <TokenField
+                inputRef={titleRef}
+                value={form.title_template}
+                onChange={(value) => set("title_template", value)}
+                onFocus={() => setActiveField("title")}
+                rows={2}
+                placeholder="You're serving"
               />
             </div>
+
             <div>
-              <Label>Key</Label>
-              <Input
-                value={form.key}
-                disabled={!isNew || form.is_system}
-                onChange={(e) => set("key", slugifyKey(e.target.value))}
-                placeholder="setlist-published"
+              <Label htmlFor="push-body">Message</Label>
+              <TokenField
+                inputRef={bodyRef}
+                value={form.body_template}
+                onChange={(value) => set("body_template", value)}
+                onFocus={() => setActiveField("body")}
+                rows={4}
+                autoFocus
+                placeholder="You're on {{positions}} this weekend."
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Matches the send path <code className="rounded bg-muted px-1">contextType</code>. System keys can’t
-                change.
+              <p className="mt-2 text-xs text-muted-foreground">
+                Colored words stay in the message and get replaced when it sends. Tap one to drop it into the {activeField === "title" ? "title" : "message"}.
+              </p>
+              {fillerKeys.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {fillerKeys.map((key) => {
+                    const filler = fillerFor(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+                        onClick={() => insertFiller(key)}
+                        title={filler.detail}
+                      >
+                        {filler.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {dropped.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                  <p className="font-medium text-foreground">A detail was removed from this message.</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {dropped.map((key) => (
+                      <Button key={key} type="button" size="sm" variant="outline" onClick={() => insertFiller(key)}>
+                        Put {fillerFor(key).label} back
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
+            <NotificationPreview title={form.title_template} body={form.body_template} />
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>
+                <span className="text-foreground">When: </span>
+                {describeWhen(form.key, form.trigger_description)}
+              </p>
+              <p>
+                <span className="text-foreground">Who: </span>
+                {form.recipients_description || "The people this notification is for"}
               </p>
             </div>
-            <div>
-              <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => set("category", v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PUSH_CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                  {!PUSH_CATEGORIES.includes(form.category as (typeof PUSH_CATEGORIES)[number]) && form.category && (
-                    <SelectItem value={form.category}>{form.category}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Description</Label>
+            <p className="text-xs text-muted-foreground">
+              {form.content_from_db
+                ? "Saving updates the message people already receive."
+                : "People still get the original wording. Saving switches this notification to the message above."}
+            </p>
+          </div>
+        </div>
+
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+            Details
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>What this is for</Label>
               <Textarea
                 value={form.description}
-                onChange={(e) => set("description", e.target.value)}
                 rows={2}
-                placeholder="What this push is for"
+                onChange={(event) => set("description", event.target.value)}
               />
             </div>
             <div>
               <Label>When it sends</Label>
               <Textarea
                 value={form.trigger_description}
-                onChange={(e) => set("trigger_description", e.target.value)}
                 rows={2}
-                placeholder="e.g. Publishing a setlist"
+                onChange={(event) => set("trigger_description", event.target.value)}
               />
             </div>
             <div>
               <Label>Who receives it</Label>
               <Textarea
                 value={form.recipients_description}
-                onChange={(e) => set("recipients_description", e.target.value)}
                 rows={2}
-                placeholder="e.g. Setlist roster"
+                onChange={(event) => set("recipients_description", event.target.value)}
               />
             </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <Label>Title template</Label>
-              <Input
-                value={form.title_template}
-                onChange={(e) => set("title_template", e.target.value)}
-                placeholder="Setlist Posted"
-              />
-            </div>
-            <div>
-              <Label>Body template</Label>
-              <Textarea
-                value={form.body_template}
-                onChange={(e) => set("body_template", e.target.value)}
-                rows={3}
-                placeholder="{{song_count}} songs for {{date}} at {{campus}}"
-              />
-            </div>
-            <div>
-              <Label>Deep link</Label>
+            <div className="sm:col-span-2">
+              <Label>Opens this page</Label>
               <Input
                 value={form.deep_link_url}
-                onChange={(e) => set("deep_link_url", e.target.value)}
-                placeholder="/my-setlists"
+                onChange={(event) => set("deep_link_url", event.target.value)}
+                placeholder="/calendar"
               />
             </div>
-            <div>
-              <Label>Variables</Label>
-              <Input
-                value={form.template_variables}
-                onChange={(e) => set("template_variables", e.target.value)}
-                placeholder="date, campus, song_count"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">Comma-separated. Used for docs and preview samples.</p>
-            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
-            <div className="flex flex-col gap-3 rounded-lg border p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">Enabled</p>
-                  <p className="text-xs text-muted-foreground">Off = this push type will not send.</p>
-                </div>
-                <Switch checked={form.enabled} onCheckedChange={(v) => set("enabled", v)} />
-              </div>
-              <div className="flex items-center justify-between gap-3 border-t pt-3">
-                <div>
-                  <p className="text-sm font-medium">Use these templates live</p>
-                  <p className="text-xs text-muted-foreground">
-                    When on, title/body come from this form (with {"{{vars}}"} filled at send time).
-                  </p>
-                </div>
-                <Switch checked={form.content_from_db} onCheckedChange={(v) => set("content_from_db", v)} />
-              </div>
-            </div>
-
-            <div>
-              <Label className="mb-2 block">Preview</Label>
-              <PreviewPhone title={previewTitle} body={previewBody} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+        <DialogFooter className="gap-2 sm:items-center">
+          {!form.is_system && !isNew && (
+            <Button
+              variant="ghost"
+              className="mr-auto text-destructive hover:text-destructive"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate(form.key, { onSuccess: onClose })}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          )}
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             disabled={!canSave || upsert.isPending}
             onClick={() =>
@@ -333,73 +483,25 @@ function EditorPanel({
                   title_template: form.title_template,
                   body_template: form.body_template,
                   deep_link_url: form.deep_link_url,
-                  template_variables: parseTemplateVariables(form.template_variables),
+                  template_variables: uniqueKeys([
+                    ...initial.template_variables,
+                    ...extractTemplateKeys(`${form.title_template}\n${form.body_template}\n${form.deep_link_url}`),
+                  ]),
                   enabled: form.enabled,
-                  content_from_db: form.content_from_db,
+                  content_from_db: true,
                   is_system: form.is_system,
                   sort_order: form.sort_order,
                 },
-                { onSuccess: () => onClose() },
+                { onSuccess: onClose },
               )
             }
           >
-            {upsert.isPending ? "Saving…" : "Save"}
+            {upsert.isPending ? "Saving…" : "Save message"}
           </Button>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          {!form.is_system && !isNew && (
-            <Button
-              variant="ghost"
-              className="ml-auto text-destructive hover:text-destructive"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate(form.key, { onSuccess: () => onClose() })}
-            >
-              <Trash2 className="mr-1 h-4 w-4" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
-}
-
-function sampleValue(key: string): string {
-  const samples: Record<string, string> = {
-    song_count: "4",
-    date: "Jul 12",
-    campus: "Frisco",
-    set_id: "abc123",
-    name: "Alex",
-    track_title: "Praise",
-    day_word: "today",
-    day_word_title: "Today",
-    positions: "Electric Guitar",
-    teams: "Team A",
-    team: "Team A",
-    ministry: "Production",
-    date_range: "Jul 12–13",
-    dates: "Jul 12, Jul 19",
-    request_label: "Cover Request",
-    requester: "Jordan",
-    accepter: "Sam",
-    position: "Drums",
-    sender: "Taylor",
-    chat_label: "Frisco Worship",
-    preview: "Can someone cover Saturday?",
-    author: "Morgan",
-    title_preview: "Practice notes",
-    title: "Team Night",
-    time: " at 7:00 PM",
-    period: "Fall Trimester",
-    request_phrase: "needs a break",
-    count: "12",
-    message: "Don’t forget call time!",
-    original_title: "Setlist Posted",
-    original_url: "/my-setlists",
-  };
-  return samples[key] || key.replace(/_/g, " ");
 }
 
 function CatalogTab() {
@@ -411,20 +513,25 @@ function CatalogTab() {
   const [isNew, setIsNew] = useState(false);
 
   const categories = useMemo(() => {
-    const set = new Set(definitions.map((d) => d.category));
-    return Array.from(set).sort();
+    const present = new Set(definitions.map((row) => row.category));
+    const ordered = PUSH_CATEGORIES.filter((name) => present.has(name));
+    for (const name of present) {
+      if (!ordered.includes(name as (typeof PUSH_CATEGORIES)[number])) ordered.push(name as (typeof PUSH_CATEGORIES)[number]);
+    }
+    return ordered;
   }, [definitions]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return definitions.filter((d) => {
-      if (category !== "all" && d.category !== category) return false;
-      if (!q) return true;
+    const query = search.trim().toLowerCase();
+    return definitions.filter((row) => {
+      if (category !== "all" && row.category !== category) return false;
+      if (!query) return true;
       return (
-        d.label.toLowerCase().includes(q) ||
-        d.key.toLowerCase().includes(q) ||
-        (d.description || "").toLowerCase().includes(q) ||
-        (d.trigger_description || "").toLowerCase().includes(q)
+        row.label.toLowerCase().includes(query) ||
+        row.key.toLowerCase().includes(query) ||
+        (row.description || "").toLowerCase().includes(query) ||
+        row.title_template.toLowerCase().includes(query) ||
+        row.body_template.toLowerCase().includes(query)
       );
     });
   }, [definitions, search, category]);
@@ -439,156 +546,129 @@ function CatalogTab() {
     return Array.from(map.entries());
   }, [filtered]);
 
-  if (editing) {
-    return (
-      <EditorPanel
-        initial={editing}
-        isNew={isNew}
-        onClose={() => {
-          setEditing(null);
-          setIsNew(false);
-        }}
-      />
-    );
-  }
+  const openEditor = (row: PushDefinitionRow) => {
+    setIsNew(false);
+    setEditing(fromRow(row));
+  };
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle>All push notifications</CardTitle>
-              <CardDescription>
-                Every push the app can send. Toggle off to pause, or edit title/body and details.
-              </CardDescription>
-            </div>
-            <Button
-              onClick={() => {
-                setIsNew(true);
-                setEditing(emptyEditor());
-              }}
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Add new
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Search by name, key, or trigger…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-xl text-sm text-muted-foreground">
+          Each card is the notification someone gets. Edit the wording, and leave the highlighted details so names and dates still fill in.
+        </p>
+        <Button
+          onClick={() => {
+            setIsNew(true);
+            setEditing(emptyEditor(category !== "all" ? category : "Custom"));
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Add notification
+        </Button>
+      </div>
 
-          <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              Disabling a type stops it immediately. Editing copy is saved here; turn on{" "}
-              <span className="font-medium text-foreground">Use these templates live</span> in the editor for title/body
-              to come from this page when that push sends.
-            </p>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          className="pl-8"
+          placeholder="Search notifications"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <Button
+          size="sm"
+          variant={category === "all" ? "default" : "outline"}
+          onClick={() => setCategory("all")}
+        >
+          All
+        </Button>
+        {categories.map((name) => (
+          <Button
+            key={name}
+            size="sm"
+            variant={category === name ? "default" : "outline"}
+            onClick={() => setCategory(name)}
+          >
+            {name}
+          </Button>
+        ))}
+      </div>
+
+      {isLoading && <p className="text-sm text-muted-foreground">Loading notifications…</p>}
+      {!isLoading && filtered.length === 0 && (
+        <p className="text-sm text-muted-foreground">No notifications match that search.</p>
+      )}
+
+      {grouped.map(([group, rows]) => (
+        <section key={group} className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">{group}</h2>
+          <div className="grid gap-3">
+            {rows.map((row) => (
+              <article
+                key={row.key}
+                className={`rounded-xl border bg-card p-4 ${row.enabled ? "" : "opacity-60"}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-foreground">{row.label}</h3>
+                      {!row.is_system && <Badge variant="outline">Custom</Badge>}
+                      {row.content_from_db && <Badge variant="secondary">Your wording</Badge>}
+                    </div>
+                    {row.description && (
+                      <p className="mt-1 text-sm text-muted-foreground">{row.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{row.enabled ? "On" : "Off"}</span>
+                    <Switch
+                      checked={row.enabled}
+                      disabled={toggle.isPending}
+                      onCheckedChange={(enabled) => toggle.mutate({ key: row.key, enabled })}
+                      aria-label={`${row.enabled ? "Turn off" : "Turn on"} ${row.label}`}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="mt-4 w-full text-left"
+                  onClick={() => openEditor(row)}
+                >
+                  <NotificationPreview title={row.title_template} body={row.body_template} />
+                </button>
+
+                <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+                  <p className="max-w-xl text-sm text-muted-foreground">
+                    {describeWhen(row.key, row.trigger_description)}
+                    {row.recipients_description ? ` · ${row.recipients_description}` : ""}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => openEditor(row)}>
+                    Edit message
+                  </Button>
+                </div>
+              </article>
+            ))}
           </div>
+        </section>
+      ))}
 
-          {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-          {!isLoading && filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground">No push notifications match your filters.</p>
-          )}
-
-          {grouped.map(([group, rows]) => (
-            <div key={group} className="space-y-2">
-              <h3 className="text-sm font-semibold text-muted-foreground">{group}</h3>
-              <div className="overflow-x-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[180px]">Notification</TableHead>
-                      <TableHead className="min-w-[200px]">When / Who</TableHead>
-                      <TableHead className="min-w-[200px]">Copy</TableHead>
-                      <TableHead className="w-[90px]">On</TableHead>
-                      <TableHead className="w-[80px]" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.key} className={!row.enabled ? "opacity-60" : undefined}>
-                        <TableCell>
-                          <div className="font-medium">{row.label}</div>
-                          <div className="mt-0.5 font-mono text-xs text-muted-foreground">{row.key}</div>
-                          {row.description && (
-                            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{row.description}</p>
-                          )}
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {row.is_system ? (
-                              <Badge variant="secondary">System</Badge>
-                            ) : (
-                              <Badge variant="outline">Custom</Badge>
-                            )}
-                            {row.content_from_db && <Badge>Live templates</Badge>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top text-sm">
-                          <p>
-                            <span className="text-muted-foreground">When: </span>
-                            {row.trigger_description || "—"}
-                          </p>
-                          <p className="mt-1">
-                            <span className="text-muted-foreground">Who: </span>
-                            {row.recipients_description || "—"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <p className="text-sm font-medium leading-snug">{row.title_template}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-3">{row.body_template}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={row.enabled}
-                            disabled={toggle.isPending}
-                            onCheckedChange={(enabled) => toggle.mutate({ key: row.key, enabled })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setIsNew(false);
-                              setEditing(fromRow(row));
-                            }}
-                            aria-label={`Edit ${row.label}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      {editing && (
+        <MessageEditor
+          key={`${editing.key}-${isNew}`}
+          initial={editing}
+          isNew={isNew}
+          open
+          onClose={() => {
+            setEditing(null);
+            setIsNew(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -597,60 +677,39 @@ function RecentTab() {
   const { data: logs = [], isLoading } = useRecentPushLogs();
   const { data: definitions = [] } = usePushDefinitions();
   const labelFor = (key: string | null) =>
-    (key && definitions.find((d) => d.key === key)?.label) || key || "Unknown";
+    (key && definitions.find((row) => row.key === key)?.label) || key || "Notification";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent sends</CardTitle>
-        <CardDescription>Latest logged push deliveries (admin audit trail).</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {!isLoading && logs.length === 0 && (
-          <p className="text-sm text-muted-foreground">No logged pushes yet.</p>
-        )}
-        {logs.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {new Date(log.created_at).toLocaleString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </TableCell>
-                    <TableCell className="text-sm">{labelFor(log.context_type)}</TableCell>
-                    <TableCell className="font-medium">{log.title}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">{log.message}</TableCell>
-                    <TableCell>
-                      {log.canceled_at ? (
-                        <Badge variant="destructive">Withdrawn</Badge>
-                      ) : (
-                        <Badge variant="secondary">Sent</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">The latest notifications that went out.</p>
+      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {!isLoading && logs.length === 0 && (
+        <p className="text-sm text-muted-foreground">Nothing has been sent yet.</p>
+      )}
+      {logs.map((log) => (
+        <article key={log.id} className="rounded-xl border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {new Date(log.created_at).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+              {" · "}
+              {labelFor(log.context_type)}
+            </p>
+            {log.canceled_at ? (
+              <Badge variant="destructive">Withdrawn</Badge>
+            ) : (
+              <Badge variant="secondary">Sent</Badge>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <p className="mt-2 font-medium text-foreground">{log.title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{log.message}</p>
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -665,7 +724,7 @@ export default function PushNotificationsAdmin() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8">
       <Button asChild variant="ghost" className="mb-4 -ml-2 gap-2 text-muted-foreground hover:text-foreground">
         <Link to="/admin-tools">
           <ArrowLeft className="h-4 w-4" />
@@ -678,7 +737,7 @@ export default function PushNotificationsAdmin() {
       </div>
       <Tabs defaultValue="catalog">
         <TabsList>
-          <TabsTrigger value="catalog">Catalog</TabsTrigger>
+          <TabsTrigger value="catalog">Messages</TabsTrigger>
           <TabsTrigger value="recent">Recent sends</TabsTrigger>
         </TabsList>
         <TabsContent value="catalog" className="mt-4">

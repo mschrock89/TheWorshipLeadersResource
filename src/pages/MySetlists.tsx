@@ -44,7 +44,7 @@ import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { supabase } from "@/integrations/supabase/client";
 import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
-import { buildBibleHref } from "@/lib/bible";
+import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -1099,11 +1099,13 @@ function SetlistTeachingSchedule({
         <span className="text-sm font-medium">
           {formatTeachingReference(teachingWeek)}
         </span>
-        <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
-          <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
-            Read Passage
-          </Link>
-        </Button>
+        {BIBLE_READER_ENABLED ? (
+          <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+            <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
+              Read Passage
+            </Link>
+          </Button>
+        ) : null}
       </div>
       {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">

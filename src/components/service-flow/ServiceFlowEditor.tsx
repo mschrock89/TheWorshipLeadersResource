@@ -29,6 +29,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
+import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
+import { recurringServiceTimesForDate } from "@/lib/campusMinistrySchedule";
 import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES, isKidsCampSetMinistryType, isNetworkWideMinistryType } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
@@ -41,7 +43,7 @@ import {
   resolveServiceFlowPlaceholderTitle,
 } from "./resolveServiceFlowPlaceholders";
 import { useCustomServiceOccurrences } from "@/hooks/useCustomServices";
-import { buildBibleHref } from "@/lib/bible";
+import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import {
   useServiceFlow,
   useServiceFlowItems,
@@ -150,6 +152,7 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   const { toast } = useToast();
   const { selectedCampusId, setSelectedCampusId } = useCampusSelection();
   const { data: campuses, isLoading: campusesLoading } = useCampuses();
+  const { data: ministrySchedules = [] } = useCampusMinistrySchedules();
   const { data: networkWideCampus, isLoading: networkWideCampusLoading } = useNetworkWideCampus();
 
   // Parse initial date from string
@@ -893,6 +896,12 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
   }, [localItems]);
 
   const scheduledStartTime = useMemo(() => {
+    const recurringServiceTimes = recurringServiceTimesForDate(
+      ministrySchedules,
+      effectiveCampusId,
+      ministryType,
+      serviceDateStr,
+    );
     return resolveScheduledServiceStartTime({
       customServiceStartTime,
       serviceDate: serviceDateStr,
@@ -900,11 +909,13 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
       campusId: effectiveCampusId,
       campus: serviceFlowCampuses.find((campus) => campus.id === effectiveCampusId),
       overrides: serviceTimeOverrides,
+      ...(recurringServiceTimes ? { recurringServiceTimes } : {}),
     });
   }, [
     serviceFlowCampuses,
     customServiceStartTime,
     effectiveCampusId,
+    ministrySchedules,
     ministryType,
     serviceDateStr,
     serviceTimeOverrides,
@@ -1386,11 +1397,13 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
                 {teachingWeek.themes_manual.join(", ")}
               </span>
             ) : null}
-            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
-              <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
-                Read Passage
-              </Link>
-            </Button>
+            {BIBLE_READER_ENABLED ? (
+              <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                <Link to={buildBibleHref(formatTeachingReference(teachingWeek), teachingWeek.translation || "ESV")}>
+                  Read Passage
+                </Link>
+              </Button>
+            ) : null}
           </div>
           {teachingWeek.ai_summary ? (
             <p className="mt-2 text-xs text-muted-foreground">

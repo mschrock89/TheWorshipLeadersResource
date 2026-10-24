@@ -268,6 +268,21 @@ serve(async (req: Request): Promise<Response> => {
           targetGenders: Array.from(targetGenders),
           ministryTypes: eventMinistryTypes,
           resourceAppKey: "worship",
+          vars: {
+            title: event.title || "Event",
+            campus: eventCampusIds.length === 1
+              ? "your campus"
+              : eventCampusIds.length > 1
+                ? `${eventCampusIds.length} campuses`
+                : "All campuses",
+            ministry: eventMinistryTypes.length === 1
+              ? eventMinistryTypes[0].replace(/_/g, " ")
+              : eventMinistryTypes.length > 1
+                ? `${eventMinistryTypes.length} ministries`
+                : "All ministries",
+            date: formatEventDate(event.event_date),
+            time: timeLabel ? ` at ${timeLabel}` : "",
+          },
         },
       }),
     });

@@ -12,6 +12,7 @@ import {
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
+import { overrideAppliesToRosterDate } from "@/lib/weekendPositionSplit";
 import { resolveChainedHolder, type AcceptedRosterSwap } from "@/lib/effectiveSwapSchedule";
 import { swapPositionsMatch } from "@/lib/swapPositions";
 
@@ -554,6 +555,7 @@ export function useTeamRosterForDate(
       if (dateOverridesError) throw dateOverridesError;
 
       const allDateOverrides = ((dateOverrides || []) as TeamMemberDateOverrideRow[])
+        .filter((override) => overrideAppliesToRosterDate(override.schedule_date, dateStr))
         .sort((a, b) => {
           if (a.schedule_date === dateStr && b.schedule_date !== dateStr) return 1;
           if (b.schedule_date === dateStr && a.schedule_date !== dateStr) return -1;

@@ -231,6 +231,17 @@ test("a saved flow start time is preferred, then the day's override, then the ca
     }),
     ["09:00", "11:00"],
   );
+
+  assert.deepEqual(
+    listScheduledServiceTimes({
+      serviceDate: "2026-09-30",
+      ministryType: "encounter",
+      campusId: "campus-1",
+      campus,
+      recurringServiceTimes: ["18:30"],
+    }),
+    ["18:30"],
+  );
 });
 
 test("the live clock follows the service that local time is in", () => {

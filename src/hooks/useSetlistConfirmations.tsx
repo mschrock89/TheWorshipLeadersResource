@@ -297,11 +297,6 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
       for (const row of dateOverrideAssignments || []) {
         if (!row.schedule_date) continue;
         dateOverrideDatesSet.add(row.schedule_date);
-
-        if (isWeekend(row.schedule_date)) {
-          const pairDate = getWeekendPairDate(row.schedule_date);
-          if (pairDate) dateOverrideDatesSet.add(pairDate);
-        }
       }
       const dateOverrideDates = Array.from(dateOverrideDatesSet);
 

@@ -127,7 +127,14 @@ serve(async (req: Request): Promise<Response> => {
           url: "/chat",
           tag: `chat-activity-${resourceAppKey}`,
           userIds,
-          metadata: { resourceAppKey },
+          contextType: "chat-activity",
+          metadata: {
+            resourceAppKey,
+            vars: {
+              count: String(currentActivity),
+              campus: campusName,
+            },
+          },
         }),
       });
 

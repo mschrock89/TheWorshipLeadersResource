@@ -61,6 +61,8 @@ export type ScheduledServiceStartSource = {
     service_date: string;
     service_times?: string[] | null;
   }>;
+  /** Times from the campus ministry schedule. Null means that schedule does not exist yet. */
+  recurringServiceTimes?: string[] | null;
 };
 
 export function normalizeClockSource(value?: string | null): string | null {
@@ -175,6 +177,10 @@ export function listScheduledServiceTimes(source: ScheduledServiceStartSource): 
 
   const overrideTimes = uniqueClockTimes(matchingOverride?.service_times);
   if (overrideTimes.length > 0) return overrideTimes;
+
+  if (source.recurringServiceTimes) {
+    return uniqueClockTimes(source.recurringServiceTimes);
+  }
 
   if (!source.campus || !WEEKEND_SERVICE_TYPES.has(source.ministryType)) return [];
 

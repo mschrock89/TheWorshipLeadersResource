@@ -27,7 +27,7 @@ import {
   type DevoAssignment,
   type DevoAssignmentStatus,
 } from "@/hooks/useDevoAssignments";
-import { buildBibleHref } from "@/lib/bible";
+import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import { toast } from "sonner";
 
 const DEVO_PAGE_GRADIENT =
@@ -141,12 +141,14 @@ function DevoAssignmentPanel({ assignment }: { assignment: DevoAssignment }) {
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <Link to={buildBibleHref(assignment.chapter_reference, "ESV")}>
-            <BookOpen className="h-4 w-4" />
-            Read Passage
-          </Link>
-        </Button>
+        {BIBLE_READER_ENABLED ? (
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <Link to={buildBibleHref(assignment.chapter_reference, "ESV")}>
+              <BookOpen className="h-4 w-4" />
+              Read Passage
+            </Link>
+          </Button>
+        ) : null}
         {guideName && guidePath ? (
           <Button
             type="button"

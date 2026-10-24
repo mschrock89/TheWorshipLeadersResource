@@ -36,6 +36,7 @@ interface AssignMemberDialogProps {
   ministryFilter?: string;
   requiredGender?: VocalSlotGender | null;
   scheduleDate?: string;
+  scheduleLabel?: string;
 }
 
 export function AssignMemberDialog({
@@ -50,6 +51,7 @@ export function AssignMemberDialog({
   ministryFilter,
   requiredGender,
   scheduleDate,
+  scheduleLabel,
 }: AssignMemberDialogProps) {
   const [search, setSearch] = useState("");
   const [selectedMember, setSelectedMember] = useState<AvailableMember | null>(null);
@@ -283,7 +285,7 @@ export function AssignMemberDialog({
     : effectiveMinistryFilter === 'students' ? 'Students'
     : effectiveMinistryFilter === 'speaker' ? 'Speakers'
     : effectiveMinistryFilter || 'All';
-  const scheduleDateLabel = scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null;
+  const scheduleDateLabel = scheduleLabel || (scheduleDate ? format(parseISO(scheduleDate), "MMM d") : null);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>

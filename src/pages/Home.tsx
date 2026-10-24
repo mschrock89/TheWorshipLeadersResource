@@ -34,6 +34,7 @@ import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 import {
   getResourceAppForLocation,
   STUDENT_RESOURCE_APP_KEYS,
@@ -232,7 +233,7 @@ export default function Home() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {isStudentBase && (
+                  {BIBLE_READER_ENABLED && isStudentBase && (
                     <DropdownMenuItem asChild>
                       <Link to="/bible" className="flex items-center gap-2">
                         <BookOpen className="h-4 w-4" />

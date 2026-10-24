@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { X, Plus, User, Edit2, AlertTriangle, SplitSquareVertical, Minus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/cn";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import {
@@ -10,6 +17,41 @@ import {
   isBlankTeamBuilderMemberName,
 } from "@/lib/teamBuilderBlankSlot";
 import { TeamMemberAssignment } from "@/hooks/useTeamBuilder";
+import { assignmentsAreSamePerson, WeekendServiceDay } from "@/lib/weekendPositionSplit";
+
+type WeekendDayOverrides = Partial<Record<WeekendServiceDay, TeamMemberAssignment>>;
+
+function WeekendSplitMenu({
+  trigger,
+  saturdayAction,
+  sundayAction,
+  bothAction,
+  onSaturday,
+  onSunday,
+  onBoth,
+  extraItems,
+}: {
+  trigger: ReactNode;
+  saturdayAction: string;
+  sundayAction: string;
+  bothAction: string;
+  onSaturday: () => void;
+  onSunday: () => void;
+  onBoth: () => void;
+  extraItems?: ReactNode;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onSelect={onSaturday}>{saturdayAction}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSunday}>{sundayAction}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onBoth}>{bothAction}</DropdownMenuItem>
+        {extraItems}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 interface PositionSlotProps {
   label: string;
@@ -27,9 +69,11 @@ interface PositionSlotProps {
   dateOverrides?: Record<string, TeamMemberAssignment>;
   dateOverrideConflictDates?: Record<string, string[]>;
   onLeaveBlank?: () => void;
-  onAssignDate?: (scheduleDate: string) => void;
-  onLeaveBlankDate?: (scheduleDate: string) => void;
-  onRemoveDateOverride?: (scheduleDate: string) => void;
+  onAssignDate?: (scheduleDate: string, serviceDay?: WeekendServiceDay) => void;
+  onLeaveBlankDate?: (scheduleDate: string, serviceDay?: WeekendServiceDay) => void;
+  onRemoveDateOverride?: (scheduleDate: string, serviceDay?: WeekendServiceDay) => void;
+  weekendServiceDays?: Record<string, { saturday?: string; sunday?: string }>;
+  weekendDayOverrides?: Record<string, WeekendDayOverrides>;
 }
 
 export function PositionSlot({
@@ -51,11 +95,16 @@ export function PositionSlot({
   onAssignDate,
   onLeaveBlankDate,
   onRemoveDateOverride,
+  weekendServiceDays = {},
+  weekendDayOverrides = {},
 }: PositionSlotProps) {
   const [selectedView, setSelectedView] = useState<"all" | string>("all");
   const firstOverrideDate = useMemo(
-    () => scheduleDates.find((date) => !!dateOverrides[date]) || Object.keys(dateOverrides)[0],
-    [dateOverrides, scheduleDates],
+    () =>
+      scheduleDates.find((date) => !!dateOverrides[date] || !!weekendDayOverrides[date]) ||
+      Object.keys(dateOverrides)[0] ||
+      Object.keys(weekendDayOverrides)[0],
+    [dateOverrides, scheduleDates, weekendDayOverrides],
   );
   const hasAnyDateOverrides = !!firstOverrideDate;
   const ministryBadges = showMinistryBadges
@@ -79,13 +128,42 @@ export function PositionSlot({
 
   const selectedOverride =
     effectiveSelectedView !== "all" ? dateOverrides[effectiveSelectedView] : undefined;
+  const selectedDayOverrides =
+    effectiveSelectedView !== "all" ? weekendDayOverrides[effectiveSelectedView] : undefined;
+  const selectedWeekendDays =
+    effectiveSelectedView !== "all" ? weekendServiceDays[effectiveSelectedView] : undefined;
+  const canSplitSelectedWeekend = !!(selectedWeekendDays?.saturday && selectedWeekendDays?.sunday);
   const selectedOverrideIsBlank = isBlankTeamBuilderAssignment(selectedOverride);
   const baseAssignmentIsBlank = effectiveSelectedView === "all" && isBlankTeamBuilderMemberName(memberName);
   const selectedAssignmentIsBlank = selectedOverrideIsBlank || baseAssignmentIsBlank;
   const effectiveIsEmpty = isEmpty && !hasAnyDateOverrides;
+  const dayAssignmentLabel = (
+    day: WeekendServiceDay,
+    fallbackName?: string,
+  ) => {
+    const dayOverride = selectedDayOverrides?.[day];
+    if (dayOverride) {
+      return isBlankTeamBuilderAssignment(dayOverride) ? "No one assigned" : dayOverride.member_name;
+    }
+    if (selectedOverride) {
+      return selectedOverrideIsBlank ? "No one assigned" : selectedOverride.member_name;
+    }
+    return fallbackName || memberName || "Open";
+  };
+  const saturdayLabel = canSplitSelectedWeekend ? dayAssignmentLabel("saturday") : undefined;
+  const sundayLabel = canSplitSelectedWeekend ? dayAssignmentLabel("sunday") : undefined;
+  const weekendDaysDiffer = !!(
+    canSplitSelectedWeekend &&
+    !assignmentsAreSamePerson(
+      selectedDayOverrides?.saturday || selectedOverride || { user_id: null, member_name: memberName },
+      selectedDayOverrides?.sunday || selectedOverride || { user_id: null, member_name: memberName },
+    )
+  );
   const selectedMemberName = selectedAssignmentIsBlank
     ? "No one assigned"
-    : selectedOverride?.member_name || memberName;
+    : weekendDaysDiffer
+      ? `${saturdayLabel} / ${sundayLabel}`
+      : selectedOverride?.member_name || memberName;
   const selectedAvatarUrl = selectedOverride && !selectedOverrideIsBlank ? null : avatarUrl;
   const selectedConflictDates = useMemo(() => {
     if (effectiveSelectedView === "all") {
@@ -104,9 +182,14 @@ export function PositionSlot({
   const showSplitButton = isDateView && !!onAssignDate && !readOnly;
   const showBlankButton = isDateView && !!onLeaveBlankDate && !readOnly && !selectedOverrideIsBlank;
   const showFullBlankButton = !isDateView && !effectiveIsEmpty && !!onLeaveBlank && !readOnly && !baseAssignmentIsBlank;
+  const hasSelectedDayOverride = !!(selectedDayOverrides?.saturday || selectedDayOverrides?.sunday);
   const canRemoveCurrentSelection = isDateView
-    ? !!selectedOverride && !!onRemoveDateOverride && !readOnly
+    ? (!!selectedOverride || hasSelectedDayOverride) && !!onRemoveDateOverride && !readOnly
     : !readOnly;
+  const canSplitWeekendDays = (date: string) => {
+    const days = weekendServiceDays[date];
+    return !!(days?.saturday && days?.sunday);
+  };
 
   const formatConflictDates = (dates: string[]) =>
     dates.map((date) => {
@@ -162,18 +245,46 @@ export function PositionSlot({
 
           {hasWeekendSplit && !readOnly && onAssignDate && (
             <div className="flex flex-wrap gap-1">
-              {scheduleDates.map((date, index) => (
-                <button
-                  key={date}
-                  type="button"
-                  className={cn(weekChipClass(false), "inline-flex items-center")}
-                  onClick={() => onAssignDate(date)}
-                  title={`Assign only for ${format(parseISO(date), "MMM d")}`}
-                >
-                  <Plus className="mr-1 h-3 w-3" />
-                  {`W${index + 1}`}
-                </button>
-              ))}
+              {scheduleDates.map((date, index) => {
+                const weekLabel = `W${index + 1}`;
+                const dateLabel = format(parseISO(date), "MMM d");
+                if (canSplitWeekendDays(date)) {
+                  return (
+                    <WeekendSplitMenu
+                      key={date}
+                      trigger={
+                        <button
+                          type="button"
+                          className={cn(weekChipClass(false), "inline-flex items-center")}
+                          title={`Assign ${dateLabel} for Saturday, Sunday, or both`}
+                        >
+                          <Plus className="mr-1 h-3 w-3" />
+                          {weekLabel}
+                        </button>
+                      }
+                      saturdayAction="Saturday"
+                      sundayAction="Sunday"
+                      bothAction="Both days"
+                      onSaturday={() => onAssignDate(date, "saturday")}
+                      onSunday={() => onAssignDate(date, "sunday")}
+                      onBoth={() => onAssignDate(date)}
+                    />
+                  );
+                }
+
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    className={cn(weekChipClass(false), "inline-flex items-center")}
+                    onClick={() => onAssignDate(date)}
+                    title={`Assign only for ${dateLabel}`}
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    {weekLabel}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -189,10 +300,17 @@ export function PositionSlot({
                 All
               </button>
               {scheduleDates.map((date, index) => {
-                const hasOverride = !!dateOverrides[date];
+                const hasOverride = !!dateOverrides[date] || !!weekendDayOverrides[date];
                 const hasDateConflict =
                   (dateOverrideConflictDates[date]?.length || 0) > 0 ||
                   (!hasOverride && conflictDates.includes(date));
+                const daySplit = weekendDayOverrides[date];
+                const daysDiffer = !!(
+                  canSplitWeekendDays(date) &&
+                  daySplit &&
+                  !assignmentsAreSamePerson(daySplit.saturday, daySplit.sunday) &&
+                  (daySplit.saturday || daySplit.sunday)
+                );
 
                 return (
                   <button
@@ -204,7 +322,11 @@ export function PositionSlot({
                       hasDateConflict,
                     )}
                     onClick={() => setSelectedView(date)}
-                    title={format(parseISO(date), "MMM d")}
+                    title={
+                      daysDiffer
+                        ? `Saturday and Sunday are split · ${format(parseISO(date), "MMM d")}`
+                        : format(parseISO(date), "MMM d")
+                    }
                   >
                     {`W${index + 1}`}
                   </button>
@@ -263,7 +385,9 @@ export function PositionSlot({
                 {label}
                 {isDateView && (
                   <span className="ml-1">
-                    · {selectedOverrideIsBlank
+                    · {weekendDaysDiffer
+                      ? `Sat / Sun · ${format(parseISO(effectiveSelectedView), "MMM d")}`
+                      : selectedOverrideIsBlank
                       ? `Blank for ${format(parseISO(effectiveSelectedView), "MMM d")}`
                       : selectedOverride
                       ? `Split for ${format(parseISO(effectiveSelectedView), "MMM d")}`
@@ -295,7 +419,53 @@ export function PositionSlot({
                 Blank
               </Button>
             )}
-            {showSplitButton && (
+            {showSplitButton && canSplitSelectedWeekend && (
+              <WeekendSplitMenu
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-primary hover:bg-primary/10"
+                  >
+                    <SplitSquareVertical className="mr-1 h-3.5 w-3.5" />
+                    Split
+                  </Button>
+                }
+                saturdayAction={selectedDayOverrides?.saturday ? "Change Saturday" : "Saturday"}
+                sundayAction={selectedDayOverrides?.sunday ? "Change Sunday" : "Sunday"}
+                bothAction={selectedOverride ? "Change both days" : "Both days"}
+                onSaturday={() => onAssignDate?.(effectiveSelectedView, "saturday")}
+                onSunday={() => onAssignDate?.(effectiveSelectedView, "sunday")}
+                onBoth={() => onAssignDate?.(effectiveSelectedView)}
+                extraItems={
+                  <>
+                    {(selectedDayOverrides?.saturday || selectedDayOverrides?.sunday) && <DropdownMenuSeparator />}
+                    {selectedDayOverrides?.saturday && onRemoveDateOverride && (
+                      <DropdownMenuItem onSelect={() => onRemoveDateOverride(effectiveSelectedView, "saturday")}>
+                        Clear Saturday
+                      </DropdownMenuItem>
+                    )}
+                    {selectedDayOverrides?.sunday && onRemoveDateOverride && (
+                      <DropdownMenuItem onSelect={() => onRemoveDateOverride(effectiveSelectedView, "sunday")}>
+                        Clear Sunday
+                      </DropdownMenuItem>
+                    )}
+                    {onLeaveBlankDate && !selectedOverrideIsBlank && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onLeaveBlankDate(effectiveSelectedView, "saturday")}>
+                          Leave Saturday open
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onLeaveBlankDate(effectiveSelectedView, "sunday")}>
+                          Leave Sunday open
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </>
+                }
+              />
+            )}
+            {showSplitButton && !canSplitSelectedWeekend && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -324,12 +494,12 @@ export function PositionSlot({
                 size="icon"
                 className="h-7 w-7 text-destructive hover:bg-destructive/10"
                 title={
-                  isDateView && selectedOverride
-                    ? "Remove date override"
+                  isDateView && (selectedOverride || hasSelectedDayOverride)
+                    ? "Remove weekend split"
                     : "Remove assignment"
                 }
                 onClick={() => {
-                  if (isDateView && selectedOverride) {
+                  if (isDateView && (selectedOverride || hasSelectedDayOverride)) {
                     onRemoveDateOverride?.(effectiveSelectedView);
                     return;
                   }

@@ -99,6 +99,7 @@ import {
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { assignmentBelongsOnServiceDay, defaultMinistryTypesForAssignment } from "@/lib/teamScheduleSupport";
+import { assignmentsAreSamePerson, filterDatesForServiceDay, getServiceDayForDate } from "@/lib/weekendPositionSplit";
 import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
@@ -140,13 +141,6 @@ function shouldUseSplitTeamCards(ministryType: string, campusName?: string | nul
   return ministryType === "eon_weekend" && campusName === "Murfreesboro Central";
 }
 
-function getServiceDayForDate(dateStr: string): "saturday" | "sunday" | null {
-  const day = parseLocalDate(dateStr).getDay();
-  if (day === 6) return "saturday";
-  if (day === 0) return "sunday";
-  return null;
-}
-
 function filterScheduleDatesForServiceDay(
   scheduleDates: string[],
   serviceDay: "saturday" | "sunday" | null,
@@ -171,6 +165,64 @@ function filterOverridesByServiceDay<T>(
       ),
     ]),
   );
+}
+
+function weekendDaySplitSummary(
+  daySplit: Partial<Record<"saturday" | "sunday", { user_id?: string | null; member_name?: string | null }>> | undefined,
+  fallbackName?: string | null,
+): string | null {
+  if (!daySplit?.saturday && !daySplit?.sunday) return null;
+
+  const labelFor = (
+    assignment?: { user_id?: string | null; member_name?: string | null },
+    fallback?: string | null,
+  ) => {
+    if (!assignment) return fallback || null;
+    if (isBlankTeamBuilderAssignment(assignment)) return "Open";
+    return assignment.member_name || null;
+  };
+
+  const saturdayName = labelFor(daySplit.saturday, fallbackName);
+  const sundayName = labelFor(daySplit.sunday, fallbackName);
+  if ((daySplit.saturday || daySplit.sunday) && saturdayName !== sundayName) {
+    return `${saturdayName || "Open"} (Sat) / ${sundayName || "Open"} (Sun)`;
+  }
+  return saturdayName || sundayName;
+}
+
+function withWeekendDaySplitLabels(
+  shared: Record<string, Record<string, TeamMemberAssignment>>,
+  daySplits: Record<string, Record<string, Partial<Record<"saturday" | "sunday", TeamMemberAssignment>>>> | undefined,
+  members: TeamMemberAssignment[],
+): Record<string, Record<string, TeamMemberAssignment>> {
+  if (!daySplits) return shared;
+
+  const next: Record<string, Record<string, TeamMemberAssignment>> = { ...shared };
+  Object.entries(daySplits).forEach(([slot, buckets]) => {
+    const base = members.find((member) => member.position_slot === slot);
+    const fallback = base && !isBlankTeamBuilderAssignment(base) ? base.member_name : null;
+    Object.entries(buckets).forEach(([bucketKey, days]) => {
+      const summary = weekendDaySplitSummary(days, fallback);
+      if (!summary?.includes("/")) return;
+      next[slot] = {
+        ...(next[slot] || {}),
+        [bucketKey]: {
+          id: `weekend-day-split-${slot}-${bucketKey}`,
+          team_id: base?.team_id || "",
+          user_id: "weekend-day-split",
+          member_name: summary,
+          position: base?.position || slot,
+          position_slot: slot,
+          display_order: 0,
+          rotation_period_id: base?.rotation_period_id || "",
+          ministry_types: base?.ministry_types || [],
+          service_day: null,
+        },
+      };
+    });
+  });
+
+  return next;
 }
 
 const FALLBACK_TEAM_DEFINITIONS: Record<string, WorshipTeam> = {
@@ -444,6 +496,7 @@ export default function TeamBuilder() {
     slot: string;
     requiredGender: "male" | "female" | null;
     scheduleDate?: string;
+    scheduleLabel?: string;
     serviceDay?: "saturday" | "sunday" | null;
   } | null>(null);
   const [editingMinistry, setEditingMinistry] = useState<TeamMemberAssignment | null>(null);
@@ -952,6 +1005,29 @@ export default function TeamBuilder() {
     }, {});
   }, [scheduleEntries, selectedMinistryType]);
 
+  const weekendServiceDaysByTeam = useMemo(() => {
+    if (!selectedCampus?.has_saturday_service || !selectedCampus?.has_sunday_service) {
+      return {} as Record<string, Record<string, { saturday?: string; sunday?: string }>>;
+    }
+    if (!shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)) {
+      return {} as Record<string, Record<string, { saturday?: string; sunday?: string }>>;
+    }
+
+    return Object.fromEntries(
+      Object.entries(teamScheduleBuckets).map(([teamId, buckets]) => [
+        teamId,
+        Object.fromEntries(
+          buckets.flatMap((bucket) => {
+            const saturday = bucket.dates.find((date) => getServiceDayForDate(date) === "saturday");
+            const sunday = bucket.dates.find((date) => getServiceDayForDate(date) === "sunday");
+            if (!saturday || !sunday) return [];
+            return [[bucket.key, { saturday, sunday }]];
+          }),
+        ),
+      ]),
+    );
+  }, [selectedCampus?.has_saturday_service, selectedCampus?.has_sunday_service, selectedMinistryType, teamScheduleBuckets]);
+
   const ministryVisibleDateOverrides = useMemo(() => {
     if (selectedMinistryType === "all") {
       return activeDateOverrides;
@@ -996,39 +1072,82 @@ export default function TeamBuilder() {
     return Array.from(byKey.values());
   }, [displayTeamIdSet, ministryVisibleDateOverrides, visibleAssignments]);
 
-  const dateOverridesByTeamSlot = useMemo(() => {
-    return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, TeamMemberAssignment>>>>((acc, override) => {
+  const { dateOverridesByTeamSlot, weekendDayOverridesByTeamSlot } = useMemo(() => {
+    const shared: Record<string, Record<string, Record<string, TeamMemberAssignment>>> = {};
+    const byDay: Record<
+      string,
+      Record<string, Record<string, Partial<Record<"saturday" | "sunday", TeamMemberAssignment>>>>
+    > = {};
+
+    const toAssignment = (
+      override: (typeof ministryVisibleDateOverrides)[number],
+      serviceDay: "saturday" | "sunday" | null,
+    ): TeamMemberAssignment => ({
+      id: override.id,
+      team_id: override.team_id,
+      user_id: override.user_id,
+      member_name: override.member_name,
+      position: override.position,
+      position_slot: override.position_slot,
+      display_order: 0,
+      rotation_period_id: override.rotation_period_id,
+      ministry_types: override.ministry_types,
+      service_day: serviceDay,
+    });
+
+    ministryVisibleDateOverrides.forEach((override) => {
       const scheduleBucketKey = isWeekend(override.schedule_date) &&
         shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
           ? getWeekendKey(override.schedule_date)
           : override.schedule_date;
+      const serviceDay = getServiceDayForDate(override.schedule_date);
+      const assignment = toAssignment(override, serviceDay);
+      const dualWeekend = weekendServiceDaysByTeam[override.team_id]?.[scheduleBucketKey];
 
-      if (!acc[override.team_id]) {
-        acc[override.team_id] = {};
+      if (!shared[override.team_id]) shared[override.team_id] = {};
+      if (!shared[override.team_id][override.position_slot]) {
+        shared[override.team_id][override.position_slot] = {};
       }
 
-      if (!acc[override.team_id][override.position_slot]) {
-        acc[override.team_id][override.position_slot] = {};
+      if (dualWeekend && (serviceDay === "saturday" || serviceDay === "sunday")) {
+        if (!byDay[override.team_id]) byDay[override.team_id] = {};
+        if (!byDay[override.team_id][override.position_slot]) {
+          byDay[override.team_id][override.position_slot] = {};
+        }
+        if (!byDay[override.team_id][override.position_slot][scheduleBucketKey]) {
+          byDay[override.team_id][override.position_slot][scheduleBucketKey] = {};
+        }
+        const dayBucket = byDay[override.team_id][override.position_slot][scheduleBucketKey];
+        if (!dayBucket[serviceDay]) dayBucket[serviceDay] = assignment;
+        return;
       }
 
-      if (!acc[override.team_id][override.position_slot][scheduleBucketKey]) {
-        acc[override.team_id][override.position_slot][scheduleBucketKey] = {
-          id: override.id,
-          team_id: override.team_id,
-          user_id: override.user_id,
-          member_name: override.member_name,
-          position: override.position,
-          position_slot: override.position_slot,
-          display_order: 0,
-          rotation_period_id: override.rotation_period_id,
-          ministry_types: override.ministry_types,
-          service_day: null,
-        };
+      if (!shared[override.team_id][override.position_slot][scheduleBucketKey]) {
+        shared[override.team_id][override.position_slot][scheduleBucketKey] = assignment;
       }
+    });
 
-      return acc;
-    }, {});
-  }, [ministryVisibleDateOverrides, selectedMinistryType]);
+    Object.entries(byDay).forEach(([teamId, slots]) => {
+      Object.entries(slots).forEach(([slot, buckets]) => {
+        Object.entries(buckets).forEach(([bucketKey, days]) => {
+          if (
+            days.saturday &&
+            days.sunday &&
+            assignmentsAreSamePerson(days.saturday, days.sunday)
+          ) {
+            if (!shared[teamId]) shared[teamId] = {};
+            if (!shared[teamId][slot]) shared[teamId][slot] = {};
+            shared[teamId][slot][bucketKey] = days.saturday;
+          }
+        });
+      });
+    });
+
+    return {
+      dateOverridesByTeamSlot: shared,
+      weekendDayOverridesByTeamSlot: byDay,
+    };
+  }, [ministryVisibleDateOverrides, selectedMinistryType, weekendServiceDaysByTeam]);
 
   const blackoutConflictDatesByTeamSlotDateOverride = useMemo(() => {
     return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
@@ -1102,6 +1221,16 @@ export default function TeamBuilder() {
 
         teamMembers.forEach((member) => {
           if (!member.position_slot) return;
+          const daySummary = weekendServiceDaysByTeam[team.id]?.[bucketKey]
+            ? weekendDaySplitSummary(
+                weekendDayOverridesByTeamSlot[team.id]?.[member.position_slot]?.[bucketKey],
+                isBlankTeamBuilderAssignment(member) ? null : member.member_name,
+              )
+            : null;
+          if (daySummary) {
+            slotMap[member.position_slot] = daySummary;
+            return;
+          }
           const override = dateOverridesByTeamSlot[team.id]?.[member.position_slot]?.[bucketKey];
           if (override) {
             if (!isBlankTeamBuilderAssignment(override)) {
@@ -1110,6 +1239,12 @@ export default function TeamBuilder() {
             return;
           }
           slotMap[member.position_slot] = member.member_name;
+        });
+
+        Object.entries(weekendDayOverridesByTeamSlot[team.id] || {}).forEach(([slot, overridesByBucket]) => {
+          if (slotMap[slot]) return;
+          const summary = weekendDaySplitSummary(overridesByBucket[bucketKey]);
+          if (summary) slotMap[slot] = summary;
         });
 
         Object.entries(dateOverridesByTeamSlot[team.id] || {}).forEach(([slot, overridesByBucket]) => {
@@ -1125,7 +1260,7 @@ export default function TeamBuilder() {
     });
 
     return snapshots;
-  }, [dateOverridesByTeamSlot, displayTeams, visibleAssignments, scheduleDatesByTeam]);
+  }, [dateOverridesByTeamSlot, displayTeams, scheduleDatesByTeam, visibleAssignments, weekendDayOverridesByTeamSlot, weekendServiceDaysByTeam]);
 
   const rotationPushPreviewRecipients = useMemo(() => {
     const recipientMap = new Map<
@@ -1152,12 +1287,14 @@ export default function TeamBuilder() {
       const team = teamById[assignment.team_id];
       if (!team) return;
 
-      const overriddenBuckets = new Set(
-        Object.keys(dateOverridesByTeamSlot[assignment.team_id]?.[assignment.position_slot] || {}),
-      );
-      const bucketKeys = (scheduleDatesByTeam[assignment.team_id] || []).filter(
-        (bucketKey) => !overriddenBuckets.has(bucketKey),
-      );
+      const bucketKeys = (scheduleDatesByTeam[assignment.team_id] || []).filter((bucketKey) => {
+        const dualWeekend = weekendServiceDaysByTeam[assignment.team_id]?.[bucketKey];
+        if (dualWeekend) {
+          const days = weekendDayOverridesByTeamSlot[assignment.team_id]?.[assignment.position_slot]?.[bucketKey];
+          return !(days?.saturday && days?.sunday);
+        }
+        return !dateOverridesByTeamSlot[assignment.team_id]?.[assignment.position_slot]?.[bucketKey];
+      });
 
       if (bucketKeys.length === 0) return;
 
@@ -1273,6 +1410,8 @@ export default function TeamBuilder() {
     selectedPeriod?.name,
     teamById,
     visibleAssignments,
+    weekendDayOverridesByTeamSlot,
+    weekendServiceDaysByTeam,
   ]);
 
   const breakPushPreviewRecipients = useMemo(() => {
@@ -1316,6 +1455,11 @@ export default function TeamBuilder() {
           teamId: teamEntry.teamId,
           teamName: teamEntry.teamName,
           ministryType: selectedMinistryType,
+          vars: {
+            team: teamEntry.teamName,
+            dates: teamEntry.dateSummary.map((entry) => entry.date).join(", ") || "the upcoming dates",
+            period: selectedPeriod?.name || "this trimester",
+          },
         },
       })),
     );
@@ -1331,6 +1475,9 @@ export default function TeamBuilder() {
         rotationPeriodId: selectedPeriodId,
         campusId: selectedCampusId,
         ministryType: selectedMinistryType,
+        vars: {
+          period: selectedPeriod?.name || "this trimester",
+        },
       },
     }));
 
@@ -1370,7 +1517,11 @@ export default function TeamBuilder() {
     }
 
     if (assigningSlot.scheduleDate) {
+      const dayOverride = assigningSlot.serviceDay
+        ? weekendDayOverridesByTeamSlot[assigningSlot.teamId]?.[assigningSlot.slot]?.[assigningSlot.scheduleDate]?.[assigningSlot.serviceDay]
+        : undefined;
       const currentOverrideAssignment =
+        dayOverride ||
         dateOverridesByTeamSlot[assigningSlot.teamId]?.[assigningSlot.slot]?.[assigningSlot.scheduleDate];
 
       if (currentOverrideAssignment?.user_id) {
@@ -1381,9 +1532,12 @@ export default function TeamBuilder() {
     const targetMinistryType = assigningMinistryType || selectedMinistryType;
     const allowMultiTeamForAllMembers = targetMinistryType === "worship_night";
     const targetScheduleDates = assigningSlot.scheduleDate
-      ? ((teamScheduleBuckets[assigningSlot.teamId] || [])
-          .find((bucket) => bucket.key === assigningSlot.scheduleDate)
-          ?.dates || [assigningSlot.scheduleDate])
+      ? filterDatesForServiceDay(
+          (teamScheduleBuckets[assigningSlot.teamId] || [])
+            .find((bucket) => bucket.key === assigningSlot.scheduleDate)
+            ?.dates || [assigningSlot.scheduleDate],
+          assigningSlot.serviceDay,
+        )
       : Array.from(
           new Set(
             (teamScheduleBuckets[assigningSlot.teamId] || []).flatMap((bucket) => bucket.dates),
@@ -1541,6 +1695,7 @@ export default function TeamBuilder() {
     multiTeamAssignableMembers,
     activeDateOverrides,
     dateOverridesByTeamSlot,
+    weekendDayOverridesByTeamSlot,
     members,
     assigningMinistryType,
     selectedMinistryType,
@@ -1553,12 +1708,16 @@ export default function TeamBuilder() {
 
     const scheduledDatesForTeam = new Set(
       assigningSlot.scheduleDate
-        ? (teamScheduleBuckets[assigningSlot.teamId] || [])
-            .find((bucket) => bucket.key === assigningSlot.scheduleDate)
-            ?.dates || [assigningSlot.scheduleDate]
+        ? filterDatesForServiceDay(
+            (teamScheduleBuckets[assigningSlot.teamId] || [])
+              .find((bucket) => bucket.key === assigningSlot.scheduleDate)
+              ?.dates || [assigningSlot.scheduleDate],
+            assigningSlot.serviceDay,
+          )
         : scheduleEntries
             .filter((entry) => entry.team_id === assigningSlot.teamId)
-            .map((entry) => entry.schedule_date),
+            .map((entry) => entry.schedule_date)
+            .filter((date) => !assigningSlot.serviceDay || getServiceDayForDate(date) === assigningSlot.serviceDay),
     );
 
     return assignableMembersForSlot.reduce<Record<string, string[]>>((acc, member) => {
@@ -1617,6 +1776,29 @@ export default function TeamBuilder() {
     });
   };
 
+  const datesForBucket = (
+    teamId: string,
+    bucketKey: string,
+    serviceDay?: "saturday" | "sunday" | null,
+  ) =>
+    filterDatesForServiceDay(
+      (teamScheduleBuckets[teamId] || []).find((bucket) => bucket.key === bucketKey)?.dates || [bucketKey],
+      serviceDay,
+    );
+
+  const formatAssignmentScheduleLabel = (
+    dates: string[],
+    serviceDay?: "saturday" | "sunday" | null,
+  ) => {
+    if (dates.length === 0) return undefined;
+    if (serviceDay === "saturday" || serviceDay === "sunday") {
+      const dayName = serviceDay === "saturday" ? "Saturday" : "Sunday";
+      return `${dayName}, ${formatPreviewDate(dates[0])}`;
+    }
+    if (dates.length === 1) return formatPreviewDate(dates[0]);
+    return `${formatPreviewDate(dates[0])}–${formatPreviewDate(dates[dates.length - 1])}`;
+  };
+
   const handleAssign = (
     team: WorshipTeam,
     slot: string,
@@ -1624,6 +1806,7 @@ export default function TeamBuilder() {
     serviceDay?: "saturday" | "sunday" | null,
   ) => {
     if (!canEditCampus || isTeamLocked(team.id)) return;
+    const assignmentDates = scheduleDate ? datesForBucket(team.id, scheduleDate, serviceDay) : [];
     setAssigningSlot({
       teamId: team.id,
       teamName: team.name,
@@ -1633,6 +1816,9 @@ export default function TeamBuilder() {
         ministryType: selectedMinistryType,
       }),
       scheduleDate,
+      scheduleLabel: scheduleDate
+        ? formatAssignmentScheduleLabel(assignmentDates, serviceDay)
+        : undefined,
       serviceDay: serviceDay || null,
     });
   };
@@ -1647,10 +1833,8 @@ export default function TeamBuilder() {
     const targetMinistryType = resolveTeamBuilderSlotMinistryType(selectedMinistryType, slot);
 
     if (scheduleDate) {
-      const matchingBucketDates =
-        (teamScheduleBuckets[teamId] || [])
-          .find((bucket) => bucket.key === scheduleDate)
-          ?.dates || [scheduleDate];
+      const matchingBucketDates = datesForBucket(teamId, scheduleDate, serviceDay);
+      if (matchingBucketDates.length === 0) return;
 
       Promise.all(
         matchingBucketDates.map((bucketDate, index) =>
@@ -1680,6 +1864,7 @@ export default function TeamBuilder() {
     teamId: string,
     slot: string,
     scheduleDate?: string,
+    serviceDay?: "saturday" | "sunday" | null,
   ) => {
     if (!selectedPeriodId || !canEditCampus || isTeamLocked(teamId)) return;
 
@@ -1703,10 +1888,8 @@ export default function TeamBuilder() {
       return;
     }
 
-    const matchingBucketDates =
-      (teamScheduleBuckets[teamId] || [])
-        .find((bucket) => bucket.key === scheduleDate)
-        ?.dates || [scheduleDate];
+    const matchingBucketDates = datesForBucket(teamId, scheduleDate, serviceDay);
+    if (matchingBucketDates.length === 0) return;
 
     Promise.all(
       matchingBucketDates.map((bucketDate, index) =>
@@ -1730,10 +1913,15 @@ export default function TeamBuilder() {
     const targetMinistryType = assigningMinistryType || selectedMinistryType;
 
     if (assigningSlot.scheduleDate) {
-      const matchingBucketDates =
-        (teamScheduleBuckets[assigningSlot.teamId] || [])
-          .find((bucket) => bucket.key === assigningSlot.scheduleDate)
-          ?.dates || [assigningSlot.scheduleDate];
+      const matchingBucketDates = datesForBucket(
+        assigningSlot.teamId,
+        assigningSlot.scheduleDate,
+        assigningSlot.serviceDay,
+      );
+      if (matchingBucketDates.length === 0) {
+        setAssigningSlot(null);
+        return;
+      }
 
       Promise.all(
         matchingBucketDates.map((scheduleDate, index) =>
@@ -1905,7 +2093,13 @@ export default function TeamBuilder() {
           slotDateOverrides: !supportsDateSpecificAssignments
             ? {}
             : filterOverridesByServiceDay(
-                dateOverridesByTeamSlot[team.id] || {},
+                withWeekendDaySplitLabels(
+                  dateOverridesByTeamSlot[team.id] || {},
+                  weekendDayOverridesByTeamSlot[team.id],
+                  serviceDay
+                    ? getMembersForTeamServiceDay(team.id, serviceDay)
+                    : getMembersForTeam(team.id),
+                ),
                 serviceDay,
               ),
         })),
@@ -2160,19 +2354,40 @@ export default function TeamBuilder() {
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {teamCards.map(({ key, team, title, serviceDay }) => (
+                  {teamCards.map(({ key, team, title, serviceDay: cardServiceDay }) => (
                     <TeamCard
                       key={key}
                       team={team}
                       members={
-                        serviceDay
-                          ? getMembersForTeamServiceDay(team.id, serviceDay)
+                        cardServiceDay
+                          ? getMembersForTeamServiceDay(team.id, cardServiceDay)
                           : getMembersForTeam(team.id)
                       }
                       availableMembers={availableMembers}
-                      onAssign={(slot, scheduleDate) => handleAssign(team, slot, scheduleDate, serviceDay)}
-                      onRemove={(slot, scheduleDate) => handleRemove(team.id, slot, scheduleDate, serviceDay)}
-                      onLeaveBlank={(slot, scheduleDate) => handleLeaveBlank(team.id, slot, scheduleDate)}
+                      onAssign={(slot, scheduleDate, serviceDay) =>
+                        handleAssign(
+                          team,
+                          slot,
+                          scheduleDate,
+                          serviceDay === undefined ? cardServiceDay : serviceDay,
+                        )
+                      }
+                      onRemove={(slot, scheduleDate, serviceDay) =>
+                        handleRemove(
+                          team.id,
+                          slot,
+                          scheduleDate,
+                          serviceDay === undefined ? cardServiceDay : serviceDay,
+                        )
+                      }
+                      onLeaveBlank={(slot, scheduleDate, serviceDay) =>
+                        handleLeaveBlank(
+                          team.id,
+                          slot,
+                          scheduleDate,
+                          serviceDay === undefined ? cardServiceDay : serviceDay,
+                        )
+                      }
                       onEditMinistry={handleEditMinistry}
                       onEditTemplate={canEditCampus ? () => setEditingTemplateTeam(team) : undefined}
                       onEditTeam={canEditCampus ? () => handleEditTeam(team) : undefined}
@@ -2192,7 +2407,7 @@ export default function TeamBuilder() {
                           ? []
                           : filterScheduleDatesForServiceDay(
                               scheduleDatesByTeam[team.id] || [],
-                              serviceDay,
+                              cardServiceDay,
                             )
                       }
                       slotDateOverrides={
@@ -2200,7 +2415,7 @@ export default function TeamBuilder() {
                           ? {}
                           : filterOverridesByServiceDay(
                               dateOverridesByTeamSlot[team.id] || {},
-                              serviceDay,
+                              cardServiceDay,
                             )
                       }
                       slotDateOverrideConflictDates={
@@ -2208,9 +2423,11 @@ export default function TeamBuilder() {
                           ? {}
                           : filterOverridesByServiceDay(
                               blackoutConflictDatesByTeamSlotDateOverride[team.id] || {},
-                              serviceDay,
+                              cardServiceDay,
                             )
                       }
+                      weekendServiceDays={weekendServiceDaysByTeam[team.id] || {}}
+                      slotWeekendDayOverrides={weekendDayOverridesByTeamSlot[team.id] || {}}
                       titleOverride={title}
                     />
                   ))}
@@ -2379,12 +2596,19 @@ export default function TeamBuilder() {
           onSelect={handleSelectMember}
           onLeaveBlank={
             assigningSlot.scheduleDate
-              ? () => handleLeaveBlank(assigningSlot.teamId, assigningSlot.slot, assigningSlot.scheduleDate!)
+              ? () =>
+                  handleLeaveBlank(
+                    assigningSlot.teamId,
+                    assigningSlot.slot,
+                    assigningSlot.scheduleDate!,
+                    assigningSlot.serviceDay,
+                  )
               : undefined
           }
           ministryFilter={selectedMinistryType !== "all" ? selectedMinistryType : undefined}
           requiredGender={assigningSlot.requiredGender}
           scheduleDate={assigningSlot.scheduleDate}
+          scheduleLabel={assigningSlot.scheduleLabel}
         />
       )}
 

@@ -1,5 +1,8 @@
 export type BibleTranslation = "ESV";
 
+/** Set to true to show the Bible reader in navigation and at /bible. */
+export const BIBLE_READER_ENABLED = false;
+
 export interface BibleBook {
   name: string;
   chapters: number;

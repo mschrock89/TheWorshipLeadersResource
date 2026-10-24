@@ -266,6 +266,12 @@ serve(async (req: Request): Promise<Response> => {
         metadata: {
           resourceAppKey: entry.appKey,
           ministryTypes: entry.ministryTypes,
+          vars: {
+            day_word: entry.dayWord,
+            day_word_title: entry.dayWord === "today" ? "Today" : "Tomorrow",
+            positions: positionsStr || "your scheduled spot",
+            teams: teamsStr || "your team",
+          },
         },
       }, entry.userId);
     }

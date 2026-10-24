@@ -42,6 +42,7 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import {
   getDefaultFeedMinistryType,
@@ -1271,7 +1272,9 @@ export default function Feed({
                 <div className="space-y-3 text-sm leading-6 text-muted-foreground">
                   <p>Everyone signed into the app can read posts for the selected campus and like what resonates.</p>
                   <p>Admins can publish, edit, and remove posts on each campus Feed to keep it helpful and clean.</p>
-                  <p>Scripture can be sent into this composer directly from the Bible reader.</p>
+                  {BIBLE_READER_ENABLED ? (
+                    <p>Scripture can be sent into this composer directly from the Bible reader.</p>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

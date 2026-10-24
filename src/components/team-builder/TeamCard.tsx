@@ -12,6 +12,7 @@ import { getTeamBuilderSlotCategories, memberMatchesMinistryFilter } from "@/lib
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import { getTeamTemplateSlotConfigs } from "@/lib/teamTemplates";
 import { getTeamIcon } from "@/lib/teamIcons";
+import { WeekendServiceDay } from "@/lib/weekendPositionSplit";
 
 interface TeamCardProps {
   team: {
@@ -22,9 +23,9 @@ interface TeamCardProps {
   };
   members: TeamMemberAssignment[];
   availableMembers: AvailableMember[];
-  onAssign: (slot: string, scheduleDate?: string) => void;
-  onRemove: (slot: string, scheduleDate?: string) => void;
-  onLeaveBlank?: (slot: string, scheduleDate?: string) => void;
+  onAssign: (slot: string, scheduleDate?: string, serviceDay?: WeekendServiceDay | null) => void;
+  onRemove: (slot: string, scheduleDate?: string, serviceDay?: WeekendServiceDay | null) => void;
+  onLeaveBlank?: (slot: string, scheduleDate?: string, serviceDay?: WeekendServiceDay | null) => void;
   onEditMinistry?: (member: TeamMemberAssignment) => void;
   readOnly?: boolean;
   isLocked?: boolean;
@@ -42,6 +43,8 @@ interface TeamCardProps {
   slotScheduleDates?: string[];
   slotDateOverrides?: Record<string, Record<string, TeamMemberAssignment>>;
   slotDateOverrideConflictDates?: Record<string, Record<string, string[]>>;
+  weekendServiceDays?: Record<string, { saturday?: string; sunday?: string }>;
+  slotWeekendDayOverrides?: Record<string, Record<string, Partial<Record<WeekendServiceDay, TeamMemberAssignment>>>>;
   titleOverride?: string;
 }
 
@@ -68,6 +71,8 @@ export function TeamCard({
   slotScheduleDates = [],
   slotDateOverrides = {},
   slotDateOverrideConflictDates = {},
+  weekendServiceDays = {},
+  slotWeekendDayOverrides = {},
   titleOverride,
 }: TeamCardProps) {
   // Get allowed categories for this ministry type
@@ -139,9 +144,11 @@ export function TeamCard({
       dateOverrides={slotDateOverrides[slotConfig.slot] || {}}
       dateOverrideConflictDates={slotDateOverrideConflictDates[slotConfig.slot] || {}}
       onLeaveBlank={onLeaveBlank ? () => onLeaveBlank(slotConfig.slot) : undefined}
-      onAssignDate={(scheduleDate) => onAssign(slotConfig.slot, scheduleDate)}
-      onLeaveBlankDate={onLeaveBlank ? (scheduleDate) => onLeaveBlank(slotConfig.slot, scheduleDate) : undefined}
-      onRemoveDateOverride={(scheduleDate) => onRemove(slotConfig.slot, scheduleDate)}
+      onAssignDate={(scheduleDate, serviceDay) => onAssign(slotConfig.slot, scheduleDate, serviceDay)}
+      onLeaveBlankDate={onLeaveBlank ? (scheduleDate, serviceDay) => onLeaveBlank(slotConfig.slot, scheduleDate, serviceDay) : undefined}
+      onRemoveDateOverride={(scheduleDate, serviceDay) => onRemove(slotConfig.slot, scheduleDate, serviceDay)}
+      weekendServiceDays={weekendServiceDays}
+      weekendDayOverrides={slotWeekendDayOverrides[slotConfig.slot] || {}}
     />
   );
 
@@ -209,8 +216,15 @@ export function TeamCard({
       return true;
     }
 
-    return Object.values(slotDateOverrides[slot] || {}).some(
-      (override) => !isBlankTeamBuilderAssignment(override),
+    return (
+      Object.values(slotDateOverrides[slot] || {}).some(
+        (override) => !isBlankTeamBuilderAssignment(override),
+      ) ||
+      Object.values(slotWeekendDayOverrides[slot] || {}).some((days) =>
+        [days.saturday, days.sunday].some(
+          (assignment) => assignment && !isBlankTeamBuilderAssignment(assignment),
+        ),
+      )
     );
   };
 

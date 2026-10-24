@@ -169,10 +169,18 @@ serve(async (req) => {
       url: `/my-setlists?setId=${draftSetId}`,
       tag: `setlist-confirm-${draftSetId}-${confirmerId}`,
       userIds: recipientUserIds,
+      contextType: "setlist-confirmed",
+      contextId: draftSetId,
       // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
       metadata: {
         resourceAppKey: "worship",
         ministryType: draftSet.ministry_type,
+        vars: {
+          name: confirmerName,
+          date: formattedDate,
+          campus: campusName || "your campus",
+          set_id: draftSetId,
+        },
       },
     };
 

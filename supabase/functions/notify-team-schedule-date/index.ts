@@ -5,7 +5,42 @@ import {
   buildSupportTeamPushContent,
   getSupportTeamPushTag,
   resolveSetlistConfirmLink,
+  type SupportTeamPushContent,
 } from "../_shared/supportTeamPushContent.ts";
+import { applyPushTemplates } from "../_shared/pushTemplate.ts";
+
+async function withAdminMessage(
+  supabase: ReturnType<typeof createClient>,
+  content: SupportTeamPushContent,
+) {
+  const setId = content.link.match(/[?&]setId=([^&]+)/)?.[1];
+  const vars = {
+    ...content.templateVars,
+    ...(setId ? { set_id: decodeURIComponent(setId) } : {}),
+  };
+  const { data } = await supabase
+    .from("push_notification_definitions")
+    .select("content_from_db, title_template, body_template, deep_link_url")
+    .eq("key", "team-schedule-date")
+    .maybeSingle();
+  const applied = applyPushTemplates({
+    title: content.title,
+    message: content.message,
+    url: content.link,
+    titleTemplate: data?.title_template || content.title,
+    bodyTemplate: data?.body_template || content.message,
+    urlTemplate: data?.deep_link_url,
+    vars,
+    contentFromDb: Boolean(data?.content_from_db),
+  });
+  return {
+    ...content,
+    title: applied.title,
+    message: applied.message,
+    link: applied.url || content.link,
+    vars,
+  };
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -366,13 +401,16 @@ serve(async (req: Request): Promise<Response> => {
     if (previewOnly) {
       const recipients = await buildRecipientPreview(supabase, recipientUserIds);
       const pushRecipientUserCount = recipients.filter((recipient) => recipient.hasPushSubscription).length;
-      const pushPreview = buildSupportTeamPushContent({
-        ministryType,
-        teamName,
-        scheduleDate,
-        campus: campusWeekendConfig,
-        confirmLink,
-      });
+      const pushPreview = await withAdminMessage(
+        supabase,
+        buildSupportTeamPushContent({
+          ministryType,
+          teamName,
+          scheduleDate,
+          campus: campusWeekendConfig,
+          confirmLink,
+        }),
+      );
 
       return new Response(
         JSON.stringify({
@@ -387,14 +425,17 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const pushContent = buildSupportTeamPushContent({
-      ministryType,
-      teamName,
-      scheduleDate,
-      campus: campusWeekendConfig,
-      confirmLink,
-    });
-    const { title, message, link, actions } = pushContent;
+    const pushContent = await withAdminMessage(
+      supabase,
+      buildSupportTeamPushContent({
+        ministryType,
+        teamName,
+        scheduleDate,
+        campus: campusWeekendConfig,
+        confirmLink,
+      }),
+    );
+    const { title, message, link, actions, vars } = pushContent;
 
     let pushSent = 0;
     let pushFailed = 0;
@@ -417,7 +458,12 @@ serve(async (req: Request): Promise<Response> => {
           userIds: recipientUserIds,
           contextType: "team-schedule-date",
           // Scope delivery to the app this scheduled team belongs to.
-          metadata: { resourceAppKey, ministryType, customServiceId: customServiceId || undefined },
+          metadata: {
+            resourceAppKey,
+            ministryType,
+            customServiceId: customServiceId || undefined,
+            vars,
+          },
         }),
       });
 

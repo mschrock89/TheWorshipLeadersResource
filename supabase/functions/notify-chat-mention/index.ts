@@ -106,7 +106,14 @@ serve(async (req: Request): Promise<Response> => {
         url: "/chat",
         tag: "chat-mention",
         userIds: mentionedUserIds,
-        metadata: { resourceAppKey },
+        contextType: "chat-mention",
+        metadata: {
+          resourceAppKey,
+          vars: {
+            sender: senderName,
+            preview: messageContent.length > 100 ? messageContent.substring(0, 100) + "..." : messageContent,
+          },
+        },
       }),
     });
 

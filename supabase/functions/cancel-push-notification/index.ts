@@ -132,6 +132,10 @@ serve(async (req: Request): Promise<Response> => {
             // so the correction must too.
             resourceAppKey:
               (notificationLog.metadata as Record<string, unknown> | null)?.resourceAppKey ?? "all",
+            vars: {
+              original_title: notificationLog.title || "that notification",
+              original_url: notificationLog.url || "/calendar",
+            },
           },
         }),
       });

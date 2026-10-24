@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
-import { useCampuses, useNetworkWideCampus, Campus, useUpdateCampusServiceConfig } from "@/hooks/useCampuses";
+import { useCampuses, useNetworkWideCampus, Campus } from "@/hooks/useCampuses";
+import { ServiceScheduleEditor } from "@/components/admin/ServiceScheduleEditor";
 import { CustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { CustomServiceBuilderDialog } from "@/components/admin/CustomServiceBuilderDialog";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
@@ -20,7 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Check, X, Plus, Minus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
+import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -70,29 +71,6 @@ function getRoleBadgeVariant(role: string): "default" | "secondary" | "outline" 
     case "network_student_pastor": return "secondary";
     default: return "outline";
   }
-}
-
-function formatTime(timeString: string): string {
-  if (!timeString) return "-";
-  const [hours, minutes] = timeString.split(":");
-  const hour = parseInt(hours, 10);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-}
-
-function formatTimes(times: string[] | null): string {
-  if (!times || times.length === 0) return "-";
-  return times.map(t => formatTime(t)).join(", ");
-}
-
-interface CampusServiceConfig {
-  id: string;
-  name: string;
-  has_saturday_service: boolean;
-  has_sunday_service: boolean;
-  saturday_service_times: string[];
-  sunday_service_times: string[];
 }
 
 interface TeachingWeekRow {
@@ -512,7 +490,6 @@ export default function AdminTools() {
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const { data: networkWideCampus = null } = useNetworkWideCampus();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
-  const updateConfig = useUpdateCampusServiceConfig();
   const { data: customServiceDefinitions = [], isLoading: customServicesLoading } = useCustomServiceDefinitions();
   const deleteCustomService = useDeleteCustomService();
   const { data: activeCovenant } = useActiveCovenant(user?.id);
@@ -576,7 +553,6 @@ export default function AdminTools() {
     });
   })();
   
-  const [isEditing, setIsEditing] = useState(false);
   const [isLeadershipOpen, setIsLeadershipOpen] = useState(true);
   const [isResettingPasswords, setIsResettingPasswords] = useState(false);
   const [resetResults, setResetResults] = useState<{ successCount: number; skippedCount: number; failCount: number } | null>(null);
@@ -685,7 +661,7 @@ export default function AdminTools() {
     {
       id: "service-schedule",
       title: "Service Schedule",
-      description: "Configure service days and times for each campus.",
+      description: "Open a campus and set service days and times for any ministry.",
       icon: Settings,
     },
     {
@@ -703,6 +679,8 @@ export default function AdminTools() {
     setSearchParams((params) => {
       const next = new URLSearchParams(params);
       next.delete("tool");
+      next.delete("campus");
+      next.delete("ministry");
       return next;
     });
   };
@@ -786,8 +764,6 @@ export default function AdminTools() {
       setIsResettingPasswords(false);
     }
   };
-  const [configs, setConfigs] = useState<CampusServiceConfig[]>([]);
-
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -799,22 +775,6 @@ export default function AdminTools() {
       navigate("/dashboard");
     }
   }, [authLoading, isAdmin, navigate]);
-
-  // Initialize configs when campuses load
-  useEffect(() => {
-    if (campuses.length > 0 && !isEditing) {
-      setConfigs(
-        campuses.map((campus) => ({
-          id: campus.id,
-          name: campus.name,
-          has_saturday_service: campus.has_saturday_service ?? false,
-          has_sunday_service: campus.has_sunday_service ?? true,
-          saturday_service_times: campus.saturday_service_time?.map(t => t.slice(0, 5)) || ["17:00"],
-          sunday_service_times: campus.sunday_service_time?.map(t => t.slice(0, 5)) || ["10:00"],
-        }))
-      );
-    }
-  }, [campuses, isEditing]);
 
   useEffect(() => {
     if (!teachingCampusId && campuses[0]?.id) {
@@ -1479,86 +1439,6 @@ export default function AdminTools() {
     } finally {
       setIsRemovingTeachingPdf(false);
     }
-  };
-
-  const toggleService = (campusId: string, field: "has_saturday_service" | "has_sunday_service") => {
-    setConfigs((prev) =>
-      prev.map((c) => {
-        if (c.id !== campusId) return c;
-        const newValue = !c[field];
-        if (newValue) {
-          if (field === "has_saturday_service" && c.saturday_service_times.length === 0) {
-            return { ...c, [field]: newValue, saturday_service_times: ["17:00"] };
-          }
-          if (field === "has_sunday_service" && c.sunday_service_times.length === 0) {
-            return { ...c, [field]: newValue, sunday_service_times: ["10:00"] };
-          }
-        }
-        return { ...c, [field]: newValue };
-      })
-    );
-  };
-
-  const addServiceTime = (campusId: string, day: "saturday" | "sunday") => {
-    setConfigs((prev) =>
-      prev.map((c) => {
-        if (c.id !== campusId) return c;
-        const field = day === "saturday" ? "saturday_service_times" : "sunday_service_times";
-        const defaultTime = day === "saturday" ? "18:00" : "11:30";
-        return { ...c, [field]: [...c[field], defaultTime] };
-      })
-    );
-  };
-
-  const removeServiceTime = (campusId: string, day: "saturday" | "sunday", index: number) => {
-    setConfigs((prev) =>
-      prev.map((c) => {
-        if (c.id !== campusId) return c;
-        const field = day === "saturday" ? "saturday_service_times" : "sunday_service_times";
-        const newTimes = c[field].filter((_, i) => i !== index);
-        return { ...c, [field]: newTimes };
-      })
-    );
-  };
-
-  const handleTimeChange = (campusId: string, day: "saturday" | "sunday", index: number, value: string) => {
-    setConfigs((prev) =>
-      prev.map((c) => {
-        if (c.id !== campusId) return c;
-        const field = day === "saturday" ? "saturday_service_times" : "sunday_service_times";
-        const newTimes = [...c[field]];
-        newTimes[index] = value;
-        return { ...c, [field]: newTimes };
-      })
-    );
-  };
-
-  const handleSave = async () => {
-    await updateConfig.mutateAsync(
-      configs.map((c) => ({
-        id: c.id,
-        has_saturday_service: c.has_saturday_service,
-        has_sunday_service: c.has_sunday_service,
-        saturday_service_time: c.saturday_service_times,
-        sunday_service_time: c.sunday_service_times,
-      }))
-    );
-    setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    // Reset configs from campuses
-    setConfigs(
-      campuses.map((campus) => ({
-        id: campus.id,
-        name: campus.name,
-        has_saturday_service: campus.has_saturday_service ?? false,
-        has_sunday_service: campus.has_sunday_service ?? true,
-        saturday_service_times: campus.saturday_service_time?.map(t => t.slice(0, 5)) || ["17:00"],
-        sunday_service_times: campus.sunday_service_time?.map(t => t.slice(0, 5)) || ["10:00"],
-      }))
-    );
   };
 
   const handlePublishCovenant = async () => {
@@ -2425,205 +2305,36 @@ export default function AdminTools() {
 
       {/* Service Schedule Section */}
       {activeTool?.id === "service-schedule" && (
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <div className="space-y-1">
-            <CardTitle className="text-xl font-semibold flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Service Schedule
-            </CardTitle>
-            <CardDescription>
-              Configure service days and times for each campus
-            </CardDescription>
-          </div>
-          {!isEditing && (
-            <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-              Edit
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {campusesLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-full" />
-            </div>
-          ) : isEditing ? (
-            <div className="space-y-6">
-              {configs.map((config) => (
-                <div key={config.id} className="border border-border rounded-lg p-4 space-y-4">
-                  <p className="font-semibold text-foreground">{config.name}</p>
-
-                  {/* Saturday Services */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant={config.has_saturday_service ? "destructive" : "outline"}
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          onClick={() => toggleService(config.id, "has_saturday_service")}
-                        >
-                          {config.has_saturday_service ? (
-                            <Minus className="h-3.5 w-3.5" />
-                          ) : (
-                            <Plus className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <span className={`text-sm font-medium ${config.has_saturday_service ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          Saturday
-                        </span>
-                      </div>
-                      {config.has_saturday_service && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => addServiceTime(config.id, "saturday")}
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add Time
-                        </Button>
-                      )}
-                    </div>
-                    
-                    {config.has_saturday_service ? (
-                      <div className="ml-9 space-y-2">
-                        {config.saturday_service_times.map((time, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <Input
-                              type="time"
-                              value={time}
-                              onChange={(e) => handleTimeChange(config.id, "saturday", idx, e.target.value)}
-                              className="w-[130px]"
-                            />
-                            {config.saturday_service_times.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => removeServiceTime(config.id, "saturday", idx)}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="ml-9 text-xs text-muted-foreground italic">No service</p>
-                    )}
-                  </div>
-
-                  {/* Sunday Services */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant={config.has_sunday_service ? "destructive" : "outline"}
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          onClick={() => toggleService(config.id, "has_sunday_service")}
-                        >
-                          {config.has_sunday_service ? (
-                            <Minus className="h-3.5 w-3.5" />
-                          ) : (
-                            <Plus className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <span className={`text-sm font-medium ${config.has_sunday_service ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          Sunday
-                        </span>
-                      </div>
-                      {config.has_sunday_service && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => addServiceTime(config.id, "sunday")}
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add Time
-                        </Button>
-                      )}
-                    </div>
-                    
-                    {config.has_sunday_service ? (
-                      <div className="ml-9 space-y-2">
-                        {config.sunday_service_times.map((time, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <Input
-                              type="time"
-                              value={time}
-                              onChange={(e) => handleTimeChange(config.id, "sunday", idx, e.target.value)}
-                              className="w-[130px]"
-                            />
-                            {config.sunday_service_times.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => removeServiceTime(config.id, "sunday", idx)}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="ml-9 text-xs text-muted-foreground italic">No service</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {/* Save/Cancel buttons */}
-              <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                <Button variant="outline" onClick={handleCancel}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSave} disabled={updateConfig.isPending}>
-                  {updateConfig.isPending ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {campuses.map((campus: Campus) => (
-                <div key={campus.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
-                  <p className="font-medium text-foreground">{campus.name}</p>
-                  <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-                    <span className="flex items-center gap-1">
-                      {campus.has_saturday_service ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <X className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      )}
-                      Sat {campus.has_saturday_service ? formatTimes(campus.saturday_service_time) : "-"}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      {campus.has_sunday_service ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <X className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      )}
-                      Sun {campus.has_sunday_service ? formatTimes(campus.sunday_service_time) : "-"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ServiceScheduleEditor
+        campuses={campuses}
+        campusesLoading={campusesLoading}
+        campusId={searchParams.get("campus")}
+        ministryType={searchParams.get("ministry")}
+        onSelectCampus={(campusId) => {
+          setSearchParams((params) => {
+            const next = new URLSearchParams(params);
+            next.set("tool", "service-schedule");
+            next.set("campus", campusId);
+            next.set("ministry", "weekend");
+            return next;
+          });
+        }}
+        onSelectMinistry={(ministry) => {
+          setSearchParams((params) => {
+            const next = new URLSearchParams(params);
+            next.set("ministry", ministry);
+            return next;
+          });
+        }}
+        onBack={() => {
+          setSearchParams((params) => {
+            const next = new URLSearchParams(params);
+            next.delete("campus");
+            next.delete("ministry");
+            return next;
+          });
+        }}
+      />
       )}
 
       {/* Service Flow Templates Section */}

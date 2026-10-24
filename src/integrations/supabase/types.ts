@@ -671,6 +671,44 @@ export type Database = {
         }
         Relationships: []
       }
+      campus_ministry_service_schedules: {
+        Row: {
+          campus_id: string
+          created_at: string
+          day_of_week: number
+          id: string
+          ministry_type: string
+          service_times: string[]
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          day_of_week: number
+          id?: string
+          ministry_type: string
+          service_times?: string[]
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          ministry_type?: string
+          service_times?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campus_ministry_service_schedules_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_time_overrides: {
         Row: {
           campus_id: string | null

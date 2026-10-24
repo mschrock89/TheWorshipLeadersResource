@@ -59,6 +59,38 @@ test("newest schedule wins when two rows have the same scope", () => {
   assert.equal(effective[0].team_id, "new-team");
 });
 
+test("a shared weekend rotation reaches Central, Cannon County, and Shelbyville the same way", () => {
+  const schedules = [
+    {
+      team_id: "team-4",
+      campus_id: null,
+      ministry_type: "weekend",
+      created_at: "2026-09-01T00:00:00Z",
+    },
+    {
+      team_id: "team-2",
+      campus_id: "cannon",
+      ministry_type: "weekend",
+      created_at: "2026-09-02T00:00:00Z",
+    },
+  ];
+
+  const effective = resolveEffectiveTeamSchedulesForCampuses(schedules, [
+    "central",
+    "cannon",
+    "shelbyville",
+  ]);
+
+  assert.deepEqual(
+    effective.map(({ campus_id, team_id }) => ({ campus_id, team_id })),
+    [
+      { campus_id: "central", team_id: "team-4" },
+      { campus_id: "cannon", team_id: "team-2" },
+      { campus_id: "shelbyville", team_id: "team-4" },
+    ],
+  );
+});
+
 test("shared Saturday teams do not expand to campuses the caller omitted", () => {
   const effective = resolveEffectiveTeamSchedulesForCampuses(
     [
@@ -88,6 +120,7 @@ test("roster push campuses skip Network Wide and campuses without service that d
   const campuses = [
     { id: "central", has_saturday_service: true, has_sunday_service: true },
     { id: "cannon", has_saturday_service: true, has_sunday_service: true },
+    { id: "shelbyville", has_saturday_service: false, has_sunday_service: true },
     { id: "tullahoma", has_saturday_service: false, has_sunday_service: true },
     { id: "network", is_network_wide: true, has_saturday_service: false, has_sunday_service: false },
   ];
@@ -98,10 +131,10 @@ test("roster push campuses skip Network Wide and campuses without service that d
   );
   assert.deepEqual(
     campusIdsEligibleForRosterPush(campuses, "2026-08-23"),
-    ["central", "cannon", "tullahoma"],
+    ["central", "cannon", "shelbyville", "tullahoma"],
   );
   assert.deepEqual(
     campusIdsEligibleForRosterPush(campuses, "2026-08-24"),
-    ["central", "cannon", "tullahoma"],
+    ["central", "cannon", "shelbyville", "tullahoma"],
   );
 });

@@ -1,5 +1,7 @@
 import { lazy, type ComponentType } from "react";
+import { Navigate } from "react-router-dom";
 import type { RouteDefinition } from "@/app/AppShell";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 
 const Auth = lazy(() => import("@/pages/Auth"));
 const Home = lazy(() => import("@/pages/Home"));
@@ -28,6 +30,11 @@ const PushNotificationsAdmin = lazy(() => import("@/pages/PushNotificationsAdmin
 const Resources = lazy(() => import("@/pages/Resources"));
 const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
 const Bible = lazy(() => import("@/pages/Bible"));
+
+function BibleRoute() {
+  if (!BIBLE_READER_ENABLED) return <Navigate to="/" replace />;
+  return <Bible />;
+}
 const Feed = lazy(() => import("@/pages/Feed"));
 const Devo = lazy(() => import("@/pages/Devo"));
 const DevoAdmin = lazy(() => import("@/pages/DevoAdmin"));
@@ -89,7 +96,7 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/devo-admin", DevoAdmin),
   route("/breaks-admin", BreakRequestsAdmin),
   route("/attendance", Attendance),
-  route("/bible", Bible),
+  route("/bible", BibleRoute),
   route("/service-flow", ServiceFlow),
   route("/snake", Snake),
   route("/pong", Pong),

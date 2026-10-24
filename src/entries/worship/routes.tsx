@@ -1,5 +1,7 @@
 import { lazy, type ComponentType } from "react";
+import { Navigate } from "react-router-dom";
 import type { RouteDefinition } from "@/app/AppShell";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 
 // Keep auth/home/legal eager for first paint; lazy-load everything else so
 // volunteers don't download Calendar/TeamBuilder/Admin/games on every visit.
@@ -34,6 +36,11 @@ const ServiceFlow = lazy(() => import("@/pages/ServiceFlow"));
 const LiveMode = lazy(() => import("@/pages/LiveMode"));
 const DrumTech = lazy(() => import("@/pages/DrumTech"));
 const Bible = lazy(() => import("@/pages/Bible"));
+
+function BibleRoute() {
+  if (!BIBLE_READER_ENABLED) return <Navigate to="/" replace />;
+  return <Bible />;
+}
 const Feed = lazy(() => import("@/pages/Feed"));
 const Devo = lazy(() => import("@/pages/Devo"));
 const DevoAdmin = lazy(() => import("@/pages/DevoAdmin"));
@@ -94,7 +101,7 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/devo-admin", DevoAdmin),
   route("/breaks-admin", BreakRequestsAdmin),
   route("/drum-tech", DrumTech),
-  route("/bible", Bible),
+  route("/bible", BibleRoute),
   route("/service-flow", ServiceFlow),
   route("/live", LiveMode),
   route("/snake", Snake),

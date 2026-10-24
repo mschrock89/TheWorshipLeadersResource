@@ -182,6 +182,7 @@ async function sendPushNotification({
   tag,
   createdBy,
   metadata,
+  contextType = "swap-request",
 }: {
   supabaseUrl: string;
   supabaseServiceKey: string;
@@ -191,6 +192,7 @@ async function sendPushNotification({
   tag: string;
   createdBy: string;
   metadata: Record<string, unknown>;
+  contextType?: string;
 }): Promise<number> {
   if (userIds.length === 0) {
     return 0;
@@ -208,7 +210,7 @@ async function sendPushNotification({
       url: "/swaps",
       tag,
       userIds,
-      contextType: "swap-request",
+      contextType,
       contextId: String(metadata.swapRequestId || ""),
       createdBy,
       metadata,
@@ -600,6 +602,13 @@ serve(async (req: Request): Promise<Response> => {
       ministryType: scheduleMinistryType,
       // Scope delivery to the app this swap request belongs to.
       resourceAppKey: swapRequest.resource_app_key || "worship",
+      vars: {
+        request_label: notificationTitle || "Swap Request",
+        requester: requesterName,
+        position: formatPosition(swapRequest.position),
+        date: dateStr,
+        team: teamName,
+      },
     };
 
     let recipientPushSent = 0;
@@ -637,9 +646,11 @@ serve(async (req: Request): Promise<Response> => {
         userIds: [swapRequest.requester_id],
         tag: `swap-request-sent-${swapRequest.id}`,
         createdBy: swapRequest.requester_id,
+        contextType: "swap-request-sent",
         metadata: {
           ...recipientPushMetadata,
           recipientType: "requester",
+          vars: {},
         },
       });
       console.log(`Requester push notifications sent: ${requesterPushSent}`);

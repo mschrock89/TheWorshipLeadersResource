@@ -222,6 +222,12 @@ serve(async (req) => {
             ministryType: draftSet.ministry_type || playlist.ministry_type || "weekend_team",
             // Weekend tracks are a Worship-only feature; scope to worship subscriptions.
             resourceAppKey: "worship",
+            vars: {
+              track_title: trackTitle.trim(),
+              date: formattedDate,
+              campus: campusName || "your campus",
+              set_id: draftSet.id,
+            },
           },
         }),
       });

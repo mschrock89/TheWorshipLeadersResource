@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { refreshTokenIfNeededEncrypted } from "../_shared/pco-encryption.ts";
+import { campusIdFromServiceTypeName } from "../_shared/pcoCampus.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,24 +207,8 @@ serve(async (req) => {
     // Fetch all campuses for mapping
     const { data: campuses } = await supabaseAdmin.from('campuses').select('id, name');
 
-    const getCampusIdFromServiceType = (serviceTypeName: string, connectionCampusId: string | null): string | null => {
-      if (!campuses || campuses.length === 0) return connectionCampusId;
-      
-      const lowerName = serviceTypeName.toLowerCase();
-      
-      for (const campus of campuses) {
-        const campusLower = campus.name.toLowerCase();
-        if (lowerName.includes(campusLower)) {
-          return campus.id;
-        }
-      }
-      
-      if (lowerName.includes('worship night') || lowerName.includes('all team') || lowerName.includes('prayer night')) {
-        return null;
-      }
-      
-      return connectionCampusId;
-    };
+    const getCampusIdFromServiceType = (serviceTypeName: string, connectionCampusId: string | null): string | null =>
+      campusIdFromServiceTypeName(serviceTypeName, campuses, connectionCampusId);
 
     const campusNameTokens = (campuses || []).map(c => c.name.toLowerCase());
 

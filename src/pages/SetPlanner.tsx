@@ -38,7 +38,7 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { buildBibleHref } from "@/lib/bible";
+import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 
 const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
@@ -1187,16 +1187,18 @@ export default function SetPlanner() {
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button asChild variant="outline" size="sm" className="gap-2">
-                    <Link
-                      to={buildBibleHref(
-                        teachingWeek.chapter_reference || `${teachingWeek.book} ${teachingWeek.chapter}`,
-                        teachingWeek.translation || "ESV"
-                      )}
-                    >
-                      Read Passage
-                    </Link>
-                  </Button>
+                  {BIBLE_READER_ENABLED ? (
+                    <Button asChild variant="outline" size="sm" className="gap-2">
+                      <Link
+                        to={buildBibleHref(
+                          teachingWeek.chapter_reference || `${teachingWeek.book} ${teachingWeek.chapter}`,
+                          teachingWeek.translation || "ESV"
+                        )}
+                      >
+                        Read Passage
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     size="sm"

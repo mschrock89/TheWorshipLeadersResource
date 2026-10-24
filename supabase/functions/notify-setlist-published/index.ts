@@ -481,6 +481,12 @@ serve(async (req) => {
           manual,
           // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
           resourceAppKey: "worship",
+          vars: {
+            song_count: String(songCount),
+            date: formattedDate,
+            campus: campusName || "your campus",
+            set_id: draftSetId,
+          },
         },
       };
 

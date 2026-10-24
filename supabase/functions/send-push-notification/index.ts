@@ -6,6 +6,7 @@ import {
   readPushMinistryTypesFromMetadata,
 } from "../_shared/pushMinistryPrefs.ts";
 import { getApnsConfig, sendApnsNotification } from "../_shared/apns.ts";
+import { applyPushTemplates } from "../_shared/pushTemplate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,12 +140,6 @@ function isInvalidSubscriptionResponse(statusCode?: number, error?: string): boo
     normalizedError.includes("vapid credentials") ||
     normalizedError.includes("authorization header do not correspond")
   );
-}
-
-function renderPushTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) =>
-    vars[key] != null ? String(vars[key]) : "",
-  ).replace(/\s+/g, " ").trim();
 }
 
 function readTemplateVars(metadata: Record<string, unknown> | undefined): Record<string, string> {
@@ -641,15 +636,19 @@ serve(async (req) => {
         }
 
         if (def.content_from_db) {
-          const vars = readTemplateVars(payload.metadata);
-          const title = renderPushTemplate(def.title_template, vars);
-          const message = renderPushTemplate(def.body_template, vars);
-          if (title) payload.title = title;
-          if (message) payload.message = message;
-          if (def.deep_link_url) {
-            const url = renderPushTemplate(def.deep_link_url, vars);
-            if (url) payload.url = url;
-          }
+          const applied = applyPushTemplates({
+            title: payload.title,
+            message: payload.message,
+            url: payload.url,
+            titleTemplate: def.title_template,
+            bodyTemplate: def.body_template,
+            urlTemplate: def.deep_link_url,
+            vars: readTemplateVars(payload.metadata),
+            contentFromDb: true,
+          });
+          payload.title = applied.title;
+          payload.message = applied.message;
+          if (applied.url) payload.url = applied.url;
         }
 
         if (!payload.contextType) payload.contextType = definitionKey;

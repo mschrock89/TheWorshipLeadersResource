@@ -263,6 +263,11 @@ serve(async (req: Request): Promise<Response> => {
             messageId: message.id,
             resourceAppKey: message.resource_app_key,
             campInstanceId,
+            vars: {
+              sender: senderName,
+              preview: messagePreview,
+              chat_label: chatLabel,
+            },
           },
         }),
       });
@@ -336,6 +341,7 @@ serve(async (req: Request): Promise<Response> => {
               resourceAppKey: message.resource_app_key,
               campInstanceId,
               recentMessageCount: recentMessageCount || 0,
+              vars: { chat_label: chatLabel },
             },
           }),
         });
@@ -372,6 +378,11 @@ serve(async (req: Request): Promise<Response> => {
             messageId: message.id,
             resourceAppKey: message.resource_app_key,
             campInstanceId,
+            vars: {
+              sender: senderName,
+              chat_label: chatLabel,
+              preview: messagePreview,
+            },
           },
         }),
       });

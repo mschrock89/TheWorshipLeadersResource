@@ -35,6 +35,8 @@ import { useLiveSession } from "@/hooks/useLiveSession";
 import { useSongMapCues } from "@/hooks/useSongMapCues";
 import { useSaveServiceFlowItem, useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
+import { recurringServiceTimesForDate } from "@/lib/campusMinistrySchedule";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
@@ -192,6 +194,7 @@ export function LiveModeConsole({
     [items, scheduledRoleNames, teachingWeek?.announcer_name, teachingWeek?.teacher_name],
   );
   const { data: campusesWithTimes = [] } = useCampuses();
+  const { data: ministrySchedules = [] } = useCampusMinistrySchedules();
   const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
     campusId,
     startDate: serviceDate,
@@ -210,18 +213,31 @@ export function LiveModeConsole({
       return normalizeClockSource(data?.start_time) || null;
     },
   });
-  const scheduledServiceTimes = useMemo(
-    () =>
-      listScheduledServiceTimes({
-        customServiceStartTime,
-        serviceDate,
-        ministryType,
-        campusId,
-        campus: campusesWithTimes.find((campus) => campus.id === campusId),
-        overrides: serviceTimeOverrides,
-      }),
-    [campusesWithTimes, campusId, customServiceStartTime, ministryType, serviceDate, serviceTimeOverrides],
-  );
+  const scheduledServiceTimes = useMemo(() => {
+    const recurringServiceTimes = recurringServiceTimesForDate(
+      ministrySchedules,
+      campusId,
+      ministryType,
+      serviceDate,
+    );
+    return listScheduledServiceTimes({
+      customServiceStartTime,
+      serviceDate,
+      ministryType,
+      campusId,
+      campus: campusesWithTimes.find((campus) => campus.id === campusId),
+      overrides: serviceTimeOverrides,
+      ...(recurringServiceTimes ? { recurringServiceTimes } : {}),
+    });
+  }, [
+    campusesWithTimes,
+    campusId,
+    customServiceStartTime,
+    ministrySchedules,
+    ministryType,
+    serviceDate,
+    serviceTimeOverrides,
+  ]);
   const playlist = usePreServicePlaylist({
     campusId,
     station,

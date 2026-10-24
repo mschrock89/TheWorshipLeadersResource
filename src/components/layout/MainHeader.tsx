@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
+import { BIBLE_READER_ENABLED } from "@/lib/bible";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
 import { useCanOpenLiveMode } from "@/hooks/useCanOpenLiveMode";
@@ -150,7 +151,7 @@ export function MainHeader() {
                   </Link>
                 </DropdownMenuItem>
               )}
-              {isStudentBase && (
+              {BIBLE_READER_ENABLED && isStudentBase && (
                 <DropdownMenuItem asChild>
                   <Link to="/bible" className="flex items-center gap-2">
                     <BookOpen className="h-4 w-4" />

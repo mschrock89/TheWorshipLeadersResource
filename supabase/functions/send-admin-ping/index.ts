@@ -502,6 +502,11 @@ serve(async (req: Request): Promise<Response> => {
               ministryTypes: (body.ministryKeys || []).filter(
                 (key) => typeof key === "string" && key.length > 0 && !key.startsWith("team:"),
               ),
+              vars: {
+                title,
+                sender: senderName,
+                message,
+              },
             },
           }),
         });
