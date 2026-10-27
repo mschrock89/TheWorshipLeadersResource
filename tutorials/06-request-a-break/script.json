@@ -1,0 +1,42 @@
+{
+  "title": "Request a break",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/00-home.png",
+      "narration": "Do you have a busy season coming up? Or maybe you are someone that's been serving for years and you want to take a step back? Break Requests are an easy way to let your leader know."
+    },
+    {
+      "image": "shots/00-home.png",
+      "narration": "Tap your initials,"
+    },
+    {
+      "image": "shots/01-menu.png",
+      "narration": "then Dashboard."
+    },
+    {
+      "image": "shots/02-need-a-break.png",
+      "narration": "Scroll to Need a Break. Request Break is for a trimester. Blackout Dates is for specific days you already know you cannot serve."
+    },
+    {
+      "image": "shots/04-request-types.png",
+      "narration": "Choose I need a break when you cannot serve that trimester. Choose Willing to take a break if you need it when you can still play but will step back if the schedule needs it."
+    },
+    {
+      "image": "shots/05-filled-form.png",
+      "narration": "Then pick your campus, ministry, trimester, and year, and tap Confirm."
+    },
+    {
+      "image": "shots/02-need-a-break.png",
+      "narration": "The request stays under Pending Requests until a leader reviews it. Tap the X if you need to take it back."
+    },
+    {
+      "image": "shots/06-blackout.png",
+      "narration": "Use Blackout Dates for a wedding, a trip, or any day you cannot play. Those dates apply across your campuses and ministries, so you only enter them once."
+    }
+  ]
+}

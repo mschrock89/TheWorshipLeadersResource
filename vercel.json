@@ -2,6 +2,16 @@
   "installCommand": "npm install --ignore-scripts",
   "buildCommand": "if [ \"$APP_TARGET\" = \"charts\" ]; then npm run build:charts:vercel; else npm run build; fi",
   "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/youtube-embed.html",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Cache-Control", "value": "public, max-age=300" },
+        { "key": "X-Robots-Tag", "value": "noindex" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/hs", "destination": "/students-hs.html" },
     { "source": "/hs/(.*)", "destination": "/students-hs.html" },

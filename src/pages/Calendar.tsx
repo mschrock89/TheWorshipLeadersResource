@@ -43,6 +43,7 @@ import {
   isValidViewMinistryFilter,
 } from "@/lib/constants";
 import { canonicalSwapPosition } from "@/lib/swapPositions";
+import { isSwapDateTooSoon, SWAP_NOTICE_ERROR } from "@/lib/swapNotice";
 import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import {
   useDeleteServiceTimeOverride,
@@ -2127,7 +2128,15 @@ function StandardCalendar() {
                 actions={
                   <>
                     {showScheduledTeamLabel && swapOffer ? (
-                      <SwapButton onClick={() => setIsSwapOpen(true)} />
+                      <SwapButton
+                        onClick={() => {
+                          if (isSwapDateTooSoon(selectedDate)) {
+                            toast.error(SWAP_NOTICE_ERROR);
+                            return;
+                          }
+                          setIsSwapOpen(true);
+                        }}
+                      />
                     ) : null}
                     {canManageWeekendOverrides && availableServiceTimeCampuses.length > 0 ? (
                       <Dialog open={isServiceOverrideOpen} onOpenChange={setIsServiceOverrideOpen}>

@@ -22,6 +22,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PersonModerationSheet, type ModerationTarget } from "@/components/moderation/PersonModerationSheet";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -43,6 +44,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { BIBLE_READER_ENABLED } from "@/lib/bible";
+import { feedYouTubeEmbedSrc } from "@/lib/youtube";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import {
   getDefaultFeedMinistryType,
@@ -276,8 +278,10 @@ function PostCard({
   // Start closed so mobile (and desktop) don't open nested panels by default.
   const [isConversationOpen, setIsConversationOpen] = useState(false);
   const [commentBody, setCommentBody] = useState("");
+  const [moderationTarget, setModerationTarget] = useState<ModerationTarget | null>(null);
   const hasVoted = !!post.my_poll_option_id;
   const totalPollVotes = post.poll_vote_count;
+  const youtubeEmbedSrc = post.youtube_video_id ? feedYouTubeEmbedSrc(post.youtube_video_id) : null;
 
   const handleCommentSubmit = async () => {
     await onCommentSubmit(post.id, commentBody);
@@ -286,32 +290,70 @@ function PostCard({
   };
 
   return (
+    <>
     <Card className="overflow-hidden border-white/10 bg-[linear-gradient(180deg,rgba(21,30,37,0.96),rgba(13,19,24,0.96))] shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
       <CardContent className="p-0">
         <div className="border-b border-white/6 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-11 w-11 border border-white/10">
-                <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
-                  {(post.author_name || "WL")
-                    .split(" ")
-                    .map((part) => part[0])
-                    .join("")
-                    .slice(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <h3 className="text-sm font-semibold text-foreground">{post.author_name || "Experience Music"}</h3>
-                  <span className="text-xs text-muted-foreground/60">•</span>
-                  <span className="text-xs text-muted-foreground">{timeAgoLabel(feedPostPublishedAt(post))}</span>
+            {post.created_by !== currentUserId ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setModerationTarget({
+                    userId: post.created_by,
+                    name: post.author_name || "Experience Music",
+                    contentType: "feed_post",
+                    contentId: post.id,
+                    snapshot: { title: post.title, body: post.body, author: post.author_name },
+                  })
+                }
+                className="flex items-center gap-3 rounded-2xl text-left hover:opacity-80"
+              >
+                <Avatar className="h-11 w-11 border border-white/10">
+                  <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
+                    {(post.author_name || "WL")
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-sm font-semibold text-foreground">{post.author_name || "Experience Music"}</span>
+                    <span className="text-xs text-muted-foreground/60">•</span>
+                    <span className="text-xs text-muted-foreground">{timeAgoLabel(feedPostPublishedAt(post))}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    <span>{isFeedPostEdited(post) ? "Edited" : "Published"}</span>
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  <span>{isFeedPostEdited(post) ? "Edited" : "Published"}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Avatar className="h-11 w-11 border border-white/10">
+                  <AvatarFallback className="bg-primary/15 text-sm font-semibold text-primary">
+                    {(post.author_name || "WL")
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <h3 className="text-sm font-semibold text-foreground">{post.author_name || "Experience Music"}</h3>
+                    <span className="text-xs text-muted-foreground/60">•</span>
+                    <span className="text-xs text-muted-foreground">{timeAgoLabel(feedPostPublishedAt(post))}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    <span>{isFeedPostEdited(post) ? "Edited" : "Published"}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <Badge
               variant="secondary"
@@ -395,14 +437,15 @@ function PostCard({
             </div>
           ) : null}
 
-          {post.youtube_video_id ? (
+          {youtubeEmbedSrc ? (
             <div className="overflow-hidden rounded-2xl bg-black/30">
               <div className="aspect-video">
                 <iframe
                   className="h-full w-full"
-                  src={`https://www.youtube.com/embed/${post.youtube_video_id}`}
+                  src={youtubeEmbedSrc}
                   title={post.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                   allowFullScreen
                 />
               </div>
@@ -572,9 +615,25 @@ function PostCard({
                         className="border-b border-white/6 py-3 last:border-b-0"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium text-foreground">
-                            {comment.author_name || (comment.user_id === currentUserId ? "You" : "Team Member")}
-                          </p>
+                          {comment.user_id !== currentUserId ? (
+                            <button
+                              type="button"
+                              className="text-sm font-medium text-foreground hover:opacity-80"
+                              onClick={() =>
+                                setModerationTarget({
+                                  userId: comment.user_id,
+                                  name: comment.author_name || "Team Member",
+                                  contentType: "feed_comment",
+                                  contentId: comment.id,
+                                  snapshot: { body: comment.body, postTitle: post.title, author: comment.author_name },
+                                })
+                              }
+                            >
+                              {comment.author_name || "Team Member"}
+                            </button>
+                          ) : (
+                            <p className="text-sm font-medium text-foreground">You</p>
+                          )}
                           <p className="text-xs text-muted-foreground">{timeAgoLabel(comment.created_at)}</p>
                         </div>
                         <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
@@ -613,6 +672,14 @@ function PostCard({
         </div>
       </CardContent>
     </Card>
+    <PersonModerationSheet
+      open={!!moderationTarget}
+      onOpenChange={(open) => {
+        if (!open) setModerationTarget(null);
+      }}
+      target={moderationTarget}
+    />
+  </>
   );
 }
 

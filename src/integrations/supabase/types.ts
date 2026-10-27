@@ -4000,6 +4000,7 @@ export type Database = {
           swap_date: string | null
           target_user_id: string | null
           team_id: string
+          unanswered_gap_notified_at: string | null
         }
         Insert: {
           accepted_by_id?: string | null
@@ -4018,6 +4019,7 @@ export type Database = {
           swap_date?: string | null
           target_user_id?: string | null
           team_id: string
+          unanswered_gap_notified_at?: string | null
         }
         Update: {
           accepted_by_id?: string | null
@@ -4036,6 +4038,7 @@ export type Database = {
           swap_date?: string | null
           target_user_id?: string | null
           team_id?: string
+          unanswered_gap_notified_at?: string | null
         }
         Relationships: [
           {

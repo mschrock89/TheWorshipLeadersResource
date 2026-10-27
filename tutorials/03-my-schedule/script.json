@@ -1,0 +1,30 @@
+{
+  "title": "Find My Schedule",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/01-home.png",
+      "narration": "Want help finding your scheduled dates?"
+    },
+    {
+      "image": "shots/01-home.png",
+      "narration": "Tap your initials, then My Schedule."
+    },
+    {
+      "image": "shots/03-schedule.png",
+      "narration": "This list is every date you are scheduled, including other campuses. Each card shows the weekend, your team, your position, the campus, and the ministry."
+    },
+    {
+      "image": "shots/03-schedule.png",
+      "narration": "Do you use Google Calendar? If you want, My Church Resource will drop all important schedule dates right on your Google Calendar."
+    },
+    {
+      "image": "shots/03-schedule.png",
+      "narration": "Open your initials, then Integrations. Google Calendar is not connected yet. Tap Connect Google. When Google asks, allow access. Then tap Sync Upcoming Dates Now to send your serving dates."
+    }
+  ]
+}

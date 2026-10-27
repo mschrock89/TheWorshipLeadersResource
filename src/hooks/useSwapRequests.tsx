@@ -16,6 +16,7 @@ import {
   selectEffectiveSwapMemberRows,
 } from "@/lib/effectiveSwapSchedule";
 import { canonicalSwapPosition, swapPositionsMatch } from "@/lib/swapPositions";
+import { isSwapDateTooSoon, SWAP_NOTICE_ERROR } from "@/lib/swapNotice";
 
 export type SwapRequestType = "swap" | "fill_in";
 
@@ -348,6 +349,12 @@ export function useCreateSwapRequest() {
     }) => {
       if (request.request_type === "fill_in") {
         throw new Error("Cover requests are no longer available. Request a swap instead.");
+      }
+      if (
+        isSwapDateTooSoon(request.original_date) ||
+        (request.swap_date ? isSwapDateTooSoon(request.swap_date) : false)
+      ) {
+        throw new Error(SWAP_NOTICE_ERROR);
       }
       // New requests are always swaps. A date on the request marks a direct swap.
       const normalizedRequestType: SwapRequestType = "swap";

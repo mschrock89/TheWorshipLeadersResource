@@ -178,6 +178,7 @@ function inferDefinitionKey(payload: PushPayload): string | null {
   if (tag.startsWith("schedule-reminder")) return "schedule-reminder";
   if (tag.startsWith("video-reminder-")) return "video-schedule-reminder";
   if (tag.startsWith("schedule-date-")) return "team-schedule-date";
+  if (tag.startsWith("swap-gap-")) return "swap-unanswered-gap";
   if (tag.startsWith("swap-request-sent-")) return "swap-request-sent";
   if (tag.startsWith("swap-request-")) return "swap-request";
   if (tag.startsWith("swap-resolved-")) {

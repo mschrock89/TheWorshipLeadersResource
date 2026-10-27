@@ -179,7 +179,9 @@ export async function bootstrapApp(app: ReactElement) {
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   setResourceAppMetadata();
-  await initNativeApp();
+  // Paint first. A native plugin call that never settles would otherwise
+  // leave the TestFlight web view blank.
+  void initNativeApp();
   await resetDevelopmentBrowserState();
   startProductionAppUpdateChecks();
 

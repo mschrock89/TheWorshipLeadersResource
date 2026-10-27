@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizePushMinistryType } from "../_shared/pushMinistryPrefs.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,19 @@ interface NotifyRequest {
 }
 
 const ADMIN_NOTIFICATION_ROLES = new Set(["admin", "campus_admin"]);
+const MINISTRY_SESSION_SUFFIXES = ["_morning", "_afternoon", "_evening"];
+
+function canonicalMinistryType(ministryType: string | null | undefined): string | null {
+  if (!ministryType) return null;
+  let value = ministryType.trim().toLowerCase();
+  for (const suffix of MINISTRY_SESSION_SUFFIXES) {
+    if (value.endsWith(suffix)) {
+      value = value.slice(0, -suffix.length);
+      break;
+    }
+  }
+  return normalizePushMinistryType(value);
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -76,9 +90,12 @@ serve(async (req) => {
 
     const confirmerName = confirmerProfile?.full_name || "A team member";
 
-    // 3. Find admin recipients for this set's campus only.
-    // Org admins no longer get every campus — only campuses they belong to
-    // (user_campuses and/or admin_campus_id). Campus admins stay scoped to admin_campus_id.
+    // 3. Admins only hear about people they oversee, or setlists they built.
+    // Overseeing means a ministry assignment at this campus that matches the set
+    // (weekend aliases count as the same ministry). Building the set is draft_sets.created_by.
+    const setMinistry = canonicalMinistryType(draftSet.ministry_type as string | null);
+    const setCreatedBy = (draftSet.created_by as string | null) || null;
+
     const { data: adminRoleRows, error: adminRolesError } = await supabase
       .from("user_roles")
       .select("user_id, role, admin_campus_id")
@@ -100,27 +117,28 @@ serve(async (req) => {
       ),
     );
 
-    const { data: userCampusRows, error: userCampusesError } = candidateUserIds.length
+    const { data: ministryRows, error: ministryError } = candidateUserIds.length
       ? await supabase
-          .from("user_campuses")
-          .select("user_id, campus_id")
+          .from("user_ministry_campuses")
+          .select("user_id, campus_id, ministry_type")
+          .eq("campus_id", setCampusId)
           .in("user_id", candidateUserIds)
       : { data: [], error: null };
 
-    if (userCampusesError) {
-      console.error("Failed to load admin campuses:", userCampusesError);
+    if (ministryError) {
+      console.error("Failed to load admin ministry assignments:", ministryError);
       return new Response(
         JSON.stringify({ error: "Failed to determine notification recipients" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const campusesByUser = new Map<string, Set<string>>();
-    for (const row of userCampusRows || []) {
-      if (!row.user_id || !row.campus_id) continue;
-      const existing = campusesByUser.get(row.user_id) || new Set<string>();
-      existing.add(row.campus_id);
-      campusesByUser.set(row.user_id, existing);
+    const adminsOverSetMinistry = new Set<string>();
+    for (const row of ministryRows || []) {
+      if (!row.user_id) continue;
+      if (canonicalMinistryType(row.ministry_type) === setMinistry) {
+        adminsOverSetMinistry.add(row.user_id);
+      }
     }
 
     const recipientUserIds = Array.from(
@@ -129,16 +147,14 @@ serve(async (req) => {
           .filter((row) => {
             if (!row.user_id || row.user_id === confirmerId) return false;
 
-            if (row.role === "campus_admin") {
-              return row.admin_campus_id === setCampusId;
+            const builtThisSet = Boolean(setCreatedBy && row.user_id === setCreatedBy);
+            if (builtThisSet) return true;
+
+            if (row.role === "campus_admin" && row.admin_campus_id !== setCampusId) {
+              return false;
             }
 
-            if (row.role === "admin") {
-              if (row.admin_campus_id === setCampusId) return true;
-              return campusesByUser.get(row.user_id)?.has(setCampusId) ?? false;
-            }
-
-            return false;
+            return adminsOverSetMinistry.has(row.user_id);
           })
           .map((row) => row.user_id as string),
       ),
@@ -149,6 +165,8 @@ serve(async (req) => {
         draftSetId,
         campusId: setCampusId,
         campusName,
+        ministryType: setMinistry,
+        createdBy: setCreatedBy,
       });
       return new Response(
         JSON.stringify({ success: true, notified: false, reason: "No admin recipients" }),

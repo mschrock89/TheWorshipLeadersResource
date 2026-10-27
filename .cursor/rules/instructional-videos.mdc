@@ -1,0 +1,15 @@
+---
+description: Player and picture format for volunteer instructional videos
+globs: tutorials/**,public/watch/**
+alwaysApply: false
+---
+
+# Instructional videos
+
+Use `tutorials/player.html` for every instructional video. The live copy is `public/watch/index.html`. Keep those two files the same. Do not make a separate player page per clip.
+
+The player is a vertical phone frame (`aspect-ratio: 1080 / 2338`) with no native controls, duration bar, or time display. Playback starts from the center button: a 112px white circle, soft halo, and the triangle path `M31 17 L88 50 L31 83 Z` filling the button. Leave that triangle as drawn. Tap the picture to pause. The button returns on pause and when the video ends.
+
+Open a clip with query params on `/watch/`: `src`, `poster`, and `title`. With no params, the page plays Where things live.
+
+New clips are portrait 1080×2338. When a control is named, highlight it in gold for that phrase. Encode speech with AudioToolbox AAC (`aac_at`) inside the mp4. The built-in ffmpeg AAC encoder drops the voice, and MP3 inside an mp4 stays silent in the normal player. Put each clip’s media under `public/watch/out/` so the player can load it.

@@ -1,0 +1,26 @@
+{
+  "title": "Where things live",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/01-bottom-bar.png",
+      "narration": "Welcome to the My Church Resource App, your central hub for team schedules, resources and community."
+    },
+    {
+      "image": "shots/01-bottom-bar.png",
+      "narration": "Three things stay on the bottom of the app: Chat, the Feed, and Calendar. Everything else starts with your initials in the top right."
+    },
+    {
+      "image": "shots/02-initials-menu.png",
+      "narration": "Tap your initials. My Schedule is the full list of dates you are serving. Swaps is where you answer trade requests. Dashboard is where you ask for a break."
+    },
+    {
+      "image": "shots/03-notifications.png",
+      "narration": "The bell next to your initials is for alerts inside the app. Phone push notifications are separate, and we turn those on next."
+    }
+  ]
+}

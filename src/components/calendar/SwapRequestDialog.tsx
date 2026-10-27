@@ -21,13 +21,14 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Users, User, ArrowLeftRight, Loader2 } from "lucide-react";
-import { format, addDays, subDays } from "date-fns";
+import { format, subDays } from "date-fns";
 import { cn, parseLocalDate, isWeekend, getWeekendPairDate, formatDateForDB, formatPositionLabel } from "@/lib/utils";
 import { useCreateSwapRequest, usePositionMembersForDate, useUserScheduledDates } from "@/hooks/useSwapRequests";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { useProfile } from "@/hooks/useProfiles";
 import { toast } from "sonner";
+import { isSwapDateTooSoon, SWAP_NOTICE_ERROR } from "@/lib/swapNotice";
 
 interface SwapRequestDialogProps {
   open: boolean;
@@ -152,7 +153,19 @@ export function SwapRequestDialog({
     }, 200);
   };
 
+  const originalDateTooSoon = isSwapDateTooSoon(originalDate);
+  const swapDateTooSoon = swapDate ? isSwapDateTooSoon(swapDate) : false;
+  const canSubmit =
+    !originalDateTooSoon &&
+    !swapDateTooSoon &&
+    (swapType === "open" || (swapType === "direct" && Boolean(targetUserId) && Boolean(swapDate)));
+
   const handleSubmit = async () => {
+    if (originalDateTooSoon || swapDateTooSoon) {
+      toast.error(SWAP_NOTICE_ERROR);
+      return;
+    }
+
     try {
       await createSwapRequest.mutateAsync({
         original_date: format(originalDate, "yyyy-MM-dd"),
@@ -173,12 +186,16 @@ export function SwapRequestDialog({
       toast.success(successMessage);
       handleClose();
     } catch (error) {
-      toast.error("Failed to create request");
+      const message =
+        error instanceof Error
+          ? error.message
+          : error && typeof error === "object" && "message" in error && typeof error.message === "string"
+            ? error.message
+            : "Failed to create request";
+      toast.error(message);
       console.error(error);
     }
   };
-
-  const canSubmit = swapType === "open" || (swapType === "direct" && Boolean(targetUserId) && Boolean(swapDate));
 
   const getStepDescription = () => {
     if (step === "type") {
@@ -213,6 +230,10 @@ export function SwapRequestDialog({
                 <span className="font-medium text-foreground">{formatPositionLabel(position)}</span>
               </p>
             </div>
+
+            {originalDateTooSoon ? (
+              <p className="text-sm text-muted-foreground">{SWAP_NOTICE_ERROR}</p>
+            ) : null}
 
             <RadioGroup
               value={swapType}
@@ -337,11 +358,9 @@ export function SwapRequestDialog({
                     }}
                     className="p-3 pointer-events-auto"
                     disabled={(date) => {
-                      // Disable dates before today
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      if (date < today) return true;
-                      
+                      const offeredDate = hasSaturdayService && date.getDay() === 0 ? subDays(date, 1) : date;
+                      if (isSwapDateTooSoon(offeredDate)) return true;
+
                       // Disable the original date and its weekend pair
                       if (date.toDateString() === originalDate.toDateString()) return true;
                       if (pairDateStr) {
@@ -366,6 +385,9 @@ export function SwapRequestDialog({
                     initialFocus
                   />
                   <div className="p-3 border-t space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      Dates within 7 days aren't available.
+                    </p>
                     {hasSaturdayService && (
                       <p className="text-xs text-muted-foreground">
                         Weekend dates are selected as a pair (Sat & Sun)
@@ -441,7 +463,9 @@ export function SwapRequestDialog({
             </Button>
           )}
           {step === "type" ? (
-            <Button onClick={() => setStep("details")}>Continue</Button>
+            <Button onClick={() => setStep("details")} disabled={originalDateTooSoon}>
+              Continue
+            </Button>
           ) : (
             <Button
               onClick={handleSubmit}

@@ -1,0 +1,632 @@
+{
+  "01": [
+    {
+      "text": "Being",
+      "start": 0.12,
+      "end": 0.34,
+      "type": "word"
+    },
+    {
+      "text": "able",
+      "start": 0.44,
+      "end": 0.62,
+      "type": "word"
+    },
+    {
+      "text": "to",
+      "start": 0.7,
+      "end": 0.9,
+      "type": "word"
+    },
+    {
+      "text": "easily",
+      "start": 0.98,
+      "end": 1.36,
+      "type": "word"
+    },
+    {
+      "text": "view",
+      "start": 1.5,
+      "end": 1.74,
+      "type": "word"
+    },
+    {
+      "text": "your",
+      "start": 1.78,
+      "end": 1.96,
+      "type": "word"
+    },
+    {
+      "text": "setlist",
+      "start": 2.04,
+      "end": 2.56,
+      "type": "word"
+    },
+    {
+      "text": "is",
+      "start": 2.7,
+      "end": 2.78,
+      "type": "word"
+    },
+    {
+      "text": "a",
+      "start": 2.82,
+      "end": 2.96,
+      "type": "word"
+    },
+    {
+      "text": "core",
+      "start": 3.04,
+      "end": 3.28,
+      "type": "word"
+    },
+    {
+      "text": "function",
+      "start": 3.44,
+      "end": 3.9,
+      "type": "word"
+    },
+    {
+      "text": "of",
+      "start": 3.94,
+      "end": 4.04,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 4.08,
+      "end": 4.12,
+      "type": "word"
+    },
+    {
+      "text": "My",
+      "start": 4.24,
+      "end": 4.4,
+      "type": "word"
+    },
+    {
+      "text": "Church",
+      "start": 4.52,
+      "end": 4.78,
+      "type": "word"
+    },
+    {
+      "text": "Resource",
+      "start": 4.88,
+      "end": 5.3,
+      "type": "word"
+    },
+    {
+      "text": "app",
+      "start": 5.4,
+      "end": 5.6,
+      "type": "word"
+    }
+  ],
+  "02": [
+    {
+      "text": "Open",
+      "start": 0.18,
+      "end": 0.48,
+      "type": "word"
+    },
+    {
+      "text": "calendar",
+      "start": 0.62,
+      "end": 1.14,
+      "type": "word"
+    }
+  ],
+  "03": [
+    {
+      "text": "Serving",
+      "start": 0.12,
+      "end": 0.46,
+      "type": "word"
+    },
+    {
+      "text": "days",
+      "start": 0.54,
+      "end": 0.86,
+      "type": "word"
+    },
+    {
+      "text": "are",
+      "start": 0.96,
+      "end": 1.12,
+      "type": "word"
+    },
+    {
+      "text": "marked",
+      "start": 1.18,
+      "end": 1.5,
+      "type": "word"
+    },
+    {
+      "text": "with",
+      "start": 1.52,
+      "end": 1.64,
+      "type": "word"
+    },
+    {
+      "text": "your",
+      "start": 1.68,
+      "end": 1.84,
+      "type": "word"
+    },
+    {
+      "text": "team's",
+      "start": 1.88,
+      "end": 2.26,
+      "type": "word"
+    },
+    {
+      "text": "color.",
+      "start": 2.34,
+      "end": 2.68,
+      "type": "word"
+    },
+    {
+      "text": "Tap",
+      "start": 3.22,
+      "end": 3.44,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 3.5,
+      "end": 3.54,
+      "type": "word"
+    },
+    {
+      "text": "date",
+      "start": 3.68,
+      "end": 3.92,
+      "type": "word"
+    },
+    {
+      "text": "you",
+      "start": 4.0,
+      "end": 4.08,
+      "type": "word"
+    },
+    {
+      "text": "are",
+      "start": 4.1,
+      "end": 4.22,
+      "type": "word"
+    },
+    {
+      "text": "playing",
+      "start": 4.24,
+      "end": 4.68,
+      "type": "word"
+    }
+  ],
+  "04": [
+    {
+      "text": "The",
+      "start": 0.1,
+      "end": 0.16,
+      "type": "word"
+    },
+    {
+      "text": "songs,",
+      "start": 0.28,
+      "end": 0.72,
+      "type": "word"
+    },
+    {
+      "text": "charts,",
+      "start": 0.96,
+      "end": 1.36,
+      "type": "word"
+    },
+    {
+      "text": "and",
+      "start": 1.5,
+      "end": 1.62,
+      "type": "word"
+    },
+    {
+      "text": "practice",
+      "start": 1.72,
+      "end": 2.12,
+      "type": "word"
+    },
+    {
+      "text": "hub",
+      "start": 2.16,
+      "end": 2.38,
+      "type": "word"
+    },
+    {
+      "text": "are",
+      "start": 2.52,
+      "end": 2.6,
+      "type": "word"
+    },
+    {
+      "text": "located",
+      "start": 2.64,
+      "end": 3.18,
+      "type": "word"
+    },
+    {
+      "text": "here.",
+      "start": 3.26,
+      "end": 3.56,
+      "type": "word"
+    },
+    {
+      "text": "From",
+      "start": 4.019,
+      "end": 4.2,
+      "type": "word"
+    },
+    {
+      "text": "here,",
+      "start": 4.26,
+      "end": 4.56,
+      "type": "word"
+    },
+    {
+      "text": "you",
+      "start": 4.68,
+      "end": 4.76,
+      "type": "word"
+    },
+    {
+      "text": "can",
+      "start": 4.8,
+      "end": 4.94,
+      "type": "word"
+    },
+    {
+      "text": "access",
+      "start": 5.04,
+      "end": 5.44,
+      "type": "word"
+    },
+    {
+      "text": "charts",
+      "start": 5.5,
+      "end": 5.92,
+      "type": "word"
+    },
+    {
+      "text": "or",
+      "start": 6.14,
+      "end": 6.3,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 6.34,
+      "end": 6.46,
+      "type": "word"
+    },
+    {
+      "text": "practice",
+      "start": 6.5,
+      "end": 6.88,
+      "type": "word"
+    },
+    {
+      "text": "playlist",
+      "start": 6.96,
+      "end": 7.58,
+      "type": "word"
+    },
+    {
+      "text": "to",
+      "start": 7.62,
+      "end": 7.72,
+      "type": "word"
+    },
+    {
+      "text": "listen",
+      "start": 7.78,
+      "end": 8.1,
+      "type": "word"
+    },
+    {
+      "text": "throughout",
+      "start": 8.18,
+      "end": 8.56,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 8.6,
+      "end": 8.64,
+      "type": "word"
+    },
+    {
+      "text": "week",
+      "start": 8.72,
+      "end": 9.02,
+      "type": "word"
+    }
+  ],
+  "05": [
+    {
+      "text": "To",
+      "start": 0.08,
+      "end": 0.16,
+      "type": "word"
+    },
+    {
+      "text": "listen",
+      "start": 0.2,
+      "end": 0.46,
+      "type": "word"
+    },
+    {
+      "text": "to",
+      "start": 0.54,
+      "end": 0.62,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 0.68,
+      "end": 0.78,
+      "type": "word"
+    },
+    {
+      "text": "track's",
+      "start": 0.82,
+      "end": 1.26,
+      "type": "word"
+    },
+    {
+      "text": "MP3,",
+      "start": 1.36,
+      "end": 2.22,
+      "type": "word"
+    },
+    {
+      "text": "open",
+      "start": 2.56,
+      "end": 2.8,
+      "type": "word"
+    },
+    {
+      "text": "that",
+      "start": 2.9,
+      "end": 3.1,
+      "type": "word"
+    },
+    {
+      "text": "tab.",
+      "start": 3.16,
+      "end": 3.46,
+      "type": "word"
+    },
+    {
+      "text": "You",
+      "start": 3.92,
+      "end": 3.98,
+      "type": "word"
+    },
+    {
+      "text": "can",
+      "start": 4.0,
+      "end": 4.18,
+      "type": "word"
+    },
+    {
+      "text": "skip",
+      "start": 4.22,
+      "end": 4.42,
+      "type": "word"
+    },
+    {
+      "text": "straight",
+      "start": 4.64,
+      "end": 4.9,
+      "type": "word"
+    },
+    {
+      "text": "to",
+      "start": 4.94,
+      "end": 5.02,
+      "type": "word"
+    },
+    {
+      "text": "your",
+      "start": 5.08,
+      "end": 5.16,
+      "type": "word"
+    },
+    {
+      "text": "song",
+      "start": 5.3,
+      "end": 5.6,
+      "type": "word"
+    },
+    {
+      "text": "by",
+      "start": 5.7,
+      "end": 5.9,
+      "type": "word"
+    },
+    {
+      "text": "clicking",
+      "start": 5.94,
+      "end": 6.26,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 6.3,
+      "end": 6.44,
+      "type": "word"
+    },
+    {
+      "text": "song",
+      "start": 6.52,
+      "end": 6.72,
+      "type": "word"
+    },
+    {
+      "text": "marker",
+      "start": 6.8,
+      "end": 7.12,
+      "type": "word"
+    },
+    {
+      "text": "you",
+      "start": 7.22,
+      "end": 7.32,
+      "type": "word"
+    },
+    {
+      "text": "want",
+      "start": 7.38,
+      "end": 7.68,
+      "type": "word"
+    }
+  ],
+  "06": [
+    {
+      "text": "Don't",
+      "start": 0.1,
+      "end": 0.3,
+      "type": "word"
+    },
+    {
+      "text": "forget",
+      "start": 0.34,
+      "end": 0.62,
+      "type": "word"
+    },
+    {
+      "text": "to",
+      "start": 0.66,
+      "end": 0.72,
+      "type": "word"
+    },
+    {
+      "text": "smash",
+      "start": 0.92,
+      "end": 1.32,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 1.34,
+      "end": 1.44,
+      "type": "word"
+    },
+    {
+      "text": "Confirm",
+      "start": 1.54,
+      "end": 2.1,
+      "type": "word"
+    },
+    {
+      "text": "I've",
+      "start": 2.26,
+      "end": 2.42,
+      "type": "word"
+    },
+    {
+      "text": "reviewed",
+      "start": 2.46,
+      "end": 2.9,
+      "type": "word"
+    },
+    {
+      "text": "this",
+      "start": 2.96,
+      "end": 3.14,
+      "type": "word"
+    },
+    {
+      "text": "setlist",
+      "start": 3.2,
+      "end": 3.6,
+      "type": "word"
+    },
+    {
+      "text": "button",
+      "start": 3.7,
+      "end": 4.0,
+      "type": "word"
+    },
+    {
+      "text": "once",
+      "start": 4.1,
+      "end": 4.3,
+      "type": "word"
+    },
+    {
+      "text": "you've",
+      "start": 4.34,
+      "end": 4.48,
+      "type": "word"
+    },
+    {
+      "text": "done",
+      "start": 4.5,
+      "end": 4.68,
+      "type": "word"
+    },
+    {
+      "text": "so.",
+      "start": 4.8,
+      "end": 5.02,
+      "type": "word"
+    },
+    {
+      "text": "Your",
+      "start": 5.46,
+      "end": 5.62,
+      "type": "word"
+    },
+    {
+      "text": "leader",
+      "start": 5.68,
+      "end": 6.0,
+      "type": "word"
+    },
+    {
+      "text": "sees",
+      "start": 6.18,
+      "end": 6.5,
+      "type": "word"
+    },
+    {
+      "text": "who",
+      "start": 6.56,
+      "end": 6.74,
+      "type": "word"
+    },
+    {
+      "text": "has",
+      "start": 6.8,
+      "end": 6.94,
+      "type": "word"
+    },
+    {
+      "text": "reviewed",
+      "start": 6.98,
+      "end": 7.38,
+      "type": "word"
+    },
+    {
+      "text": "the",
+      "start": 7.42,
+      "end": 7.52,
+      "type": "word"
+    },
+    {
+      "text": "set",
+      "start": 7.58,
+      "end": 7.88,
+      "type": "word"
+    }
+  ]
+}

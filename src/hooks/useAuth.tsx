@@ -142,7 +142,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: tempPassword,
       options: {
         emailRedirectTo: redirectUrl,
-        data: { full_name: fullName },
+        data: {
+          full_name: fullName,
+          terms_accepted_at: new Date().toISOString(),
+          terms_version: "2026-02-28",
+        },
       },
     });
     return { error };

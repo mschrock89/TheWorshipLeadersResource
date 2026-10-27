@@ -1,0 +1,38 @@
+{
+  "title": "Open Chat",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/01-home.png",
+      "narration": "Chat is how your team stays in touch between Sundays."
+    },
+    {
+      "image": "shots/01-home.png",
+      "narration": "Open Chat. It's the speech bubble on the bottom bar."
+    },
+    {
+      "image": "shots/01-home.png",
+      "narration": "A red number on that bubble means unread messages for a campus or ministry you belong to."
+    },
+    {
+      "image": "shots/02-thread.png",
+      "narration": "Each thread is one campus and one ministry."
+    },
+    {
+      "image": "shots/03-campuses.png",
+      "narration": "If you serve more than one campus, tap the campus name to switch."
+    },
+    {
+      "image": "shots/02-thread.png",
+      "narration": "Switch ministry on this row. You only see the ministries you are assigned to."
+    },
+    {
+      "image": "shots/02-thread.png",
+      "narration": "The bottom bar hides in Chat. Tap the home button at the top left to get back."
+    }
+  ]
+}

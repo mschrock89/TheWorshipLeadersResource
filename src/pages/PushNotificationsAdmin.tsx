@@ -578,9 +578,10 @@ function CatalogTab() {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
+          className="min-w-[7.5rem] flex-1"
           variant={category === "all" ? "default" : "outline"}
           onClick={() => setCategory("all")}
         >
@@ -590,6 +591,7 @@ function CatalogTab() {
           <Button
             key={name}
             size="sm"
+            className="min-w-[7.5rem] flex-1"
             variant={category === name ? "default" : "outline"}
             onClick={() => setCategory(name)}
           >
@@ -606,7 +608,7 @@ function CatalogTab() {
       {grouped.map(([group, rows]) => (
         <section key={group} className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground">{group}</h2>
-          <div className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {rows.map((row) => (
               <article
                 key={row.key}
@@ -686,6 +688,7 @@ function RecentTab() {
       {!isLoading && logs.length === 0 && (
         <p className="text-sm text-muted-foreground">Nothing has been sent yet.</p>
       )}
+      <div className="grid gap-3 md:grid-cols-2">
       {logs.map((log) => (
         <article key={log.id} className="rounded-xl border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -709,6 +712,7 @@ function RecentTab() {
           <p className="mt-1 text-sm text-muted-foreground">{log.message}</p>
         </article>
       ))}
+      </div>
     </div>
   );
 }
@@ -724,7 +728,7 @@ export default function PushNotificationsAdmin() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="w-full px-4 py-8 sm:px-6 lg:px-8">
       <Button asChild variant="ghost" className="mb-4 -ml-2 gap-2 text-muted-foreground hover:text-foreground">
         <Link to="/admin-tools">
           <ArrowLeft className="h-4 w-4" />

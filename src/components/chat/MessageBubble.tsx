@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import { Smile, Pencil, Trash2, X, Check, Paperclip } from "lucide-react";
+import { Smile, Pencil, Trash2, X, Check, Paperclip, Flag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PersonModerationSheet, type ModerationTarget } from "@/components/moderation/PersonModerationSheet";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,8 +86,10 @@ export function MessageBubble({
   const [isDeleting, setIsDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showQuickReactions, setShowQuickReactions] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [personOpen, setPersonOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const touchMovedRef = useRef(false);
 
   // Group reactions by emoji type
@@ -131,9 +134,9 @@ export function MessageBubble({
   };
 
   const handleStartEdit = () => {
+    setActionsOpen(false);
     setEditContent(message.content);
     setIsEditing(true);
-    setShowMobileMenu(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
@@ -167,16 +170,26 @@ export function MessageBubble({
     };
   }, []);
 
-  const handleTouchStart = () => {
+  const openActions = () => {
+    if (isEditing) return;
+    setActionsOpen(true);
+  };
+
+  const handleTouchStart = (event: React.TouchEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea")) return;
     touchMovedRef.current = false;
     longPressTimer.current = setTimeout(() => {
       if (touchMovedRef.current) return;
-      if (isOwnMessage) {
-        setShowMobileMenu(true);
-      } else {
-        setShowQuickReactions(true);
-      }
+      openActions();
     }, 450);
+  };
+
+  const handleContextMenu = (event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea")) return;
+    event.preventDefault();
+    openActions();
   };
 
   const handleTouchMove = () => {
@@ -269,6 +282,7 @@ export function MessageBubble({
         showHeader ? "pt-3" : "pt-0.5"
       )}
       onDoubleClick={() => onToggleReaction(message.id, "❤️")}
+      onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -276,21 +290,39 @@ export function MessageBubble({
     >
       {/* Header row with avatar, name, and timestamp */}
       {showHeader && (
-        <div className="flex items-center gap-3 mb-1">
-          <Avatar className="h-7 w-7 flex-shrink-0">
-            <AvatarImage src={message.profiles?.avatar_url || undefined} />
-            <AvatarFallback className="bg-zinc-700 text-zinc-300 text-xs font-medium">
-              {getInitials(message.profiles?.full_name ?? null)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-[15px] text-white">
-              {message.profiles?.full_name || "Anonymous"}
-            </span>
-            <span className="text-xs text-zinc-500">
-              {formatTime(message.created_at)}
-            </span>
-          </div>
+        <div className="mb-1 flex min-w-0 items-center gap-2">
+          {isOwnMessage ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar className="h-7 w-7 flex-shrink-0">
+                <AvatarImage src={message.profiles?.avatar_url || undefined} />
+                <AvatarFallback className="bg-zinc-700 text-xs font-medium text-zinc-300">
+                  {getInitials(message.profiles?.full_name ?? null)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate text-[15px] font-semibold text-white">
+                {getDisplayName(message.profiles?.full_name ?? null)}
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPersonOpen(true)}
+              className="flex min-w-0 items-center gap-3 rounded-full text-left hover:opacity-80"
+            >
+              <Avatar className="h-7 w-7 flex-shrink-0">
+                <AvatarImage src={message.profiles?.avatar_url || undefined} />
+                <AvatarFallback className="bg-zinc-700 text-xs font-medium text-zinc-300">
+                  {getInitials(message.profiles?.full_name ?? null)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate text-[15px] font-semibold text-white">
+                {getDisplayName(message.profiles?.full_name ?? null)}
+              </span>
+            </button>
+          )}
+          <span className="shrink-0 text-xs text-zinc-500">
+            {formatTime(message.created_at)}
+          </span>
         </div>
       )}
 
@@ -336,7 +368,7 @@ export function MessageBubble({
         <div
           className={cn(
             "flex flex-wrap items-center gap-1.5",
-            hasReactions ? "mt-1.5" : "mt-0.5"
+            hasReactions ? "mt-1.5" : "md:mt-0.5"
           )}
         >
           {Object.entries(reactionGroups).map(([emoji, data]) => (
@@ -427,7 +459,7 @@ export function MessageBubble({
                 type="button"
                 aria-label="Add reaction"
                 className={cn(
-                  "flex items-center justify-center h-7 w-7 rounded-full bg-zinc-800/60 hover:bg-zinc-700 transition-colors opacity-70 active:opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                  "hidden h-7 w-7 items-center justify-center rounded-full bg-zinc-800/60 transition-colors hover:bg-zinc-700 md:flex md:opacity-0 md:group-hover:opacity-100",
                   !hasReactions && "md:h-0 md:w-0 md:overflow-hidden md:group-hover:h-7 md:group-hover:w-7"
                 )}
               >
@@ -460,63 +492,113 @@ export function MessageBubble({
     </div>
   );
 
-  // Mobile menu overlay
-  if (showMobileMenu && isOwnMessage) {
-    return (
-      <>
-        <div 
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setShowMobileMenu(false)}
-        />
-        <div className="relative z-50">
-          {messageContent}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-1 bg-zinc-800 rounded-xl p-1 shadow-lg border border-zinc-700">
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleStartEdit}>
-              <Pencil className="h-4 w-4 text-zinc-300" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setShowMobileMenu(false); setShowDeleteDialog(true); }}>
-              <Trash2 className="h-4 w-4 text-red-400" />
-            </Button>
+  const moderationTarget: ModerationTarget = {
+    userId: message.user_id,
+    name: getDisplayName(message.profiles?.full_name ?? null),
+    avatarUrl: message.profiles?.avatar_url,
+    contentType: "chat_message",
+    contentId: message.id,
+    snapshot: {
+      content: message.content,
+      author: message.profiles?.full_name,
+      createdAt: message.created_at,
+    },
+  };
+
+  return (
+    <>
+      {messageContent}
+      {actionsOpen ? (
+      <Drawer
+        open={actionsOpen}
+        onOpenChange={setActionsOpen}
+        shouldScaleBackground={false}
+      >
+        <DrawerContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+          <DrawerHeader>
+            <DrawerTitle className="text-center text-sm font-medium text-zinc-400">
+              {isOwnMessage ? "Your message" : getDisplayName(message.profiles?.full_name ?? null)}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="flex justify-center gap-1 px-4 pb-3">
+            {QUICK_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => {
+                  onToggleReaction(message.id, emoji);
+                  setActionsOpen(false);
+                }}
+                className="rounded-full p-1.5 text-2xl hover:bg-zinc-800"
+              >
+                {emoji}
+              </button>
+            ))}
           </div>
-        </div>
-        <DeleteMessageDialog
-          open={showDeleteDialog}
-          onOpenChange={setShowDeleteDialog}
-          onConfirm={handleDelete}
-          isDeleting={isDeleting}
+          <div className="space-y-2 px-4 pb-6">
+            {isOwnMessage ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
+                  onClick={handleStartEdit}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-red-300 hover:bg-zinc-800 hover:text-red-200"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    setShowDeleteDialog(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
+                onClick={() => {
+                  setActionsOpen(false);
+                  setReportOpen(true);
+                }}
+              >
+                <Flag className="h-4 w-4" />
+                Report
+              </Button>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+      ) : null}
+      {personOpen ? (
+        <PersonModerationSheet
+          open={personOpen}
+          onOpenChange={setPersonOpen}
+          target={moderationTarget}
         />
-      </>
-    );
-  }
-
-  // Desktop: wrap with context menu for own messages
-  if (isOwnMessage) {
-    return (
-      <>
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            {messageContent}
-          </ContextMenuTrigger>
-          <ContextMenuContent className="bg-zinc-800 border-zinc-700">
-            <ContextMenuItem onClick={handleStartEdit} className="text-zinc-200 focus:bg-zinc-700 focus:text-white">
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => setShowDeleteDialog(true)} className="text-red-400 focus:bg-zinc-700 focus:text-red-300">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-        <DeleteMessageDialog
-          open={showDeleteDialog}
-          onOpenChange={setShowDeleteDialog}
-          onConfirm={handleDelete}
-          isDeleting={isDeleting}
+      ) : null}
+      {reportOpen ? (
+        <PersonModerationSheet
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          target={moderationTarget}
+          initialStep="report"
         />
-      </>
-    );
-  }
-
-  return messageContent;
+      ) : null}
+      <DeleteMessageDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={handleDelete}
+        isDeleting={isDeleting}
+      />
+    </>
+  );
 }

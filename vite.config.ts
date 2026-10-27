@@ -37,6 +37,30 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: Number(process.env.PORT || 8080),
+      // Don't wait for the full dependency crawl before answering. On this
+      // project that crawl stalls and the browser sits on the loading spinner.
+      warmup: {
+        clientFiles: [
+          "./src/entries/worship/main.tsx",
+          "./src/app/AppShell.tsx",
+          "./src/components/layout/MainHeader.tsx",
+          "./src/components/layout/ProtectedLayout.tsx",
+          "./src/pages/Chat.tsx",
+          "./src/pages/Feed.tsx",
+        ],
+      },
+      watch: {
+        // iCloud conflict copies ("Foo 2.tsx") and native/function trees were
+        // triggering full page reloads and wedging the dev server.
+        ignored: [
+          "**/* 2.*",
+          "**/* 2/**",
+          "**/ios/**",
+          "**/android/**",
+          "**/supabase/**",
+          "**/dist/**",
+        ],
+      },
       proxy: supabaseTarget
         ? {
             "/supabase": {
@@ -47,6 +71,9 @@ export default defineConfig(({ mode }) => {
             },
           }
         : undefined,
+    },
+    optimizeDeps: {
+      holdUntilCrawlEnd: false,
     },
     build: {
       chunkSizeWarningLimit: 1000,

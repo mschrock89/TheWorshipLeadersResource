@@ -1,3 +1,5 @@
+import { Capacitor } from "@capacitor/core";
+
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
@@ -24,6 +26,21 @@ export function normalizeYouTubeUrl(rawUrl: string | null | undefined): string |
   } catch {
     return null;
   }
+}
+
+const IOS_YOUTUBE_EMBED_PAGE = "https://www.theworshipleadersresource.com/youtube-embed.html";
+
+/**
+ * iOS TestFlight loads the app from capacitor://localhost. That origin sends
+ * no Referer, and YouTube answers with player error 153. The hosted page is a
+ * real https document, so the player request includes a valid Referer.
+ */
+export function feedYouTubeEmbedSrc(videoId: string): string | null {
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null;
+  if (Capacitor.getPlatform() === "ios") {
+    return `${IOS_YOUTUBE_EMBED_PAGE}?v=${encodeURIComponent(videoId)}`;
+  }
+  return `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0`;
 }
 
 export function isMissingYoutubeUrlColumnError(error: unknown): boolean {

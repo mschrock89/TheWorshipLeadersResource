@@ -1,0 +1,233 @@
+{
+  "01": [
+    {
+      "text": "Tap",
+      "start": 0.12,
+      "end": 0.34
+    },
+    {
+      "text": "your",
+      "start": 0.42,
+      "end": 0.54
+    },
+    {
+      "text": "initials,",
+      "start": 0.58,
+      "end": 1.18
+    },
+    {
+      "text": "then",
+      "start": 1.58,
+      "end": 1.86
+    },
+    {
+      "text": "My",
+      "start": 2.3,
+      "end": 2.5
+    },
+    {
+      "text": "Schedule",
+      "start": 2.62,
+      "end": 3.08
+    }
+  ],
+  "02": [
+    {
+      "text": "This",
+      "start": 0.08,
+      "end": 0.24
+    },
+    {
+      "text": "list",
+      "start": 0.34,
+      "end": 0.58
+    },
+    {
+      "text": "is",
+      "start": 0.7,
+      "end": 0.94
+    },
+    {
+      "text": "every",
+      "start": 1.02,
+      "end": 1.32
+    },
+    {
+      "text": "date",
+      "start": 1.46,
+      "end": 1.7
+    },
+    {
+      "text": "you",
+      "start": 1.76,
+      "end": 1.82
+    },
+    {
+      "text": "are",
+      "start": 1.84,
+      "end": 1.96
+    },
+    {
+      "text": "scheduled,",
+      "start": 2.04,
+      "end": 2.5
+    },
+    {
+      "text": "including",
+      "start": 2.74,
+      "end": 3.36
+    },
+    {
+      "text": "other",
+      "start": 3.44,
+      "end": 3.58
+    },
+    {
+      "text": "campuses.",
+      "start": 3.68,
+      "end": 4.26
+    },
+    {
+      "text": "Each",
+      "start": 4.76,
+      "end": 4.96
+    },
+    {
+      "text": "card",
+      "start": 5.02,
+      "end": 5.28
+    },
+    {
+      "text": "shows",
+      "start": 5.36,
+      "end": 5.64
+    },
+    {
+      "text": "the",
+      "start": 5.68,
+      "end": 5.8
+    },
+    {
+      "text": "weekend,",
+      "start": 5.84,
+      "end": 6.32
+    },
+    {
+      "text": "your",
+      "start": 6.64,
+      "end": 6.8
+    },
+    {
+      "text": "team,",
+      "start": 6.88,
+      "end": 7.2
+    },
+    {
+      "text": "your",
+      "start": 7.56,
+      "end": 7.64
+    },
+    {
+      "text": "position,",
+      "start": 7.72,
+      "end": 8.24
+    },
+    {
+      "text": "the",
+      "start": 8.58,
+      "end": 8.68
+    },
+    {
+      "text": "campus,",
+      "start": 8.74,
+      "end": 9.24
+    },
+    {
+      "text": "and",
+      "start": 9.54,
+      "end": 9.76
+    },
+    {
+      "text": "the",
+      "start": 9.78,
+      "end": 9.86
+    },
+    {
+      "text": "ministry",
+      "start": 9.92,
+      "end": 10.4
+    }
+  ],
+  "03": [
+    {
+      "text": "Dashboard",
+      "start": 0.12,
+      "end": 0.62
+    },
+    {
+      "text": "only",
+      "start": 0.8,
+      "end": 1.06
+    },
+    {
+      "text": "shows",
+      "start": 1.16,
+      "end": 1.48
+    },
+    {
+      "text": "the",
+      "start": 1.52,
+      "end": 1.62
+    },
+    {
+      "text": "next",
+      "start": 1.7,
+      "end": 1.94
+    },
+    {
+      "text": "weekend.",
+      "start": 2.04,
+      "end": 2.56
+    },
+    {
+      "text": "Use",
+      "start": 3.12,
+      "end": 3.34
+    },
+    {
+      "text": "this",
+      "start": 3.4,
+      "end": 3.6
+    },
+    {
+      "text": "list",
+      "start": 3.66,
+      "end": 3.98
+    },
+    {
+      "text": "when",
+      "start": 4.019,
+      "end": 4.14
+    },
+    {
+      "text": "you",
+      "start": 4.18,
+      "end": 4.26
+    },
+    {
+      "text": "want",
+      "start": 4.3,
+      "end": 4.46
+    },
+    {
+      "text": "every",
+      "start": 4.72,
+      "end": 5.0
+    },
+    {
+      "text": "date",
+      "start": 5.08,
+      "end": 5.36
+    }
+  ]
+}

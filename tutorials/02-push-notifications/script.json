@@ -1,0 +1,26 @@
+{
+  "title": "Turn on push notifications",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/03-home.png",
+      "narration": "Push notifications? No problem."
+    },
+    {
+      "image": "shots/01-dashboard.png",
+      "narration": "Open your initials, then Dashboard. Stay in the loop means phone alerts are off. Tap Enable."
+    },
+    {
+      "image": "shots/01-dashboard.png",
+      "narration": "When your phone asks, tap Allow."
+    },
+    {
+      "image": "shots/02-profile.png",
+      "narration": "You can turn the same switch on from My Profile. It is called Push Notifications. Under Ministries, leave on each team you serve with."
+    }
+  ]
+}

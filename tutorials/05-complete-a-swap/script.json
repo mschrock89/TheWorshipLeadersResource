@@ -1,0 +1,54 @@
+{
+  "title": "Complete a swap",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/01-home.png",
+      "narration": "Clear communication is key to a successful Ministry. We know life happens, and sometimes you need to swap your serving date. With My Church Resource, it's easy."
+    },
+    {
+      "image": "shots/01-home.png",
+      "narration": "To give away a date, open Calendar."
+    },
+    {
+      "image": "shots/02-calendar.png",
+      "narration": "Tap the date you are playing."
+    },
+    {
+      "image": "shots/02-swap-card.png",
+      "narration": "Then tap Swap on your service card."
+    },
+    {
+      "image": "shots/03-swap-type.png",
+      "narration": "Ask my position group posts an open request any matching player can take. Request from specific person is a direct trade with one person."
+    },
+    {
+      "image": "shots/04-open-request.png",
+      "narration": "For an open request, add a short note if you want, then tap Send Request. Weekend dates move as a pair, Saturday and Sunday together."
+    },
+    {
+      "image": "shots/05-direct-request.png",
+      "narration": "For a direct trade, first pick the weekend you can play. Then choose who you want to swap with, and send the request."
+    },
+    {
+      "image": "shots/06-menu.png",
+      "narration": "Answers live under your initials, then Swaps."
+    },
+    {
+      "image": "shots/08-incoming.png",
+      "narration": "Incoming is what other people asked you. Accept or Decline there."
+    },
+    {
+      "image": "shots/07-my-requests.png",
+      "narration": "My Requests is what you sent. A swap is done when the other person accepts."
+    },
+    {
+      "image": "shots/02-calendar.png",
+      "narration": "Make sure that swap requests are no later than one week in advance of the Serving Date. If you have a last minute emergency, always reach out to your Ministry Lead. When a swap request goes unanswered, and the setlist goes out for that date, your leader will be notified that there is a gap to be filled."
+    }
+  ]
+}

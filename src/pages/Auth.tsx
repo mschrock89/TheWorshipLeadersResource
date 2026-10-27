@@ -4,6 +4,7 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +67,7 @@ export default function Auth() {
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [signupEmailSentTo, setSignupEmailSentTo] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Handle magic link / invite token from URL
   useEffect(() => {
@@ -243,6 +245,11 @@ export default function Auth() {
 
     setIsLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
+    if (!error) {
+      await supabase.auth.updateUser({
+        data: { terms_accepted_at: new Date().toISOString(), terms_version: "2026-02-28" },
+      });
+    }
     setIsLoading(false);
 
     if (error) {
@@ -380,6 +387,20 @@ export default function Auth() {
               </TabsList>
             </CardHeader>
             <CardContent>
+              <div className="mb-6 flex items-start gap-3 rounded-xl border border-border/70 bg-muted/30 p-4">
+                <Checkbox
+                  id="terms-accepted"
+                  checked={termsAccepted}
+                  onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="terms-accepted" className="text-sm leading-6 text-muted-foreground">
+                  Before continuing, I have read and agree to the{" "}
+                  <a href="/terms" target="_blank" rel="noreferrer" className="font-medium text-foreground underline underline-offset-4">Terms of Service</a>
+                  {" "}and{" "}
+                  <a href="/privacy" target="_blank" rel="noreferrer" className="font-medium text-foreground underline underline-offset-4">Privacy Policy</a>.
+                </label>
+              </div>
               <TabsContent value="login" className="mt-0">
                 <CardTitle className="mb-1 text-xl">Welcome back</CardTitle>
                 <CardDescription className="mb-6">
@@ -422,7 +443,7 @@ export default function Auth() {
                         required
                       />
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
+                    <Button type="submit" className="w-full" disabled={isLoading || !termsAccepted}>
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Sign In
                     </Button>
@@ -541,7 +562,7 @@ export default function Auth() {
                         We&apos;ll email you a confirmation link so you can verify your address first.
                       </p>
                     </div>
-                    <Button type="submit" className="w-full" disabled={isLoading}>
+                    <Button type="submit" className="w-full" disabled={isLoading || !termsAccepted}>
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       Continue with Email
                     </Button>

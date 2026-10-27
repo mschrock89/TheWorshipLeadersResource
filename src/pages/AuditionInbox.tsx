@@ -82,6 +82,9 @@ function matchesTab(status: AuditionInboxStatus, tab: InboxTab) {
   return status === tab;
 }
 
+// Survives the inbox remounting while the OAuth redirect params are still in the URL.
+let gmailOAuthNoticeUntil = 0;
+
 export default function AuditionInbox() {
   const { user, canManageTeam, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -112,6 +115,7 @@ export default function AuditionInbox() {
   const [track, setTrack] = useState<AuditionTrack>("vocalist");
   const [campusId, setCampusId] = useState("");
   const [notes, setNotes] = useState("");
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const assignedCampusIds = useMemo(
     () => Array.from(new Set(assignedCampusRows.map((row) => row.campus_id))),
@@ -154,6 +158,8 @@ export default function AuditionInbox() {
     const connected = searchParams.get("gmail_connected") === "1";
     const oauthError = searchParams.get("error");
     if (!connected && !oauthError) return;
+    if (Date.now() < gmailOAuthNoticeUntil) return;
+    gmailOAuthNoticeUntil = Date.now() + 8000;
 
     const next = new URLSearchParams(searchParams);
     next.delete("gmail_connected");
@@ -161,9 +167,11 @@ export default function AuditionInbox() {
     setSearchParams(next, { replace: true });
 
     if (oauthError) {
+      const description = oauthError.replace(/_/g, " ");
+      setConnectError(description);
       toast({
         title: "Gmail connection failed",
-        description: oauthError.replace(/_/g, " "),
+        description,
         variant: "destructive",
       });
       return;
@@ -281,11 +289,14 @@ export default function AuditionInbox() {
                     : "Not synced yet"}
                 </p>
                 {connection.last_sync_error && (
-                  <p className="text-destructive">{connection.last_sync_error}</p>
+                  <p className="text-destructive break-words">{connection.last_sync_error}</p>
                 )}
               </div>
             ) : (
               <p className="text-muted-foreground">Gmail is not connected yet.</p>
+            )}
+            {connectError && (
+              <p className="mt-2 max-w-xl text-destructive break-words">{connectError}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">

@@ -66,7 +66,6 @@ export function DashboardBreakRequestDialog({
 }: DashboardBreakRequestDialogProps) {
   const { user } = useAuth();
   const currentYear = new Date().getFullYear();
-  const years = [currentYear, currentYear + 1];
   const isEditing = !!editingRequest;
   const isBlackoutDialog =
     editingRequest?.request_scope === "blackout_dates" || initialMode === "blackout";
@@ -81,10 +80,18 @@ export function DashboardBreakRequestDialog({
   );
   const [blackoutDates, setBlackoutDates] = useState<Date[]>([]);
   const [reason, setReason] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState<Date | undefined>(undefined);
 
   const { data: userCampuses = [], isLoading: campusesLoading } = useUserCampuses(user?.id);
   const { data: ministryPositions = [], isLoading: ministriesLoading } = useUserCampusMinistryPositions(user?.id);
   const { data: rotationPeriods = [], isLoading: periodsLoading } = useRotationPeriodsForUser();
+  const years = useMemo(() => {
+    const values = new Set<number>([currentYear, currentYear + 1]);
+    rotationPeriods.forEach((period) => {
+      if (period.year >= currentYear) values.add(period.year);
+    });
+    return Array.from(values).sort((a, b) => a - b);
+  }, [currentYear, rotationPeriods]);
 
   const createBreakRequest = useCreateBreakRequest();
   const updateBreakRequest = useUpdateMyBreakRequest();
@@ -136,6 +143,7 @@ export function DashboardBreakRequestDialog({
     setRequestScope(isBlackoutDialog ? "blackout_dates" : "full_trimester");
     setBlackoutDates([]);
     setReason("");
+    setCalendarMonth(undefined);
   }, [currentYear, editingRequest, isBlackoutDialog, open]);
 
   useEffect(() => {
@@ -224,12 +232,46 @@ export function DashboardBreakRequestDialog({
   const calendarStartPeriod = useMemo(() => {
     if (!campusRotationPeriods.length) return null;
     const today = startOfDay(new Date());
+    const sorted = [...campusRotationPeriods].sort((a, b) => a.start_date.localeCompare(b.start_date));
     return (
-      campusRotationPeriods.find((period) =>
-        isAfter(startOfDay(new Date(period.end_date)), subDays(today, 1))
-      ) || campusRotationPeriods[0]
+      sorted.find((period) =>
+        isWithinInterval(today, {
+          start: startOfDay(new Date(period.start_date)),
+          end: startOfDay(new Date(period.end_date)),
+        })
+      ) ||
+      sorted.find((period) => isAfter(startOfDay(new Date(period.end_date)), subDays(today, 1))) ||
+      sorted[sorted.length - 1]
     );
   }, [campusRotationPeriods]);
+
+  const defaultCalendarMonth = useMemo(() => {
+    const today = startOfDay(new Date());
+    if (
+      calendarStartPeriod &&
+      isWithinInterval(today, {
+        start: startOfDay(new Date(calendarStartPeriod.start_date)),
+        end: startOfDay(new Date(calendarStartPeriod.end_date)),
+      })
+    ) {
+      return today;
+    }
+    return calendarStartPeriod ? startOfDay(new Date(calendarStartPeriod.start_date)) : today;
+  }, [calendarStartPeriod]);
+
+  const earliestBlackoutDate = blackoutDates.reduce<Date | undefined>(
+    (earliest, date) => (!earliest || date < earliest ? date : earliest),
+    undefined,
+  );
+  const displayedCalendarMonth =
+    calendarMonth ?? (isEditing ? earliestBlackoutDate : undefined) ?? defaultCalendarMonth;
+  const blackoutYears = useMemo(() => {
+    const values = new Set<number>(years);
+    campusRotationPeriods.forEach((period) => {
+      if (period.year >= currentYear) values.add(period.year);
+    });
+    return Array.from(values).sort((a, b) => a - b);
+  }, [campusRotationPeriods, currentYear, years]);
 
   const getDateKey = (date: Date) => format(startOfDay(date), "yyyy-MM-dd");
 
@@ -315,6 +357,7 @@ export function DashboardBreakRequestDialog({
     setRequestScope(isBlackoutDialog ? "blackout_dates" : "full_trimester");
     setBlackoutDates([]);
     setReason("");
+    setCalendarMonth(undefined);
     onOpenChange(false);
   };
 
@@ -510,6 +553,31 @@ export function DashboardBreakRequestDialog({
                     : "Pick any dates you already know you cannot serve. These will apply across campuses and ministries."}
                 </p>
               </div>
+              {!isEditing && (
+                <div className="space-y-2">
+                  <Label htmlFor="blackout-year">Year</Label>
+                  <Select
+                    value={displayedCalendarMonth.getFullYear().toString()}
+                    onValueChange={(value) => {
+                      const selectedYear = parseInt(value, 10);
+                      const today = new Date();
+                      const month = selectedYear === today.getFullYear() ? today.getMonth() : 0;
+                      setCalendarMonth(new Date(selectedYear, month, 1));
+                    }}
+                  >
+                    <SelectTrigger id="blackout-year">
+                      <SelectValue placeholder="Select year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {blackoutYears.map((yearOption) => (
+                        <SelectItem key={yearOption} value={yearOption.toString()}>
+                          {yearOption}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="rounded-lg border">
                 <Calendar
                   className="mx-auto w-fit"
@@ -524,7 +592,10 @@ export function DashboardBreakRequestDialog({
                   selected={blackoutDates}
                   onSelect={handleBlackoutSelect}
                   disabled={disabledBlackoutDay}
-                  defaultMonth={blackoutDates[0] ?? (calendarStartPeriod ? new Date(calendarStartPeriod.start_date) : undefined)}
+                  month={displayedCalendarMonth}
+                  onMonthChange={setCalendarMonth}
+                  fromDate={new Date(blackoutYears[0], 0, 1)}
+                  toDate={new Date(blackoutYears[blackoutYears.length - 1], 11, 31)}
                   numberOfMonths={1}
                 />
               </div>

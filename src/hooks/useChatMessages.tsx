@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { haptic } from "@/lib/haptics";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { useBlockedUsers } from "@/hooks/useModeration";
 
 interface Profile {
   id: string;
@@ -90,6 +91,7 @@ export function useChatMessages(
   campInstanceId?: string | null,
 ) {
   const { user } = useAuth();
+  const { data: blockedUserIds = new Set<string>() } = useBlockedUsers();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const resourceAppKey = getCurrentResourceAppKey();
@@ -253,6 +255,7 @@ export function useChatMessages(
     const rows: MessageRow[] = [];
     for (const page of pages) {
       for (const row of page) {
+        if (blockedUserIds.has(row.user_id)) continue;
         if (seen.has(row.id)) continue;
         seen.add(row.id);
         rows.push(row);
@@ -267,7 +270,7 @@ export function useChatMessages(
         profiles: profileMap.get(r.user_id) ?? fallbackProfile(r.user_id),
       })),
     }));
-  }, [messagesQuery.data, profileMap]);
+  }, [messagesQuery.data, profileMap, blockedUserIds]);
 
   // ---- Mutations (optimistic, with rollback on error) ----
 

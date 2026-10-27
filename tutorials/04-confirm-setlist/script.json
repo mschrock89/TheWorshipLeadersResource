@@ -1,0 +1,34 @@
+{
+  "title": "Confirm a setlist",
+  "voice": {
+    "voice_id": "ZzBnwUd5N5vZp018EN64",
+    "model_id": "eleven_v4",
+    "output_format": "mp3_44100_128"
+  },
+  "scenes": [
+    {
+      "image": "shots/01-home.png",
+      "narration": "Being able to easily view your setlist is a core function of the My Church Resource App."
+    },
+    {
+      "image": "shots/01-home.png",
+      "narration": "Open Calendar."
+    },
+    {
+      "image": "shots/02-calendar.png",
+      "narration": "Serving days are marked with your teams color. Tap the date you are playing."
+    },
+    {
+      "image": "shots/03-setlist.png",
+      "narration": "The songs, charts, and Practice Hub are located here. From here you can access charts or the practice playlist to listen throughout the week."
+    },
+    {
+      "image": "shots/04-tracks.png",
+      "narration": "To listen to the Tracks MP3, open that tab. You can skip straight to your song by clicking the song marker you want."
+    },
+    {
+      "image": "shots/05-confirm.png",
+      "narration": "Don't forget to smash the Confirm I've Reviewed This Setlist button once you've done so. Your leader sees who has reviewed the set."
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import { Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense, useLayoutEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
+import { isNativeApp } from "@/lib/native";
 import { NativePushTapHandler } from "@/components/native/NativePushTapHandler";
 
 export type RouteDefinition = {
@@ -39,16 +40,16 @@ function RouteFallback() {
   );
 }
 
-// Register service worker for push notifications
-if ("serviceWorker" in navigator) {
-  if (import.meta.env.PROD) {
-    navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .then((registration) => registration.update())
-      .catch((error) => {
-        console.error("Service worker registration failed:", error);
-      });
-  }
+// Web push needs a service worker. The native app ships its scripts in the
+// binary, and a worker left over from an older build can keep serving a
+// stale index.html (blank screen after a TestFlight update).
+if ("serviceWorker" in navigator && import.meta.env.PROD && !isNativeApp()) {
+  navigator.serviceWorker
+    .register("/sw.js", { updateViaCache: "none" })
+    .then((registration) => registration.update())
+    .catch((error) => {
+      console.error("Service worker registration failed:", error);
+    });
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -106,6 +107,24 @@ function AnimatedPage({ children }: { children: React.ReactNode }) {
   return <div className="animate-fade-in h-full min-h-full">{children}</div>;
 }
 
+// These routes are opened from the Admin Tools grid. The grid is often scrolled,
+// and the window keeps that offset when the next screen replaces it.
+const ADMIN_TOOL_ROUTES = new Set([
+  "/audition-inbox",
+  "/breaks-admin",
+  "/devo-admin",
+  "/permissions",
+  "/pre-service-playlists",
+  "/push-notifications",
+  "/service-scripts",
+]);
+
+function scrollPageToTop() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
 // Natural document flow with a full-height content column; the bottom nav is a
 // fixed sibling (see AppShell) that pins to the visible bottom via pb-safe.
 function MainContent({ children }: { children: React.ReactNode }) {
@@ -123,6 +142,11 @@ function MainContent({ children }: { children: React.ReactNode }) {
       "service-flow-export-mode",
       "calendar-service-flow-printing",
     );
+  }, [location.pathname]);
+
+  useLayoutEffect(() => {
+    if (!ADMIN_TOOL_ROUTES.has(location.pathname)) return;
+    scrollPageToTop();
   }, [location.pathname]);
 
   // Home uses the LARGE viewport (100vh) instead of the dynamic one (100dvh):

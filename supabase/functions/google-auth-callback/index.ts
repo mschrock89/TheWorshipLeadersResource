@@ -79,6 +79,13 @@ function withQuery(url: string, params: Record<string, string>): string {
   return parsed.toString();
 }
 
+function readableGmailError(message: string): string {
+  if (/gmail api has not been used in project|gmail api .* disabled/i.test(message)) {
+    return "The Gmail API is turned off in Google Cloud. Enable it for this project, wait a minute, then connect again.";
+  }
+  return message.length > 280 ? `${message.slice(0, 277)}...` : message;
+}
+
 Deno.serve(async (req) => {
   let gmailReturnTo: string | null = null;
 
@@ -88,13 +95,19 @@ Deno.serve(async (req) => {
     const state = url.searchParams.get("state");
     const parsedState = state ? parseOAuthState(state) : null;
     gmailReturnTo = parsedState?.purpose === "gmail" ? safeGmailReturnTo(parsedState.returnTo) : null;
-    const errorRedirect = (message: string) =>
-      Response.redirect(
-        parsedState?.purpose === "gmail"
-          ? withQuery(gmailReturnTo || `${APP_URL}/audition-inbox`, { error: message })
-          : `${APP_URL}/settings/planning-center?error=${encodeURIComponent(message)}`,
+    const errorRedirect = (message: string) => {
+      console.error(JSON.stringify({ gmail_oauth_failed: parsedState?.purpose === "gmail", message }));
+      if (parsedState?.purpose === "gmail") {
+        return Response.redirect(
+          withQuery(gmailReturnTo || `${APP_URL}/audition-inbox`, { error: readableGmailError(message) }),
+          302,
+        );
+      }
+      return Response.redirect(
+        `${APP_URL}/settings/planning-center?error=${encodeURIComponent(message)}`,
         302,
       );
+    };
 
     if (!code) {
       return errorRedirect("missing_oauth_code");
@@ -134,11 +147,13 @@ Deno.serve(async (req) => {
 
     if (!tokenRes.ok) {
       const errorMessage = tokenData.error_description || tokenData.error || "google_token_exchange_failed";
-      return errorRedirect(errorMessage);
+      return errorRedirect(`Google refused the connection: ${errorMessage}`);
     }
 
     if (!tokenData.refresh_token) {
-      return errorRedirect("missing_refresh_token");
+      return errorRedirect(
+        "Google signed you in, but did not give ongoing access to the inbox. Open your Google Account permissions, remove Worship Leader's Resource, then connect Gmail again.",
+      );
     }
 
     const userId = parsedState.userId;
@@ -154,7 +169,8 @@ Deno.serve(async (req) => {
       });
       const profile = await profileRes.json().catch(() => ({}));
       if (!profileRes.ok || !profile?.emailAddress) {
-        return errorRedirect("gmail_profile_failed");
+        const googleMessage = profile?.error?.message || profile?.error || `Gmail profile request failed (${profileRes.status})`;
+        return errorRedirect(`Gmail could not be opened: ${googleMessage}`);
       }
 
       const { error: upsertError } = await supabase.from("gmail_integrations").upsert(
@@ -162,7 +178,9 @@ Deno.serve(async (req) => {
           user_id: userId,
           email_address: String(profile.emailAddress).toLowerCase(),
           refresh_token: tokenData.refresh_token,
-          history_id: profile.historyId ? String(profile.historyId) : null,
+          // Leave the history cursor empty so the first sync searches existing mail.
+          history_id: null,
+          last_synced_at: null,
           last_sync_error: null,
           updated_at: new Date().toISOString(),
         },
@@ -170,7 +188,7 @@ Deno.serve(async (req) => {
       );
 
       if (upsertError) {
-        return errorRedirect(`save_connection_failed_${upsertError.code || "unknown"}`);
+        return errorRedirect(`The inbox connection could not be saved: ${upsertError.message || upsertError.code || "unknown error"}`);
       }
 
       return Response.redirect(withQuery(gmailReturnTo || `${APP_URL}/audition-inbox`, { gmail_connected: "1" }), 302);
@@ -194,8 +212,9 @@ Deno.serve(async (req) => {
     return Response.redirect(`${APP_URL}/settings/planning-center?google_connected=1`, 302);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unexpected_google_callback_error";
+    console.error(JSON.stringify({ gmail_oauth_failed: true, message }));
     if (gmailReturnTo) {
-      return Response.redirect(withQuery(gmailReturnTo, { error: message }), 302);
+      return Response.redirect(withQuery(gmailReturnTo, { error: readableGmailError(message) }), 302);
     }
     return Response.redirect(
       `${APP_URL}/settings/planning-center?error=${encodeURIComponent(message)}`,

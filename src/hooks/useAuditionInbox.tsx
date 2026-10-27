@@ -229,7 +229,7 @@ export function useSyncGmailInbox(userId: string | undefined) {
       const headers = await getFunctionAuthHeaders();
       const { data, error } = await supabase.functions.invoke("gmail-sync-inbox", {
         headers,
-        body: {},
+        body: { full: true },
       });
       if (error) throw new Error(await getFunctionErrorMessage(error, "Failed to sync Gmail"));
       return data as { scanned?: number; matched?: number; inserted?: number };

@@ -28,6 +28,7 @@ type GmailIntegrationRow = {
   email_address: string;
   refresh_token: string;
   history_id: string | null;
+  last_synced_at: string | null;
 };
 
 type HistoryListResponse = {
@@ -154,11 +155,48 @@ async function fetchMessages(accessToken: string, ids: string[]): Promise<GmailM
   return messages;
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((part.length + 3) % 4);
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+// The cron vault key and the function's SUPABASE_SERVICE_ROLE_KEY have drifted,
+// so a raw string compare rejects a still-valid service-role JWT. Confirm the
+// token with the Auth admin API before trusting it.
+async function resolveServiceRoleKey(
+  supabaseUrl: string,
+  configuredKey: string,
+  token: string,
+): Promise<string | null> {
+  const configured = configuredKey.trim();
+  const presented = token.trim();
+  if (presented && presented === configured) return configured;
+
+  const claims = decodeJwtPayload(presented);
+  if (claims?.role !== "service_role") return null;
+
+  const probe = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1`, {
+    headers: {
+      Authorization: `Bearer ${presented}`,
+      apikey: presented,
+    },
+  });
+  if (!probe.ok) return null;
+  return presented;
+}
+
 async function syncSingleUser(
   service: ServiceClient,
   integration: GmailIntegrationRow,
   googleClientId: string,
   googleClientSecret: string,
+  options: { full: boolean },
 ): Promise<{ scanned: number; matched: number; inserted: number; historyId: string | null }> {
   const accessToken = await refreshGoogleAccessToken({
     clientId: googleClientId,
@@ -171,7 +209,11 @@ async function syncSingleUser(
   let messageIds: string[] = [];
   let nextHistoryId = profile.historyId || integration.history_id;
 
-  if (integration.history_id) {
+  // History only lists mail that arrived after the cursor. The first sync, and any
+  // sync that has never completed, has to search the inbox or existing interest
+  // emails are skipped.
+  const needsFullImport = options.full || !integration.history_id || !integration.last_synced_at;
+  if (!needsFullImport && integration.history_id) {
     const history = await listNewMessageIdsFromHistory(accessToken, integration.history_id);
     if (history.expired) {
       messageIds = await listMessageIdsFromSearch(accessToken, INITIAL_LOOKBACK_QUERY);
@@ -290,15 +332,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const service = createClient(supabaseUrl, supabaseServiceKey);
     const token = authHeader.replace(/^Bearer\s+/i, "");
     const requestBody = await req.json().catch(() => ({}));
-    const isServiceRequest = token === supabaseServiceKey;
+    const resolvedServiceKey = await resolveServiceRoleKey(supabaseUrl, supabaseServiceKey, token);
+    const service = createClient(supabaseUrl, resolvedServiceKey || supabaseServiceKey);
+    const isServiceRequest = resolvedServiceKey !== null;
+    const fullImport = requestBody?.full === true;
 
     const loadIntegration = async (userId: string) => {
       const { data, error } = await service
         .from("gmail_integrations")
-        .select("id, user_id, email_address, refresh_token, history_id")
+        .select("id, user_id, email_address, refresh_token, history_id, last_synced_at")
         .eq("user_id", userId)
         .maybeSingle();
       if (error) throw new Error(`integration_lookup_failed_${error.code ?? "unknown"}`);
@@ -308,7 +352,7 @@ Deno.serve(async (req) => {
     if (isServiceRequest && requestBody?.run_all === true) {
       const { data: rows, error } = await service
         .from("gmail_integrations")
-        .select("id, user_id, email_address, refresh_token, history_id")
+        .select("id, user_id, email_address, refresh_token, history_id, last_synced_at")
         .not("refresh_token", "is", null);
 
       if (error) {
@@ -321,7 +365,9 @@ Deno.serve(async (req) => {
       const perUser = [];
       for (const row of (rows || []) as GmailIntegrationRow[]) {
         try {
-          const summary = await syncSingleUser(service, row, googleClientId, googleClientSecret);
+          const summary = await syncSingleUser(service, row, googleClientId, googleClientSecret, {
+            full: fullImport,
+          });
           perUser.push({ user_id: row.user_id, success: true, ...summary });
         } catch (syncError) {
           const message = syncError instanceof Error ? syncError.message : "unknown_sync_error";
@@ -370,7 +416,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    const summary = await syncSingleUser(service, integration, googleClientId, googleClientSecret);
+    const summary = await syncSingleUser(service, integration, googleClientId, googleClientSecret, {
+      full: fullImport,
+    });
     return new Response(JSON.stringify({ success: true, ...summary }), {
       status: 200,
       headers: { ...headers, "Content-Type": "application/json" },

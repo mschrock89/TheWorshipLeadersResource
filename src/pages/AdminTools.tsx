@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
@@ -21,7 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, type LucideIcon } from "lucide-react";
+import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, Flag, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -37,6 +37,7 @@ import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
 import { useActiveCovenant, useCovenantSignatureCount, useUploadCovenantDocument } from "@/hooks/useCovenant";
 import { getCovenantTerminology, isCurrentStudentResourceApp } from "@/lib/resourceApp";
+import { ModerationInbox } from "@/components/moderation/ModerationInbox";
 
 function getInitials(name: string | null): string {
   if (!name) return "?";
@@ -563,6 +564,12 @@ export default function AdminTools() {
 
   const adminTools: AdminToolDefinition[] = [
     {
+      id: "moderation",
+      title: "Content Reports",
+      description: "Review member reports and block actions for inappropriate content.",
+      icon: Flag,
+    },
+    {
       id: "permissions",
       title: "Permissions",
       description: "Role capabilities, setlist approval routing, and per-user overrides.",
@@ -686,6 +693,7 @@ export default function AdminTools() {
   };
 
   const openTool = (tool: AdminToolDefinition) => {
+    window.scrollTo(0, 0);
     if (tool.href) {
       navigate(tool.href);
       return;
@@ -764,10 +772,13 @@ export default function AdminTools() {
       setIsResettingPasswords(false);
     }
   };
-  // Scroll to top on mount
-  useEffect(() => {
+  // The tools grid and each in-page tool share this screen. Reset scroll when the
+  // open tool changes so a tile lower on the grid does not land mid-page.
+  useLayoutEffect(() => {
     window.scrollTo(0, 0);
-  }, []);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [selectedToolId]);
 
   // Redirect non-admins
   useEffect(() => {
@@ -1521,6 +1532,8 @@ export default function AdminTools() {
           {activeTool ? activeTool.description : "Manage organization-wide settings and configurations"}
         </p>
       </div>
+
+      {activeTool?.id === "moderation" && <ModerationInbox />}
 
       {/* Tool tile grid */}
       {!activeTool && (

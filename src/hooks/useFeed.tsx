@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
+import { useBlockedUsers } from "@/hooks/useModeration";
 
 export type FeedCategory = "blog" | "scripture" | "video" | "poll";
 
@@ -198,6 +199,7 @@ async function fetchFeedPosts(
   campInstanceId?: string | null,
   ministryType?: string | null,
   limit = 40,
+  blockedUserIds = new Set<string>(),
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
   const nowIso = new Date().toISOString();
@@ -225,6 +227,7 @@ async function fetchFeedPosts(
   }
 
   const posts = Array.from(postsById.values())
+    .filter((post) => !blockedUserIds.has(post.created_by))
     .sort((a, b) => Date.parse(feedPostPublishedAt(b)) - Date.parse(feedPostPublishedAt(a)))
     .slice(0, limit);
   const postIds = posts.map((post) => post.id);
@@ -304,6 +307,7 @@ async function fetchFeedPosts(
   });
 
   ((commentRows || []) as FeedCommentRow[]).forEach((comment) => {
+    if (blockedUserIds.has(comment.user_id)) return;
     const existing = commentsByPostId.get(comment.post_id) || [];
     existing.push({
       id: comment.id,
@@ -362,9 +366,10 @@ export function useFeedPosts(
   ministryType?: string | null,
 ) {
   const { user, isLoading } = useAuth();
+  const { data: blockedUserIds } = useBlockedUsers();
   const resourceAppKey = getCurrentResourceAppKey();
   const enabled =
-    !!user && !isLoading && (!!campInstanceId || (!!campusId && !!ministryType));
+    !!user && !isLoading && !!blockedUserIds && (!!campInstanceId || (!!campusId && !!ministryType));
 
   return useQuery({
     queryKey: [
@@ -375,7 +380,7 @@ export function useFeedPosts(
       campInstanceId ?? "app",
       ministryType ?? null,
     ],
-    queryFn: () => fetchFeedPosts(user?.id, campusId, campInstanceId, ministryType),
+    queryFn: () => fetchFeedPosts(user?.id, campusId, campInstanceId, ministryType, 40, blockedUserIds),
     enabled,
   });
 }
