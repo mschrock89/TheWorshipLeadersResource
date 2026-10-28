@@ -359,12 +359,26 @@ function PostCard({
               variant="secondary"
               className="border border-white/8 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
             >
-              <CategoryIcon className="mr-1.5 h-3.5 w-3.5" />
-              {post.category}
+              {post.revoked_at ? (
+                "Revoked"
+              ) : (
+                <>
+                  <CategoryIcon className="mr-1.5 h-3.5 w-3.5" />
+                  {post.category}
+                </>
+              )}
             </Badge>
           </div>
         </div>
 
+        {post.revoked_at ? (
+          <div className="px-4 py-8 sm:px-6">
+            <p className="text-lg font-semibold text-foreground">This post was revoked</p>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              An administrator removed this post after it was reported. The original content is no longer visible.
+            </p>
+          </div>
+        ) : (
         <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
           <div className="space-y-3">
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">{post.title}</h2>
@@ -636,8 +650,11 @@ function PostCard({
                           )}
                           <p className="text-xs text-muted-foreground">{timeAgoLabel(comment.created_at)}</p>
                         </div>
-                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                          {comment.body}
+                        <p className={cn(
+                          "mt-1.5 whitespace-pre-wrap text-sm leading-6 text-muted-foreground",
+                          comment.revoked_at && "italic",
+                        )}>
+                          {comment.revoked_at ? "This comment was revoked" : comment.body}
                         </p>
                       </div>
                     ))
@@ -670,6 +687,7 @@ function PostCard({
             </div>
           </div>
         </div>
+        )}
       </CardContent>
     </Card>
     <PersonModerationSheet

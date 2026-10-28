@@ -38,6 +38,7 @@ export interface FeedPostRecord {
   campus_id: string | null;
   camp_instance_id: string | null;
   ministry_type: string | null;
+  revoked_at: string | null;
   author_name: string | null;
   like_count: number;
   liked_by_me: boolean;
@@ -56,6 +57,7 @@ export interface FeedCommentRecord {
   body: string;
   created_at: string;
   updated_at: string;
+  revoked_at: string | null;
   author_name: string | null;
 }
 
@@ -75,6 +77,7 @@ interface FeedPostRow {
   campus_id: string | null;
   camp_instance_id: string | null;
   ministry_type: string | null;
+  revoked_at: string | null;
   author: { full_name: string | null } | null;
 }
 
@@ -92,6 +95,7 @@ interface FeedCommentRow {
   body: string;
   created_at: string;
   updated_at: string;
+  revoked_at: string | null;
   author: { full_name: string | null } | null;
 }
 
@@ -165,6 +169,7 @@ const FEED_POST_SELECT = `
       campus_id,
       camp_instance_id,
       ministry_type,
+      revoked_at,
       author:profiles!feed_posts_created_by_fkey (
         full_name
       )
@@ -263,6 +268,7 @@ async function fetchFeedPosts(
         body,
         created_at,
         updated_at,
+        revoked_at,
         author:profiles!feed_post_comments_user_id_fkey (
           full_name
         )
@@ -316,6 +322,7 @@ async function fetchFeedPosts(
       body: comment.body,
       created_at: comment.created_at,
       updated_at: comment.updated_at,
+      revoked_at: comment.revoked_at,
       author_name: comment.author?.full_name ?? null,
     });
     commentsByPostId.set(comment.post_id, existing);

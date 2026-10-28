@@ -41,6 +41,7 @@ interface MessageRow {
   resource_app_key: string | null;
   camp_instance_id: string | null;
   attachments: string[] | null;
+  revoked_at?: string | null;
   message_reactions: MessageReactionRow[] | null;
   /** Client-only marker for rows rendered before the server confirms them. */
   optimistic?: boolean;
@@ -56,6 +57,7 @@ export interface ChatMessage {
   resource_app_key: string | null;
   camp_instance_id: string | null;
   attachments: string[] | null;
+  revoked_at?: string | null;
   profiles: Profile;
   message_reactions: Reaction[];
 }
@@ -521,7 +523,12 @@ export function useChatMessages(
         (payload) => {
           const row = payload.new as MessageRow;
           if (!matchesScope(row)) return;
-          patchMessage(row.id, (m) => ({ ...m, content: row.content, attachments: row.attachments }));
+          patchMessage(row.id, (m) => ({
+            ...m,
+            content: row.content,
+            attachments: row.attachments,
+            revoked_at: row.revoked_at ?? null,
+          }));
         },
       )
       .on(

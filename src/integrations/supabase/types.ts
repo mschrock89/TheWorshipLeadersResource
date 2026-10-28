@@ -1020,6 +1020,8 @@ export type Database = {
           id: string
           ministry_type: string | null
           resource_app_key: string
+          revoked_at: string | null
+          revoked_by: string | null
           user_id: string
         }
         Insert: {
@@ -1031,6 +1033,8 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           user_id: string
         }
         Update: {
@@ -1042,6 +1046,8 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           user_id?: string
         }
         Relationships: [
@@ -1713,6 +1719,8 @@ export type Database = {
           created_at: string
           id: string
           post_id: string
+          revoked_at: string | null
+          revoked_by: string | null
           updated_at: string
           user_id: string
         }
@@ -1721,6 +1729,8 @@ export type Database = {
           created_at?: string
           id?: string
           post_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           updated_at?: string
           user_id: string
         }
@@ -1729,6 +1739,8 @@ export type Database = {
           created_at?: string
           id?: string
           post_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -2035,6 +2047,8 @@ export type Database = {
           id: string
           ministry_type: string | null
           resource_app_key: string
+          revoked_at: string | null
+          revoked_by: string | null
           scripture_reference: string | null
           title: string
           updated_at: string
@@ -2054,6 +2068,8 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           scripture_reference?: string | null
           title: string
           updated_at?: string
@@ -2073,6 +2089,8 @@ export type Database = {
           id?: string
           ministry_type?: string | null
           resource_app_key?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
           scripture_reference?: string | null
           title?: string
           updated_at?: string

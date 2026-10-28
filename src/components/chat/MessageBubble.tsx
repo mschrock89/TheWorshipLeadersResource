@@ -350,6 +350,12 @@ export function MessageBubble({
           </div>
         ) : (
           <div>
+            {message.revoked_at ? (
+              <div className="inline-block rounded-2xl bg-zinc-800/40 px-4 py-2.5">
+                <p className="text-sm italic leading-relaxed text-zinc-400">This message was revoked</p>
+              </div>
+            ) : (
+              <>
             {message.content && !isGifUrl(message.content) && (
               <div className="inline-block bg-zinc-800/80 rounded-2xl px-4 py-2.5">
                 <p className="text-sm text-zinc-100 leading-relaxed break-words">
@@ -361,11 +367,13 @@ export function MessageBubble({
               <div>{renderContent(message.content)}</div>
             )}
             {renderAttachments(message.attachments)}
+              </>
+            )}
           </div>
         )}
 
         {/* Reactions sit under the liked message; add-reaction joins the row */}
-        <div
+        {!message.revoked_at ? <div
           className={cn(
             "flex flex-wrap items-center gap-1.5",
             hasReactions ? "mt-1.5" : "md:mt-0.5"
@@ -487,7 +495,7 @@ export function MessageBubble({
               </div>
             </PopoverContent>
           </Popover>
-        </div>
+        </div> : null}
       </div>
     </div>
   );

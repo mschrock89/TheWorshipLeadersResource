@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Flag, ShieldBan } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,23 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { useKeyboardOffset, type KeyboardOffsetState } from "@/hooks/useKeyboardOffset";
 import { useBlockUser, useReportContent, type ModeratedContentType } from "@/hooks/useModeration";
+
+// Vaul's default keyboard handling sets an explicit height and `bottom` on the
+// drawer. On iOS that shoves the report field above the screen and leaves an
+// empty sheet; dragging it back then crashes the drawer. Position from the
+// visual viewport instead, and only when the keyboard actually covers the sheet.
+function reportSheetStyle(keyboard: KeyboardOffsetState): CSSProperties | undefined {
+  if (typeof window === "undefined") return undefined;
+  const visible = keyboard.visualHeight || window.innerHeight;
+  const lift = Math.max(0, Math.round(window.innerHeight - keyboard.offsetTop - visible));
+  return {
+    // Keep the sheet inside the visible viewport so the field cannot sit above it.
+    maxHeight: Math.max(240, Math.round(visible - 12)),
+    ...(lift > 0 ? { transform: `translate3d(0, ${-lift}px, 0)` } : {}),
+  };
+}
 
 export type ModerationTarget = {
   userId: string;
@@ -45,15 +61,26 @@ export function PersonModerationSheet({
 }) {
   const report = useReportContent();
   const block = useBlockUser();
+  const keyboard = useKeyboardOffset();
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const [step, setStep] = useState<Step>(initialStep);
   const [reason, setReason] = useState("");
   const busy = report.isPending || block.isPending;
+  const sheetStyle = useMemo(() => reportSheetStyle(keyboard), [keyboard]);
 
   useEffect(() => {
     if (!open) return;
     setStep(initialStep);
     setReason("");
   }, [open, initialStep, target?.userId, target?.contentId]);
+
+  useEffect(() => {
+    if (!open || step !== "report") return;
+    const id = window.setTimeout(() => {
+      reasonRef.current?.focus({ preventScroll: true });
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [open, step]);
 
   const closeOrBack = () => {
     if (initialStep === "menu" && step !== "menu") {
@@ -91,8 +118,17 @@ export function PersonModerationSheet({
   const name = target?.name || "This person";
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
-      <DrawerContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      shouldScaleBackground={false}
+      repositionInputs={false}
+      handleOnly={step === "report"}
+    >
+      <DrawerContent
+        className="overflow-y-auto overscroll-contain border-zinc-800 bg-zinc-950 text-zinc-100"
+        style={sheetStyle}
+      >
         <DrawerHeader className="items-center text-center">
           <Avatar className="mx-auto h-14 w-14">
             <AvatarImage src={target?.avatarUrl || undefined} />
@@ -137,11 +173,12 @@ export function PersonModerationSheet({
           {step === "report" ? (
             <>
               <Textarea
+                ref={reasonRef}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="Harassment, spam, or inappropriate content"
                 className="min-h-24 border-zinc-700 bg-zinc-900 text-zinc-100 placeholder:text-zinc-500"
-                autoFocus
+                data-vaul-no-drag
               />
               <div className="flex gap-2">
                 <Button type="button" variant="ghost" className="flex-1 text-zinc-300 hover:bg-zinc-800 hover:text-white" onClick={closeOrBack} disabled={busy}>
