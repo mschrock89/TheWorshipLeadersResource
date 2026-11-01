@@ -142,7 +142,7 @@ function MatrixTab() {
             <TableRow>
               <TableHead className="sticky left-0 bg-background">Role</TableHead>
               {capabilities.map((c) => (
-                <TableHead key={c.key} className="whitespace-nowrap text-center text-xs">
+                <TableHead key={c.key} title={c.description || c.label} className="whitespace-nowrap text-center text-xs">
                   {c.label}
                 </TableHead>
               ))}

@@ -271,6 +271,21 @@ export function liveChatRoomOf(message: { room?: string | null }): LiveChatRoom 
   return message.room === "video" ? "video" : "production";
 }
 
+/**
+ * Private Live line notes. Role grants (admin, production manager, video
+ * director) come from the permissions matrix. Production and video volunteers
+ * qualify from their campus assignment, which is not a role. An explicit
+ * revoke blocks both paths.
+ */
+export function canUseLiveLineNotes(input: {
+  hasCapability: boolean;
+  revoked: boolean;
+  hasLiveTeamAssignment: boolean;
+}) {
+  if (input.revoked) return false;
+  return input.hasCapability || input.hasLiveTeamAssignment;
+}
+
 export function resolveLiveAudience(input: {
   isAdmin: boolean;
   isProductionManager: boolean;

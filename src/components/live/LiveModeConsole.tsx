@@ -31,6 +31,7 @@ import {
 import { requestSoftwareMidiAccess, startMidiCapture, type MidiInputInfo } from "@/lib/midiCapture";
 import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
+import { useCanUseLiveLineNotes, useLiveLineNotes } from "@/hooks/useLiveLineNotes";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { useSongMapCues } from "@/hooks/useSongMapCues";
 import { useSaveServiceFlowItem, useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
@@ -141,6 +142,15 @@ export function LiveModeConsole({
     customServiceId,
   );
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(flow?.id || null);
+  const lineNoteAccess = useCanUseLiveLineNotes(campusId);
+  const lineNoteItemIds = useMemo(() => items.map((item) => item.id), [items]);
+  const lineNotes = useLiveLineNotes(
+    lineNoteItemIds,
+    station,
+    lineNoteAccess.allowed && !lineNoteAccess.isLoading,
+  );
+  const savePersonalNote =
+    lineNoteAccess.allowed && !lineNoteAccess.isLoading ? lineNotes.saveNote : undefined;
   const songItemIds = useMemo(
     () => items.filter((item) => item.item_type === "song").map((item) => item.id),
     [items],
@@ -610,6 +620,7 @@ export function LiveModeConsole({
 
   if (videoOnly) {
     const videoMessages = live.chatMessages.filter((message) => message.room === "video");
+    const videoTab = tab === "chat" ? "chat" : "flow";
     return (
       <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
         <header className="shrink-0 border-b border-border bg-card">
@@ -625,22 +636,55 @@ export function LiveModeConsole({
             />
           </div>
         </header>
-        <div className="shrink-0 border-b border-border px-3">
-          <div className="inline-flex h-12 items-center border-b-2 border-primary text-sm font-semibold">
-            Video
-          </div>
+        <div className="grid shrink-0 grid-cols-2 border-b border-border">
+          {dockTabs.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTab(value)}
+              className={cn(
+                "h-12 text-sm font-semibold",
+                videoTab === value ? "border-b-2 border-primary text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <TalkbackChat
-          variant="typed"
-          messages={videoMessages}
-          currentUserId={live.currentUserId}
-          title="Video"
-          subtitle="Shared with production for this service."
-          placeholder="Message video"
-          onSend={(body) => {
-            void live.sendChatMessage(body, "video");
-          }}
-        />
+        {videoTab === "chat" ? (
+          <TalkbackChat
+            variant="typed"
+            messages={videoMessages}
+            currentUserId={live.currentUserId}
+            title="Video"
+            subtitle="Shared with production for this service."
+            placeholder="Message video"
+            onSend={(body) => {
+              void live.sendChatMessage(body, "video");
+            }}
+          />
+        ) : (
+          <LiveServiceFlowPanel
+            items={items}
+            titles={resolvedTitles}
+            clockTimes={clockTimes}
+            serviceStartItemId={boundaryItem?.id || null}
+            currentItemId={live.session?.current_item_id || null}
+            isLoading={flowLoading || (!!flow?.id && itemsLoading)}
+            midiSettings={midiSettings}
+            midiInputs={midiInputs}
+            midiStatus={midiStatus}
+            midiMessage={midiMessage}
+            lastMidi={lastMidi}
+            showMidi={false}
+            personalNotes={lineNotes.notes}
+            personalNoteStation={station}
+            onSavePersonalNote={savePersonalNote}
+            onMidiSettings={() => {}}
+            onAssignMidi={() => {}}
+            onSelect={() => {}}
+          />
+        )}
       </div>
     );
   }
@@ -943,6 +987,9 @@ export function LiveModeConsole({
               }}
               onMidiSettings={updateMidiSettings}
               onAssignMidi={assignMidi}
+              personalNotes={lineNotes.notes}
+              personalNoteStation={station}
+              onSavePersonalNote={savePersonalNote}
               onSelect={(itemId) => {
                 if (itemId && itemId === preRollItem?.id) setPreRollCueAt(Date.now());
                 const state = flowTrack.current;

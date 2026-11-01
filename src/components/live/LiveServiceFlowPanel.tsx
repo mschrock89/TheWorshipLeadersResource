@@ -5,6 +5,7 @@ import type { ServiceFlowItem } from "@/hooks/useServiceFlow";
 import { formatDuration } from "@/components/service-flow/DurationInput";
 import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LiveLineNote } from "@/components/live/LiveLineNote";
 import {
   effectiveMidiCue,
   formatMidiCueLabel,
@@ -38,6 +39,10 @@ type LiveServiceFlowPanelProps = {
   onMidiSettings: (settings: MidiFollowSettings) => void;
   onAssignMidi: (itemId: string, cue: FlowMidiCue | null) => void | Promise<void>;
   onSelect: (itemId: string | null) => void;
+  showMidi?: boolean;
+  personalNotes?: Map<string, string>;
+  personalNoteStation?: string;
+  onSavePersonalNote?: (itemId: string, body: string) => Promise<boolean>;
 };
 
 function itemTitle(item: ServiceFlowItem, titles?: Map<string, string>) {
@@ -147,8 +152,12 @@ export function LiveServiceFlowPanel({
   onMidiSettings,
   onAssignMidi,
   onSelect,
+  showMidi = true,
+  personalNotes,
+  personalNoteStation = "",
+  onSavePersonalNote,
 }: LiveServiceFlowPanelProps) {
-  const currentRef = useRef<HTMLButtonElement | null>(null);
+  const currentRef = useRef<HTMLLIElement | null>(null);
   const { inset: bottomInset, viewportHeight } = useBottomScreenInset();
   const [pendingCues, setPendingCues] = useState<Map<string, FlowMidiCue | null>>(new Map());
   const playable = useMemo(() => items.filter((item) => item.item_type !== "header"), [items]);
@@ -213,6 +222,7 @@ export function LiveServiceFlowPanel({
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
           Service flow
         </p>
+        {showMidi ? (
         <Popover
           onOpenChange={(open) => {
             if (open) onOpenMidi?.();
@@ -331,6 +341,7 @@ export function LiveServiceFlowPanel({
             </ul>
           </PopoverContent>
         </Popover>
+        ) : null}
       </div>
       <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3">
         {items.map((item) => {
@@ -356,17 +367,18 @@ export function LiveServiceFlowPanel({
           const notes = notesWithoutServiceStart(notesWithoutMidiCue(item.notes));
           const endsAtServiceStart = item.id === serviceStartItemId;
           return (
-            <li key={item.id}>
-              <button
-                ref={isCurrent ? currentRef : undefined}
-                type="button"
-                onClick={() => onSelect(isCurrent ? null : item.id)}
+            <li key={item.id} ref={isCurrent ? currentRef : undefined}>
+              <div
                 className={cn(
-                  "flex w-full flex-col gap-1.5 rounded-xl border px-3 py-2.5 text-left",
+                  "grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5 text-left",
                   isCurrent ? "border-primary bg-primary/10" : "border-transparent bg-muted/40",
                 )}
               >
-                <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelect(isCurrent ? null : item.id)}
+                  className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 text-left outline-none"
+                >
                   {duration ? (
                     <span className="shrink-0 rounded-md bg-background px-1.5 py-0.5 text-xs font-semibold tabular-nums text-foreground">
                       {duration}
@@ -383,12 +395,22 @@ export function LiveServiceFlowPanel({
                     </span>
                   ) : null}
                   <span className="min-w-0 flex-1 truncate text-base font-semibold">{title}</span>
-                  {isCurrent ? (
-                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-primary">Now</span>
-                  ) : null}
-                </span>
+                </button>
+                {onSavePersonalNote ? (
+                  <div className="col-start-2 row-start-1 flex justify-end">
+                    <LiveLineNote
+                      key={`${personalNoteStation}:${item.id}`}
+                      note={personalNotes?.get(item.id) || ""}
+                      onSave={(body) => onSavePersonalNote(item.id, body)}
+                    />
+                  </div>
+                ) : null}
                 {isSong && (item.song?.bpm || item.song_key || singers) ? (
-                  <span className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(isCurrent ? null : item.id)}
+                    className="col-start-1 flex flex-wrap items-center gap-1.5 text-left"
+                  >
                     {item.song?.bpm ? (
                       <span className="rounded-md bg-primary px-2 py-0.5 text-sm font-bold tabular-nums text-primary-foreground">
                         {item.song.bpm} BPM
@@ -400,20 +422,26 @@ export function LiveServiceFlowPanel({
                       </span>
                     ) : null}
                     {singers ? <span className="min-w-0 text-sm font-medium">{singers}</span> : null}
-                  </span>
+                  </button>
                 ) : null}
                 {notes ? (
-                  <span className="whitespace-pre-wrap text-xs text-muted-foreground">{notes}</span>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(isCurrent ? null : item.id)}
+                    className="col-start-1 whitespace-pre-wrap text-left text-xs text-muted-foreground"
+                  >
+                    {notes}
+                  </button>
                 ) : null}
                 {isCurrent && progress != null ? (
-                  <span className="mt-0.5 block h-1 overflow-hidden rounded-full bg-primary/20">
+                  <span className="col-start-1 mt-0.5 block h-1 overflow-hidden rounded-full bg-primary/20">
                     <span
                       className="block h-full rounded-full bg-primary"
                       style={{ width: `${Math.round(Math.min(1, Math.max(0, progress)) * 100)}%` }}
                     />
                   </span>
                 ) : null}
-              </button>
+              </div>
             </li>
           );
         })}

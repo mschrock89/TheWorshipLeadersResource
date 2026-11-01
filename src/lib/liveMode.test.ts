@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canUseLiveLineNotes,
   hasProductionLiveAssignment,
   hasVideoLiveAssignment,
   isListenerHosting,
@@ -94,6 +95,25 @@ test("keeps the video chat room separate from production", () => {
   assert.equal(liveChatRoomOf({ room: "video" }), "video");
   assert.equal(liveChatRoomOf({ room: "production" }), "production");
   assert.equal(liveChatRoomOf({}), "production");
+});
+
+test("live line notes stay with admins, production, and video", () => {
+  assert.equal(
+    canUseLiveLineNotes({ hasCapability: true, revoked: false, hasLiveTeamAssignment: false }),
+    true,
+  );
+  assert.equal(
+    canUseLiveLineNotes({ hasCapability: false, revoked: false, hasLiveTeamAssignment: true }),
+    true,
+  );
+  assert.equal(
+    canUseLiveLineNotes({ hasCapability: true, revoked: true, hasLiveTeamAssignment: true }),
+    false,
+  );
+  assert.equal(
+    canUseLiveLineNotes({ hasCapability: false, revoked: false, hasLiveTeamAssignment: false }),
+    false,
+  );
 });
 
 test("video team only gets the video live view", () => {

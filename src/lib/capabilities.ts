@@ -22,6 +22,7 @@ export const CAPABILITIES = {
   PRODUCTION_MANAGER_TOOLS: "production_manager_tools",
   WEEKEND_RUNDOWN: "weekend_rundown",
   PUBLISH_SET_WITHOUT_APPROVAL: "publish_set_without_approval",
+  LIVE_LINE_NOTES: "live_line_notes",
 } as const;
 
 export type CapabilityKey = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -116,6 +117,9 @@ export function legacyCapabilitiesFromRoles(
 
   if (has("admin") || has("video_director")) caps.add(CAPABILITIES.VIDEO_DIRECTOR_TOOLS);
   if (has("admin") || has("production_manager")) caps.add(CAPABILITIES.PRODUCTION_MANAGER_TOOLS);
+  if (has("admin") || has("production_manager") || has("video_director")) {
+    caps.add(CAPABILITIES.LIVE_LINE_NOTES);
+  }
 
   // weekend_rundown: admin/campus_admin everywhere, student admins in student apps.
   if (has("admin") || has("campus_admin") || isStudentAppAdmin) {

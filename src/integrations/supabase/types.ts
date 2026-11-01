@@ -2591,6 +2591,48 @@ export type Database = {
           },
         ]
       }
+      live_line_notes: {
+        Row: {
+          body: string
+          id: string
+          service_flow_item_id: string
+          station: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          id?: string
+          service_flow_item_id: string
+          station?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          id?: string
+          service_flow_item_id?: string
+          station?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_line_notes_service_flow_item_id_fkey"
+            columns: ["service_flow_item_id"]
+            isOneToOne: false
+            referencedRelation: "service_flow_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_line_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       live_session_notes: {
         Row: {
           body: string

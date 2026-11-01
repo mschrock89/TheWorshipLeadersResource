@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { resolveLiveAudience, type LiveModeAudience } from "@/lib/liveMode";
+import {
+  hasProductionLiveAssignment,
+  hasVideoLiveAssignment,
+  resolveLiveAudience,
+  type LiveModeAudience,
+} from "@/lib/liveMode";
 
 type LiveModeAccess = {
   canOpen: boolean;
@@ -54,6 +59,7 @@ export function useLiveModeAccess(campusId?: string | null): LiveModeAccess {
   return {
     canOpen: audience !== null,
     audience,
+    hasLiveTeamAssignment: hasProductionLiveAssignment(rows) || hasVideoLiveAssignment(rows),
     isLoading: waitingForAssignment,
   };
 }
