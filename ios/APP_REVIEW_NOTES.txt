@@ -24,7 +24,7 @@ How to sign in:
 ACCOUNT DELETION (Guideline 5.1.1(v))
 Please do not delete the demo account.
 To test the full deletion flow, use Sign Up to create a throwaway account, then:
-Home → avatar → My Profile → Delete Account (top of the page) → type DELETE → confirm.
+Home → avatar → My Profile → Delete Account (bottom of the page) → type DELETE → confirm.
 The account is permanently removed.
 
 PROFILE PHOTO / CAMERA (Guideline 2.1(a))

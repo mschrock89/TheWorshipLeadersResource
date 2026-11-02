@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Wrshp Resource</string>
+	<string>Wrshp Resource</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,22 +26,32 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Wrshp Resource uses the camera so you can take a profile photo or attach a photo in chat.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Wrshp Resource uses your location only if you turn on optional campus attendance check-in. Location is never used for advertising or tracking.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Wrshp Resource uses the microphone only when you record or attach video in chat.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Wrshp Resource may save photos you capture for your profile or chat attachments.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wrshp Resource uses your photo library so you can choose a profile photo or attach an existing photo.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
-    <false/>
-    <key>UISceneConfigurations</key>
-    <dict>
-      <key>UIWindowSceneSessionRoleApplication</key>
-      <array>
-        <dict>
-            <key>UISceneConfigurationName</key>
-            <string>Default Configuration</string>
-            <key>UISceneDelegateClassName</key>
-            <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-        </dict>
-      </array>
-    </dict>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
@@ -62,16 +72,6 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Wrshp Resource uses the camera so you can take a profile photo or attach a photo in chat.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Wrshp Resource uses your photo library so you can choose a profile photo or attach an existing photo.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Wrshp Resource may save photos you capture for your profile or chat attachments.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Wrshp Resource uses the microphone only when you record or attach video in chat.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Wrshp Resource uses your location only if you turn on optional campus attendance check-in. Location is never used for advertising or tracking.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

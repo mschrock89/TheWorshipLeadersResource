@@ -29,7 +29,7 @@ How to review it:
 • To complete the full deletion flow, tap Sign Up, create a new account, then:
   1. After login, tap the avatar (top right)
   2. Tap My Profile
-  3. Tap Delete Account at the top of the page
+  3. Tap Delete Account at the bottom of the page
   4. Type DELETE
   5. Tap Delete Account to confirm
 The account is permanently removed and you are returned to the home screen.

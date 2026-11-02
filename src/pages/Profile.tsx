@@ -910,8 +910,6 @@ export default function Profile() {
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {isOwnProfile && <DeleteAccountSection />}
-
               <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                 <div>
                   <Label className="text-sm font-medium">Serving Requirements</Label>
@@ -1757,6 +1755,8 @@ export default function Profile() {
                   Save Changes
                 </Button>
               )}
+
+              {isOwnProfile && <DeleteAccountSection />}
             </form>
           </CardContent>
         </Card>
