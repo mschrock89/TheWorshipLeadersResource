@@ -7,6 +7,7 @@ import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionC
 import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelectionContext";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { LiveModeConsole } from "@/components/live/LiveModeConsole";
+import { liveServiceMinistry } from "@/lib/liveMode";
 
 const SERVICE_MINISTRIES = new Set<string>(SET_PLANNER_MINISTRY_OPTIONS.map((option) => option.value));
 
@@ -17,8 +18,8 @@ function todayIso() {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-function normalizeServiceMinistry(value: string | null) {
-  if (value === "weekend_team") return "weekend";
+function normalizeServiceMinistry(raw: string | null) {
+  const value = liveServiceMinistry(raw);
   if (value && SERVICE_MINISTRIES.has(value)) return value;
   return "weekend";
 }

@@ -8,6 +8,7 @@ import {
   BookOpen,
   Newspaper,
   MapPinned,
+  Radio,
   Tent,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +21,8 @@ import { BIBLE_READER_ENABLED } from "@/lib/bible";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useKeyboardOffset } from "@/hooks/useKeyboardOffset";
+import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
+import { useNextLiveService } from "@/hooks/useNextLiveService";
 
 export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms", "/live"]);
 
@@ -29,7 +32,20 @@ type NavItem = {
   label: string;
   badge?: number;
   tourId?: string;
+  live?: boolean;
 };
+
+function LiveNavLink({ label }: { label: string }) {
+  const { href } = useNextLiveService();
+  return (
+    <Link to={href} className="flex-1" aria-label="Open Live for your next service">
+      <Button variant="ghost" className="relative w-full gap-2 text-destructive hover:text-destructive">
+        <Radio className="h-5 w-5" />
+        <span className="hidden sm:inline">{label}</span>
+      </Button>
+    </Link>
+  );
+}
 
 export function BottomNav() {
   const location = useLocation();
@@ -54,6 +70,12 @@ export function BottomNav() {
   const bibleNavItem: NavItem[] = BIBLE_READER_ENABLED
     ? [{ to: "/bible", icon: BookOpen, label: "Bible" }]
     : [];
+  // Admins, production managers, and audio/production volunteers; video-only crew is excluded.
+  const liveAccess = useLiveModeAccess();
+  const liveNavItem: NavItem[] =
+    !isStudentApp && liveAccess.audience === "production"
+      ? [{ to: "/live", icon: Radio, label: "Live", live: true }]
+      : [];
 
   if (BOTTOM_NAV_HIDDEN_ROUTES.has(location.pathname)) {
     return null;
@@ -82,6 +104,7 @@ export function BottomNav() {
         { to: "/chat", icon: MessageCircle, label: "Chat", badge: totalUnread },
         { to: "/feed", icon: Newspaper, label: "Feed" },
         { to: "/calendar", icon: Calendar, label: "Calendar", tourId: "nav-calendar", badge: isApprover ? pendingApprovalCount : undefined },
+        ...liveNavItem,
       ]
     : [];
 
@@ -119,7 +142,8 @@ export function BottomNav() {
                       : "grid-cols-4"
         )}
       >
-        {navItems.map(({ to, icon: Icon, label, badge, tourId }) => {
+        {navItems.map(({ to, icon: Icon, label, badge, tourId, live }) => {
+          if (live) return <LiveNavLink key={to} label={label} />;
           const isActive = location.pathname === to;
 
           return (

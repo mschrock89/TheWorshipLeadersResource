@@ -6,6 +6,8 @@ import {
   hasVideoLiveAssignment,
   isListenerHosting,
   liveChatRoomOf,
+  liveServiceMinistry,
+  pickNextLiveService,
   resolveLiveAudience,
   rmsFromTimeDomain,
   sanitizeTalkbackTranscript,
@@ -153,4 +155,38 @@ test("video team only gets the video live view", () => {
     }),
     "production",
   );
+});
+
+test("next live service skips today's services once they end", () => {
+  const candidates = [
+    { date: "2026-11-07", times: ["17:00"] },
+    { date: "2026-11-08", times: ["11:00", "09:00"] },
+    { date: "2026-11-15", times: ["09:00"] },
+  ];
+  assert.deepEqual(pickNextLiveService(candidates, "2026-11-03", 600), { ...candidates[0], startTime: "17:00" });
+  assert.equal(pickNextLiveService(candidates, "2026-11-08", 8 * 60)?.startTime, "09:00");
+  assert.equal(pickNextLiveService(candidates, "2026-11-08", 10 * 60 + 30)?.startTime, "09:00");
+  assert.equal(pickNextLiveService(candidates, "2026-11-08", 11 * 60 + 1)?.startTime, "11:00");
+  assert.equal(pickNextLiveService(candidates, "2026-11-08", 11 * 60 + 30)?.startTime, "11:00");
+  assert.equal(pickNextLiveService(candidates, "2026-11-08", 13 * 60 + 30)?.date, "2026-11-15");
+  assert.equal(pickNextLiveService([{ date: "2026-11-01", times: ["09:00"] }], "2026-11-03", 0), null);
+});
+
+test("next live service keeps an untimed date open all day", () => {
+  const picked = pickNextLiveService(
+    [
+      { date: "2026-11-03", times: [] },
+      { date: "2026-11-04", times: ["18:00"] },
+    ],
+    "2026-11-03",
+    23 * 60,
+  );
+  assert.deepEqual(picked, { date: "2026-11-03", times: [], startTime: null });
+});
+
+test("production schedules open the worship service they support", () => {
+  assert.equal(liveServiceMinistry("production"), "weekend");
+  assert.equal(liveServiceMinistry("hs_production"), "encounter");
+  assert.equal(liveServiceMinistry("worship_night"), "worship_night");
+  assert.equal(liveServiceMinistry(null), null);
 });

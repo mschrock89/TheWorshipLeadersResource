@@ -135,6 +135,69 @@ export function buildLiveModeHref(params: {
   return `/live?${search.toString()}`;
 }
 
+/** Production crews are scheduled under their own ministry but run the worship service it supports. */
+const LIVE_MINISTRY_BY_SCHEDULE_MINISTRY: Record<string, string> = {
+  production: "weekend",
+  video: "weekend",
+  weekend_team: "weekend",
+  sunday_am: "weekend",
+  ms_hs_production: "ms_hs",
+  hs_production: "encounter",
+};
+
+export function liveServiceMinistry(ministryType: string | null | undefined): string | null {
+  if (!ministryType) return null;
+  return LIVE_MINISTRY_BY_SCHEDULE_MINISTRY[ministryType] || ministryType;
+}
+
+/** A service stays current in Live until this long after its last start. */
+export const LIVE_SERVICE_WINDOW_MINUTES = 120;
+
+export type LiveServiceCandidate = {
+  date: string;
+  /** HH:MM start times for that date, any order. Empty when the time is unknown. */
+  times: string[];
+};
+
+function clockMinutes(time: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})/.exec(time.trim());
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/**
+ * The soonest service that has not ended. Today's service ends
+ * LIVE_SERVICE_WINDOW_MINUTES after its start; a date with unknown times
+ * stays open all day and sorts after timed services on the same date.
+ */
+export function pickNextLiveService<T extends LiveServiceCandidate>(
+  candidates: T[],
+  today: string,
+  nowMinutes: number,
+): (T & { startTime: string | null }) | null {
+  let best: (T & { startTime: string | null }) | null = null;
+  let bestKey = "";
+  for (const candidate of candidates) {
+    if (candidate.date < today) continue;
+    const starts = candidate.times
+      .map((time) => ({ time: time.trim().slice(0, 5), minutes: clockMinutes(time) }))
+      .filter((start): start is { time: string; minutes: number } => start.minutes !== null)
+      .sort((a, b) => a.minutes - b.minutes);
+    const open =
+      candidate.date === today
+        ? starts.filter((start) => start.minutes + LIVE_SERVICE_WINDOW_MINUTES > nowMinutes)
+        : starts;
+    if (starts.length > 0 && open.length === 0) continue;
+    const startTime = open[0]?.time ?? null;
+    const key = `${candidate.date}T${startTime ?? "99:99"}`;
+    if (!best || key < bestKey) {
+      best = { ...candidate, startTime };
+      bestKey = key;
+    }
+  }
+  return best;
+}
+
 const LIVE_STATION_LABELS: Record<LiveStation, string> = {
   foh: "FOH",
   mon: "MON",
