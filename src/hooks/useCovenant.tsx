@@ -156,6 +156,46 @@ export function useSignCovenant() {
   });
 }
 
+export function useResetCovenantSignatures() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ documentId }: { documentId: string }) => {
+      const db = supabase as any;
+      const { data, error } = await db.rpc("reset_covenant_signatures", {
+        _document_id: documentId,
+      });
+
+      if (error) throw error;
+      return {
+        documentId,
+        count: typeof data === "number" ? data : 0,
+      };
+    },
+    onSuccess: ({ documentId, count }) => {
+      const { noun } = getCovenantTerminology();
+      queryClient.invalidateQueries({ queryKey: ["active-covenant"] });
+      queryClient.invalidateQueries({ queryKey: ["covenant-signature-count", documentId] });
+      toast({
+        title: `${noun} signatures reset`,
+        description:
+          count === 1
+            ? `Cleared 1 signature. Everyone needs to sign this ${noun} again.`
+            : `Cleared ${count} signatures. Everyone needs to sign this ${noun} again.`,
+      });
+    },
+    onError: (error) => {
+      const { noun } = getCovenantTerminology();
+      toast({
+        title: `Unable to reset ${noun} signatures`,
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useUploadCovenantDocument() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

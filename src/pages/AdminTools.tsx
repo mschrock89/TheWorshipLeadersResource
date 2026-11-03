@@ -21,7 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, Flag, type LucideIcon } from "lucide-react";
+import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, Flag, RotateCcw, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -35,7 +35,8 @@ import { toast } from "sonner";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
-import { useActiveCovenant, useCovenantSignatureCount, useUploadCovenantDocument } from "@/hooks/useCovenant";
+import { useActiveCovenant, useCovenantSignatureCount, useResetCovenantSignatures, useUploadCovenantDocument } from "@/hooks/useCovenant";
+import { useUserRole } from "@/hooks/useUserRoles";
 import { getCovenantTerminology, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { ModerationInbox } from "@/components/moderation/ModerationInbox";
 
@@ -495,7 +496,10 @@ export default function AdminTools() {
   const deleteCustomService = useDeleteCustomService();
   const { data: activeCovenant } = useActiveCovenant(user?.id);
   const { data: covenantSignatureCount = 0 } = useCovenantSignatureCount(activeCovenant?.document.id);
+  const { data: userRole } = useUserRole(user?.id);
+  const isOrgAdmin = userRole === "admin";
   const uploadCovenantDocument = useUploadCovenantDocument();
+  const resetCovenantSignatures = useResetCovenantSignatures();
 
   // Consolidate leadership users
   const consolidatedUsers = (() => {
@@ -1838,6 +1842,63 @@ export default function AdminTools() {
                 <p className="text-sm text-muted-foreground">
                   {activeCovenant.document.description || `This is the currently active ${covenantTerminology.noun} shown to the team.`}
                 </p>
+                {isOrgAdmin && (
+                  <div className="mt-4 space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Reset signatures</p>
+                      <p className="text-xs text-muted-foreground">
+                        Organization Admins can clear every signature on this {covenantTerminology.noun}.
+                        Each person, including you, will be asked to sign it again on their dashboard.
+                      </p>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="gap-2"
+                          disabled={covenantSignatureCount === 0 || resetCovenantSignatures.isPending}
+                        >
+                          {resetCovenantSignatures.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Resetting...
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="h-4 w-4" />
+                              Reset all signatures
+                            </>
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Reset all signatures?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {`This clears ${covenantSignatureCount} signature${covenantSignatureCount === 1 ? "" : "s"} on ${activeCovenant.document.title} (${activeCovenant.document.version_label}). Everyone will need to sign this ${covenantTerminology.noun} again. This cannot be undone.`}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              resetCovenantSignatures.mutate({
+                                documentId: activeCovenant.document.id,
+                              });
+                            }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Reset signatures
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    {covenantSignatureCount === 0 && (
+                      <p className="text-xs text-muted-foreground">No one has signed this version yet.</p>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
