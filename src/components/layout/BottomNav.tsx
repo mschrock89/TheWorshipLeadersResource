@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,11 +37,31 @@ type NavItem = {
 };
 
 function LiveNavLink({ label }: { label: string }) {
-  const { href } = useNextLiveService();
+  const navigate = useNavigate();
+  const { href, isLoading } = useNextLiveService();
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (pending && !isLoading) {
+      setPending(false);
+      navigate(href);
+    }
+  }, [href, isLoading, navigate, pending]);
+
   return (
-    <Link to={href} className="flex-1" aria-label="Open Live for your next service">
+    <Link
+      to={href}
+      className="flex-1"
+      aria-label="Open Live for your next service"
+      aria-busy={pending}
+      onClick={(event) => {
+        if (!isLoading) return;
+        event.preventDefault();
+        setPending(true);
+      }}
+    >
       <Button variant="ghost" className="relative w-full gap-2 text-destructive hover:text-destructive">
-        <Radio className="h-5 w-5" />
+        <Radio className={cn("h-5 w-5", pending && "animate-pulse")} />
         <span className="hidden sm:inline">{label}</span>
       </Button>
     </Link>

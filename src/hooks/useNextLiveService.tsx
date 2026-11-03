@@ -20,6 +20,17 @@ const LOOKAHEAD_DAYS = 14;
 const AUDIO_POSITIONS = new Set<string>(POSITION_CATEGORIES.audio);
 const PRODUCTION_MINISTRIES = new Set<string>(PRODUCTION_LIVE_MINISTRIES);
 
+/** The bottom bar renders outside the campus selection provider, so read the stored pick too. */
+const SELECTED_CAMPUS_STORAGE_KEY = "em-selected-campus";
+
+function readStoredCampusId() {
+  try {
+    return window.localStorage.getItem(SELECTED_CAMPUS_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 type Candidate = {
   date: string;
   campusId: string;
@@ -30,14 +41,15 @@ type Candidate = {
 /**
  * The Live link for this user's next service. Audio volunteers get their next
  * scheduled production date. Admins and production managers also get the next
- * weekend service at their campus, whichever comes first.
+ * weekend service at their campus, whichever comes first. Anyone with no
+ * scheduled date falls back to their campus's next weekend service.
  */
 export function useNextLiveService() {
   const { user, isAdmin, isProductionManager } = useAuth();
   const campusContext = useCampusSelectionOptional();
-  const { data: userCampuses = [] } = useUserCampuses(user?.id);
-  const { data: campuses = [] } = useCampuses();
-  const { data: ministrySchedules = [] } = useCampusMinistrySchedules();
+  const { data: userCampuses = [], isLoading: userCampusesLoading } = useUserCampuses(user?.id);
+  const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
+  const { data: ministrySchedules = [], isLoading: schedulesLoading } = useCampusMinistrySchedules();
   const { scheduledDates, isLoading: scheduleLoading } = useMyTeamAssignments();
 
   const [now, setNow] = useState(() => new Date());
@@ -52,7 +64,10 @@ export function useNextLiveService() {
     end.setDate(end.getDate() + LOOKAHEAD_DAYS);
     return formatDateForDB(end);
   }, [now]);
-  const { data: overrides = [] } = useServiceTimeOverrides({ startDate: today, endDate: lookaheadEnd });
+  const { data: overrides = [], isLoading: overridesLoading } = useServiceTimeOverrides({
+    startDate: today,
+    endDate: lookaheadEnd,
+  });
 
   const next = useMemo(() => {
     const campusById = new Map(campuses.map((campus) => [campus.id, campus]));
@@ -80,11 +95,10 @@ export function useNextLiveService() {
       });
     }
 
-    if (isAdmin || isProductionManager) {
-      const selectedCampus =
-        campusContext?.selectedCampusId && campusContext.selectedCampusId !== "network-wide"
-          ? campusContext.selectedCampusId
-          : null;
+    if (isAdmin || isProductionManager || candidates.length === 0) {
+      const selectedCampus = [campusContext?.selectedCampusId, readStoredCampusId()].find(
+        (id): id is string => !!id && campusById.has(id),
+      );
       const campusId = selectedCampus || userCampuses[0]?.campus_id || campuses[0]?.id || null;
       if (campusId) {
         const cursor = new Date(now);
@@ -120,5 +134,8 @@ export function useNextLiveService() {
     ? buildLiveModeHref({ date: next.date, campusId: next.campusId, ministryType: next.ministryType })
     : "/live";
 
-  return { href, next, isLoading: scheduleLoading };
+  const isLoading =
+    scheduleLoading || userCampusesLoading || campusesLoading || schedulesLoading || overridesLoading;
+
+  return { href, next, isLoading };
 }
