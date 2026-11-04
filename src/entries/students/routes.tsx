@@ -13,6 +13,7 @@ const Calendar = lazy(() => import("@/pages/Calendar"));
 const Schedule = lazy(() => import("@/pages/Schedule"));
 const PlanningCenter = lazy(() => import("@/pages/PlanningCenter"));
 const SwapRequests = lazy(() => import("@/pages/SwapRequests"));
+const GapRequests = lazy(() => import("@/pages/GapRequests"));
 const SetPlanner = lazy(() => import("@/pages/SetPlanner"));
 const AuditionSetPlanner = lazy(() => import("@/pages/AuditionSetPlanner"));
 const Auditions = lazy(() => import("@/pages/Auditions"));
@@ -74,6 +75,8 @@ export const protectedRoutes: RouteDefinition[] = [
   route("/profile", Profile),
   route("/settings/planning-center", PlanningCenter),
   route("/swaps", SwapRequests),
+  route("/gaps", GapRequests),
+  route("/gaps/:id", GapRequests),
   route("/my-setlists", MySetlists),
   route("/set-planner", SetPlanner),
   route("/weekend-rundown", WeekendRundown),

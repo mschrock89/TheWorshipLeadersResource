@@ -546,6 +546,143 @@ export type Database = {
           },
         ]
       }
+      gap_request_recipients: {
+        Row: {
+          created_at: string
+          gap_request_id: string
+          id: string
+          responded_at: string | null
+          response: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gap_request_id: string
+          id?: string
+          responded_at?: string | null
+          response?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          gap_request_id?: string
+          id?: string
+          responded_at?: string | null
+          response?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gap_request_recipients_gap_request_id_fkey"
+            columns: ["gap_request_id"]
+            isOneToOne: false
+            referencedRelation: "gap_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gap_request_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gap_requests: {
+        Row: {
+          campus_id: string
+          created_at: string
+          covers_weekend_pair: boolean
+          created_by: string
+          filled_at: string | null
+          filled_by_user_id: string | null
+          id: string
+          message: string | null
+          ministry_type: string
+          position: string
+          position_slot: string
+          resource_app_key: string
+          schedule_date: string
+          slotted_dates: string[]
+          status: string
+          target_campus_ids: string[]
+          target_ministry_types: string[]
+          team_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          covers_weekend_pair?: boolean
+          created_by: string
+          filled_at?: string | null
+          filled_by_user_id?: string | null
+          id?: string
+          message?: string | null
+          ministry_type: string
+          position: string
+          position_slot: string
+          resource_app_key?: string
+          schedule_date: string
+          slotted_dates?: string[]
+          status?: string
+          target_campus_ids?: string[]
+          target_ministry_types?: string[]
+          team_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          covers_weekend_pair?: boolean
+          created_by?: string
+          filled_at?: string | null
+          filled_by_user_id?: string | null
+          id?: string
+          message?: string | null
+          ministry_type?: string
+          position?: string
+          position_slot?: string
+          resource_app_key?: string
+          schedule_date?: string
+          slotted_dates?: string[]
+          status?: string
+          target_campus_ids?: string[]
+          target_ministry_types?: string[]
+          team_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gap_requests_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gap_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gap_requests_filled_by_user_id_fkey"
+            columns: ["filled_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gap_requests_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "worship_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gmail_integrations: {
         Row: {
           created_at: string

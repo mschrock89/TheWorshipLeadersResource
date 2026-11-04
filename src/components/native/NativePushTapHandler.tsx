@@ -20,7 +20,12 @@ export function NativePushTapHandler() {
       const handle = await PushNotifications.addListener(
         "pushNotificationActionPerformed",
         (action) => {
-          const url = action.notification.data?.url;
+          const actionUrls = action.notification.data?.actionUrls;
+          const actionUrl =
+            action.actionId && action.actionId !== "tap" && actionUrls && typeof actionUrls === "object"
+              ? (actionUrls as Record<string, unknown>)[action.actionId]
+              : undefined;
+          const url = typeof actionUrl === "string" && actionUrl ? actionUrl : action.notification.data?.url;
           if (typeof url !== "string" || !url) return;
 
           try {

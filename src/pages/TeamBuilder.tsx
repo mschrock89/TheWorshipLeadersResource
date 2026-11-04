@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye } from "lucide-react";
+import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye, Megaphone } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import { AutoBuilderDialog } from "@/components/team-builder/AutoBuilderDialog";
 import { AssignMemberDialog } from "@/components/team-builder/AssignMemberDialog";
 import { MinistryEditDialog } from "@/components/team-builder/MinistryEditDialog";
 import { BreakRequestsWidget } from "@/components/team-builder/BreakRequestsWidget";
+import { SendGapRequestDialog } from "@/components/gaps/SendGapRequestDialog";
 import { TeamScheduleWidget } from "@/components/team-builder/TeamScheduleWidget";
 import { TeamTemplateDialog } from "@/components/team-builder/TeamTemplateDialog";
 import { EditTeamDialog, TeamEditorValue } from "@/components/team-builder/EditTeamDialog";
@@ -482,6 +483,7 @@ export default function TeamBuilder() {
   }, []);
 
   const [selectedCampusId, setSelectedCampusId] = useState<string | null>(initialSearch.campus);
+  const [gapRequestOpen, setGapRequestOpen] = useState(false);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(initialSearch.period);
   const [selectedMinistryType, setSelectedMinistryType] = useState<string>(
     isStudentTeamBuilder
@@ -2227,6 +2229,14 @@ export default function TeamBuilder() {
                   />
                 )}
 
+                {canEditCampus && (
+                  <SendGapRequestDialog
+                    open={gapRequestOpen}
+                    onOpenChange={setGapRequestOpen}
+                    defaults={{ campusId: selectedCampusId || undefined, ministryType: selectedMinistryType }}
+                  />
+                )}
+
                 {/* Action buttons */}
                 {canEditCampus && (
                   <div className="flex flex-wrap gap-2">
@@ -2277,6 +2287,15 @@ export default function TeamBuilder() {
                         <BellRing className="mr-2 h-4 w-4" />
                       )}
                       Publish Rotation
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setGapRequestOpen(true)}
+                      disabled={!selectedCampusId}
+                      className={utilityActionButtonClassName}
+                    >
+                      <Megaphone className="mr-2 h-4 w-4" />
+                      Send Gap Request
                     </Button>
                     <Button
                       variant="outline"

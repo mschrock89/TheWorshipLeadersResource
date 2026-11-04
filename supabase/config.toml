@@ -242,3 +242,9 @@ entrypoint = "./functions/gmail-send-reply/index.ts"
 
 [functions.notify-service-script]
 verify_jwt = false
+
+[functions.send-gap-request]
+verify_jwt = false
+
+[functions.respond-gap-request]
+verify_jwt = false

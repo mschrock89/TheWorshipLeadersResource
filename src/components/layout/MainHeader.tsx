@@ -5,9 +5,10 @@ import { useProfile } from "@/hooks/useProfiles";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
+import { usePendingGapInviteCount } from "@/hooks/useGapRequests";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned, Radio } from "lucide-react";
+import { Users, Settings, LogOut, LayoutDashboard, FolderOpen, ClipboardList, Link2, FileCheck, Home, Music, Gamepad2, Newspaper, Wrench, ArrowLeftRight, BookOpen, ListMusic, MapPinned, Radio, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
 import { HeaderMiniPlayer } from "@/components/audio/HeaderMiniPlayer";
@@ -38,6 +39,7 @@ export function MainHeader() {
   const {
     data: pendingSwaps = 0
   } = usePendingSwapRequestsCount();
+  const { data: pendingGapInvites = 0 } = usePendingGapInviteCount();
   const {
     data: incompleteDevoCount = 0
   } = useMyIncompleteDevoCount();
@@ -120,6 +122,17 @@ export function MainHeader() {
                     Swaps
                     {pendingSwaps > 0 && <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
                         {pendingSwaps > 99 ? "99+" : pendingSwaps}
+                      </Badge>}
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {!isAuditionCandidate && !isStudentBase && (
+                <DropdownMenuItem asChild>
+                  <Link to="/gaps" className="flex items-center gap-2">
+                    <Megaphone className="h-4 w-4" />
+                    Gap Requests
+                    {pendingGapInvites > 0 && <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                        {pendingGapInvites > 99 ? "99+" : pendingGapInvites}
                       </Badge>}
                   </Link>
                 </DropdownMenuItem>

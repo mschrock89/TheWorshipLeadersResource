@@ -16,6 +16,7 @@ import {
   ArrowLeftRight,
   BookOpen,
   ListMusic,
+  Megaphone,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -32,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
 import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
+import { usePendingGapInviteCount } from "@/hooks/useGapRequests";
 import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
 import { isAuditionCandidateRole, isStudentBaseRole } from "@/lib/access";
 import { BIBLE_READER_ENABLED } from "@/lib/bible";
@@ -112,6 +114,7 @@ export default function Home() {
   const { data: isApprover } = useIsApprover();
   const { data: pendingApprovalCount } = usePendingApprovalCount();
   const { data: pendingSwaps = 0 } = usePendingSwapRequestsCount();
+  const { data: pendingGapInvites = 0 } = usePendingGapInviteCount();
   const { data: incompleteDevoCount = 0 } = useMyIncompleteDevoCount();
   const drumTechAccess = useDrumTechAccess();
   const roleNames = roles.map((role) => role.role);
@@ -215,6 +218,19 @@ export default function Home() {
                         {pendingSwaps > 0 && (
                           <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
                             {pendingSwaps > 99 ? "99+" : pendingSwaps}
+                          </Badge>
+                        )}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!isAuditionCandidate && !isStudentBase && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/gaps" className="flex items-center gap-2">
+                        <Megaphone className="h-4 w-4" />
+                        Gap Requests
+                        {pendingGapInvites > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-xs">
+                            {pendingGapInvites > 99 ? "99+" : pendingGapInvites}
                           </Badge>
                         )}
                       </Link>

@@ -98,7 +98,14 @@ async function getProviderJwt(config: ApnsConfig): Promise<string> {
 
 export async function sendApnsNotification(
   deviceToken: string,
-  notification: { title: string; body: string; url?: string; tag?: string },
+  notification: {
+    title: string;
+    body: string;
+    url?: string;
+    tag?: string;
+    category?: string;
+    actionUrls?: Record<string, string>;
+  },
   config: ApnsConfig,
   timeoutMs = 10000,
 ): Promise<ApnsSendResult> {
@@ -116,9 +123,11 @@ export async function sendApnsNotification(
         },
         sound: "default",
         ...(notification.tag ? { "thread-id": notification.tag } : {}),
+        ...(notification.category ? { category: notification.category } : {}),
       },
       // Custom payload read by the app's notification tap handler.
       url: notification.url || "/dashboard",
+      ...(notification.actionUrls ? { actionUrls: notification.actionUrls } : {}),
     };
 
     const controller = new AbortController();

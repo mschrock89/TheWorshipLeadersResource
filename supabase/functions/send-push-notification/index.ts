@@ -30,6 +30,10 @@ interface PushPayload {
   skipLogging?: boolean;
   skipInApp?: boolean;
   actions?: Array<{ action: string; title: string }>;
+  /** Deep link per action id; opened when the user taps that notification button. */
+  actionUrls?: Record<string, string>;
+  /** UNNotificationCategory registered in the iOS AppDelegate (shows native buttons). */
+  iosCategory?: string;
 }
 
 const ADMIN_TEST_ROLES = [
@@ -985,6 +989,7 @@ serve(async (req) => {
       data: {
         url: payload.url || "/dashboard",
         confirmUrl: payload.url || "/dashboard",
+        actionUrls: payload.actionUrls || {},
       },
     });
 
@@ -1016,6 +1021,8 @@ serve(async (req) => {
                 body: payload.message,
                 url: payload.url,
                 tag: payload.tag,
+                category: payload.iosCategory,
+                actionUrls: payload.actionUrls,
               },
               apnsConfig,
               PUSH_DELIVERY_TIMEOUT_MS,

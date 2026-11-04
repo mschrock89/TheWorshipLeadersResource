@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 import Capacitor
 
 @UIApplicationMain
@@ -7,8 +8,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        registerNotificationCategories()
         return true
+    }
+
+    // Action ids must match the keys of `actionUrls` sent by send-gap-request.
+    // Both open the app so the web layer can record the answer with the user's session.
+    private func registerNotificationCategories() {
+        let yes = UNNotificationAction(identifier: "yes", title: "Yes, I can serve", options: [.foreground])
+        let no = UNNotificationAction(identifier: "no", title: "No, I can't", options: [.foreground])
+        let gapRequest = UNNotificationCategory(
+            identifier: "GAP_REQUEST",
+            actions: [yes, no],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([gapRequest])
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

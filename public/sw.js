@@ -28,6 +28,8 @@ self.addEventListener('push', function(event) {
     vibrate: [100, 50, 100],
     data: {
       url: data.data?.url || data.url || '/',
+      confirmUrl: data.data?.confirmUrl,
+      actionUrls: data.data?.actionUrls || {},
       notificationId: data.id
     },
     actions: data.actions || [],
@@ -46,7 +48,10 @@ self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
   let url = event.notification.data?.url || '/';
-  if (event.action === 'confirm') {
+  const actionUrl = event.action && event.notification.data?.actionUrls?.[event.action];
+  if (actionUrl) {
+    url = actionUrl;
+  } else if (event.action === 'confirm') {
     url = event.notification.data?.confirmUrl || url;
   }
 
