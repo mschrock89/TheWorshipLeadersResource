@@ -1,7 +1,7 @@
 /** Mic captions and channel meters are parked. */
 export const TALKBACK_TRANSCRIPT_ENABLED = false;
 
-export const LIVE_STATIONS = ["foh", "mon", "bcast"] as const;
+export const LIVE_STATIONS = ["foh", "mon", "bcast", "video"] as const;
 export type LiveStation = (typeof LIVE_STATIONS)[number];
 
 export const PRODUCTION_LIVE_MINISTRIES = [
@@ -202,9 +202,15 @@ const LIVE_STATION_LABELS: Record<LiveStation, string> = {
   foh: "FOH",
   mon: "MON",
   bcast: "BCAST",
+  video: "VIDEO",
 };
 
 export function isLiveStation(value: string | null | undefined): value is LiveStation {
+  return value === "foh" || value === "mon" || value === "bcast" || value === "video";
+}
+
+/** Talkback hosting stays on the audio positions. */
+export function isListenerStation(value: string | null | undefined): value is Exclude<LiveStation, "video"> {
   return value === "foh" || value === "mon" || value === "bcast";
 }
 
@@ -212,7 +218,7 @@ export function liveStationLabel(station: LiveStation) {
   return LIVE_STATION_LABELS[station];
 }
 
-/** FOH and BCAST play pre-service music. MON follows the rundown without a player. */
+/** FOH and BCAST play pre-service music. MON and VIDEO follow the rundown without a player. */
 export function liveStationUsesPreServicePlayer(station: LiveStation) {
   return station === "foh" || station === "bcast";
 }
@@ -229,7 +235,7 @@ export function isListenerHosting(
   nowMs: number,
 ) {
   if (!session?.listener_client_id || !session.listener_heartbeat) return false;
-  if (!isLiveStation(session.listener_station)) return false;
+  if (!isListenerStation(session.listener_station)) return false;
   const heartbeat = new Date(session.listener_heartbeat).getTime();
   return Number.isFinite(heartbeat) && nowMs - heartbeat < LISTENER_FRESH_MS;
 }

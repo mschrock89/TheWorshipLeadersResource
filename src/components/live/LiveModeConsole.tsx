@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
-import { isListenerHosting, isLiveStation, LIVE_STATIONS, liveChatRoomOf, liveStationLabel, liveStationUsesPreServicePlayer, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
+import { isListenerHosting, isListenerStation, LIVE_STATIONS, liveChatRoomOf, liveStationLabel, liveStationUsesPreServicePlayer, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import {
   applyAudioRoutingDefault,
   markRoutingDefaultApplied,
@@ -89,6 +89,56 @@ type DockTab = "flow" | "chat" | "notes";
 /** Temporary: Murfreesboro Central is not using the Live media players. */
 function liveMediaPlayersHidden(campusName: string) {
   return campusName === "Murfreesboro Central";
+}
+
+function LivePositionSwitcher<T extends string>({
+  options,
+  value,
+  onChange,
+  labelFor,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (value: T) => void;
+  labelFor: (value: T) => string;
+}) {
+  return (
+    <div
+      className="flex shrink-0 items-center gap-1 rounded-xl border border-primary/35 bg-primary/10 p-1 shadow-sm"
+      role="group"
+      aria-label="Live position"
+    >
+      <span className="px-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-primary">
+        Position
+      </span>
+      <div className="flex rounded-lg bg-background/70 p-0.5">
+        {options.map((option) => {
+          const isActive = value === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => onChange(option)}
+              className={cn(
+                "relative rounded-md px-3 py-1.5 text-sm font-bold transition-all",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span className="flex items-center gap-1.5">
+                {isActive ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground shadow-[0_0_0_2px_hsl(var(--primary-foreground)/0.2)]" />
+                ) : null}
+                {labelFor(option)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function LiveModeConsole({
@@ -561,7 +611,7 @@ export function LiveModeConsole({
   }, [preRollCueAt, preRollItem, sessionItemId]);
 
   const hostActive = isListenerHosting(live.session, now.getTime());
-  const hostStation = isLiveStation(live.session?.listener_station) ? live.session.listener_station : null;
+  const hostStation = isListenerStation(live.session?.listener_station) ? live.session.listener_station : null;
   const weAreHost = listening && live.session?.listener_client_id === live.clientId;
   const followingHost =
     hostActive && !weAreHost && hostStation ? liveStationLabel(hostStation) : null;
@@ -633,6 +683,19 @@ export function LiveModeConsole({
               campusName={campusName}
               serviceTimeLabel={serviceTimeLabel}
               localTimeLabel={localTimeLabel}
+              trailing={
+                <div className="flex items-center gap-2 overflow-x-auto">
+                  <LivePositionSwitcher
+                    options={LIVE_STATIONS}
+                    value={station}
+                    labelFor={liveStationLabel}
+                    onChange={(option) => {
+                      setStation(option);
+                      writeLiveStation(option);
+                    }}
+                  />
+                </div>
+              }
             />
           </div>
         </header>
@@ -751,44 +814,15 @@ export function LiveModeConsole({
             localTimeLabel={localTimeLabel}
             trailing={
               <div className="flex items-center gap-2 overflow-x-auto">
-            <div
-              className="flex shrink-0 items-center gap-1 rounded-xl border border-primary/35 bg-primary/10 p-1 shadow-sm"
-              role="group"
-              aria-label="Live position"
-            >
-              <span className="px-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-primary">
-                Position
-              </span>
-              <div className="flex rounded-lg bg-background/70 p-0.5">
-                {LIVE_STATIONS.map((option) => {
-                  const isActive = station === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      aria-pressed={isActive}
-                      onClick={() => {
-                        setStation(option);
-                        writeLiveStation(option);
-                      }}
-                      className={cn(
-                        "relative rounded-md px-3 py-1.5 text-sm font-bold transition-all",
-                        isActive
-                          ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        {isActive ? (
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground shadow-[0_0_0_2px_hsl(var(--primary-foreground)/0.2)]" />
-                        ) : null}
-                        {liveStationLabel(option)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <LivePositionSwitcher
+              options={LIVE_STATIONS}
+              value={station}
+              labelFor={liveStationLabel}
+              onChange={(option) => {
+                setStation(option);
+                writeLiveStation(option);
+              }}
+            />
             {TALKBACK_TRANSCRIPT_ENABLED ? (
               <>
                 <Button

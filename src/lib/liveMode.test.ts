@@ -5,7 +5,10 @@ import {
   hasProductionLiveAssignment,
   hasVideoLiveAssignment,
   isListenerHosting,
+  isLiveStation,
   liveChatRoomOf,
+  liveStationLabel,
+  liveStationUsesPreServicePlayer,
   liveServiceMinistry,
   pickNextLiveService,
   resolveLiveAudience,
@@ -46,6 +49,13 @@ test("recognizes production ministry and FOH positions", () => {
   assert.equal(hasProductionLiveAssignment([{ ministry_type: "production" }]), true);
   assert.equal(hasProductionLiveAssignment([{ position: "sound_tech", ministry_type: "weekend" }]), true);
   assert.equal(hasProductionLiveAssignment([{ ministry_type: "weekend", position: "vocalist" }]), false);
+});
+
+test("VIDEO is a live position without the pre-service player", () => {
+  assert.equal(isLiveStation("video"), true);
+  assert.equal(liveStationLabel("video"), "VIDEO");
+  assert.equal(liveStationUsesPreServicePlayer("video"), false);
+  assert.equal(liveStationUsesPreServicePlayer("foh"), true);
 });
 
 test("recognizes video ministry and camera positions", () => {
