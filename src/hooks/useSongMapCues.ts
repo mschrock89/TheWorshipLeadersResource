@@ -19,7 +19,7 @@ function mapCue(row: SongMapRow): SongMapCue {
     serviceFlowItemId: row.service_flow_item_id,
     offsetSeconds: row.offset_seconds,
     body: row.body,
-    kind: row.kind === "mix" ? "mix" : "note",
+    kind: row.kind === "mix" || row.kind === "section" ? row.kind : "note",
   };
 }
 
@@ -134,10 +134,81 @@ export function useSongMapCues(flowId: string | null, itemIds: string[]) {
     if (existing) writeCache(existing, true);
   };
 
+  const replaceSectionCues = async (input: {
+    itemIds: string[];
+    cues: Array<{ serviceFlowItemId: string; offsetSeconds: number; body: string }>;
+  }) => {
+    const itemIds = [...new Set(input.itemIds)];
+    if (itemIds.length === 0) return;
+    const { data: existing, error: existingError } = await supabase
+      .from("song_map_cues")
+      .select("id")
+      .in("service_flow_item_id", itemIds)
+      .eq("kind", "section");
+    if (existingError) {
+      toast({
+        title: "Couldn't drop section markers",
+        description: sectionSaveError(existingError.message),
+        variant: "destructive",
+      });
+      throw new Error("Couldn't drop section markers");
+    }
+
+    const rows = input.cues
+      .filter((cue) => itemIds.includes(cue.serviceFlowItemId) && cue.body.trim())
+      .map((cue) => ({
+        service_flow_item_id: cue.serviceFlowItemId,
+        offset_seconds: Math.max(0, Math.min(7200, Math.round(cue.offsetSeconds))),
+        body: cue.body.trim().slice(0, 280),
+        kind: "section" as const,
+        created_by: user?.id || null,
+      }));
+    const { data, error } = await supabase
+      .from("song_map_cues")
+      .insert(rows)
+      .select("id, service_flow_item_id, offset_seconds, body, kind");
+    if (error || !data) {
+      toast({
+        title: "Couldn't drop section markers",
+        description: sectionSaveError(error?.message),
+        variant: "destructive",
+      });
+      throw new Error("Couldn't drop section markers");
+    }
+
+    const staleIds = (existing || []).map((row) => row.id);
+    if (staleIds.length > 0) {
+      const { error: deleteError } = await supabase.from("song_map_cues").delete().in("id", staleIds);
+      if (deleteError) {
+        toast({
+          title: "Couldn't drop section markers",
+          description: deleteError.message,
+          variant: "destructive",
+        });
+        throw new Error("Couldn't drop section markers");
+      }
+    }
+
+    const stale = new Set(staleIds);
+    queryClient.setQueryData<SongMapCue[]>(queryKey, (current) => {
+      const kept = (current || []).filter((cue) => !stale.has(cue.id));
+      return sortCues([...kept, ...(data as SongMapRow[]).map((row) => mapCue(row))]);
+    });
+  };
+
   return {
     cues: query.data || [],
     schemaMissing: isMissingSongMapSchema(query.error),
     saveCue,
     deleteCue,
+    replaceSectionCues,
   };
+}
+
+function sectionSaveError(message?: string) {
+  const text = message || "Try again.";
+  if (text.toLowerCase().includes("kind")) {
+    return "Song map needs a database update before section markers can be saved.";
+  }
+  return text;
 }

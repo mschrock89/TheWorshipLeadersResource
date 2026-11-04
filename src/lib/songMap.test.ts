@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeSongMapCue, formatSongMapTime, songMapOffsetFromRatio } from "./songMap.ts";
+import { activeSongMapCue, formatSongMapTime, songMapKindLabel, songMapOffsetFromRatio, songMapSectionAbbrev } from "./songMap.ts";
 
 test("formats a song map clock", () => {
   assert.equal(formatSongMapTime(0), "0:00");
@@ -13,6 +13,14 @@ test("places a note from a click along the song", () => {
   assert.equal(songMapOffsetFromRatio(0.5, 259), 130);
   assert.equal(songMapOffsetFromRatio(1.4, 259), 259);
   assert.equal(songMapOffsetFromRatio(0.5, 0), 0);
+});
+
+test("section markers use a short timeline label", () => {
+  assert.equal(songMapKindLabel("section"), "Section");
+  assert.equal(songMapSectionAbbrev("Chorus"), "C");
+  assert.equal(songMapSectionAbbrev("Verse 2"), "V2");
+  assert.equal(songMapSectionAbbrev("Pre-Chorus"), "Pre");
+  assert.equal(songMapSectionAbbrev("Instrumental"), "Inst");
 });
 
 test("the prompt is the latest cue the playhead has reached", () => {

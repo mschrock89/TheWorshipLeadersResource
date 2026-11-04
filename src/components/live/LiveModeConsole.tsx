@@ -33,7 +33,9 @@ import { createInputAudioContext } from "@/lib/systemAudioInputs";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useCanUseLiveLineNotes, useLiveLineNotes } from "@/hooks/useLiveLineNotes";
 import { useLiveSession } from "@/hooks/useLiveSession";
+import { useToast } from "@/hooks/use-toast";
 import { useSongMapCues } from "@/hooks/useSongMapCues";
+import { dropSongSectionMarkers } from "@/lib/dropSongSectionMarkers";
 import { useSaveServiceFlowItem, useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
@@ -150,6 +152,7 @@ export function LiveModeConsole({
   draftSetId,
 }: LiveModeConsoleProps) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const access = useLiveModeAccess(campusId);
   const videoOnly = access.audience === "video";
   const live = useLiveSession({
@@ -176,6 +179,7 @@ export function LiveModeConsole({
   const [midiMessage, setMidiMessage] = useState<string | null>(null);
   const [lastMidi, setLastMidi] = useState<MidiNoteEvent | null>(null);
   const [songMapRun, setSongMapRun] = useState<{ itemId: string; startedAt: number } | null>(null);
+  const [droppingSections, setDroppingSections] = useState(false);
   const [midiFit, setMidiFit] = useState<"channel" | "none" | "paused" | null>(null);
   const [midiMenuOpened, setMidiMenuOpened] = useState(false);
   const saveFlowItem = useSaveServiceFlowItem();
@@ -206,6 +210,47 @@ export function LiveModeConsole({
     [items],
   );
   const songMap = useSongMapCues(flow?.id || null, songItemIds);
+  const dropSections = async () => {
+    if (droppingSections) return;
+    const songs = items
+      .filter((item) => item.item_type === "song")
+      .slice()
+      .sort((left, right) => left.sequence_order - right.sequence_order)
+      .map((item) => ({ id: item.id, title: item.title }));
+    setDroppingSections(true);
+    try {
+      const dropped = await dropSongSectionMarkers({
+        campusId,
+        ministryType,
+        serviceDate,
+        draftSetId: flowDraftId,
+        songs,
+      });
+      if (dropped.cues.length === 0) {
+        toast({
+          title: "No section cues heard",
+          description: "The Tracks MP3 didn't include Intro, Verse, Chorus, or other section calls.",
+        });
+        return;
+      }
+      await songMap.replaceSectionCues(dropped);
+      const songsTouched = dropped.itemIds.length;
+      toast({
+        title: "Section markers dropped",
+        description: `${dropped.cues.length} ${dropped.cues.length === 1 ? "marker" : "markers"} on ${songsTouched} ${songsTouched === 1 ? "song" : "songs"}.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Try again.";
+      if (message === "Couldn't drop section markers") return;
+      toast({
+        title: "Couldn't drop section markers",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setDroppingSections(false);
+    }
+  };
   const rosterDate = useMemo(() => {
     const [year, month, day] = serviceDate.split("-").map(Number);
     if (!year || !month || !day) return null;
@@ -673,32 +718,17 @@ export function LiveModeConsole({
     const videoTab = tab === "chat" ? "chat" : "flow";
     return (
       <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
-        <header className="shrink-0 border-b border-border bg-card">
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-1.5 hover:bg-muted">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-            <LiveNowTitle
-              campusName={campusName}
-              serviceTimeLabel={serviceTimeLabel}
-              localTimeLabel={localTimeLabel}
-              trailing={
-                <div className="flex items-center gap-2 overflow-x-auto">
-                  <LivePositionSwitcher
-                    options={LIVE_STATIONS}
-                    value={station}
-                    labelFor={liveStationLabel}
-                    onChange={(option) => {
-                      setStation(option);
-                      writeLiveStation(option);
-                    }}
-                  />
-                </div>
-              }
-            />
-          </div>
-        </header>
+        <LiveConsoleHeader
+          calendarHref={calendarHref}
+          campusName={campusName}
+          serviceTimeLabel={serviceTimeLabel}
+          localTimeLabel={localTimeLabel}
+          station={station}
+          onStation={(option) => {
+            setStation(option);
+            writeLiveStation(option);
+          }}
+        />
         <div className="grid shrink-0 grid-cols-2 border-b border-border">
           {dockTabs.map(([value, label]) => (
             <button
@@ -743,6 +773,8 @@ export function LiveModeConsole({
             personalNotes={lineNotes.notes}
             personalNoteStation={station}
             onSavePersonalNote={savePersonalNote}
+            songMapCues={songMap.cues}
+            songMapRun={songMapRun}
             onMidiSettings={() => {}}
             onAssignMidi={() => {}}
             onSelect={() => {}}
@@ -802,77 +834,62 @@ export function LiveModeConsole({
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
-      <header className="shrink-0 border-b border-border bg-card">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <Link to={calendarHref} aria-label="Back to calendar" className="rounded-md p-1.5 hover:bg-muted">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
-          <LiveNowTitle
-            campusName={campusName}
-            serviceTimeLabel={serviceTimeLabel}
-            localTimeLabel={localTimeLabel}
-            trailing={
-              <div className="flex items-center gap-2 overflow-x-auto">
-            <LivePositionSwitcher
-              options={LIVE_STATIONS}
-              value={station}
-              labelFor={liveStationLabel}
-              onChange={(option) => {
-                setStation(option);
-                writeLiveStation(option);
-              }}
-            />
-            {TALKBACK_TRANSCRIPT_ENABLED ? (
-              <>
-                <Button
-                  type="button"
-                  variant={listening ? "secondary" : "default"}
-                  className="h-10"
-                  onClick={() => {
-                    if (listening) {
-                      stopListening();
-                      return;
-                    }
-                    const context = createInputAudioContext();
-                    void context.resume();
-                    setAudioContext(context);
-                    setListening(true);
-                    void live.claimListener(station);
-                  }}
+      <LiveConsoleHeader
+        calendarHref={calendarHref}
+        campusName={campusName}
+        serviceTimeLabel={serviceTimeLabel}
+        localTimeLabel={localTimeLabel}
+        station={station}
+        onStation={(option) => {
+          setStation(option);
+          writeLiveStation(option);
+        }}
+        extra={
+          TALKBACK_TRANSCRIPT_ENABLED ? (
+            <>
+              <Button
+                type="button"
+                variant={listening ? "secondary" : "default"}
+                className="h-10"
+                onClick={() => {
+                  if (listening) {
+                    stopListening();
+                    return;
+                  }
+                  const context = createInputAudioContext();
+                  void context.resume();
+                  setAudioContext(context);
+                  setListening(true);
+                  void live.claimListener(station);
+                }}
+              >
+                <Radio className={cn("h-4 w-4", listening && "text-primary")} />
+                {listening ? "Stop" : "Listen"}
+              </Button>
+              {followingHost ? (
+                <div
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-semibold text-primary"
+                  aria-live="polite"
                 >
-                  <Radio className={cn("h-4 w-4", listening && "text-primary")} />
-                  {listening ? "Stop" : "Listen"}
-                </Button>
-                {followingHost ? (
-                  <div
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 text-sm font-semibold text-primary"
-                    aria-live="polite"
-                  >
-                    <Radio className="h-4 w-4 text-primary" />
-                    Following {followingHost}
-                  </div>
-                ) : null}
-                <Button
-                  type="button"
-                  variant={followCues ? "secondary" : "outline"}
-                  className="h-10"
-                  onClick={() => setFollowCues((value) => !value)}
-                >
-                  {followCues ? "Following" : "Follow"}
-                </Button>
-              </>
-            ) : null}
-            {TALKBACK_TRANSCRIPT_ENABLED ? (
+                  <Radio className="h-4 w-4 text-primary" />
+                  Following {followingHost}
+                </div>
+              ) : null}
+              <Button
+                type="button"
+                variant={followCues ? "secondary" : "outline"}
+                className="h-10"
+                onClick={() => setFollowCues((value) => !value)}
+              >
+                {followCues ? "Following" : "Follow"}
+              </Button>
               <Button type="button" variant="outline" size="icon" aria-label="Talkback setup" onClick={() => setSetupOpen(true)}>
                 <Settings2 className="h-4 w-4" />
               </Button>
-            ) : null}
-          </div>
-            }
-          />
-        </div>
-      </header>
+            </>
+          ) : null
+        }
+      />
 
       <div className="flex min-h-0 flex-1 flex-col">
         {liveStationUsesPreServicePlayer(station) && !liveMediaPlayersHidden(campusName) ? (
@@ -929,6 +946,8 @@ export function LiveModeConsole({
               startedAt={songMapRun?.itemId === currentSong.id ? songMapRun.startedAt : null}
               cues={songMap.cues.filter((entry) => entry.serviceFlowItemId === currentSong.id)}
               schemaMissing={songMap.schemaMissing}
+              droppingSections={droppingSections}
+              onDropSections={dropSections}
               onSave={(draft) =>
                 songMap.saveCue({
                   ...draft,
@@ -1024,6 +1043,8 @@ export function LiveModeConsole({
               personalNotes={lineNotes.notes}
               personalNoteStation={station}
               onSavePersonalNote={savePersonalNote}
+              songMapCues={songMap.cues}
+              songMapRun={songMapRun}
               onSelect={(itemId) => {
                 if (itemId && itemId === preRollItem?.id) setPreRollCueAt(Date.now());
                 const state = flowTrack.current;
@@ -1112,34 +1133,54 @@ function localDateIso(date: Date) {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-function LiveNowTitle({
+function LiveConsoleHeader({
+  calendarHref,
   campusName,
   serviceTimeLabel,
   localTimeLabel,
-  trailing,
+  station,
+  onStation,
+  extra,
 }: {
+  calendarHref: string;
   campusName: string;
   serviceTimeLabel: string | null;
   localTimeLabel: string;
-  trailing?: ReactNode;
+  station: LiveStation;
+  onStation: (station: LiveStation) => void;
+  extra?: ReactNode;
 }) {
   return (
-    <>
-      <h1 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-foreground">
-        <span className="font-medium text-muted-foreground">You are live @</span> {campusName}
-        {serviceTimeLabel ? (
-          <>
-            <span className="font-medium text-muted-foreground"> for the </span>
-            <span className="tabular-nums text-primary">{serviceTimeLabel}</span>
-          </>
-        ) : null}
-      </h1>
-      {trailing}
-      <div className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right">
-        <p className="text-[11.7px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">Local</p>
-        <p className="mt-0.5 text-[18.2px] font-bold tabular-nums leading-none">{localTimeLabel}</p>
+    <header className="shrink-0 border-b border-border bg-card">
+      <div className="flex items-center gap-2 px-2 pt-1.5">
+        <Link to={calendarHref} aria-label="Back to calendar" className="shrink-0 rounded-md p-1.5 hover:bg-muted">
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
+        <h1 className="min-w-0 flex-1 text-sm font-semibold leading-tight text-foreground">
+          <span className="font-medium text-muted-foreground">You are live @</span> {campusName}
+          {serviceTimeLabel ? (
+            <>
+              <span className="font-medium text-muted-foreground"> for the </span>
+              <span className="tabular-nums text-primary">{serviceTimeLabel}</span>
+            </>
+          ) : null}
+        </h1>
+        <div className="shrink-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-right">
+          <p className="text-[11.7px] font-semibold uppercase leading-none tracking-[0.14em] text-muted-foreground">Local</p>
+          <p className="mt-0.5 text-[18.2px] font-bold tabular-nums leading-none">{localTimeLabel}</p>
+        </div>
       </div>
-    </>
+      <div className="flex items-center gap-2 overflow-x-auto px-2 pb-1.5 pt-1">
+        <LivePositionSwitcher
+          options={LIVE_STATIONS}
+          value={station}
+          labelFor={liveStationLabel}
+          onChange={onStation}
+        />
+        {extra}
+      </div>
+    </header>
   );
 }
 

@@ -27,6 +27,47 @@ const SAFE_HEADROOM_BYTES = 16_384;
 const CHUNK_BYTES = MAX_TRANSCRIPTION_BYTES - SAFE_HEADROOM_BYTES;
 const MAX_REFERENCE_TRACK_BYTES = MAX_TRANSCRIPTION_BYTES * 2;
 
+function isMpeg(contentType: string) {
+  return /mpeg|mp3/i.test(contentType);
+}
+
+function isMp3Frame(bytes: Uint8Array, index: number) {
+  if (index + 3 >= bytes.length) return false;
+  if (bytes[index] !== 0xff || (bytes[index + 1] & 0xe0) !== 0xe0) return false;
+  const versionBits = (bytes[index + 1] >> 3) & 0x3;
+  const layerBits = (bytes[index + 1] >> 1) & 0x3;
+  if (versionBits === 1 || layerBits === 0) return false;
+  const bitrate = (bytes[index + 2] >> 4) & 0xf;
+  const sampleRate = (bytes[index + 2] >> 2) & 0x3;
+  return bitrate !== 0 && bitrate !== 0xf && sampleRate !== 0x3;
+}
+
+/** Keep each upload under Whisper's limit, and start later MP3 pieces on a frame. */
+export function chunkRanges(bytes: Uint8Array, maxChunkBytes: number, contentType: string) {
+  const ranges: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  while (start < bytes.length) {
+    if (bytes.length - start <= maxChunkBytes) {
+      ranges.push({ start, end: bytes.length });
+      break;
+    }
+    const limit = start + maxChunkBytes;
+    let end = limit;
+    if (isMpeg(contentType)) {
+      const searchFrom = Math.max(start + 1, limit - 16384);
+      for (let index = limit - 1; index >= searchFrom; index -= 1) {
+        if (!isMp3Frame(bytes, index)) continue;
+        end = index;
+        break;
+      }
+    }
+    if (end <= start) end = Math.min(bytes.length, start + maxChunkBytes);
+    ranges.push({ start, end });
+    start = end;
+  }
+  return ranges;
+}
+
 function normalizeWord(word: string): string {
   return word.trim().toLowerCase().replace(/[^a-z]/g, "");
 }
@@ -34,7 +75,7 @@ function normalizeWord(word: string): string {
 export async function transcribeAudioBlob(
   audioBlob: Blob,
   contentType = "audio/mpeg",
-  options?: { durationSeconds?: number },
+  options?: { durationSeconds?: number; prompt?: string },
 ): Promise<TranscriptionResult> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
@@ -48,22 +89,23 @@ export async function transcribeAudioBlob(
   }
 
   if (audioBlob.size <= CHUNK_BYTES) {
-    return transcribeAudioChunk(audioBlob, contentType, apiKey);
+    return transcribeAudioChunk(audioBlob, contentType, apiKey, options?.prompt);
   }
 
   const knownDurationSeconds = isPositiveFiniteNumber(options?.durationSeconds)
     ? options.durationSeconds
     : undefined;
+  const bytes = new Uint8Array(await audioBlob.arrayBuffer());
+  const ranges = chunkRanges(bytes, CHUNK_BYTES, contentType);
   const segments: TranscriptSegment[] = [];
   const words: TranscriptWord[] = [];
   let rollingOffsetSeconds = 0;
 
-  for (let startByte = 0; startByte < audioBlob.size; startByte += CHUNK_BYTES) {
-    const endByte = Math.min(startByte + CHUNK_BYTES, audioBlob.size);
-    const chunk = audioBlob.slice(startByte, endByte, contentType);
-    const chunkTranscription = await transcribeAudioChunk(chunk, contentType, apiKey);
+  for (const range of ranges) {
+    const chunk = new Blob([bytes.slice(range.start, range.end)], { type: contentType });
+    const chunkTranscription = await transcribeAudioChunk(chunk, contentType, apiKey, options?.prompt);
     const chunkOffsetSeconds = knownDurationSeconds != null
-      ? (startByte / audioBlob.size) * knownDurationSeconds
+      ? (range.start / bytes.length) * knownDurationSeconds
       : rollingOffsetSeconds;
 
     segments.push(
@@ -95,6 +137,7 @@ async function transcribeAudioChunk(
   audioBlob: Blob,
   contentType: string,
   apiKey: string,
+  prompt?: string,
 ): Promise<TranscriptionResult> {
   const fileName = `reference-track.${contentType.includes("wav") ? "wav" : "mp3"}`;
 
@@ -108,7 +151,8 @@ async function transcribeAudioChunk(
   formData.append("timestamp_granularities[]", "segment");
   formData.append(
     "prompt",
-    'Cue voice says exactly "Intro" for song boundaries. Spoken guide track cues for worship songs.',
+    prompt?.trim() ||
+      'Cue voice says exactly "Intro" for song boundaries. Spoken guide track cues for worship songs.',
   );
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -153,7 +197,7 @@ async function transcribeAudioChunk(
 
 export async function transcribeAudioFromUrl(
   audioUrl: string,
-  options?: { durationSeconds?: number },
+  options?: { durationSeconds?: number; prompt?: string },
 ): Promise<TranscriptionResult> {
   const audioResponse = await fetch(audioUrl);
   if (!audioResponse.ok) {

@@ -204,6 +204,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/detect-reference-track-markers/index.ts"
 
+[functions.detect-song-section-markers]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/detect-song-section-markers/index.ts"
+
 [functions.transcribe-talkback]
 enabled = true
 verify_jwt = true

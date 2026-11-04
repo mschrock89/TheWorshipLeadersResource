@@ -6,6 +6,8 @@ import { formatDuration } from "@/components/service-flow/DurationInput";
 import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LiveLineNote } from "@/components/live/LiveLineNote";
+import { readableSongNotes } from "@/lib/liveSongNotes";
+import { activeSongMapCue, formatSongMapTime, type SongMapCue } from "@/lib/songMap";
 import {
   effectiveMidiCue,
   formatMidiCueLabel,
@@ -43,6 +45,8 @@ type LiveServiceFlowPanelProps = {
   personalNotes?: Map<string, string>;
   personalNoteStation?: string;
   onSavePersonalNote?: (itemId: string, body: string) => Promise<boolean>;
+  songMapCues?: SongMapCue[];
+  songMapRun?: { itemId: string; startedAt: number } | null;
 };
 
 function itemTitle(item: ServiceFlowItem, titles?: Map<string, string>) {
@@ -62,6 +66,90 @@ function vocalistNames(item: ServiceFlowItem) {
 function itemDuration(item: ServiceFlowItem) {
   if (!item.duration_seconds || item.duration_seconds <= 0) return "";
   return formatDuration(item.duration_seconds);
+}
+
+function visibleItemNotes(notes: string | null | undefined) {
+  return notesWithoutServiceStart(notesWithoutMidiCue(notes));
+}
+
+type SongNoteEntry = {
+  item: ServiceFlowItem;
+  title: string;
+  flowNotes: string;
+  notes: SongMapCue[];
+};
+
+function SongNotesStage({
+  entries,
+  currentItemId,
+  run,
+  onSelect,
+}: {
+  entries: SongNoteEntry[];
+  currentItemId: string | null;
+  run: { itemId: string; startedAt: number } | null;
+  onSelect: (itemId: string) => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!run) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [run]);
+
+  const elapsed = run ? Math.max(0, (now - run.startedAt) / 1000) : null;
+  const shown = entries.flatMap((entry) => {
+    if (elapsed == null || run?.itemId !== entry.item.id) return [];
+    const active = activeSongMapCue(entry.notes, elapsed);
+    return active ? [{ entry, active }] : [];
+  });
+  if (shown.length === 0) return null;
+
+  return (
+    <section
+      aria-label="Song notes"
+      className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-xl border border-primary/40 bg-card shadow-[0_18px_48px_rgba(0,0,0,0.55)]"
+    >
+      <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+        {shown.map(({ entry, active }) => {
+          const singers = vocalistNames(entry.item);
+          return (
+            <article
+              key={entry.item.id}
+              className="shrink-0 rounded-lg border border-primary bg-primary/15 px-3 py-2.5"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  if (entry.item.id !== currentItemId) onSelect(entry.item.id);
+                }}
+                className="flex flex-wrap items-center gap-2 text-left"
+              >
+                <span className="min-w-0 flex-1 truncate text-base font-bold">{entry.title}</span>
+                {entry.item.song?.bpm ? (
+                  <span className="rounded-md bg-primary px-2 py-0.5 text-sm font-bold tabular-nums text-primary-foreground">
+                    {entry.item.song.bpm} BPM
+                  </span>
+                ) : null}
+                {entry.item.song_key ? (
+                  <span className="rounded-md border border-foreground/30 bg-background px-2 py-0.5 text-sm font-semibold">
+                    {entry.item.song_key}
+                  </span>
+                ) : null}
+                {singers ? <span className="min-w-0 text-sm font-medium">{singers}</span> : null}
+              </button>
+              <p className="mt-2 flex items-baseline gap-3 text-2xl font-semibold leading-snug text-primary">
+                <span className="w-14 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+                  {formatSongMapTime(active.offsetSeconds)}
+                </span>
+                <span className="min-w-0 flex-1">{active.body}</span>
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function cuesEqual(left: FlowMidiCue | null, right: FlowMidiCue | null) {
@@ -156,8 +244,12 @@ export function LiveServiceFlowPanel({
   personalNotes,
   personalNoteStation = "",
   onSavePersonalNote,
+  songMapCues = [],
+  songMapRun = null,
 }: LiveServiceFlowPanelProps) {
   const currentRef = useRef<HTMLLIElement | null>(null);
+  const notesPopupRef = useRef<HTMLDivElement | null>(null);
+  const [notesPopupHeight, setNotesPopupHeight] = useState(0);
   const { inset: bottomInset, viewportHeight } = useBottomScreenInset();
   const [pendingCues, setPendingCues] = useState<Map<string, FlowMidiCue | null>>(new Map());
   const playable = useMemo(() => items.filter((item) => item.item_type !== "header"), [items]);
@@ -173,9 +265,34 @@ export function LiveServiceFlowPanel({
     [midiSettings.endServiceCue, midiSettings.preServiceCue, pendingCues, playable],
   );
 
+  const songNoteEntries = useMemo(() => {
+    if (!currentItemId) return null;
+    const item = items.find((entry) => entry.id === currentItemId);
+    if (!item || item.item_type !== "song") return null;
+    const timed = readableSongNotes([item.id], songMapCues).sort(
+      (left, right) => left.offsetSeconds - right.offsetSeconds || left.id.localeCompare(right.id),
+    );
+    const flowNotes = visibleItemNotes(item.notes);
+    if (timed.length === 0 && !flowNotes) return null;
+    return [{ item, title: itemTitle(item, titles), flowNotes, notes: timed }];
+  }, [currentItemId, items, songMapCues, titles]);
+
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ block: "nearest" });
-  }, [currentItemId]);
+    const node = notesPopupRef.current;
+    if (!node) {
+      setNotesPopupHeight(0);
+      return;
+    }
+    const measure = () => setNotesPopupHeight(node.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [songNoteEntries]);
+
+  useEffect(() => {
+    currentRef.current?.scrollIntoView({ block: songNoteEntries ? "start" : "nearest" });
+  }, [currentItemId, notesPopupHeight, songNoteEntries]);
 
   useEffect(() => {
     setPendingCues((current) => {
@@ -215,6 +332,13 @@ export function LiveServiceFlowPanel({
       </p>
     );
   }
+
+  const notesCover = notesPopupHeight > 0 ? notesPopupHeight + 12 : 0;
+  const notesFadeEnd = notesCover > 0 ? notesCover + 88 : 0;
+  const notesFade =
+    notesFadeEnd > 0
+      ? `linear-gradient(to bottom, transparent 0, transparent ${Math.max(0, notesCover - 8)}px, #000 ${notesFadeEnd}px)`
+      : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -343,10 +467,22 @@ export function LiveServiceFlowPanel({
         </Popover>
         ) : null}
       </div>
-      <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3">
+      <div className="relative min-h-0 flex-1">
+      <ol
+        className="h-full min-h-0 space-y-1.5 overflow-y-auto px-3 pb-3 pt-3"
+        style={
+          notesFade
+            ? {
+                scrollPaddingTop: notesFadeEnd,
+                maskImage: notesFade,
+                WebkitMaskImage: notesFade,
+              }
+            : undefined
+        }
+      >
         {items.map((item) => {
           if (item.item_type === "header") {
-            const headerNotes = notesWithoutServiceStart(notesWithoutMidiCue(item.notes));
+            const headerNotes = visibleItemNotes(item.notes);
             return (
               <li key={item.id} className="px-2 pt-3">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
@@ -364,7 +500,7 @@ export function LiveServiceFlowPanel({
           const clockTime = clockTimes.get(item.id) || "";
           const singers = isSong ? vocalistNames(item) : "";
           const title = itemTitle(item, titles);
-          const notes = notesWithoutServiceStart(notesWithoutMidiCue(item.notes));
+          const notes = visibleItemNotes(item.notes);
           const endsAtServiceStart = item.id === serviceStartItemId;
           return (
             <li key={item.id} ref={isCurrent ? currentRef : undefined}>
@@ -446,6 +582,20 @@ export function LiveServiceFlowPanel({
           );
         })}
       </ol>
+      {songNoteEntries ? (
+        <div
+          ref={notesPopupRef}
+          className="absolute inset-x-3 top-3 z-20 flex max-h-[min(22rem,46%)] min-h-0 flex-col"
+        >
+          <SongNotesStage
+            entries={songNoteEntries}
+            currentItemId={currentItemId}
+            run={songMapRun}
+            onSelect={onSelect}
+          />
+        </div>
+      ) : null}
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   formatSongMapTime,
   songMapKindLabel,
   songMapOffsetFromRatio,
+  songMapSectionAbbrev,
   type SongMapCue,
   type SongMapKind,
 } from "@/lib/songMap";
@@ -23,6 +24,8 @@ type SongMapBarProps = {
   startedAt: number | null;
   cues: SongMapCue[];
   schemaMissing?: boolean;
+  droppingSections?: boolean;
+  onDropSections?: () => Promise<void>;
   onSave: (draft: SongMapDraft) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
@@ -33,6 +36,8 @@ export function SongMapBar({
   startedAt,
   cues,
   schemaMissing = false,
+  droppingSections = false,
+  onDropSections,
   onSave,
   onDelete,
 }: SongMapBarProps) {
@@ -55,9 +60,13 @@ export function SongMapBar({
       ? 0
       : Math.min(durationSeconds, Math.max(0, (elapsedAt - startedAt - pausedDurationMs) / 1000));
   const progress = durationSeconds > 0 ? elapsed / durationSeconds : 0;
-  const playingCue = startedAt == null ? null : activeSongMapCue(cues, elapsed);
+  const sectionCues = cues.filter((cue) => cue.kind === "section");
+  const noteCues = cues.filter((cue) => cue.kind !== "section");
+  const playingSection = startedAt == null ? null : activeSongMapCue(sectionCues, elapsed);
+  const playingNote = startedAt == null ? null : activeSongMapCue(noteCues, elapsed);
   const selectedCue = cues.find((cue) => cue.id === selectedId) || null;
-  const prompt = draft ? null : playingCue || selectedCue;
+  const sectionPrompt = draft ? null : playingSection || (selectedCue?.kind === "section" ? selectedCue : null);
+  const prompt = draft ? null : playingNote || (selectedCue && selectedCue.kind !== "section" ? selectedCue : null);
 
   const openDraft = (offsetSeconds: number, cue?: SongMapCue) => {
     setSelectedId(cue?.id || null);
@@ -128,11 +137,21 @@ export function SongMapBar({
     <div>
       <div className="flex min-w-0 items-baseline gap-4">
         <p className="min-w-0 flex-1 truncate text-2xl font-bold leading-tight">{title}</p>
+        {sectionPrompt ? (
+          <button
+            type="button"
+            className="max-w-[34%] shrink-0 cursor-pointer truncate rounded-md bg-sky-500/15 px-2.5 py-1 text-base font-bold text-sky-700 dark:text-sky-300"
+            title={`Section · ${sectionPrompt.body}`}
+            onClick={() => openDraft(sectionPrompt.offsetSeconds, sectionPrompt)}
+          >
+            {sectionPrompt.body}
+          </button>
+        ) : null}
         {prompt ? (
           <button
             type="button"
             className={cn(
-              "max-w-[50%] shrink-0 cursor-pointer truncate rounded-md px-2.5 py-1 text-base font-bold",
+              "max-w-[34%] shrink-0 cursor-pointer truncate rounded-md px-2.5 py-1 text-base font-bold",
               prompt.kind === "mix" ? "bg-amber-500/15 text-amber-600 dark:text-amber-300" : "bg-primary/15 text-primary",
             )}
             title={`${songMapKindLabel(prompt.kind)} · ${prompt.body}`}
@@ -142,7 +161,7 @@ export function SongMapBar({
           </button>
         ) : null}
       </div>
-      <div className="relative mt-2">
+      <div className={cn("relative", sectionCues.length > 0 ? "mt-4" : "mt-2")}>
         <div
           className="relative h-3 cursor-pointer rounded-full bg-muted"
           onClick={(event) => {
@@ -157,6 +176,26 @@ export function SongMapBar({
             style={{ width: `${Math.round(progress * 1000) / 10}%` }}
           />
           {durationSeconds > 0
+            ? sectionCues.map((cue) => {
+                const offsetSeconds = draft?.id === cue.id ? draft.offsetSeconds : cue.offsetSeconds;
+                const label = draft?.id === cue.id ? draft.body : cue.body;
+                return (
+                  <button
+                    key={`${cue.id}-label`}
+                    type="button"
+                    className="absolute bottom-full z-30 mb-0.5 -translate-x-1/2 text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300"
+                    style={{ left: `${(offsetSeconds / durationSeconds) * 100}%` }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openDraft(cue.offsetSeconds, cue);
+                    }}
+                  >
+                    {songMapSectionAbbrev(label)}
+                  </button>
+                );
+              })
+            : null}
+          {durationSeconds > 0
             ? cues.map((cue) => (
                 <button
                   key={cue.id}
@@ -164,8 +203,9 @@ export function SongMapBar({
                   aria-label={`${songMapKindLabel(cue.kind)} at ${formatSongMapTime(cue.offsetSeconds)}: ${cue.body}`}
                   className={cn(
                     "absolute top-1/2 z-10 h-4 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                    cue.kind === "mix" ? "bg-amber-400" : "bg-primary",
-                    (playingCue?.id === cue.id || selectedId === cue.id) && "h-5 w-2",
+                    cue.kind === "section" ? "bg-sky-500" : cue.kind === "mix" ? "bg-amber-400" : "bg-primary",
+                    ((cue.kind === "section" ? playingSection?.id : playingNote?.id) === cue.id || selectedId === cue.id) &&
+                      "h-5 w-2",
                   )}
                   style={{
                     left: `${
@@ -200,6 +240,17 @@ export function SongMapBar({
         </button>
         <span>{startedAt == null ? "MIDI" : formatSongMapTime(elapsed)}</span>
         <span className="ml-auto">{durationSeconds > 0 ? formatSongMapTime(durationSeconds) : "No duration"}</span>
+        {onDropSections ? (
+          <button
+            type="button"
+            disabled={schemaMissing || droppingSections}
+            className="rounded-md bg-sky-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-sky-700 disabled:opacity-50 dark:text-sky-300"
+            title="Listen to the Tracks MP3 and drop Intro, Verse, Chorus, and the other section calls"
+            onClick={() => void onDropSections()}
+          >
+            {droppingSections ? "Listening…" : "Sections"}
+          </button>
+        ) : null}
         <button
           type="button"
           className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-foreground"
@@ -210,9 +261,10 @@ export function SongMapBar({
       </div>
       {schemaMissing ? (
         <p className="mt-1 text-xs text-destructive">Song map needs a database update before notes can be saved.</p>
-      ) : !draft && !prompt && startedAt == null ? (
+      ) : !draft && !sectionPrompt && !prompt && startedAt == null && sectionCues.length === 0 ? (
         <p className="mt-1 text-xs text-muted-foreground">
           Click the bar to leave a mix note. Playback starts when the MIDI note arrives.
+          {onDropSections ? " Sections listens to the Tracks MP3." : ""}
         </p>
       ) : null}
       {draft ? (
@@ -225,7 +277,7 @@ export function SongMapBar({
         >
           <div className="flex items-center gap-2">
             <div className="flex rounded-md bg-muted p-0.5">
-              {(["mix", "note"] as const).map((kind) => (
+              {(["section", "mix", "note"] as const).map((kind) => (
                 <button
                   key={kind}
                   type="button"
@@ -279,7 +331,9 @@ export function SongMapBar({
             autoFocus
             value={draft.body}
             maxLength={280}
-            placeholder={draft.kind === "mix" ? "Vocal up, pull the guitars…" : "Watch the bridge"}
+            placeholder={
+              draft.kind === "section" ? "Chorus" : draft.kind === "mix" ? "Vocal up, pull the guitars…" : "Watch the bridge"
+            }
             onChange={(event) => setDraft({ ...draft, body: event.target.value })}
             className="h-9 rounded-md border border-input bg-background px-2 text-sm"
           />

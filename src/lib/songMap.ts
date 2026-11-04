@@ -1,4 +1,4 @@
-export type SongMapKind = "note" | "mix";
+export type SongMapKind = "note" | "mix" | "section";
 
 export type SongMapCue = {
   id: string;
@@ -32,5 +32,41 @@ export function activeSongMapCue<T extends { offsetSeconds: number }>(cues: T[],
 }
 
 export function songMapKindLabel(kind: SongMapKind) {
-  return kind === "mix" ? "Mix" : "Note";
+  if (kind === "mix") return "Mix";
+  if (kind === "section") return "Section";
+  return "Note";
+}
+
+const SECTION_ABBREV: Record<string, string> = {
+  Intro: "Intro",
+  Verse: "V",
+  "Pre-Chorus": "Pre",
+  Chorus: "C",
+  Bridge: "Br",
+  Instrumental: "Inst",
+  Turnaround: "Turn",
+  Tag: "Tag",
+  Outro: "Out",
+  Ending: "End",
+  Vamp: "Vamp",
+  Channel: "Ch",
+  Breakdown: "Brk",
+  Refrain: "Ref",
+  "Big Chorus": "Big",
+  "Down Chorus": "Down",
+  "Half Chorus": "Half",
+  "Last Chorus": "Last",
+  "Final Chorus": "Final",
+  "Post-Chorus": "Post",
+  Hook: "Hook",
+  Coda: "Coda",
+  Build: "Build",
+};
+
+export function songMapSectionAbbrev(label: string) {
+  const trimmed = label.trim();
+  const numbered = /^(.*?)(?:\s+)(\d+)$/.exec(trimmed);
+  if (!numbered) return SECTION_ABBREV[trimmed] || trimmed;
+  const base = SECTION_ABBREV[numbered[1]] || numbered[1];
+  return `${base}${numbered[2]}`;
 }
