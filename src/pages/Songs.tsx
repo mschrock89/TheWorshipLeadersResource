@@ -72,6 +72,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
+import { isWeekendServiceTypeName } from "@/lib/weekendServiceType";
 import { cn } from "@/lib/cn";
 
 export default function Songs() {
@@ -155,20 +156,10 @@ export default function Songs() {
     () => userCampuses?.map(uc => uc.campus_id) || [],
     [userCampuses],
   );
-  const normalizeServiceType = (value: string) =>
-    value.trim().toLowerCase().replace(/\s+/g, " ");
-  const weekendServiceTypeNames = useMemo(() => {
-    const names = new Set<string>(["weekend worship", "weekend"]);
-    (campuses || []).forEach((campus) => {
-      const normalizedCampusName = normalizeServiceType(campus.name);
-      names.add(normalizedCampusName);
-      names.add(normalizeServiceType(`${campus.name} worship`));
-    });
-    return names;
-  }, [campuses]);
+  const campusNames = useMemo(() => (campuses || []).map((campus) => campus.name), [campuses]);
   const isWeekendServiceType = useCallback((serviceTypeName: string) => {
-    return weekendServiceTypeNames.has(normalizeServiceType(serviceTypeName));
-  }, [weekendServiceTypeNames]);
+    return isWeekendServiceTypeName(serviceTypeName, campusNames);
+  }, [campusNames]);
   
   // Ministry options with their service type patterns
   const ministryOptions = [

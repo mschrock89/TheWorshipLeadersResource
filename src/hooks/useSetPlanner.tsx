@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSongsWithStats, SongWithStats } from "./useSongs";
+import { useCampuses } from "./useCampuses";
+import { isWeekendServiceTypeName } from "@/lib/weekendServiceType";
 import { useMemo } from "react";
 import { useToast } from "./use-toast";
 import { format } from "date-fns";
@@ -8,6 +10,7 @@ import { isMissingYoutubeUrlColumnError, normalizeYouTubeUrl } from "@/lib/youtu
 import { getSessionSetVariants, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, resolveMinistryCampusId } from "@/lib/constants";
 import { isSongGloballyNew, isSongInNewRotation, REGULAR_ROTATION_MIN_USES, USAGE_HISTORY_WINDOW_MONTHS } from "@/lib/songRotation";
 import { formatDateForDB } from "@/lib/utils";
+import { churchToday, weekendSetlistPublishOn } from "@/lib/setlistApproval";
 
 export interface SongAvailability {
   song: SongWithStats;
@@ -73,6 +76,8 @@ export function useSongAvailability(
   targetDate: Date
 ) {
   const { data: songs, isLoading } = useSongsWithStats();
+  const { data: campuses } = useCampuses();
+  const campusNames = useMemo(() => (campuses || []).map((campus) => campus.name), [campuses]);
 
   const availability = useMemo(() => {
     const networkWide = isNetworkWideMinistryType(ministryType);
@@ -115,8 +120,12 @@ export function useSongAvailability(
             return serviceName.includes(baseName);
           }
 
-           // "Weekend" = main services (exclude specialty service types)
+           // Weekend usage is the campus weekend service only. Wednesday night,
+           // kids camp, and student services must not change Sunday availability.
            if (ministryType === 'weekend') {
+             if (campusNames.length > 0) {
+               return isWeekendServiceTypeName(u.service_type_name || "", campusNames);
+             }
              return (
                !serviceName.includes('hs worship') &&
                !serviceName.includes('encounter') &&
@@ -129,7 +138,8 @@ export function useSongAvailability(
                !serviceName.includes('worship night') &&
                !serviceName.includes('prayer') &&
                !serviceName.includes('practice') &&
-               !serviceName.includes('kids camp')
+               !serviceName.includes('kids camp') &&
+               !serviceName.includes('wednesday')
              );
            }
 
@@ -228,7 +238,7 @@ export function useSongAvailability(
       };
     })
     .filter((item): item is SongAvailability => item !== null);
-  }, [songs, campusId, ministryType, targetDate]);
+  }, [songs, campusId, campusNames, ministryType, targetDate]);
 
   return { availability, isLoading };
 }
@@ -329,8 +339,9 @@ export function useExistingSet(
 
         const statusPriority: Record<string, number> = {
           published: 0,
-          pending_approval: 1,
-          draft: 2,
+          scheduled: 1,
+          pending_approval: 2,
+          draft: 3,
         };
 
         const rankedRows = [...(data || [])].sort((a: any, b: any) => {
@@ -553,7 +564,12 @@ export function useSaveDraftSet() {
       });
 
       if (setId) {
-        // Update existing
+        // Update existing. Approved weekend sets keep their post date in sync
+        // with the service date so the release job still waits 10 days.
+        const publishOn = draftSet.status === "scheduled"
+          ? weekendSetlistPublishOn(draftSet.ministry_type, draftSet.plan_date) ?? churchToday()
+          : undefined;
+
         const { error } = await supabase
           .from('draft_sets')
           .update({
@@ -562,6 +578,7 @@ export function useSaveDraftSet() {
             notes: draftSet.notes,
             status: draftSet.status,
             custom_service_id: draftSet.custom_service_id || null,
+            ...(publishOn ? { publish_on: publishOn } : {}),
           })
           .eq('id', setId);
 
@@ -696,7 +713,7 @@ export function usePublishedSetlistSongs(campusId: string | null, ministryType: 
       let setQuery = supabase
         .from('draft_sets')
         .select('id')
-        .eq('status', 'published')
+        .in('status', ['published', 'scheduled'])
         .gte('plan_date', today);
 
       setQuery = networkWide

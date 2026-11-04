@@ -12,6 +12,7 @@ import {
   isSpecialtyCustomServiceMinistry,
   isWeekendMinistryType,
 } from "@/lib/customServiceMinistry";
+import { flowCanBeReplacedByTemplate } from "@/lib/serviceFlowTemplateAdoption";
 
 function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
@@ -155,8 +156,17 @@ export function useServiceFlow(
             q
               .eq("campus_id", campusId)
               .eq("ministry_type", ministryType)
-              .eq("service_date", serviceDate),
-          );
+              .eq("service_date", serviceDate)
+              .is("custom_service_id", null),
+          ).catch((error) => {
+            if (!isMissingServiceFlowCustomServiceColumn(error)) throw error;
+            return fetchSingle((q) =>
+              q
+                .eq("campus_id", campusId)
+                .eq("ministry_type", ministryType)
+                .eq("service_date", serviceDate),
+            );
+          });
 
       const [byDraftSet, scoped] = await Promise.all([byDraftSetPromise, scopedPromise]);
 
@@ -177,7 +187,7 @@ export function useServiceFlow(
           if (customServiceMatches && ministryMatches) {
             return finalize(byDraftSet);
           }
-        } else if (ministryMatches) {
+        } else if (ministryMatches && !byDraftSetCustomServiceId) {
           return finalize(byDraftSet);
         }
       }
@@ -1310,6 +1320,8 @@ export async function generateServiceFlowFromTemplate(params: {
   customServiceId?: string | null;
   createdBy: string;
   forceTemplateResync?: boolean;
+  /** Apply this template instead of the newest one for the campus and ministry. */
+  preferredTemplateId?: string | null;
   songs: Array<{
     id: string;
     title: string;
@@ -1442,6 +1454,21 @@ export async function generateServiceFlowFromTemplate(params: {
         resolvedMinistryType = candidate;
       }
       break;
+    }
+  }
+
+  if (params.preferredTemplateId && params.preferredTemplateId !== template?.id) {
+    const { data: preferredTemplate, error: preferredTemplateError } = await supabase
+      .from("service_flow_templates")
+      .select("id, campus_id, ministry_type, name, updated_at")
+      .eq("id", params.preferredTemplateId)
+      .maybeSingle();
+    if (preferredTemplateError) throw preferredTemplateError;
+    if (preferredTemplate && preferredTemplate.campus_id === serviceFlowCampusId) {
+      template = preferredTemplate;
+      if (!isKidsCampService && !sessionBaseMinistry) {
+        resolvedMinistryType = preferredTemplate.ministry_type || resolvedMinistryType;
+      }
     }
   }
 
@@ -1883,11 +1910,65 @@ export async function generateServiceFlowFromTemplate(params: {
       updated_at?: string | null;
     };
 
+    const { data: existingItems } = await supabase
+      .from("service_flow_items")
+      .select("id, item_type, title, duration_seconds, sequence_order")
+      .eq("service_flow_id", existingFlow.id)
+      .order("sequence_order", { ascending: true });
+
+    // A saved flow is date-specific working data. Never replace its items merely because
+    // the same template was edited, the ministry metadata changed, or the linked set
+    // changed. Rebuilding is destructive and must only happen through an explicit caller
+    // such as the Rebuild button — except when a custom service was generated from a
+    // weekend template but actually belongs to a specialty ministry, or when the flow is
+    // still the untouched copy of an older template and a new one was saved for this service.
+    const existingMinistryIsWeekend = isWeekendMinistryType(existingFlowMeta.ministry_type);
+    const resolvedMinistryIsSpecialty = isSpecialtyCustomServiceMinistry(resolvedMinistryType);
+    const wrongWeekendTemplateOnSpecialtyService =
+      !!resolvedCustomServiceId &&
+      existingMinistryIsWeekend &&
+      resolvedMinistryIsSpecialty &&
+      !!template;
+    let adoptNewlySavedTemplate = false;
+    if (
+      template &&
+      !params.forceTemplateResync &&
+      !wrongWeekendTemplateOnSpecialtyService &&
+      existingFlowMeta.created_from_template_id !== template.id
+    ) {
+      let sourceTemplateItems: Array<{
+        item_type: string;
+        title: string;
+        default_duration_seconds: number | null;
+      }> | null = null;
+      if (existingFlowMeta.created_from_template_id) {
+        const { data: sourceItems, error: sourceItemsError } = await supabase
+          .from("service_flow_template_items")
+          .select("item_type, title, default_duration_seconds, sequence_order")
+          .eq("template_id", existingFlowMeta.created_from_template_id)
+          .order("sequence_order", { ascending: true });
+        if (sourceItemsError) throw sourceItemsError;
+        sourceTemplateItems = sourceItems || [];
+      }
+      adoptNewlySavedTemplate = flowCanBeReplacedByTemplate(
+        existingItems || [],
+        sourceTemplateItems,
+      );
+    }
+    const requiresTemplateResync =
+      !!template &&
+      (params.forceTemplateResync === true ||
+        wrongWeekendTemplateOnSpecialtyService ||
+        adoptNewlySavedTemplate);
+    const nextTemplateId = requiresTemplateResync
+      ? template?.id || null
+      : existingFlowMeta.created_from_template_id || null;
+
     const updatePayloadWithCustom = {
       draft_set_id: params.draftSetId || null,
       ministry_type: resolvedMinistryType,
       custom_service_id: resolvedCustomServiceId,
-      created_from_template_id: template?.id || null,
+      created_from_template_id: nextTemplateId,
     };
     const { error: updateWithCustomError } = await supabase
       .from("service_flows")
@@ -1902,32 +1983,11 @@ export async function generateServiceFlowFromTemplate(params: {
         .update({
           draft_set_id: params.draftSetId || null,
           ministry_type: resolvedMinistryType,
-          created_from_template_id: template?.id || null,
+          created_from_template_id: nextTemplateId,
         })
         .eq("id", existingFlow.id);
       if (updateFallbackError) throw updateFallbackError;
     }
-
-    const { data: existingItems } = await supabase
-      .from("service_flow_items")
-      .select("id, item_type, title, duration_seconds, sequence_order")
-      .eq("service_flow_id", existingFlow.id)
-      .order("sequence_order", { ascending: true });
-
-    // A saved flow is date-specific working data. Never replace its items merely because
-    // the template, ministry metadata, or linked set changed. Rebuilding is destructive
-    // and must only happen through an explicit caller such as the Rebuild button —
-    // except when a custom service was generated from a weekend template but actually
-    // belongs to a specialty ministry (Worship Night, Prayer Night, camp).
-    const existingMinistryIsWeekend = isWeekendMinistryType(existingFlowMeta.ministry_type);
-    const resolvedMinistryIsSpecialty = isSpecialtyCustomServiceMinistry(resolvedMinistryType);
-    const wrongWeekendTemplateOnSpecialtyService =
-      !!resolvedCustomServiceId &&
-      existingMinistryIsWeekend &&
-      resolvedMinistryIsSpecialty &&
-      !!template;
-    const requiresTemplateResync =
-      !!template && (params.forceTemplateResync === true || wrongWeekendTemplateOnSpecialtyService);
 
     if (existingItems && existingItems.length > 0 && !requiresTemplateResync) {
       // Keep worship-set song rows in sync with the posted setlist (swaps, key

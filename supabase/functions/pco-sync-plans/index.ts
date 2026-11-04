@@ -345,8 +345,13 @@ serve(async (req) => {
       console.log(`Full sync: fetching plans since ${afterDate} (last 2 years)`);
     }
 
+    // A bounded year sync is for backfilling service plans and the songs on
+    // those plans. Downloading the whole library first uses up the function
+    // timeout before any campus plans are saved.
+    const skipLibraryPrefetch = Boolean(syncStartYear && syncEndYear);
+
     // First, fetch the entire song library directly (skip if resuming mid-sync)
-    if (resumeServiceTypeIndex === 0 && resumePlanIndex === 0) {
+    if (!skipLibraryPrefetch && resumeServiceTypeIndex === 0 && resumePlanIndex === 0) {
       console.log('Fetching complete song library from PCO...');
       const allLibrarySongs = await fetchAllPages(accessToken, '/services/v2/songs?per_page=100', 100);
       console.log(`Fetched ${allLibrarySongs.length} songs from PCO library`);

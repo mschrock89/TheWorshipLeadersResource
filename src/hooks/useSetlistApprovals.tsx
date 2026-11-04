@@ -7,6 +7,8 @@ import {
   shouldPublishDirectly,
   resolveApproverUserId,
   isApproverUser,
+  formatSetlistPublishOn,
+  weekendSetlistPublishOn,
 } from "@/lib/setlistApproval";
 
 interface SetlistPublisherProfile {
@@ -593,15 +595,46 @@ export function useApproveSetlist() {
 
       if (approvalError) throw approvalError;
 
+      const { data: currentSet, error: currentSetError } = await supabase
+        .from("draft_sets")
+        .select("campus_id, ministry_type, plan_date, custom_service_id")
+        .eq("id", draftSetId)
+        .single();
+
+      if (currentSetError) throw currentSetError;
+
+      const reviewedAt = new Date().toISOString();
+      const publishOn = weekendSetlistPublishOn(currentSet.ministry_type, currentSet.plan_date);
+
+      // Weekend services approved more than 10 days out stay unposted until publish_on.
+      if (publishOn) {
+        const { error: scheduleError } = await supabase
+          .from("draft_sets")
+          .update({
+            status: "scheduled",
+            submitted_for_approval_at: null,
+            published_at: null,
+            publish_on: publishOn,
+            approved_by: user.id,
+            approved_at: reviewedAt,
+          })
+          .eq("id", draftSetId);
+
+        if (scheduleError) throw scheduleError;
+
+        return { delayed: true as const, publishOn };
+      }
+
       // Update draft set to published
       const { data: draftSet, error: updateError } = await supabase
         .from("draft_sets")
         .update({
           status: "published",
           submitted_for_approval_at: null,
-          published_at: new Date().toISOString(),
+          published_at: reviewedAt,
+          publish_on: null,
           approved_by: user.id,
-          approved_at: new Date().toISOString(),
+          approved_at: reviewedAt,
         })
         .eq("id", draftSetId)
         .select("campus_id, ministry_type, plan_date, custom_service_id")
@@ -649,7 +682,7 @@ export function useApproveSetlist() {
         body: { draftSetId },
       });
 
-      return response.data;
+      return { delayed: false as const, publishOn: null, notification: response.data };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["draft-sets"] });
@@ -657,13 +690,22 @@ export function useApproveSetlist() {
       queryClient.invalidateQueries({ queryKey: ["approver-published-setlists"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approvals"] });
       queryClient.invalidateQueries({ queryKey: ["pending-approval-count"] });
+      queryClient.invalidateQueries({ queryKey: ["existing-set"] });
       queryClient.invalidateQueries({ queryKey: ["service-flow"] });
       queryClient.invalidateQueries({ queryKey: ["service-flow-items"] });
-      
+
+      if (data?.delayed && data.publishOn) {
+        toast({
+          title: "Setlist approved",
+          description: `Weekend services post 10 days before the date. This one will post on ${formatSetlistPublishOn(data.publishOn)}.`,
+        });
+        return;
+      }
+
       toast({
         title: "Setlist approved & published!",
-        description: data?.teamMembersNotified 
-          ? `${data.teamMembersNotified} team members have been notified.`
+        description: data?.notification?.teamMembersNotified
+          ? `${data.notification.teamMembersNotified} team members have been notified.`
           : "The team has been notified.",
       });
     },

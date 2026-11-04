@@ -41,7 +41,41 @@ const sampleChart = [
 assert("detects explicit key", chordChart.detectKeyIndexFromChart(sampleChart) === 7);
 assert(
   "transposes G to A with sharps",
-  chordChart.transposeChordChartText(sampleChart, 2, "sharps").includes("A     E     F#m    D"),
+  chordChart.transposeChordChartText(sampleChart, 2, "sharps").includes("A     E     F#m   D"),
+);
+assert(
+  "transposes extended chords and slash bass on plain chord lines",
+  chordChart.transposeChordChartText("G  Em7  Cmaj7  Dsus4  Am7/G", 2, "sharps") === "A  F#m7 Dmaj7  Esus4  Bm7/A",
+);
+assert(
+  "transposes sharp roots without doubling accidentals",
+  chordChart.transposeChordChartText("C#  F#", 1, "sharps") === "D   G",
+);
+assert(
+  "keeps plain chords in their original columns",
+  chordChart.transposeChordChartText("G       D/F#    Em", 1, "flats") === "Ab      Eb/G    Fm",
+);
+assert(
+  "leaves lyric lines alone",
+  chordChart.transposeChordChartText("A mighty fortress is our God", 2, "sharps") === "A mighty fortress is our God",
+);
+assert(
+  "transposes every chord inside a bracket",
+  chordChart.transposeChordChartText("[G D]Praise [C/E]now", 2, "sharps") === "[A E]Praise [D/F#]now",
+);
+assert(
+  "leaves N.C. untouched",
+  chordChart.transposeChordChartText("G  N.C.  (Em)", 2, "sharps") === "A  N.C.  (F#m)",
+);
+assert("transposes the Key line", chordChart.transposeChordChartText("Key: G", 3, "flats") === "Key: Bb");
+assert(
+  "detects key from plain chord lines",
+  chordChart.detectKeyIndexFromChart("D  G  A  Bm\nlyrics here\nD  G  A  D") === 2,
+);
+assert(
+  "chart dialog dropdowns layer above the z-[70] dialog",
+  (await readFile(new URL("../src/components/songs/ChordChartDialog.tsx", import.meta.url), "utf8"))
+    .match(/<SelectContent className="z-\[80\]">/g)?.length === 4,
 );
 assert(
   "shortest transpose G -> F is -2",

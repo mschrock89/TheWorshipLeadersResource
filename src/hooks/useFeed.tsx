@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { useBlockedUsers } from "@/hooks/useModeration";
+import { isNetworkWideFeedType, NETWORK_WIDE_FEED_TYPE } from "@/lib/feedMinistries";
 
 export type FeedCategory = "blog" | "scripture" | "video" | "poll";
 
@@ -191,6 +192,14 @@ function scopedFeedPostsQuery(
     return postQuery.eq("camp_instance_id", campInstanceId);
   }
 
+  if (isNetworkWideFeedType(ministryType)) {
+    return postQuery
+      .eq("resource_app_key", resourceAppKey)
+      .eq("ministry_type", NETWORK_WIDE_FEED_TYPE)
+      .is("campus_id", null)
+      .is("camp_instance_id", null);
+  }
+
   return postQuery
     .eq("resource_app_key", resourceAppKey)
     .eq("campus_id", campusId!)
@@ -376,7 +385,10 @@ export function useFeedPosts(
   const { data: blockedUserIds } = useBlockedUsers();
   const resourceAppKey = getCurrentResourceAppKey();
   const enabled =
-    !!user && !isLoading && !!blockedUserIds && (!!campInstanceId || (!!campusId && !!ministryType));
+    !!user &&
+    !isLoading &&
+    !!blockedUserIds &&
+    (!!campInstanceId || isNetworkWideFeedType(ministryType) || (!!campusId && !!ministryType));
 
   return useQuery({
     queryKey: [
@@ -405,11 +417,12 @@ export function useCreateFeedPost(
   return useMutation({
     mutationFn: async (input: FeedPostInput) => {
       if (!user?.id) throw new Error("You must be signed in to create a post.");
-      if (!campInstanceId && !campusId) {
+      const networkWide = !campInstanceId && isNetworkWideFeedType(ministryType);
+      if (!campInstanceId && !networkWide && !campusId) {
         throw new Error("Select a campus before publishing to The Feed.");
       }
       if (!campInstanceId && !ministryType) {
-        throw new Error("Select a ministry before publishing to The Feed.");
+        throw new Error("Select a feed before publishing.");
       }
 
       const pollOptions = normalizePollOptions(input.poll_options);
@@ -434,7 +447,7 @@ export function useCreateFeedPost(
           created_by: user.id,
           updated_by: user.id,
           resource_app_key: resourceAppKey,
-          campus_id: campInstanceId ? null : campusId,
+          campus_id: campInstanceId || networkWide ? null : campusId,
           camp_instance_id: campInstanceId || null,
           ministry_type: campInstanceId ? null : ministryType,
         })
@@ -458,7 +471,7 @@ export function useCreateFeedPost(
             body: {
               postId: data.id,
               resourceAppKey,
-              campusId: campInstanceId ? null : campusId,
+              campusId: campInstanceId || networkWide ? null : campusId,
               campInstanceId: campInstanceId || null,
               ministryType: campInstanceId ? null : ministryType,
             },
@@ -516,6 +529,12 @@ export function useUpdateFeedPost(
 
       if (campInstanceId) {
         query = query.eq("camp_instance_id", campInstanceId);
+      } else if (isNetworkWideFeedType(ministryType)) {
+        query = query
+          .eq("resource_app_key", resourceAppKey)
+          .eq("ministry_type", NETWORK_WIDE_FEED_TYPE)
+          .is("campus_id", null)
+          .is("camp_instance_id", null);
       } else {
         query = query
           .eq("resource_app_key", resourceAppKey)
@@ -560,6 +579,12 @@ export function useDeleteFeedPost(
 
       if (campInstanceId) {
         query = query.eq("camp_instance_id", campInstanceId);
+      } else if (isNetworkWideFeedType(ministryType)) {
+        query = query
+          .eq("resource_app_key", resourceAppKey)
+          .eq("ministry_type", NETWORK_WIDE_FEED_TYPE)
+          .is("campus_id", null)
+          .is("camp_instance_id", null);
       } else {
         query = query
           .eq("resource_app_key", resourceAppKey)
@@ -601,6 +626,9 @@ export function useShareFeedPostToCampuses() {
       targetCampusIds: string[];
     }) => {
       if (!user?.id) throw new Error("You must be signed in to share a post.");
+      if (isNetworkWideFeedType(post.ministry_type)) {
+        throw new Error("Network Wide posts are already visible to every user.");
+      }
       const uniqueCampusIds = Array.from(new Set(targetCampusIds.filter(Boolean)));
       if (uniqueCampusIds.length === 0) {
         throw new Error("No campus Feed is available to share to.");

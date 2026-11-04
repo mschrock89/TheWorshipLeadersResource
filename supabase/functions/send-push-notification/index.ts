@@ -7,6 +7,12 @@ import {
 } from "../_shared/pushMinistryPrefs.ts";
 import { getApnsConfig, sendApnsNotification } from "../_shared/apns.ts";
 import { applyPushTemplates } from "../_shared/pushTemplate.ts";
+import {
+  ADMIN_CAMPUS_SCOPED_PUSH_TYPES,
+  adminReceivesCampusPush,
+  readCampusScopeExemptUserIds,
+  readPushCampusIds,
+} from "../_shared/adminPushCampusScope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -813,6 +819,82 @@ serve(async (req) => {
               recipientDeviceCount: 0,
               skipped: true,
               reason: "All recipients muted ministry preferences",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
+    const pushType = definitionKey || payload.contextType || "";
+    const notificationCampusIds = isAdminTestPush ? [] : readPushCampusIds(payload.metadata);
+    if (
+      !isAdminTestPush &&
+      ADMIN_CAMPUS_SCOPED_PUSH_TYPES.has(pushType) &&
+      notificationCampusIds.length > 0 &&
+      recipientUserIds.length > 0
+    ) {
+      const exemptUserIds = readCampusScopeExemptUserIds(payload.metadata);
+      const [roleResult, campusResult] = await Promise.all([
+        supabase
+          .from("user_roles")
+          .select("user_id, role, admin_campus_id")
+          .in("user_id", recipientUserIds)
+          .in("role", ["admin", "campus_admin", "network_worship_pastor", "network_worship_leader"]),
+        supabase
+          .from("user_campuses")
+          .select("user_id, campus_id")
+          .in("user_id", recipientUserIds),
+      ]);
+
+      if (roleResult.error || campusResult.error) {
+        console.warn(
+          "Could not load admin campus scope (continuing without filter):",
+          roleResult.error?.message || campusResult.error?.message,
+        );
+      } else {
+        const rolesByUser = new Map<string, Array<{ role: string; admin_campus_id: string | null }>>();
+        for (const row of roleResult.data || []) {
+          const list = rolesByUser.get(row.user_id) || [];
+          list.push({ role: row.role, admin_campus_id: row.admin_campus_id });
+          rolesByUser.set(row.user_id, list);
+        }
+        const campusesByUser = new Map<string, string[]>();
+        for (const row of campusResult.data || []) {
+          if (!row.campus_id) continue;
+          const list = campusesByUser.get(row.user_id) || [];
+          list.push(row.campus_id);
+          campusesByUser.set(row.user_id, list);
+        }
+
+        const beforeCount = recipientUserIds.length;
+        recipientUserIds = recipientUserIds.filter((userId) => {
+          if (exemptUserIds.has(userId)) return true;
+          return adminReceivesCampusPush(
+            rolesByUser.get(userId) || [],
+            campusesByUser.get(userId) || [],
+            notificationCampusIds,
+          );
+        });
+        const dropped = beforeCount - recipientUserIds.length;
+        if (dropped > 0) {
+          console.log(
+            `Admin campus scope filtered ${dropped} recipient(s) for ${pushType} campuses: ${notificationCampusIds.join(", ")}`,
+          );
+        }
+
+        if (recipientUserIds.length === 0) {
+          console.log("Push skipped: no admin recipients cover this campus");
+          return new Response(
+            JSON.stringify({
+              success: true,
+              sent: 0,
+              failed: 0,
+              total: 0,
+              recipientUserCount: 0,
+              recipientDeviceCount: 0,
+              skipped: true,
+              reason: "No admin recipients for this campus",
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );

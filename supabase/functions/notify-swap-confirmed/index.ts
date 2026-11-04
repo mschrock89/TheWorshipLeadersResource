@@ -419,9 +419,11 @@ serve(async (req: Request): Promise<Response> => {
           url: "/swap-requests",
           tag: "swap-confirmed",
           userIds: leaderIdsToNotify,
+          contextType: "swap-confirmed",
           // Scope delivery to the app this swap request belongs to.
           metadata: {
             resourceAppKey: swapRequest.resource_app_key || "worship",
+            campusId: swapCampusId,
             ministryType: leaderAudience.ministryType,
             vars: {
               requester: requester?.full_name || "Someone",

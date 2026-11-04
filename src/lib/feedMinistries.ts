@@ -21,11 +21,22 @@ export const STUDENT_FEED_MINISTRY_TYPES = [
 
 export type FeedMinistryOption = { value: string; label: string };
 
-const FEED_MINISTRY_LABELS = new Map<string, string>(
-  [...WORSHIP_FEED_MINISTRY_TYPES, ...STUDENT_FEED_MINISTRY_TYPES].map(
-    (ministry) => [ministry.value, ministry.label],
+/** Everyone assigned to the selected campus, across ministries. */
+export const CAMPUS_WIDE_FEED_TYPE = "campus_wide";
+/** Every user on this resource app, regardless of campus. */
+export const NETWORK_WIDE_FEED_TYPE = "network_wide";
+
+export const BROAD_FEED_SCOPES = [
+  { value: CAMPUS_WIDE_FEED_TYPE, label: "Campus Wide" },
+  { value: NETWORK_WIDE_FEED_TYPE, label: "Network Wide" },
+] as const;
+
+const FEED_MINISTRY_LABELS = new Map<string, string>([
+  ...BROAD_FEED_SCOPES.map((scope) => [scope.value, scope.label] as const),
+  ...[...WORSHIP_FEED_MINISTRY_TYPES, ...STUDENT_FEED_MINISTRY_TYPES].map(
+    (ministry) => [ministry.value, ministry.label] as const,
   ),
-);
+]);
 
 export function getFeedMinistryTypesForResourceApp(
   resourceAppKey: ResourceAppKey | string,
@@ -39,6 +50,29 @@ export function getDefaultFeedMinistryType(
   resourceAppKey: ResourceAppKey | string,
 ): string {
   return getFeedMinistryTypesForResourceApp(resourceAppKey)[0].value;
+}
+
+/** Ministry feeds plus Campus Wide and Network Wide. */
+export function getFeedScopeOptions(
+  resourceAppKey: ResourceAppKey | string,
+): readonly FeedMinistryOption[] {
+  return [...BROAD_FEED_SCOPES, ...getFeedMinistryTypesForResourceApp(resourceAppKey)];
+}
+
+export function isCampusWideFeedType(ministryType: string | null | undefined): boolean {
+  return ministryType === CAMPUS_WIDE_FEED_TYPE;
+}
+
+export function isNetworkWideFeedType(ministryType: string | null | undefined): boolean {
+  return ministryType === NETWORK_WIDE_FEED_TYPE;
+}
+
+export function isValidFeedScope(
+  resourceAppKey: ResourceAppKey | string,
+  scope: string | null | undefined,
+): boolean {
+  if (!scope) return false;
+  return getFeedScopeOptions(resourceAppKey).some((option) => option.value === scope);
 }
 
 export function isValidFeedMinistryType(

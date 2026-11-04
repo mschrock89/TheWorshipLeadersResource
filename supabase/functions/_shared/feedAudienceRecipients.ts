@@ -5,8 +5,13 @@ type SupabaseClient = ReturnType<typeof createClient>;
 const WEEKEND_ALIASES = ["weekend", "weekend_team", "sunday_am", "speaker"];
 const LEADER_CHAT_ALIASES = ["leader_chat", "student_leader_chat"];
 
+const CAMPUS_WIDE_FEED_TYPE = "campus_wide";
+const NETWORK_WIDE_FEED_TYPE = "network_wide";
+
 export function matchingFeedMinistryTypes(ministryType: string | null | undefined): string[] | null {
   if (!ministryType) return null;
+  // Campus Wide and Network Wide are audiences, not ministry assignments.
+  if (ministryType === CAMPUS_WIDE_FEED_TYPE || ministryType === NETWORK_WIDE_FEED_TYPE) return null;
   if (WEEKEND_ALIASES.includes(ministryType)) return [...WEEKEND_ALIASES];
   if (LEADER_CHAT_ALIASES.includes(ministryType)) return [...LEADER_CHAT_ALIASES];
   return [ministryType];
@@ -53,8 +58,31 @@ export async function resolveFeedAudienceUserIds(
     return recipientUserIds;
   }
 
+  // Network Wide reaches every subscriber on this resource app.
+  if (input.ministryType === NETWORK_WIDE_FEED_TYPE) {
+    return recipientUserIds;
+  }
+
   if (!input.campusId || recipientUserIds.length === 0) {
     return recipientUserIds;
+  }
+
+  // Campus Wide reaches everyone assigned to the campus, across ministries.
+  if (input.ministryType === CAMPUS_WIDE_FEED_TYPE) {
+    const { data: campusUsers, error: campusWideError } = await supabase
+      .from("user_campuses")
+      .select("user_id")
+      .eq("campus_id", input.campusId)
+      .in("user_id", recipientUserIds);
+
+    if (campusWideError) {
+      console.error("Error filtering campus-wide feed recipients:", campusWideError);
+      throw new Error("Failed to filter recipients by campus");
+    }
+
+    return Array.from(
+      new Set((campusUsers || []).map((row: { user_id: string }) => row.user_id).filter(Boolean)),
+    );
   }
 
   const ministryTypes = matchingFeedMinistryTypes(input.ministryType);

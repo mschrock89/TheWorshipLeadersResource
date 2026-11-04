@@ -48,6 +48,7 @@ interface DraftSetWithDetails {
   plan_date: string;
   status: string;
   published_at: string | null;
+  publish_on: string | null;
   created_at: string;
   updated_at: string;
   notes: string | null;
@@ -435,6 +436,10 @@ export default function ManageSets() {
                                     <Check className="h-3 w-3 mr-1" />
                                     Published
                                   </>
+                                ) : set.status === "scheduled" ? (
+                                  `Posts ${set.publish_on ? format(parseISO(`${set.publish_on}T00:00:00`), "MMM d") : "later"}`
+                                ) : set.status === "pending_approval" ? (
+                                  "Pending"
                                 ) : (
                                   "Draft"
                                 )}

@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, X, Clock, ArrowLeftRight, Users, User, Loader2, UserPlus, Ban, Trash2, Pencil } from "lucide-react";
+import { Check, X, Clock, ArrowLeftRight, Users, User, Loader2, UserPlus, Ban, Trash2, Pencil, Megaphone } from "lucide-react";
 import {
   useDeleteSwapRequest,
   useOpenRequestRecipients,
@@ -53,8 +53,11 @@ import {
   SwapParticipantRole,
   SwapRequest,
 } from "@/hooks/useSwapRequests";
+import { SendGapRequestDialog } from "@/components/gaps/SendGapRequestDialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useSwapGapComposer } from "@/hooks/useSwapGapComposer";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import { swapCanBecomeGap } from "@/lib/gapFromSwap";
 import { toast } from "sonner";
 import { parseLocalDate, isWeekend, getWeekendPairDate, getWeekendKey, formatPositionLabel } from "@/lib/utils";
 import { isVideoPosition } from "@/lib/constants";
@@ -138,9 +141,11 @@ function SwapRequestCard({
   onDismiss,
   onDelete,
   onEditParticipant,
+  onSendGap,
   isResponding,
   isDismissing,
   isDeleting,
+  isSendingGap,
   managementMode = false,
 }: {
   group: SwapRequestGroup;
@@ -149,9 +154,11 @@ function SwapRequestCard({
   onDismiss: (group: SwapRequestGroup) => void;
   onDelete?: (group: SwapRequestGroup) => void;
   onEditParticipant?: (group: SwapRequestGroup, participantRole: SwapParticipantRole) => void;
+  onSendGap?: (group: SwapRequestGroup) => void;
   isResponding: boolean;
   isDismissing: boolean;
   isDeleting?: boolean;
+  isSendingGap?: boolean;
   managementMode?: boolean;
 }) {
   const request = group.representative;
@@ -410,6 +417,19 @@ function SwapRequestCard({
           </Button>
         )}
 
+        {onSendGap && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => onSendGap(group)}
+            disabled={isSendingGap}
+          >
+            {isSendingGap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+            Send gap request
+          </Button>
+        )}
+
         <p className="text-xs text-muted-foreground">
           {format(new Date(request.created_at), "MMM d, h:mm a")}
         </p>
@@ -433,6 +453,7 @@ export function SwapRequestsList() {
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
   const [reciprocalSwapRequest, setReciprocalSwapRequest] = useState<SwapRequest | null>(null);
   const [selectedSwapDate, setSelectedSwapDate] = useState("");
+  const gapComposer = useSwapGapComposer();
   const roleNames = userRoles.map(({ role }) => role);
   const canDeleteRequests =
     roleNames.some((role) =>
@@ -655,7 +676,11 @@ export function SwapRequestsList() {
   const groupedIncoming = groupSwapRequests(incomingRequests);
   const groupedPendingOutgoing = groupSwapRequests(pendingOutgoing);
   const groupedResolvedOutgoing = groupSwapRequests(resolvedOutgoing);
-  const groupedManageable = groupSwapRequests(requests || []);
+  const groupedManageable = groupSwapRequests(requests || []).sort((a, b) => {
+    const aNeedsCover = a.requests.some((request) => swapCanBecomeGap(request)) ? 0 : 1;
+    const bNeedsCover = b.requests.some((request) => swapCanBecomeGap(request)) ? 0 : 1;
+    return aNeedsCover - bNeedsCover;
+  });
 
   return (
     <>
@@ -718,27 +743,49 @@ export function SwapRequestsList() {
 
         {canDeleteRequests && (
           <TabsContent value="manage" className="mt-4 space-y-3">
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Send a gap request for any service date. If a swap has no taker, notify everyone else in that position.
+              </p>
+              <Button type="button" size="sm" className="shrink-0 gap-1.5" onClick={gapComposer.openBlank}>
+                <Megaphone className="h-4 w-4" />
+                New gap request
+              </Button>
+            </div>
             {groupedManageable.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
                 <ArrowLeftRight className="mx-auto mb-2 h-8 w-8 opacity-50" />
                 <p>No swap requests to manage</p>
               </div>
             ) : (
-              groupedManageable.map((group) => (
-                <SwapRequestCard
-                  key={group.key}
-                  group={group}
-                  currentUserId={user?.id || ""}
-                  onRespond={handleRespond}
-                  onDismiss={handleDismiss}
-                  onDelete={handleDelete}
-                  onEditParticipant={handleOpenParticipantEdit}
-                  isResponding={respondToRequest.isPending}
-                  isDismissing={dismissRequest.isPending}
-                  isDeleting={deletingGroupKey === group.key}
-                  managementMode
-                />
-              ))
+              groupedManageable.map((group) => {
+                const canSendGap = group.requests.some((request) => swapCanBecomeGap(request));
+                return (
+                  <SwapRequestCard
+                    key={group.key}
+                    group={group}
+                    currentUserId={user?.id || ""}
+                    onRespond={handleRespond}
+                    onDismiss={handleDismiss}
+                    onDelete={handleDelete}
+                    onEditParticipant={handleOpenParticipantEdit}
+                    onSendGap={
+                      canSendGap
+                        ? (pending) =>
+                            void gapComposer.openForSwap(
+                              pending.representative,
+                              pending.requests.map((request) => request.original_date),
+                            )
+                        : undefined
+                    }
+                    isResponding={respondToRequest.isPending}
+                    isDismissing={dismissRequest.isPending}
+                    isDeleting={deletingGroupKey === group.key}
+                    isSendingGap={gapComposer.pendingKey === group.representative.id}
+                    managementMode
+                  />
+                );
+              })
             )}
           </TabsContent>
         )}
@@ -920,6 +967,15 @@ export function SwapRequestsList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {canDeleteRequests && (
+        <SendGapRequestDialog
+          open={gapComposer.open}
+          onOpenChange={gapComposer.setOpen}
+          defaults={gapComposer.defaults}
+          intro={gapComposer.intro}
+        />
+      )}
     </>
   );
 }

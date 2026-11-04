@@ -23,7 +23,7 @@ import { useCanOpenLiveMode } from "@/hooks/useCanOpenLiveMode";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
-import { isKidsCampSetMinistryType, isNetworkWideMinistryType, MINISTRY_TYPES } from "@/lib/constants";
+import { isKidsCampSetMinistryType, isNetworkWideMinistryType, MINISTRY_TYPES, normalizeSessionSetMinistryType } from "@/lib/constants";
 import { isSpecialtyCustomServiceMinistry, isWeekendMinistryType } from "@/lib/customServiceMinistry";
 import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +36,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
+import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
+import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { ServiceFlowItem } from "./ServiceFlowItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { formatTotalDuration } from "./DurationInput";
@@ -422,7 +430,7 @@ export function CalendarServiceFlowPanel({
     draggedItemRef.current = draggedItem;
   }, [draggedItem]);
 
-  const generateFromTemplate = useCallback(async () => {
+  const generateFromTemplate = useCallback(async (options?: { templateId?: string; force?: boolean }) => {
     if (!user?.id || !flowCampusId || !date || readOnly) return null;
 
     const songs = resolvedDraftSetId
@@ -436,7 +444,8 @@ export function CalendarServiceFlowPanel({
       draftSetId: resolvedDraftSetId,
       customServiceId,
       createdBy: user.id,
-      forceTemplateResync: false,
+      forceTemplateResync: options?.force === true,
+      preferredTemplateId: options?.templateId || null,
       songs,
     });
 
@@ -461,6 +470,34 @@ export function CalendarServiceFlowPanel({
     user?.id,
   ]);
 
+  const templateMinistryTypes = useMemo(() => {
+    const ministries = new Set<string>([effectiveMinistryType]);
+    const sessionBase = normalizeSessionSetMinistryType(effectiveMinistryType);
+    if (sessionBase) ministries.add(sessionBase);
+    return ministries;
+  }, [effectiveMinistryType]);
+  const { data: campusTemplates = [], isLoading: templatesLoading } = useServiceFlowTemplates(
+    flowCampusId,
+    null,
+  );
+  const serviceTemplates = useMemo(
+    () =>
+      flowCampusId
+        ? campusTemplates.filter((template) => templateMinistryTypes.has(template.ministry_type))
+        : [],
+    [campusTemplates, flowCampusId, templateMinistryTypes],
+  );
+  const newestTemplate = useMemo(() => {
+    return [...serviceTemplates].sort((left, right) =>
+      right.updated_at.localeCompare(left.updated_at),
+    )[0] || null;
+  }, [serviceTemplates]);
+  const appliedTemplateId = serviceFlow?.created_from_template_id || null;
+  const needsNewerTemplate =
+    !!activeFlowId &&
+    !!newestTemplate &&
+    appliedTemplateId !== newestTemplate.id;
+
   useEffect(() => {
     const run = async () => {
       if (readOnly) return;
@@ -469,12 +506,15 @@ export function CalendarServiceFlowPanel({
       if (!activeFlowId && !draftSetId && draftSetLoading) return;
       if (isNetworkWide && !networkWideCampus) return;
       if (!flowCampusId || !user?.id) return;
+      if (activeFlowId && templatesLoading) return;
       // A Weekend-saved flow for a Worship Night / Prayer Night still has the weekend
       // order. Rebuild it from the specialty template even though a flow row exists.
+      // A flow that is still the generated copy of an older template should pick up
+      // a template just saved for this campus and ministry.
       const needsSpecialtyTemplate =
         isWeekendMinistryType(serviceFlow?.ministry_type) &&
         isSpecialtyCustomServiceMinistry(effectiveMinistryType);
-      if (activeFlowId && !needsSpecialtyTemplate) return;
+      if (activeFlowId && !needsSpecialtyTemplate && !needsNewerTemplate) return;
       if (hasAttemptedGenerate.current || isGenerating) return;
 
       hasAttemptedGenerate.current = true;
@@ -503,8 +543,10 @@ export function CalendarServiceFlowPanel({
     isGenerating,
     isNetworkWide,
     networkWideCampus,
+    needsNewerTemplate,
     networkWideCampusLoading,
     readOnly,
+    templatesLoading,
     user?.id,
   ]);
 
@@ -916,6 +958,45 @@ export function CalendarServiceFlowPanel({
           <h3 className="truncate text-base font-semibold leading-tight text-foreground sm:text-lg">
             {ministryLabel}
           </h3>
+          {serviceTemplates.length > 1 ? (
+            <Select
+              value={appliedTemplateId || newestTemplate?.id || ""}
+              onValueChange={(templateId) => {
+                if (readOnly || !templateId || templateId === appliedTemplateId) return;
+                hasAttemptedGenerate.current = true;
+                setIsGenerating(true);
+                setGenerateError(null);
+                void generateFromTemplate({ templateId, force: true })
+                  .catch((error: any) => {
+                    console.error("Failed to apply service flow template:", error);
+                    setGenerateError(error?.message || "Couldn't apply that template.");
+                  })
+                  .finally(() => setIsGenerating(false));
+              }}
+              disabled={readOnly || isGenerating}
+            >
+              <SelectTrigger className="mt-1 h-7 w-full max-w-[16rem] px-2 text-xs" aria-label="Service flow template">
+                <CompactSelectValue
+                  label={
+                    serviceTemplates.find((template) => template.id === (appliedTemplateId || newestTemplate?.id))
+                      ?.name
+                  }
+                  placeholder="Template"
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {[...serviceTemplates]
+                  .sort((left, right) => left.name.localeCompare(right.name))
+                  .map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          ) : newestTemplate ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{newestTemplate.name}</p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <label

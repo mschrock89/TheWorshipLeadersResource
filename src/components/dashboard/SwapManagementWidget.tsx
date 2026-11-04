@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { SendGapRequestDialog } from "@/components/gaps/SendGapRequestDialog";
 import { useSwapRequests, useDeleteSwapRequest } from "@/hooks/useSwapRequests";
+import { useSwapGapComposer } from "@/hooks/useSwapGapComposer";
+import { swapCanBecomeGap } from "@/lib/gapFromSwap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeftRight, ArrowRight, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Loader2, Megaphone, Trash2, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import { formatDateForDB, parseLocalDate } from "@/lib/utils";
 
@@ -49,6 +52,7 @@ function getStatusColor(status: string) {
 export function SwapManagementWidget() {
   const { data: swapRequests, isLoading } = useSwapRequests();
   const deleteSwapRequest = useDeleteSwapRequest();
+  const gapComposer = useSwapGapComposer();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -88,7 +92,7 @@ export function SwapManagementWidget() {
 
   return (
     <Card className="col-span-full">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="rounded-full bg-primary/10 p-2">
             <ArrowLeftRight className="h-5 w-5 text-primary" />
@@ -102,12 +106,24 @@ export function SwapManagementWidget() {
             )}
           </div>
         </div>
-        <Link to="/swaps">
-          <Button variant="ghost" size="sm" className="gap-1">
-            View All
-            <ArrowRight className="h-4 w-4" />
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            title="Send a gap request for any service date"
+            onClick={gapComposer.openBlank}
+          >
+            <Megaphone className="h-4 w-4" />
+            Gap request
           </Button>
-        </Link>
+          <Link to="/swaps">
+            <Button variant="ghost" size="sm" className="gap-1">
+              View All
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </CardHeader>
       <CardContent>
         {recentSwaps.length === 0 ? (
@@ -161,6 +177,23 @@ export function SwapManagementWidget() {
                     </p>
                   </div>
                 </div>
+                <div className="flex shrink-0 items-center">
+                {swapCanBecomeGap(swap) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    disabled={gapComposer.pendingKey === swap.id}
+                    aria-label={`Send a gap request for ${swap.requester?.full_name || "this volunteer"} on ${format(parseLocalDate(swap.original_date), "MMM d")}`}
+                    onClick={() => void gapComposer.openForSwap(swap)}
+                  >
+                    {gapComposer.pendingKey === swap.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Megaphone className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
@@ -197,11 +230,18 @@ export function SwapManagementWidget() {
                   </AlertDialogContent>
                 </AlertDialog>
                 </div>
+                </div>
               );
             })}
           </div>
         )}
       </CardContent>
+      <SendGapRequestDialog
+        open={gapComposer.open}
+        onOpenChange={gapComposer.setOpen}
+        defaults={gapComposer.defaults}
+        intro={gapComposer.intro}
+      />
     </Card>
   );
 }

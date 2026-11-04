@@ -389,7 +389,7 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
             created_at
           `)
           .gte("plan_date", today)
-          .in("status", ["draft", "pending_approval", "published"])
+          .in("status", ["draft", "pending_approval", "scheduled", "published"])
           .order("plan_date", { ascending: true })
           .limit(500);
 

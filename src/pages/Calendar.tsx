@@ -80,6 +80,7 @@ import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
+import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { AssignedSetlistPrep, useRosteredSetlistsForDate } from "@/components/calendar/AssignedSetlistPrep";
 import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
@@ -1412,13 +1413,58 @@ function StandardCalendar() {
   const headerServiceFlowLink = selectedDateStr
     ? `/service-flow?date=${selectedDateStr}${headerFlowCampusId ? `&campus=${headerFlowCampusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${headerDraftSetId ? `&draftSetId=${headerDraftSetId}` : ""}`
     : null;
+  const flowTemplateMinistry =
+    ministryFilter && ministryFilter !== "all"
+      ? scheduleMinistryType(ministryFilter) || ministryFilter
+      : null;
+  const { data: savedFlowTemplates = [] } = useServiceFlowTemplates(
+    headerFlowCampusId || null,
+    flowTemplateMinistry,
+  );
+  const selectedDayHasScheduledService = useMemo(() => {
+    if (!selectedDateStr || !headerFlowCampusId || !flowTemplateMinistry) return false;
+    const recurring = recurringServiceTimesForDate(
+      ministrySchedules,
+      headerFlowCampusId,
+      flowTemplateMinistry,
+      selectedDateStr,
+    );
+    if (recurring && recurring.length > 0) return true;
+    const hasOverride = selectedDateOverrides.some(
+      (override) =>
+        override.campus_id === headerFlowCampusId &&
+        serviceOverrideMatchesMinistryFilter(override.ministry_type, flowTemplateMinistry),
+    );
+    if (hasOverride) return true;
+    const hasTeam = selectedDayScheduleEntries.some((entry) =>
+      scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter),
+    );
+    if (hasTeam) return true;
+    if (recurring) return false;
+    const campus = campuses.find((entry) => entry.id === headerFlowCampusId);
+    if (!campus || !ministryUsesCampusWeekendDefaults(flowTemplateMinistry)) return false;
+    const day = parseLocalDate(selectedDateStr).getDay();
+    if (day === 6) return !!campus.has_saturday_service;
+    if (day === 0) return campus.has_sunday_service !== false;
+    return false;
+  }, [
+    campuses,
+    flowTemplateMinistry,
+    headerFlowCampusId,
+    ministryFilter,
+    ministrySchedules,
+    selectedDateOverrides,
+    selectedDateStr,
+    selectedDayScheduleEntries,
+  ]);
   const showHeaderServiceFlowButton = useMemo(() => {
     if (!selectedDateStr || isCrossCampusReadOnly || selectedDayServices.length > 0) {
       return false;
     }
 
     const hasSongs = headerPlansWithSongs.some((plan) => (plan.songs || []).length > 0);
-    if (!hasSongs || !headerServiceFlowLink) {
+    const hasSavedTemplate = !!headerFlowCampusId && savedFlowTemplates.length > 0 && selectedDayHasScheduledService;
+    if ((!hasSongs && !hasSavedTemplate) || !headerServiceFlowLink) {
       return false;
     }
 
@@ -1441,11 +1487,14 @@ function StandardCalendar() {
 
     return true;
   }, [
+    headerFlowCampusId,
     headerPlansWithSongs,
     headerServiceFlowLink,
     isCrossCampusReadOnly,
     ministryFilter,
+    savedFlowTemplates,
     selectedDateStr,
+    selectedDayHasScheduledService,
     selectedDayScheduleEntries,
     selectedDayServices.length,
   ]);

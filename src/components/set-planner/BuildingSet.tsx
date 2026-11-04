@@ -24,7 +24,7 @@ export interface BuildingSetSong extends SongAvailability {
   youtubeUrl?: string | null;
 }
 
-export type ApprovalStatus = "draft" | "pending_approval" | "published" | "rejected";
+export type ApprovalStatus = "draft" | "pending_approval" | "scheduled" | "published" | "rejected";
 
 interface BuildingSetProps {
   songs: BuildingSetSong[];
@@ -43,6 +43,8 @@ interface BuildingSetProps {
   vocalists: ScheduledVocalist[];
   isPublished?: boolean;
   approvalStatus?: ApprovalStatus;
+  /** Church-local date (YYYY-MM-DD) when an approved weekend set will post. */
+  scheduledPublishOn?: string | null;
   rejectionNotes?: string | null;
   vocalistRundownNotes?: VocalistRundownNote[];
   vocalistRundownNotesLoading?: boolean;
@@ -65,6 +67,7 @@ export function BuildingSet({
   vocalists,
   isPublished,
   approvalStatus = "draft",
+  scheduledPublishOn,
   rejectionNotes,
   vocalistRundownNotes = [],
   vocalistRundownNotesLoading = false,
@@ -137,6 +140,20 @@ export function BuildingSet({
         <Badge variant="outline" className="text-xs border-green-500/50 text-green-500 gap-1">
           <Check className="h-3 w-3" />
           Published
+        </Badge>
+      );
+    }
+    if (approvalStatus === "scheduled") {
+      const postLabel = scheduledPublishOn
+        ? new Date(`${scheduledPublishOn}T00:00:00`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })
+        : null;
+      return (
+        <Badge variant="outline" className="text-xs border-sky-500/50 text-sky-600 gap-1">
+          <Clock className="h-3 w-3" />
+          {postLabel ? `Posts ${postLabel}` : "Approved"}
         </Badge>
       );
     }
@@ -223,7 +240,7 @@ export function BuildingSet({
                   ) : (
                     <>
                       <Save className="h-4 w-4" />
-                      {isPublished ? 'Save' : 'Save Draft'}
+                      {isPublished || approvalStatus === "scheduled" ? 'Save' : 'Save Draft'}
                     </>
                   )}
                 </Button>

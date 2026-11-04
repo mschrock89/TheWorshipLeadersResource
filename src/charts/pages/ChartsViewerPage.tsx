@@ -272,8 +272,8 @@ export function ChartsViewerPage() {
   const lyricsText = selectedVersion?.lyrics?.trim() || "";
   const capoValue = Number(capo || "0");
   const accidentalPreference = useMemo<"flats" | "sharps">(() => {
-    if (/\b[A-G]b\b/.test(chartText)) return "flats";
-    if (/\b[A-G]#\b/.test(chartText)) return "sharps";
+    if (/\b[A-G]b(?=$|[^a-z]|m|sus|add|dim|aug)/m.test(chartText)) return "flats";
+    if (/\b[A-G]#/.test(chartText)) return "sharps";
 
     const detectedKey = detectKeyIndexFromChart(chartText);
     const sharpKeys = new Set([1, 3, 6, 8, 10]);

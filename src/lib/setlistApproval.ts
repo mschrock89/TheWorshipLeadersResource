@@ -8,8 +8,12 @@
 // which reproduces the old hardcoded constants exactly.
 
 import { supabase } from "@/integrations/supabase/client";
-import { isSessionSetMinistryType } from "@/lib/constants";
+import { isSessionSetMinistryType, isWeekendTeamMinistryType } from "@/lib/constants";
 import { CAPABILITIES } from "@/lib/capabilities";
+
+/** Weekend services stay approved-but-unposted until this many days before plan_date. */
+export const WEEKEND_SETLIST_PUBLISH_LEAD_DAYS = 10;
+const CHURCH_TIME_ZONE = "America/Chicago";
 
 /** Previous hardcoded approver (Kyle Elkins). Kept only as a deploy-order fallback. */
 export const LEGACY_APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
@@ -133,6 +137,48 @@ export async function resolveApproverUserId(params: {
   const rule = await resolveApprovalRule(params);
   if (rule === null) return LEGACY_APPROVER_USER_ID; // fallback
   return rule.approverUserId;
+}
+
+/** Church-local calendar date (YYYY-MM-DD) for "today" in scheduling rules. */
+export function churchToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHURCH_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+function addCalendarDays(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+  utc.setUTCDate(utc.getUTCDate() + days);
+  return utc.toISOString().slice(0, 10);
+}
+
+export function formatSetlistPublishOn(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Weekend services (weekend / weekend_team / sunday_am) approved more than
+ * 10 days out should not post yet. Returns the calendar date to post on,
+ * or null when the set should post immediately.
+ */
+export function weekendSetlistPublishOn(
+  ministryType: string | null | undefined,
+  planDate: string | null | undefined,
+  now = new Date(),
+): string | null {
+  if (!planDate || !isWeekendTeamMinistryType(ministryType)) return null;
+  const publishOn = addCalendarDays(planDate, -WEEKEND_SETLIST_PUBLISH_LEAD_DAYS);
+  if (publishOn <= churchToday(now)) return null;
+  return publishOn;
 }
 
 /** Is this user an approver for at least one rule (i.e. can see the queue)? */

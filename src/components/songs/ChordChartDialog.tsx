@@ -331,7 +331,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                       <SelectValue placeholder="Select version" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[80]">
                       {versions.map((version) => (
                         <SelectItem key={version.id} value={version.id}>
                           {version.version_name}
@@ -354,7 +354,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                       <SelectValue placeholder="Original Key" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[80]">
                       {keyLabels.map((label, index) => (
                         <SelectItem key={`original-${label}-${index}`} value={String(index)}>
                           Original: {label}
@@ -372,7 +372,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                       <SelectValue placeholder="Target Key" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[80]">
                       {keyLabels.map((label, index) => (
                         <SelectItem key={`target-${label}-${index}`} value={String(index)}>
                           To: {label}
@@ -390,7 +390,7 @@ export function ChordChartDialog({ open, onOpenChange, song }: ChordChartDialogP
                     <SelectTrigger className="h-11 text-sm sm:h-12 sm:text-base">
                       <SelectValue placeholder="Accidentals" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[80]">
                       <SelectItem value="flats">Flats</SelectItem>
                       <SelectItem value="sharps">Sharps</SelectItem>
                     </SelectContent>

@@ -21,6 +21,26 @@ interface FeedPostNotifyRequest {
   ministryType?: string | null;
 }
 
+function feedNotificationTarget(
+  ministryType: string | null,
+  campusId: string | null,
+  campInstanceId: string | null,
+) {
+  if (campInstanceId) {
+    return { title: "New Camp Feed Post", url: "/camp" };
+  }
+  if (ministryType === "network_wide") {
+    return { title: "New Post in the Network Feed", url: "/feed?feedScope=network_wide" };
+  }
+  if (ministryType === "campus_wide" && campusId) {
+    return {
+      title: "New Post in the Campus Feed",
+      url: `/feed?feedScope=campus_wide&campus=${campusId}`,
+    };
+  }
+  return { title: "New Post in The Feed", url: "/feed" };
+}
+
 function bearerToken(authHeader: string | null): string | null {
   if (!authHeader) return null;
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -144,13 +164,15 @@ serve(async (req: Request): Promise<Response> => {
     const chapter = assignment?.chapter_reference || post.scripture_reference || "";
     const seriesTitle = assignment?.series_title || "DEVO";
 
+    const notificationTarget = feedNotificationTarget(ministryType, campusId, campInstanceId);
+
     const pushPayload = isDevo
       ? {
           title: "New DEVO is live",
           message: chapter
             ? `${authorName} shared ${chapter}: ${titlePreview}`
             : `${authorName} shared a new DEVO: ${titlePreview}`,
-          url: campInstanceId ? "/camp" : "/feed",
+          url: notificationTarget.url,
           tag: `devo-live-${post.id}`,
           userIds: recipientUserIds,
           contextType: "devo-live",
@@ -172,9 +194,9 @@ serve(async (req: Request): Promise<Response> => {
           },
         }
       : {
-          title: campInstanceId ? "New Camp Feed Post" : "New Post in The Feed",
+          title: notificationTarget.title,
           message: `${authorName} shared: ${titlePreview}`,
-          url: campInstanceId ? "/camp" : "/feed",
+          url: notificationTarget.url,
           tag: `feed-post-${post.id}`,
           userIds: recipientUserIds,
           contextType: "feed-post",

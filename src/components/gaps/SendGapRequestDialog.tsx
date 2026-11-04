@@ -47,16 +47,22 @@ export interface SendGapRequestDefaults {
   ministryType?: string;
   scheduleDate?: string;
   positionSlot?: string;
+  coversWeekendPair?: boolean;
+  message?: string;
+  /** People who already can't cover this date, such as the volunteer who asked to swap. */
+  excludeUserIds?: string[];
 }
 
 export function SendGapRequestDialog({
   open,
   onOpenChange,
   defaults,
+  intro,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaults?: SendGapRequestDefaults;
+  intro?: string;
 }) {
   const { user, isAdmin } = useAuth();
   const { data: allCampuses = [] } = useCampuses();
@@ -72,6 +78,7 @@ export function SendGapRequestDialog({
   const [targetCampusIds, setTargetCampusIds] = useState<string[]>([]);
   const [targetMinistryTypes, setTargetMinistryTypes] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const [excludeUserIds, setExcludeUserIds] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<GapCandidate[] | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -93,10 +100,11 @@ export function SendGapRequestDialog({
     setMinistryType(initialMinistry);
     setScheduleDate(defaults?.scheduleDate || "");
     setPositionSlot(defaults?.positionSlot || "");
-    setCoversWeekendPair(true);
+    setCoversWeekendPair(defaults?.coversWeekendPair !== false);
     setTargetCampusIds(initialCampus ? [initialCampus] : []);
     setTargetMinistryTypes([initialMinistry]);
-    setMessage("");
+    setMessage(defaults?.message || "");
+    setExcludeUserIds(defaults?.excludeUserIds || []);
     setCandidates(null);
     setSelectedUserIds([]);
     setSearch("");
@@ -140,7 +148,8 @@ export function SendGapRequestDialog({
 
   const handlePreview = async () => {
     try {
-      const result = await preview.mutateAsync(draft);
+      const excluded = new Set(excludeUserIds);
+      const result = (await preview.mutateAsync(draft)).filter((candidate) => !excluded.has(candidate.id));
       setCandidates(result);
       setSelectedUserIds(result.map((candidate) => candidate.id));
     } catch (error) {
@@ -184,7 +193,8 @@ export function SendGapRequestDialog({
             Send a Gap Request
           </DialogTitle>
           <DialogDescription>
-            Push a request to every volunteer in a position. They can answer Yes or No right from the notification.
+            {intro ||
+              "Push a request to every volunteer in a position. They can answer Yes or No right from the notification."}
           </DialogDescription>
         </DialogHeader>
 

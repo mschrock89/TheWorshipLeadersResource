@@ -1362,6 +1362,7 @@ export type Database = {
           ministry_type: string
           notes: string | null
           plan_date: string
+          publish_on: string | null
           published_at: string | null
           status: string
           submitted_for_approval_at: string | null
@@ -1378,6 +1379,7 @@ export type Database = {
           ministry_type?: string
           notes?: string | null
           plan_date: string
+          publish_on?: string | null
           published_at?: string | null
           status?: string
           submitted_for_approval_at?: string | null
@@ -1394,6 +1396,7 @@ export type Database = {
           ministry_type?: string
           notes?: string | null
           plan_date?: string
+          publish_on?: string | null
           published_at?: string | null
           status?: string
           submitted_for_approval_at?: string | null

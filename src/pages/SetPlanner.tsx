@@ -334,6 +334,7 @@ export default function SetPlanner() {
   // Compute the effective approval status
   const approvalStatus: ApprovalStatus = useMemo(() => {
     if (existingSet?.status === "published") return "published";
+    if (existingSet?.status === "scheduled") return "scheduled";
     if (existingSet?.status === "pending_approval") return "pending_approval";
     if (approvalData?.status === "rejected") return "rejected";
     return "draft";
@@ -1607,11 +1608,12 @@ export default function SetPlanner() {
               vocalists={effectiveVocalists}
               isPublished={existingSet?.status === 'published'}
               approvalStatus={approvalStatus}
+              scheduledPublishOn={existingSet?.status === "scheduled" ? existingSet.publish_on : null}
               rejectionNotes={rejectionNotes}
               vocalistRundownNotes={vocalistRundownNotes}
               vocalistRundownNotesLoading={vocalistRundownNotesLoading}
               publishButton={
-                approvalStatus !== "pending_approval" ? (
+                approvalStatus !== "pending_approval" && approvalStatus !== "scheduled" ? (
                   <PublishSetlistDialog
                     draftSetId={lastSavedSetId || undefined}
                     songs={buildingSongs}

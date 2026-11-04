@@ -78,13 +78,30 @@ function isSectionHeader(line: string): boolean {
   return false;
 }
 
-const CHORD_ONLY_TOKEN_REGEX =
-  /^[A-G](?:#|b)?(?:(?:m|maj|min|dim|aug|sus|add)?[0-9()#b+-]*)*(?:\/[A-G](?:#|b)?)?$/;
+const CHORD_ROOT_PATTERN = "[A-G](?:#|b)?";
+const CHORD_SUFFIX_PATTERN = "(?:maj|min|dim|aug|sus|add|m|M|[0-9()#b+-])*";
+
+const CHORD_ONLY_TOKEN_REGEX = new RegExp(
+  `^${CHORD_ROOT_PATTERN}${CHORD_SUFFIX_PATTERN}(?:\\/${CHORD_ROOT_PATTERN})?$`,
+);
+
+// Captures: 1 = leading delimiter, 2 = root, 3 = suffix, 4 = bass note.
+const CHORD_IN_TEXT_REGEX = new RegExp(
+  `(^|[^A-Za-z0-9#.])(${CHORD_ROOT_PATTERN})(${CHORD_SUFFIX_PATTERN})(?:\\/(${CHORD_ROOT_PATTERN}))?(?=$|[^A-Za-z0-9#])`,
+  "g",
+);
+
+function isChordToken(token: string): boolean {
+  const unwrapped = token.replace(/^[(|[]+/, "").replace(/[)|\]]+$/, "");
+  return CHORD_ONLY_TOKEN_REGEX.test(unwrapped);
+}
 
 function isChordSequence(text: string): boolean {
   const tokens = text.trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return false;
-  return tokens.every((token) => CHORD_ONLY_TOKEN_REGEX.test(token) || /^[|:().x%\d-]+$/.test(token));
+  return tokens.every(
+    (token) => isChordToken(token) || /^[|:().x%\d-]+$/.test(token) || /^N\.?C\.?$/i.test(token),
+  );
 }
 
 function isChordOnlyLine(line: string): boolean {
@@ -355,27 +372,44 @@ function transposeNoteWithPreference(
   return accidentalPreference === "flats" ? NOTE_SEQUENCE_FLAT[wrapped] : NOTE_SEQUENCE_SHARP[wrapped];
 }
 
-function transposeChordToken(
-  token: string,
+function transposeChordsInText(
+  text: string,
   semitones: number,
   accidentalPreference: "sharps" | "flats",
 ): string {
-  if (!token || semitones === 0) return token;
-
-  const [mainPart, bassPart] = token.split("/");
-  const mainMatch = mainPart.match(/^([A-G](?:#|b)?)(.*)$/);
-  if (!mainMatch) return token;
-
-  const transposedMainRoot = transposeNoteWithPreference(mainMatch[1], semitones, accidentalPreference);
-  const transposedMain = `${transposedMainRoot}${mainMatch[2] || ""}`;
-
-  if (!bassPart) return transposedMain;
-
-  const bassMatch = bassPart.match(/^([A-G](?:#|b)?)(.*)$/);
-  if (!bassMatch) return transposedMain;
-  const transposedBassRoot = transposeNoteWithPreference(bassMatch[1], semitones, accidentalPreference);
-  return `${transposedMain}/${transposedBassRoot}${bassMatch[2] || ""}`;
+  return text.replace(
+    CHORD_IN_TEXT_REGEX,
+    (_match, lead: string, root: string, suffix: string, bass: string | undefined) => {
+      const transposedRoot = transposeNoteWithPreference(root, semitones, accidentalPreference);
+      const transposedBass = bass
+        ? `/${transposeNoteWithPreference(bass, semitones, accidentalPreference)}`
+        : "";
+      return `${lead}${transposedRoot}${suffix}${transposedBass}`;
+    },
+  );
 }
+
+// Keeps each chord at its original column so it stays above the same syllable.
+function transposePlainChordLine(
+  line: string,
+  semitones: number,
+  accidentalPreference: "sharps" | "flats",
+): string {
+  let output = "";
+  const tokenRegex = /\S+/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(line)) !== null) {
+    if (output.length < match.index) {
+      output = padToLength(output, match.index);
+    } else if (output.length > 0) {
+      output += " ";
+    }
+    output += transposeChordsInText(match[0], semitones, accidentalPreference);
+  }
+  return output;
+}
+
+const KEY_LINE_REGEX = /^(\s*key\s*[:=-]\s*)([A-G](?:#|b)?)/i;
 
 export function transposeChordChartText(
   chordChartText: string,
@@ -384,22 +418,23 @@ export function transposeChordChartText(
 ): string {
   if (semitones === 0) return chordChartText;
 
-  const transposeFreeChordTokens = (input: string): string =>
-    input.replace(
-      /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g,
-      (match) => transposeChordToken(match, semitones, accidentalPreference),
-    );
-
   return chordChartText
     .split("\n")
     .map((line) => {
       if (line.includes("[")) {
-        return line.replace(/\[([^\]]+)\]/g, (_, token: string) => {
-          const transposed = transposeChordToken(token.trim(), semitones, accidentalPreference);
-          return `[${transposed}]`;
-        });
+        return line.replace(/\[([^\]]+)\]/g, (_, token: string) =>
+          `[${transposeChordsInText(token, semitones, accidentalPreference)}]`,
+        );
       }
-      return transposeFreeChordTokens(line);
+      if (KEY_LINE_REGEX.test(line)) {
+        return line.replace(KEY_LINE_REGEX, (_match, label: string, root: string) =>
+          `${label}${transposeNoteWithPreference(root, semitones, accidentalPreference)}`,
+        );
+      }
+      if (isPlainChordLine(line)) {
+        return transposePlainChordLine(line, semitones, accidentalPreference);
+      }
+      return line;
     })
     .join("\n");
 }
@@ -417,7 +452,6 @@ export function detectKeyIndexFromChart(chordChartText: string): number {
     }
   }
 
-  const tokenRegex = /\b([A-G](?:#|b)?(?:maj|min|m|sus|add|dim|aug|[0-9()+-]*)?(?:\/[A-G](?:#|b)?)?)\b/g;
   const rootVotes = new Map<number, number>();
   const functionVotes = new Map<number, number>();
 
@@ -432,11 +466,8 @@ export function detectKeyIndexFromChart(chordChartText: string): number {
     const rootIndex = NOTE_INDEX[rootMatch[1]];
     if (rootIndex === undefined) return;
 
-    const suffix = (rootMatch[2] || "").toLowerCase();
-    const isMinor =
-      /^m(?!aj)/.test(suffix) ||
-      /\bmin\b/.test(suffix) ||
-      /-/.test(suffix);
+    const suffix = rootMatch[2] || "";
+    const isMinor = /^(?:m(?!aj)|-)/.test(suffix);
 
     addVote(rootIndex, 2 * positionWeight, rootVotes);
 
@@ -472,21 +503,16 @@ export function detectKeyIndexFromChart(chordChartText: string): number {
     const line = lines[lineIndex];
     const weight = lineIndex < 6 ? 1.5 : 1;
 
-    if (line.includes("[")) {
-      const bracketRegex = /\[([^\]]+)\]/g;
-      let bracketMatch: RegExpExecArray | null;
-      while ((bracketMatch = bracketRegex.exec(line)) !== null) {
-        registerChordToken(bracketMatch[1].trim(), weight);
-      }
-      continue;
-    }
+    const chordSources = line.includes("[")
+      ? Array.from(line.matchAll(/\[([^\]]+)\]/g), (bracketMatch) => bracketMatch[1])
+      : isPlainChordLine(line)
+        ? [line]
+        : [];
 
-    if (isChordOnlyLine(line)) {
-      let tokenMatch: RegExpExecArray | null;
-      while ((tokenMatch = tokenRegex.exec(line)) !== null) {
-        registerChordToken(tokenMatch[1], weight);
+    for (const source of chordSources) {
+      for (const chordMatch of source.matchAll(CHORD_IN_TEXT_REGEX)) {
+        registerChordToken(`${chordMatch[2]}${chordMatch[3]}`, weight);
       }
-      tokenRegex.lastIndex = 0;
     }
   }
 

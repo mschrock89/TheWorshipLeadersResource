@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizePushMinistryType } from "../_shared/pushMinistryPrefs.ts";
+import { adminReceivesCampusPush } from "../_shared/adminPushCampusScope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -117,21 +118,29 @@ serve(async (req) => {
       ),
     );
 
-    const { data: ministryRows, error: ministryError } = candidateUserIds.length
-      ? await supabase
-          .from("user_ministry_campuses")
-          .select("user_id, campus_id, ministry_type")
-          .eq("campus_id", setCampusId)
-          .in("user_id", candidateUserIds)
-      : { data: [], error: null };
+    const [ministryResult, campusResult] = candidateUserIds.length
+      ? await Promise.all([
+          supabase
+            .from("user_ministry_campuses")
+            .select("user_id, campus_id, ministry_type")
+            .eq("campus_id", setCampusId)
+            .in("user_id", candidateUserIds),
+          supabase
+            .from("user_campuses")
+            .select("user_id, campus_id")
+            .in("user_id", candidateUserIds),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
 
-    if (ministryError) {
-      console.error("Failed to load admin ministry assignments:", ministryError);
+    if (ministryResult.error || campusResult.error) {
+      console.error("Failed to load admin campus assignments:", ministryResult.error || campusResult.error);
       return new Response(
         JSON.stringify({ error: "Failed to determine notification recipients" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const ministryRows = ministryResult.data;
 
     const adminsOverSetMinistry = new Set<string>();
     for (const row of ministryRows || []) {
@@ -141,24 +150,33 @@ serve(async (req) => {
       }
     }
 
-    const recipientUserIds = Array.from(
-      new Set(
-        (adminRoleRows || [])
-          .filter((row) => {
-            if (!row.user_id || row.user_id === confirmerId) return false;
+    const rolesByUser = new Map<string, Array<{ role: string; admin_campus_id: string | null }>>();
+    const campusesByUser = new Map<string, string[]>();
+    for (const row of adminRoleRows || []) {
+      if (!row.user_id) continue;
+      const roles = rolesByUser.get(row.user_id) || [];
+      roles.push({ role: row.role, admin_campus_id: row.admin_campus_id });
+      rolesByUser.set(row.user_id, roles);
+    }
+    for (const row of campusResult.data || []) {
+      if (!row.user_id || !row.campus_id) continue;
+      const campuses = campusesByUser.get(row.user_id) || [];
+      campuses.push(row.campus_id);
+      campusesByUser.set(row.user_id, campuses);
+    }
 
-            const builtThisSet = Boolean(setCreatedBy && row.user_id === setCreatedBy);
-            if (builtThisSet) return true;
+    const recipientUserIds = Array.from(rolesByUser.keys()).filter((userId) => {
+      if (userId === confirmerId) return false;
 
-            if (row.role === "campus_admin" && row.admin_campus_id !== setCampusId) {
-              return false;
-            }
+      const builtThisSet = Boolean(setCreatedBy && userId === setCreatedBy);
+      if (builtThisSet) return true;
 
-            return adminsOverSetMinistry.has(row.user_id);
-          })
-          .map((row) => row.user_id as string),
-      ),
-    );
+      if (!adminReceivesCampusPush(rolesByUser.get(userId) || [], campusesByUser.get(userId) || [], [setCampusId])) {
+        return false;
+      }
+
+      return adminsOverSetMinistry.has(userId);
+    });
 
     if (recipientUserIds.length === 0) {
       console.log("No admin recipients found for setlist confirmation", {
@@ -192,7 +210,9 @@ serve(async (req) => {
       // Setlists are a Worship-only feature; scope delivery to worship subscriptions.
       metadata: {
         resourceAppKey: "worship",
+        campusId: setCampusId,
         ministryType: draftSet.ministry_type,
+        campusScopeExemptUserIds: setCreatedBy ? [setCreatedBy] : [],
         vars: {
           name: confirmerName,
           date: formattedDate,

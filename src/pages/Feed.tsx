@@ -10,6 +10,7 @@ import {
   Filter,
   Heart,
   Loader2,
+  Globe,
   MapPin,
   MessageSquare,
   PenSquare,
@@ -48,8 +49,12 @@ import { feedYouTubeEmbedSrc } from "@/lib/youtube";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import {
   getDefaultFeedMinistryType,
-  getFeedMinistryTypesForResourceApp,
-  isValidFeedMinistryType,
+  getFeedScopeOptions,
+  isCampusWideFeedType,
+  isNetworkWideFeedType,
+  CAMPUS_WIDE_FEED_TYPE,
+  isValidFeedScope,
+  NETWORK_WIDE_FEED_TYPE,
 } from "@/lib/feedMinistries";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -720,8 +725,8 @@ export default function Feed({
   const [localCampusId, setLocalCampusId] = useState<string | null>(null);
   const selectedCampusId = campusCtx?.selectedCampusId ?? localCampusId;
   const setSelectedCampusId = campusCtx?.setSelectedCampusId ?? setLocalCampusId;
-  const { data: campuses = [] } = useCampuses();
-  const { data: userCampuses = [] } = useUserCampuses(user?.id);
+  const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
+  const { data: userCampuses = [], isLoading: userCampusesLoading } = useUserCampuses(user?.id);
   const { data: adminCampusIds = [] } = useUserAdminCampuses(user?.id);
   const selectableCampuses = useMemo(() => {
     if (isLeader) return campuses;
@@ -734,47 +739,67 @@ export default function Feed({
     ?? null;
   const feedCampusId = campInstanceId ? null : selectedCampusId;
   const resourceAppKey = getCurrentResourceAppKey();
-  const feedMinistries = useMemo(
-    () => getFeedMinistryTypesForResourceApp(resourceAppKey),
-    [resourceAppKey],
-  );
+  const feedScopeOptions = useMemo(() => {
+    const options = getFeedScopeOptions(resourceAppKey);
+    if (campInstanceId || selectedCampusId) return options;
+    return options.filter((option) => option.value === NETWORK_WIDE_FEED_TYPE);
+  }, [campInstanceId, resourceAppKey, selectedCampusId]);
   const [selectedMinistryType, setSelectedMinistryType] = useState<string>(() =>
     getDefaultFeedMinistryType(resourceAppKey),
   );
-  // Keep the selection valid if the app (and thus its ministry list) changes.
+  // Keep the selection valid if the app (and thus its feed list) changes.
   useEffect(() => {
-    if (!isValidFeedMinistryType(resourceAppKey, selectedMinistryType)) {
-      setSelectedMinistryType(getDefaultFeedMinistryType(resourceAppKey));
-    }
-  }, [resourceAppKey, selectedMinistryType]);
+    if (feedScopeOptions.some((option) => option.value === selectedMinistryType)) return;
+    setSelectedMinistryType(
+      feedScopeOptions[0]?.value ?? getDefaultFeedMinistryType(resourceAppKey),
+    );
+  }, [feedScopeOptions, resourceAppKey, selectedMinistryType]);
   const feedMinistryType = campInstanceId ? null : selectedMinistryType;
+  const isCampusWideFeed = isCampusWideFeedType(feedMinistryType);
+  const isNetworkWideFeed = isNetworkWideFeedType(feedMinistryType);
   const selectedMinistryLabel =
-    feedMinistries.find((ministry) => ministry.value === selectedMinistryType)?.label ?? null;
+    feedScopeOptions.find((ministry) => ministry.value === selectedMinistryType)?.label ?? null;
   const shareTargetCampusIds = useMemo(() => {
-    if (campInstanceId || !feedCampusId) return [];
+    if (campInstanceId || isNetworkWideFeed || !feedCampusId) return [];
     return adminCampusIds.filter((campusId) => campusId !== feedCampusId);
-  }, [adminCampusIds, campInstanceId, feedCampusId]);
+  }, [adminCampusIds, campInstanceId, feedCampusId, isNetworkWideFeed]);
   const canShareToMyFeed = shareTargetCampusIds.length > 0;
-  const isFeedScopeReady = !!campInstanceId || (!!feedCampusId && !!feedMinistryType);
-  const feedScopeName =
-    selectedCampusName && selectedMinistryLabel
-      ? `${selectedMinistryLabel} · ${selectedCampusName}`
-      : selectedCampusName;
+  const isFeedScopeReady =
+    !!campInstanceId || isNetworkWideFeed || (!!feedCampusId && !!feedMinistryType);
+  const feedScopeName = isNetworkWideFeed
+    ? "Network Wide"
+    : isCampusWideFeed && selectedCampusName
+      ? `Campus Wide · ${selectedCampusName}`
+      : selectedCampusName && selectedMinistryLabel
+        ? `${selectedMinistryLabel} · ${selectedCampusName}`
+        : selectedCampusName;
   const resolvedComposerDescription = campInstanceId
     ? composerDescription
-    : feedScopeName
-      ? `Share a thought, scripture, or YouTube link with ${feedScopeName}.`
-      : composerDescription;
+    : isNetworkWideFeed
+      ? "Share a thought, scripture, or YouTube link with every user on the network."
+      : isCampusWideFeed && selectedCampusName
+        ? `Share a thought, scripture, or YouTube link with everyone at ${selectedCampusName}.`
+        : feedScopeName
+          ? `Share a thought, scripture, or YouTube link with ${feedScopeName}.`
+          : composerDescription;
   const resolvedEmptyAdminMessage = campInstanceId
     ? emptyAdminMessage
-    : feedScopeName
-      ? `Publish the first post to get the ${feedScopeName} Feed started.`
-      : emptyAdminMessage;
+    : isNetworkWideFeed
+      ? "Publish the first post to get the Network Wide Feed started."
+      : isCampusWideFeed && selectedCampusName
+        ? `Publish the first post to get the ${selectedCampusName} Campus Wide Feed started.`
+        : feedScopeName
+          ? `Publish the first post to get the ${feedScopeName} Feed started.`
+          : emptyAdminMessage;
   const resolvedEmptyReaderMessage = campInstanceId
     ? emptyReaderMessage
-    : feedScopeName
-      ? `The ${feedScopeName} Feed is ready. Once an admin publishes a post, it will show up here.`
-      : emptyReaderMessage;
+    : isNetworkWideFeed
+      ? "The Network Wide Feed is ready. Once an admin publishes a post, it will show up here for every user."
+      : isCampusWideFeed && selectedCampusName
+        ? `The ${selectedCampusName} Campus Wide Feed is ready. Once an admin publishes a post, everyone at this campus will see it here.`
+        : feedScopeName
+          ? `The ${feedScopeName} Feed is ready. Once an admin publishes a post, it will show up here.`
+          : emptyReaderMessage;
   const { data: posts = [], isLoading } = useFeedPosts(feedCampusId, campInstanceId, feedMinistryType);
   const showFeedLoading = !isFeedScopeReady || isLoading;
   const createPost = useCreateFeedPost(feedCampusId, campInstanceId, feedMinistryType);
@@ -804,6 +829,40 @@ export default function Feed({
     }
     setSelectedCampusId(selectableCampuses[0].id);
   }, [campInstanceId, selectableCampuses, selectedCampusId, setSelectedCampusId]);
+
+  useEffect(() => {
+    if (campInstanceId) return;
+    const feedScope = searchParams.get("feedScope");
+    const campus = searchParams.get("campus");
+    if (!feedScope && !campus) return;
+    if (campusesLoading || userCampusesLoading) return;
+
+    const campusIsSelectable = !!campus && selectableCampuses.some((option) => option.id === campus);
+    if (campusIsSelectable) {
+      setSelectedCampusId(campus);
+    }
+    if (
+      feedScope &&
+      isValidFeedScope(resourceAppKey, feedScope) &&
+      (feedScope !== CAMPUS_WIDE_FEED_TYPE || campusIsSelectable)
+    ) {
+      setSelectedMinistryType(feedScope);
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("feedScope");
+    nextParams.delete("campus");
+    setSearchParams(nextParams, { replace: true });
+  }, [
+    campusesLoading,
+    campInstanceId,
+    resourceAppKey,
+    searchParams,
+    selectableCampuses,
+    setSearchParams,
+    setSelectedCampusId,
+    userCampusesLoading,
+  ]);
 
   useEffect(() => {
     const composeType = searchParams.get("compose");
@@ -857,7 +916,7 @@ export default function Feed({
 
   const handlePublish = async () => {
     if (!isAdmin) return;
-    if (!campInstanceId && !feedCampusId) {
+    if (!campInstanceId && !isNetworkWideFeed && !feedCampusId) {
       toast({
         title: "Select a campus",
         description: "Choose a campus before publishing to The Feed.",
@@ -983,7 +1042,7 @@ export default function Feed({
                 <h1 className="mx-auto max-w-2xl bg-[linear-gradient(92deg,#ffffff_0%,#f7fbff_42%,#35b0e5_100%)] bg-clip-text text-center font-display text-5xl font-black uppercase leading-none tracking-[0.12em] text-transparent drop-shadow-[0_0_28px_rgba(53,176,229,0.20)] sm:text-6xl lg:text-7xl">
                   {heading}
                 </h1>
-                {selectableCampuses.length > 1 ? (
+                {selectableCampuses.length > 1 && !isNetworkWideFeed ? (
                   <div className="mx-auto flex w-full max-w-sm items-center justify-center gap-2">
                     <MapPin className="h-4 w-4 shrink-0 text-primary" />
                     <Select
@@ -1003,18 +1062,22 @@ export default function Feed({
                     </Select>
                   </div>
                 ) : null}
-                {feedMinistries.length > 1 ? (
+                {feedScopeOptions.length > 1 ? (
                   <div className="mx-auto flex w-full max-w-sm items-center justify-center gap-2">
-                    <Users className="h-4 w-4 shrink-0 text-primary" />
+                    {isNetworkWideFeed ? (
+                      <Globe className="h-4 w-4 shrink-0 text-primary" />
+                    ) : (
+                      <Users className="h-4 w-4 shrink-0 text-primary" />
+                    )}
                     <Select
                       value={selectedMinistryType}
                       onValueChange={setSelectedMinistryType}
                     >
                       <SelectTrigger className="h-11 w-full rounded-xl border-white/10 bg-black/25 text-left text-sm text-foreground backdrop-blur">
-                        <CompactSelectValue label={selectedMinistryLabel} placeholder="Select ministry" />
+                        <CompactSelectValue label={selectedMinistryLabel} placeholder="Select feed" />
                       </SelectTrigger>
                       <SelectContent>
-                        {feedMinistries.map((ministry) => (
+                        {feedScopeOptions.map((ministry) => (
                           <SelectItem key={ministry.value} value={ministry.value}>
                             {ministry.label}
                           </SelectItem>
@@ -1032,7 +1095,8 @@ export default function Feed({
                   <p className="text-sm font-medium text-foreground">What belongs in The Feed?</p>
                   <p className="text-sm leading-6 text-muted-foreground">
                     Pastoral encouragement, set-planning insights, scriptures, polls, rehearsal wins, and trusted
-                    video resources.
+                    video resources. Campus Wide reaches everyone at the selected campus. Network Wide reaches
+                    every user.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
@@ -1355,8 +1419,18 @@ export default function Feed({
               <CardContent className="space-y-4 p-6">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">Feed Permissions</p>
                 <div className="space-y-3 text-sm leading-6 text-muted-foreground">
-                  <p>Everyone signed into the app can read posts for the selected campus and like what resonates.</p>
-                  <p>Admins can publish, edit, and remove posts on each campus Feed to keep it helpful and clean.</p>
+                  <p>
+                    {isNetworkWideFeed
+                      ? "Everyone signed into the app can read the Network Wide Feed and like what resonates."
+                      : isCampusWideFeed
+                        ? "Everyone assigned to the selected campus can read this Campus Wide Feed, across ministries."
+                        : "Everyone signed into the app can read posts for the selected campus and like what resonates."}
+                  </p>
+                  <p>
+                    {isNetworkWideFeed
+                      ? "Admins can publish, edit, and remove Network Wide posts."
+                      : "Admins can publish, edit, and remove posts on each campus Feed to keep it helpful and clean."}
+                  </p>
                   {BIBLE_READER_ENABLED ? (
                     <p>Scripture can be sent into this composer directly from the Bible reader.</p>
                   ) : null}
