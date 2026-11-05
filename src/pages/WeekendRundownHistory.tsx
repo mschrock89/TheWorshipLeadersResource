@@ -17,6 +17,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   useWeekendRundownHistory,
   useWeekendRundownHistoryDetail,
+  useWeekendRundownSetSongs,
 } from "@/hooks/useWeekendRundown";
 import { canAccessWeekendRundown, GOOD_FIT_LABEL, WEEKEND_RUNDOWN_STATUS_OPTIONS } from "@/lib/weekendRundown";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -99,6 +100,16 @@ export default function WeekendRundownHistory() {
   const { data: detailEntries = [], isLoading: detailLoading } = useWeekendRundownHistoryDetail(
     selectedCampus?.id || null,
     selectedWeekendDate,
+  );
+  const selectedWeekend = selectedWeekendDate ? parseISO(selectedWeekendDate) : null;
+  const { data: setContext = { set_notes: null, songs: [] } } = useWeekendRundownSetSongs(
+    selectedCampus,
+    selectedWeekend,
+    !!selectedCampus && !!selectedWeekend,
+  );
+  const songsById = useMemo(
+    () => new Map(setContext.songs.map((song) => [song.song_id, song])),
+    [setContext.songs],
   );
 
   if (!rolesLoading && !hasAccess) {
@@ -230,6 +241,45 @@ export default function WeekendRundownHistory() {
                   </div>
                 )}
 
+                {setContext.songs.length > 0 && (
+                  <Card className="border-border/60">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Music2 className="h-4 w-4 text-primary" />
+                        Songs
+                      </CardTitle>
+                      <CardDescription>
+                        Key, vocalist, and notes saved with the set for this date.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {setContext.set_notes ? (
+                        <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                          <p className="mb-1 text-sm font-medium">Notes left on the set</p>
+                          <p className="whitespace-pre-wrap text-sm text-muted-foreground">{setContext.set_notes}</p>
+                        </div>
+                      ) : null}
+                      {setContext.songs.map((song, index) => (
+                        <div key={song.draft_set_song_id} className="rounded-lg border border-border/60 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{index + 1}</Badge>
+                            <p className="font-medium">{song.title}</p>
+                            {song.song_key ? <Badge variant="secondary">Key {song.song_key}</Badge> : null}
+                          </div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {song.vocalists.length > 0
+                              ? `Sung by ${song.vocalists.map((vocalist) => vocalist.name).join(", ")}`
+                              : "No vocalist was assigned."}
+                          </p>
+                          {song.admin_notes ? (
+                            <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{song.admin_notes}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {detailLoading ? (
                   <p className="text-sm text-muted-foreground">Loading rundown details...</p>
                 ) : detailEntries.length === 0 ? (
@@ -274,17 +324,26 @@ export default function WeekendRundownHistory() {
                                 <h3 className="font-semibold">Worship Review</h3>
                               </div>
 
-                              {entry.songFeedback.map((songNote) => (
-                                <div key={songNote.id} className="rounded-lg border border-border/60 bg-muted/20 p-4">
-                                  <div className="mb-2 flex items-center gap-2">
-                                    <BookOpenText className="h-4 w-4 text-muted-foreground" />
-                                    <p className="font-medium">{songNote.song_title}</p>
+                              {entry.songFeedback.map((songNote) => {
+                                const song = songsById.get(songNote.song_id);
+                                return (
+                                  <div key={songNote.id} className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                                      <BookOpenText className="h-4 w-4 text-muted-foreground" />
+                                      <p className="font-medium">{songNote.song_title}</p>
+                                      {song?.song_key ? <Badge variant="secondary">Key {song.song_key}</Badge> : null}
+                                      {song && song.vocalists.length > 0 ? (
+                                        <span className="text-xs text-muted-foreground">
+                                          Sung by {song.vocalists.map((vocalist) => vocalist.name).join(", ")}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                                      {songNote.notes}
+                                    </p>
                                   </div>
-                                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                                    {songNote.notes}
-                                  </p>
-                                </div>
-                              ))}
+                                );
+                              })}
 
                               {entry.vocalFeedback.length > 0 && (
                                 <div className="space-y-3">
@@ -292,7 +351,9 @@ export default function WeekendRundownHistory() {
                                     <Users className="h-4 w-4 text-muted-foreground" />
                                     Vocalist notes
                                   </div>
-                                  {entry.vocalFeedback.map((vocalNote) => (
+                                  {entry.vocalFeedback.map((vocalNote) => {
+                                    const song = songsById.get(vocalNote.song_id);
+                                    return (
                                     <div
                                       key={vocalNote.id}
                                       className="rounded-lg border border-border/60 bg-muted/20 p-4"
@@ -302,6 +363,11 @@ export default function WeekendRundownHistory() {
                                         <Badge variant="outline" className="text-[10px]">
                                           {vocalNote.song_title}
                                         </Badge>
+                                        {song?.song_key ? (
+                                          <Badge variant="secondary" className="text-[10px]">
+                                            Key {song.song_key}
+                                          </Badge>
+                                        ) : null}
                                         {vocalNote.fit_label === GOOD_FIT_LABEL && (
                                           <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
                                             Good Fit
@@ -316,7 +382,8 @@ export default function WeekendRundownHistory() {
                                         <p className="text-sm text-muted-foreground">No written notes.</p>
                                       )}
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>

@@ -138,11 +138,13 @@ export default function WeekendRundown() {
 
   const { data: existingRundown } = useWeekendRundown(user?.id, selectedCampus?.id || null, weekendDateStr);
   const { data: entries = [] } = useWeekendRundownEntries(selectedCampus?.id || null, weekendDateStr);
-  const { data: setSongs = [], isLoading: setSongsLoading } = useWeekendRundownSetSongs(
+  const { data: setContext = { set_notes: null, songs: [] }, isLoading: setSongsLoading } = useWeekendRundownSetSongs(
     selectedCampus,
     selectedWeekendDate,
     canReviewSongs,
   );
+  const setSongs = setContext.songs;
+  const setPlanNotes = setContext.set_notes;
   const saveWeekendRundown = useSaveWeekendRundown(user?.id);
 
   const [overallStatus, setOverallStatus] = useState<(typeof WEEKEND_RUNDOWN_STATUS_OPTIONS)[number]["value"]>("no_issues");
@@ -387,9 +389,16 @@ export default function WeekendRundown() {
                     <h2 className="font-semibold">Worship Review</h2>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Mark songs that were a strong fit for the vocalists you scheduled and leave notes for next time.
+                    Each song includes the key it was done in, who sang it, and any notes already left on the set or service flow.
                   </p>
                 </div>
+
+                {setPlanNotes ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+                    <p className="mb-1 text-sm font-medium">Notes left on the set</p>
+                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">{setPlanNotes}</p>
+                  </div>
+                ) : null}
 
                 {setSongsLoading ? (
                   <p className="text-sm text-muted-foreground">Loading the weekend set...</p>
@@ -404,12 +413,24 @@ export default function WeekendRundown() {
                     {setSongs.map((song, index) => (
                       <Card key={song.song_id} className="border-border/60">
                         <CardHeader className="pb-3">
-                          <CardTitle className="flex items-center gap-2 text-base">
+                          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                             <Badge variant="outline">{index + 1}</Badge>
                             <span>{song.title}</span>
+                            {song.song_key ? <Badge variant="secondary">Key {song.song_key}</Badge> : null}
                           </CardTitle>
+                          <CardDescription>
+                            {song.vocalists.length > 0
+                              ? `Sung by ${song.vocalists.map((vocalist) => vocalist.name).join(", ")}`
+                              : "No vocalist was assigned on the saved set."}
+                          </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                          {song.admin_notes ? (
+                            <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                              <p className="mb-1 text-sm font-medium">Admin notes</p>
+                              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{song.admin_notes}</p>
+                            </div>
+                          ) : null}
                           <div className="space-y-2">
                             <Label htmlFor={`song-note-${song.song_id}`} className="flex items-center gap-2 text-sm">
                               <BookOpenText className="h-4 w-4 text-muted-foreground" />
@@ -532,6 +553,37 @@ export default function WeekendRundown() {
                   <p className="text-sm whitespace-pre-wrap text-muted-foreground">
                     {entry.notes || "No extra notes were added."}
                   </p>
+                  {(entry.songFeedback.length > 0 || entry.vocalFeedback.length > 0) && (
+                    <div className="mt-4 space-y-3">
+                      {setSongs.map((song) => {
+                        const songNote = entry.songFeedback.find((item) => item.song_id === song.song_id);
+                        const vocalNotesForSong = entry.vocalFeedback.filter((item) => item.song_id === song.song_id);
+                        if (!songNote && vocalNotesForSong.length === 0) return null;
+                        return (
+                          <div key={song.song_id} className="rounded-md border border-border/60 bg-muted/20 p-3">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium">{song.title}</p>
+                              {song.song_key ? <Badge variant="outline">Key {song.song_key}</Badge> : null}
+                              {song.vocalists.length > 0 ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Sung by {song.vocalists.map((vocalist) => vocalist.name).join(", ")}
+                                </span>
+                              ) : null}
+                            </div>
+                            {songNote?.notes ? (
+                              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{songNote.notes}</p>
+                            ) : null}
+                            {vocalNotesForSong.map((vocalNote) => (
+                              <p key={vocalNote.id} className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                                <span className="font-medium text-foreground">{vocalNote.vocalist_name}: </span>
+                                {vocalNote.notes || (vocalNote.fit_label === "good_fit" ? "Good fit" : "No written notes.")}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

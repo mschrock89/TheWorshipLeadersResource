@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { notesWithoutMidiCue } from "@/lib/serviceFlowMidi";
+import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowClock";
 import { getWeekendPlanDate, GOOD_FIT_LABEL } from "@/lib/weekendRundown";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
@@ -42,6 +44,8 @@ export interface WeekendRundownVocalFeedbackRow {
 export interface WeekendRundownEntry extends WeekendRundownRow {
   profile_name: string | null;
   profile_avatar_url: string | null;
+  songFeedback: WeekendRundownSongFeedbackRow[];
+  vocalFeedback: Array<WeekendRundownVocalFeedbackRow & { vocalist_name: string }>;
 }
 
 export interface WeekendRundownSetSong {
@@ -49,8 +53,24 @@ export interface WeekendRundownSetSong {
   song_id: string;
   title: string;
   sequence_order: number;
+  song_key: string | null;
   vocalist_ids: string[];
   vocalists: Array<{ id: string; name: string }>;
+  /** Notes written on this song in the service flow. */
+  admin_notes: string | null;
+}
+
+export interface WeekendRundownSetContext {
+  /** Notes saved on the set in Set Builder. */
+  set_notes: string | null;
+  songs: WeekendRundownSetSong[];
+}
+
+const EMPTY_SET_CONTEXT: WeekendRundownSetContext = { set_notes: null, songs: [] };
+
+function visibleFlowNotes(notes: string | null | undefined) {
+  const cleaned = notesWithoutServiceStart(notesWithoutMidiCue(notes)).trim();
+  return cleaned || null;
 }
 
 interface WeekendRundownPayload {
@@ -74,6 +94,7 @@ interface DraftSetSongRow {
   id: string;
   song_id: string;
   sequence_order: number;
+  song_key?: string | null;
   vocalist_id?: string | null;
   songs?: { id: string; title: string } | null;
 }
@@ -152,10 +173,50 @@ export function useWeekendRundownEntries(campusId: string | null, weekendDate: s
         (profiles || []).map((profile) => [profile.id, profile]),
       );
 
+      const rundownIds = (rundowns || []).map((entry) => entry.id);
+      const [{ data: songFeedback, error: songError }, { data: vocalFeedback, error: vocalError }] = await Promise.all([
+        supabase.from("weekend_rundown_song_feedback").select("*").in("rundown_id", rundownIds),
+        supabase.from("weekend_rundown_vocal_feedback").select("*").in("rundown_id", rundownIds),
+      ]);
+      if (songError) throw songError;
+      if (vocalError) throw vocalError;
+
+      const vocalistIds = Array.from(new Set((vocalFeedback || []).map((item) => item.vocalist_id)));
+      const vocalistNameMap = new Map<string, string>();
+      if (vocalistIds.length > 0) {
+        const { data: vocalists, error: vocalistsError } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", vocalistIds);
+        if (vocalistsError) throw vocalistsError;
+        for (const vocalist of vocalists || []) {
+          vocalistNameMap.set(vocalist.id, vocalist.full_name || "Unknown vocalist");
+        }
+      }
+
+      const songFeedbackByRundown = new Map<string, WeekendRundownSongFeedbackRow[]>();
+      for (const item of songFeedback || []) {
+        const existing = songFeedbackByRundown.get(item.rundown_id) || [];
+        existing.push(item as WeekendRundownSongFeedbackRow);
+        songFeedbackByRundown.set(item.rundown_id, existing);
+      }
+
+      const vocalFeedbackByRundown = new Map<string, Array<WeekendRundownVocalFeedbackRow & { vocalist_name: string }>>();
+      for (const item of vocalFeedback || []) {
+        const existing = vocalFeedbackByRundown.get(item.rundown_id) || [];
+        existing.push({
+          ...(item as WeekendRundownVocalFeedbackRow),
+          vocalist_name: vocalistNameMap.get(item.vocalist_id) || "Unknown vocalist",
+        });
+        vocalFeedbackByRundown.set(item.rundown_id, existing);
+      }
+
       return (rundowns || []).map((entry) => ({
         ...(entry as WeekendRundownRow),
         profile_name: profileMap.get(entry.user_id)?.full_name || null,
         profile_avatar_url: profileMap.get(entry.user_id)?.avatar_url || null,
+        songFeedback: songFeedbackByRundown.get(entry.id) || [],
+        vocalFeedback: vocalFeedbackByRundown.get(entry.id) || [],
       })) as WeekendRundownEntry[];
     },
     enabled: !!campusId && !!weekendDate,
@@ -282,20 +343,20 @@ export function useWeekendRundownSetSongs(
   return useQuery({
     queryKey: ["weekend-rundown-set-songs", campus?.id, weekendDate ? format(weekendDate, "yyyy-MM-dd") : null],
     queryFn: async () => {
-      if (!campus?.id || !weekendDate || !enabled) return [];
+      if (!campus?.id || !weekendDate || !enabled) return EMPTY_SET_CONTEXT;
 
       const weekendDateStr = format(weekendDate, "yyyy-MM-dd");
       const planDateStr = format(getWeekendPlanDate(weekendDate, campus), "yyyy-MM-dd");
 
       const { data: draftSets, error: draftSetsError } = await supabase
         .from("draft_sets")
-        .select("id, plan_date, status, published_at, updated_at")
+        .select("id, plan_date, status, published_at, updated_at, notes")
         .eq("campus_id", campus.id)
         .eq("ministry_type", "weekend")
         .in("plan_date", Array.from(new Set([weekendDateStr, planDateStr])));
 
       if (draftSetsError) throw draftSetsError;
-      if (!draftSets || draftSets.length === 0) return [];
+      if (!draftSets || draftSets.length === 0) return EMPTY_SET_CONTEXT;
 
       const selectedDraftSet = [...draftSets].sort((a, b) => {
         const aPublished = a.status === "published" ? 1 : 0;
@@ -306,7 +367,7 @@ export function useWeekendRundownSetSongs(
 
       const { data: songs, error: songsError } = await supabase
         .from("draft_set_songs")
-        .select("id, song_id, sequence_order, vocalist_id, songs(id, title)")
+        .select("id, song_id, sequence_order, song_key, vocalist_id, songs(id, title)")
         .eq("draft_set_id", selectedDraftSet.id)
         .order("sequence_order", { ascending: true });
 
@@ -352,23 +413,59 @@ export function useWeekendRundownSetSongs(
         );
       }
 
-      return songRows.map((song) => {
-        const linkedVocalistIds = vocalistAssignmentsMap.get(song.id) || [];
-        const assignedVocalistIds = linkedVocalistIds.length > 0
-          ? Array.from(new Set(linkedVocalistIds))
-          : (song.vocalist_id ? [song.vocalist_id] : []);
-        return {
-          draft_set_song_id: song.id,
-          song_id: song.song_id,
-          title: song.songs?.title || "Untitled Song",
-          sequence_order: song.sequence_order,
-          vocalist_ids: assignedVocalistIds,
-          vocalists: assignedVocalistIds.map((vocalistId) => ({
-            id: vocalistId,
-            name: vocalistMap.get(vocalistId) || "Unknown vocalist",
-          })),
-        };
-      }) as WeekendRundownSetSong[];
+      const { data: flows, error: flowsError } = await supabase
+        .from("service_flows")
+        .select("id")
+        .eq("draft_set_id", selectedDraftSet.id);
+      if (flowsError) throw flowsError;
+
+      const flowIds = (flows || []).map((flow) => flow.id);
+      const adminNotesBySongId = new Map<string, string>();
+      if (flowIds.length > 0) {
+        const { data: flowItems, error: flowItemsError } = await supabase
+          .from("service_flow_items")
+          .select("song_id, notes")
+          .in("service_flow_id", flowIds)
+          .eq("item_type", "song");
+        if (flowItemsError) throw flowItemsError;
+
+        for (const item of flowItems || []) {
+          if (!item.song_id) continue;
+          const notes = visibleFlowNotes(item.notes);
+          if (!notes) continue;
+          const existing = adminNotesBySongId.get(item.song_id);
+          if (!existing) {
+            adminNotesBySongId.set(item.song_id, notes);
+            continue;
+          }
+          if (!existing.split("\n").includes(notes)) {
+            adminNotesBySongId.set(item.song_id, `${existing}\n${notes}`);
+          }
+        }
+      }
+
+      return {
+        set_notes: selectedDraftSet.notes?.trim() || null,
+        songs: songRows.map((song) => {
+          const linkedVocalistIds = vocalistAssignmentsMap.get(song.id) || [];
+          const assignedVocalistIds = linkedVocalistIds.length > 0
+            ? Array.from(new Set(linkedVocalistIds))
+            : (song.vocalist_id ? [song.vocalist_id] : []);
+          return {
+            draft_set_song_id: song.id,
+            song_id: song.song_id,
+            title: song.songs?.title || "Untitled Song",
+            sequence_order: song.sequence_order,
+            song_key: song.song_key || null,
+            vocalist_ids: assignedVocalistIds,
+            vocalists: assignedVocalistIds.map((vocalistId) => ({
+              id: vocalistId,
+              name: vocalistMap.get(vocalistId) || "Unknown vocalist",
+            })),
+            admin_notes: adminNotesBySongId.get(song.song_id) || null,
+          };
+        }),
+      } satisfies WeekendRundownSetContext;
     },
     enabled: !!campus?.id && !!weekendDate && enabled,
   });
