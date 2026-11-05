@@ -135,21 +135,18 @@ export function SongMapBar({
     <div>
       <div className="flex min-w-0 items-baseline gap-4">
         <p className="min-w-0 flex-1 truncate text-2xl font-bold leading-tight">{title}</p>
-        {prompt ? (
+        {playingSection ? (
           <button
             type="button"
-            className={cn(
-              "max-w-[34%] shrink-0 cursor-pointer truncate rounded-md px-2.5 py-1 text-base font-bold",
-              prompt.kind === "mix" ? "bg-amber-500/15 text-amber-600 dark:text-amber-300" : "bg-primary/15 text-primary",
-            )}
-            title={`${songMapKindLabel(prompt.kind)} · ${prompt.body}`}
-            onClick={() => openDraft(prompt.offsetSeconds, prompt)}
+            className="max-w-[40%] shrink-0 truncate rounded-md bg-yellow-400/15 px-2.5 py-1 text-base font-bold text-yellow-700 dark:text-yellow-300"
+            title={`Section · ${playingSection.body}`}
+            onClick={() => openDraft(playingSection.offsetSeconds, playingSection)}
           >
-            {songMapKindLabel(prompt.kind)} · {prompt.body}
+            {playingSection.body}
           </button>
         ) : null}
       </div>
-      <div className={cn("relative", playingSection ? "mt-6" : "mt-2")}>
+      <div className="relative mt-2">
         <div
           className="relative h-3 cursor-pointer rounded-full bg-muted"
           onClick={(event) => {
@@ -163,19 +160,6 @@ export function SongMapBar({
             className="absolute inset-y-0 left-0 rounded-full bg-primary/70"
             style={{ width: `${Math.round(progress * 1000) / 10}%` }}
           />
-          {playingSection && durationSeconds > 0 ? (
-            <button
-              type="button"
-              className="absolute bottom-full z-30 mb-1 -translate-x-1/2 whitespace-nowrap text-sm font-bold text-yellow-600 dark:text-yellow-300"
-              style={{ left: `${(playingSection.offsetSeconds / durationSeconds) * 100}%` }}
-              onClick={(event) => {
-                event.stopPropagation();
-                openDraft(playingSection.offsetSeconds, playingSection);
-              }}
-            >
-              {playingSection.body}
-            </button>
-          ) : null}
           {durationSeconds > 0
             ? cues.map((cue) => (
                 <button
