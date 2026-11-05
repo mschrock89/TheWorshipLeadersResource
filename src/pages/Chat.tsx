@@ -52,7 +52,8 @@ function useUserMinistriesForCampus(userId: string | undefined, campusId: string
 }
 
 function ChatContent() {
-  const { user, isLoading: authLoading, isLeader, isAdmin } = useAuth();
+  const { user, isLoading: authLoading, isLeader, isAdmin, canSwitchCampusChat } = useAuth();
+  const canSeeAllCampuses = isAdmin || canSwitchCampusChat;
   const { data: userCampuses, isLoading: campusesLoading } = useUserCampuses(user?.id);
   const { data: allCampuses, isLoading: allCampusesLoading } = useCampuses();
 
@@ -119,14 +120,13 @@ function ChatContent() {
   const { setTyping, typingUsers } = useTypingPresence(selectedCampusId, selectedMinistryType, userProfile?.full_name ?? null);
 
   // Determine if we're still loading campuses data
-  const isCampusDataLoading = isLeader ? allCampusesLoading : campusesLoading;
+  const isCampusDataLoading = canSeeAllCampuses ? allCampusesLoading : campusesLoading;
 
-  // Admins see all campuses, others see only their assigned campuses
   const availableCampuses = useMemo(
-    () => isLeader && allCampuses
+    () => canSeeAllCampuses && allCampuses
       ? allCampuses.map(c => ({ campus_id: c.id, campuses: c }))
       : userCampuses || [],
-    [allCampuses, isLeader, userCampuses],
+    [allCampuses, canSeeAllCampuses, userCampuses],
   );
 
   const selectedCampus = useMemo(
@@ -150,12 +150,12 @@ function ChatContent() {
     });
     
     // Non-admin/leader users also filter by their assigned ministries
-    if (!isAdmin && !isLeader) {
+    if (!isAdmin && !isLeader && !canSwitchCampusChat) {
       ministries = ministries.filter(m => userMinistries?.includes(m.value));
     }
     
     return ministries;
-  }, [chatMinistryTypes, isAdmin, isLeader, userMinistries, isMurfreesboroCentral]);
+  }, [canSwitchCampusChat, chatMinistryTypes, isAdmin, isLeader, userMinistries, isMurfreesboroCentral]);
 
   // Find the index of the first unread message and count total unread
   const { firstUnreadIndex, unreadCount } = useMemo(() => {

@@ -1,21 +1,19 @@
 import { useState } from "react";
 import { Music } from "lucide-react";
 import { useAlbums, useAlbumWithTracks } from "@/hooks/useAlbums";
-import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
+import { CAPABILITIES } from "@/lib/capabilities";
 import { AlbumGrid } from "@/components/audio/AlbumGrid";
 import { AlbumDetailView } from "@/components/audio/AlbumDetailView";
 import { CreateAlbumDialog } from "@/components/audio/CreateAlbumDialog";
 
 export default function Resources() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
-  const { user } = useAuth();
-  
+  const { can } = useAuth();
+  const isAdmin = can(CAPABILITIES.ADMIN_TOOLS);
+
   const { data: albums, isLoading: loadingAlbums } = useAlbums();
   const { data: selectedAlbum, isLoading: loadingAlbum } = useAlbumWithTracks(selectedAlbumId);
-  const { data: userRole } = useUserRole(user?.id);
-  
-  const isAdmin = userRole === "admin";
 
   const handleAlbumSelect = (albumId: string) => {
     setSelectedAlbumId(albumId);

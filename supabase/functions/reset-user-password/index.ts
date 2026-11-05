@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resourceAppFromRequest, userHasAnyCapability } from "../_shared/requireCapability.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,39 +60,20 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    const allowedRoles = [
-      'admin',
-      'campus_admin',
-      'campus_worship_pastor',
-      'student_worship_pastor',
-      'childrens_pastor',
-      'video_director',
-      'production_manager',
-      'network_worship_pastor',
-      'network_worship_leader',
-      'network_student_pastor',
-      'leader',
-    ];
-
     let hasRole = false;
-    for (const role of allowedRoles) {
-      const { data, error: roleError } = await adminClient.rpc('has_role', {
-        _user_id: userId,
-        _role: role,
-      });
-
-      if (roleError) {
-        console.log('Error checking role:', roleError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to verify permissions' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (data) {
-        hasRole = true;
-        break;
-      }
+    try {
+      hasRole = await userHasAnyCapability(
+        adminClient,
+        userId,
+        ["manage_team", "admin_tools", "admin_full"],
+        resourceAppFromRequest(req),
+      );
+    } catch (roleError) {
+      console.log('Error checking role:', roleError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (!hasRole) {

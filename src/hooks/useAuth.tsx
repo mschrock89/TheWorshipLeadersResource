@@ -1,14 +1,17 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { getAppUrl } from "@/lib/resourceApps";
-import { getCurrentResourceAppKey, hasStudentAppAdminRole } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { isNativeApp } from "@/lib/native";
+import { CAPABILITIES, capabilitySetAllows, fetchCapabilitySet, type CapabilityKey } from "@/lib/capabilities";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
+  can: (capability: CapabilityKey | string) => boolean;
   isAdmin: boolean;
   isLeader: boolean;
   isVideoDirector: boolean;
@@ -25,34 +28,38 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLeader, setIsLeader] = useState(false);
-  const [isVideoDirector, setIsVideoDirector] = useState(false);
-  const [isProductionManager, setIsProductionManager] = useState(false);
-  const [canManageTeam, setCanManageTeam] = useState(false);
-  const [canSwitchCampusChat, setCanSwitchCampusChat] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const resourceApp = getCurrentResourceAppKey();
+
+  const capsQuery = useQuery({
+    queryKey: ["capabilities", user?.id, resourceApp],
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => fetchCapabilitySet(user!.id, resourceApp),
+  });
+
+  const caps = useMemo(
+    () => (user ? capsQuery.data ?? new Set<string>() : new Set<string>()),
+    [capsQuery.data, user],
+  );
+  const can = useCallback(
+    (capability: CapabilityKey | string) => capabilitySetAllows(caps, capability),
+    [caps],
+  );
+  const isAdmin = can(CAPABILITIES.ADMIN_FULL);
+  const isLeader = can(CAPABILITIES.LEADER_ACCESS);
+  const isVideoDirector = can(CAPABILITIES.VIDEO_DIRECTOR_TOOLS);
+  const isProductionManager = can(CAPABILITIES.PRODUCTION_MANAGER_TOOLS);
+  const canManageTeam = can(CAPABILITIES.MANAGE_TEAM);
+  const canSwitchCampusChat = can(CAPABILITIES.SWITCH_CAMPUS_CHAT);
+  const isLoading = sessionLoading || (!!user && capsQuery.isLoading && !capsQuery.data);
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-
-        // Defer role check to avoid deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            checkUserRole(session.user.id);
-          }, 0);
-        } else {
-          setIsAdmin(false);
-          setIsLeader(false);
-          setIsVideoDirector(false);
-          setIsProductionManager(false);
-          setCanManageTeam(false);
-          setCanSwitchCampusChat(false);
-        }
       }
     );
 
@@ -60,74 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) {
-        checkUserRole(session.user.id);
-      }
-      setIsLoading(false);
+      setSessionLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const checkUserRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId);
-
-    // On a transient fetch failure, keep the current role flags instead of
-    // silently demoting the user (e.g. stripping admin UI until the next check).
-    if (error) {
-      console.error("Failed to fetch user roles:", error);
-      return;
-    }
-
-    const roles = data?.map(r => r.role) || [];
-    const hasRole = (role: typeof roles[number]) => roles.includes(role);
-    const resourceAppKey = getCurrentResourceAppKey();
-    const hasStudentAppAdmin = hasStudentAppAdminRole(roles, resourceAppKey);
-    
-    setIsAdmin(hasRole("admin") || hasStudentAppAdmin);
-    setIsLeader(
-      hasRole("admin") ||
-      hasStudentAppAdmin ||
-      hasRole("campus_admin") ||
-      hasRole("campus_worship_pastor") ||
-      hasRole("network_student_pastor") ||
-      hasRole("student_pastor") ||
-      hasRole("student_worship_pastor") ||
-      hasRole("childrens_pastor") ||
-      hasRole("network_worship_pastor") ||
-      hasRole("network_worship_leader")
-    );
-    setIsVideoDirector(hasRole("admin") || hasStudentAppAdmin || hasRole("video_director"));
-    setIsProductionManager(hasRole("admin") || hasStudentAppAdmin || hasRole("production_manager"));
-    setCanManageTeam(
-      hasRole("admin") ||
-      hasStudentAppAdmin ||
-      hasRole("campus_admin") ||
-      hasRole("campus_worship_pastor") ||
-      hasRole("network_student_pastor") ||
-      hasRole("student_pastor") ||
-      hasRole("student_worship_pastor") ||
-      hasRole("childrens_pastor") ||
-      hasRole("network_worship_pastor") ||
-      hasRole("network_worship_leader") ||
-      hasRole("video_director") ||
-      hasRole("production_manager")
-    );
-    setCanSwitchCampusChat(
-      hasRole("admin") ||
-      hasStudentAppAdmin ||
-      hasRole("campus_admin") ||
-      hasRole("campus_worship_pastor") ||
-      hasRole("network_student_pastor") ||
-      hasRole("student_pastor") ||
-      hasRole("childrens_pastor") ||
-      hasRole("network_worship_pastor") ||
-      hasRole("network_worship_leader")
-    );
-  };
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -189,16 +133,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
-    setIsAdmin(false);
-    setIsLeader(false);
-    setIsVideoDirector(false);
-    setIsProductionManager(false);
-    setCanManageTeam(false);
-    setCanSwitchCampusChat(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, isAdmin, isLeader, isVideoDirector, isProductionManager, canManageTeam, canSwitchCampusChat, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, isLoading, can, isAdmin, isLeader, isVideoDirector, isProductionManager, canManageTeam, canSwitchCampusChat, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );

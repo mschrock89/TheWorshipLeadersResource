@@ -31,6 +31,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession, getViewMinistryFilterOptions, isValidViewMinistryFilter, setlistMatchesMinistryFilter } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel, formatDateForDB } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { CAPABILITIES } from "@/lib/capabilities";
 import { useRosterVisibilityScope } from "@/hooks/useRosterVisibilityScope";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
@@ -55,19 +56,6 @@ const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
 const WEEKEND_INDEPENDENT_MINISTRY_TYPES = new Set(["production", "video", "speaker"]);
 const TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME = "__TEAM_BUILDER_BLANK_SLOT__";
 const TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME = "Empty";
-const CROSS_CAMPUS_SETLIST_VIEWER_ROLES = new Set([
-  "admin",
-  "campus_admin",
-  "campus_worship_pastor",
-  "network_student_pastor",
-  "student_pastor",
-  "student_worship_pastor",
-  "childrens_pastor",
-  "network_worship_pastor",
-  "network_worship_leader",
-  "campus_pastor",
-]);
-
 function getRosterMemberDisplayName(memberName: string | null | undefined) {
   return memberName === TEAM_BUILDER_BLANK_SLOT_MEMBER_NAME
     ? TEAM_BUILDER_BLANK_SLOT_DISPLAY_NAME
@@ -199,7 +187,7 @@ function SetlistYoutubeLinks({
 }
 
 function StandardMySetlists() {
-  const { isAdmin, canManageTeam, user } = useAuth();
+  const { can, canManageTeam, user } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
   const setlistsPageLabel = "My Setlists";
   const [searchParams, setSearchParams] = useSearchParams();
@@ -207,8 +195,6 @@ function StandardMySetlists() {
   const shouldConfirmFromLink = searchParams.get("confirm") === "1";
   const { data: campuses } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
-  const { data: userRoles = [] } = useUserRoles(user?.id);
-  
   // Use global campus selection context if available
   const campusContext = useCampusSelectionOptional();
   const [localCampusId, setLocalCampusId] = useState<string>("");
@@ -240,11 +226,8 @@ function StandardMySetlists() {
     },
     [ministryContext],
   );
-  const canViewCampusWideSetlists = useMemo(
-    () => userRoles.some(({ role }) => CROSS_CAMPUS_SETLIST_VIEWER_ROLES.has(role)),
-    [userRoles],
-  );
-  const canViewSetlistConfirmationStatus = isAdmin || canManageTeam || canViewCampusWideSetlists;
+  const canViewCampusWideSetlists = can(CAPABILITIES.VIEW_ALL_SETLISTS);
+  const canViewSetlistConfirmationStatus = canManageTeam || canViewCampusWideSetlists;
 
   const assignedCampusIds = useMemo(
     () => new Set(userCampuses.map((uc) => uc.campus_id)),
@@ -255,9 +238,9 @@ function StandardMySetlists() {
     return campuses.filter((campus) => assignedCampusIds.has(campus.id));
   }, [campuses, assignedCampusIds]);
   const selectableCampuses = useMemo(() => {
-    if (isAdmin || canViewCampusWideSetlists) return campuses || [];
+    if (canViewCampusWideSetlists) return campuses || [];
     return assignedCampuses;
-  }, [isAdmin, canViewCampusWideSetlists, campuses, assignedCampuses]);
+  }, [canViewCampusWideSetlists, campuses, assignedCampuses]);
   
   // Sync with global context - use context value if set, otherwise use local state
   const selectedCampusId = campusContext?.selectedCampusId || localCampusId;
@@ -361,14 +344,14 @@ function StandardMySetlists() {
   }, [allSetlists, selectedMinistryType]);
 
   const visibleGroupedSetlists = useMemo(() => {
-    if (isAdmin || canViewCampusWideSetlists) return allGroupedSetlists;
+    if (canViewCampusWideSetlists) return allGroupedSetlists;
     return allGroupedSetlists
       .map((group) => ({
         ...group,
         items: group.items.filter((setlist) => setlist.amIOnRoster === true),
       }))
       .filter((group) => group.items.length > 0);
-  }, [allGroupedSetlists, isAdmin, canViewCampusWideSetlists]);
+  }, [allGroupedSetlists, canViewCampusWideSetlists]);
 
   // Find the index of the first upcoming/current setlist to start there
   const initialIndex = useMemo(() => {

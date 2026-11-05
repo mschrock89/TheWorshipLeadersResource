@@ -655,7 +655,7 @@ function LifeGroupDetailCard({
 }
 
 export default function LifeGroups() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, can, canManageTeam } = useAuth();
   const isStudentApp = isCurrentStudentResourceApp();
   const resourceAppKey = getCurrentResourceAppKey();
   const gradeOptions = LIFE_GROUP_GRADE_OPTIONS[resourceAppKey] || [8, 9, 10, 11, 12];
@@ -711,7 +711,7 @@ export default function LifeGroups() {
   const selectedCampus = availableCampuses.find((campus) => campus?.id === selectedCampusId);
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) || null;
   const selectedCampusName = selectedCampus?.name || "All Campuses";
-  const canManageGroups = isStudentApp && isAdmin;
+  const canManageGroups = isStudentApp && (isAdmin || can("admin_tools") || canManageTeam);
   const canSubmitSelectedGroup = !!selectedGroup && (isAdmin || selectedGroup.isCurrentUserLeader);
 
   const campusFilteredProfiles = useMemo(() => {

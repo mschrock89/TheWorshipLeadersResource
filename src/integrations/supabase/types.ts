@@ -808,6 +808,32 @@ export type Database = {
         }
         Relationships: []
       }
+      campus_ministries: {
+        Row: {
+          campus_id: string
+          created_at: string
+          ministry_type: string
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          ministry_type: string
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          ministry_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campus_ministries_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campus_ministry_service_schedules: {
         Row: {
           campus_id: string

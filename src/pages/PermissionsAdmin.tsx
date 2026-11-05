@@ -121,7 +121,9 @@ function MatrixTab() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <CardTitle className="text-xl font-semibold">Capability matrix</CardTitle>
-            <CardDescription>Grant each role the actions it should be able to perform.</CardDescription>
+            <CardDescription>
+              Each checkbox is enforced on its own. Full admin access does not turn the other capabilities on.
+            </CardDescription>
           </div>
           <div className="w-56">
             <Label className="text-xs text-muted-foreground">App scope</Label>

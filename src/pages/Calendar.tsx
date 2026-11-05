@@ -58,6 +58,8 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { campusGroupOffersMinistry } from "@/lib/campusSetup";
+import { useAllCampusMinistries } from "@/hooks/useCampusMinistries";
 import { getEffectiveCustomServiceMinistryType, getServiceFlowMinistryType } from "@/lib/customServiceMinistry";
 import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
 import { useAssignedAuditionSetlists, useUpcomingAudition } from "@/hooks/useAuditions";
@@ -781,6 +783,7 @@ function StandardCalendar() {
   const {
     data: campuses = []
   } = useCampuses();
+  const campusMinistryLists = useAllCampusMinistries();
   const {
     data: ministrySchedules = [],
     isFetched: ministrySchedulesFetched,
@@ -2680,7 +2683,7 @@ function StandardCalendar() {
                                 <div className="space-y-3">
                                   <Label>Ministries</Label>
                                   <div className="grid gap-2 rounded-md border border-border p-3">
-                                    {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition" && (!appMinistryTypes || appMinistryTypes.includes(m.value))).map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
+                                    {MINISTRY_TYPES.filter(m => !('hidden' in m && m.hidden) && m.value !== "audition" && (!appMinistryTypes || appMinistryTypes.includes(m.value)) && (newEvent.ministry_types.includes(m.value) || campusGroupOffersMinistry(newEvent.campus_ids.map((id) => campusMinistryLists.byCampus.get(id) ?? null), m.value))).map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
                                         <Checkbox checked={newEvent.ministry_types.includes(option.value)} onCheckedChange={checked => {
                                   setNewEvent(current => {
                                     const nextMinistryTypes = checked ? Array.from(new Set([...current.ministry_types, option.value])) : current.ministry_types.filter(value => value !== option.value);
@@ -2756,7 +2759,7 @@ function StandardCalendar() {
                                   <Label>Ministries</Label>
                                   <div className="grid gap-2 rounded-md border border-border p-3">
                                     {SET_PLANNER_MINISTRY_OPTIONS
-                                      .filter(option => !appMinistryTypes || appMinistryTypes.includes(option.value))
+                                      .filter(option => (!appMinistryTypes || appMinistryTypes.includes(option.value)) && (newEvent.ministry_types.includes(option.value) || campusGroupOffersMinistry([campusMinistryLists.byCampus.get(newEvent.campus_id) ?? null], option.value)))
                                       .map(option => <label key={option.value} className="flex items-center gap-2 text-sm">
                                         <Checkbox checked={newEvent.ministry_types.includes(option.value)} onCheckedChange={checked => {
                                     setNewEvent(current => {

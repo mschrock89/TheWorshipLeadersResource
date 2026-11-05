@@ -36,6 +36,8 @@ import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, Fil
 import { cn } from "@/lib/cn";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
 import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { campusOffersMinistry } from "@/lib/campusSetup";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
@@ -136,11 +138,16 @@ interface SuggestedSong {
 
 
 export default function SetPlanner() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, can, isLoading: authLoading } = useAuth();
+  const canPlanSet = can("plan_set");
   const { data: userRole, isLoading: roleLoading } = useUserRole(user?.id);
   const { data: allUserRoles = [] } = useUserRoles(user?.id);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!authLoading && !canPlanSet) navigate("/dashboard");
+  }, [authLoading, canPlanSet, navigate]);
   const { data: campuses } = useCampuses();
   
   // Use global campus selection context if available
@@ -262,18 +269,25 @@ export default function SetPlanner() {
   const queryCampusId =
     isNetworkWideCampus || isNetworkWideMinistry ? null : physicalCampusId || null;
   const currentCampus = availableCampuses.find((c) => c.id === physicalCampusId);
-  const ministryOptions = isNetworkWideCampus
+  const { enabled: campusMinistries } = useCampusMinistrySet(isNetworkWideCampus ? null : physicalCampusId || null);
+  const ministryOptions = (isNetworkWideCampus
     ? NETWORK_WIDE_SET_BUILDER_MINISTRY_OPTIONS
-    : SET_BUILDER_MINISTRY_OPTIONS;
+    : SET_BUILDER_MINISTRY_OPTIONS
+  ).filter((option) => campusOffersMinistry(campusMinistries, option.value));
   const showCampusSelector =
     availableCampuses.length > 1 || hasNetworkAccess || isAdmin || isNetworkWideCampus;
 
-  // Network Wide campus only plans Student Camp session sets
+  // Network Wide campus only plans Student Camp session sets.
+  // A campus with a saved ministry list only plans those ministries.
   useEffect(() => {
     if (isNetworkWideCampus && !isNetworkWideMinistryType(selectedMinistry)) {
       setSelectedMinistry("student_camp_morning");
+      return;
     }
-  }, [isNetworkWideCampus, selectedMinistry]);
+    if (isNetworkWideCampus || !campusMinistries) return;
+    if (ministryOptions.some((option) => option.value === selectedMinistry)) return;
+    if (ministryOptions[0]) setSelectedMinistry(ministryOptions[0].value);
+  }, [campusMinistries, isNetworkWideCampus, ministryOptions, selectedMinistry]);
 
   // Check if current campus uses weekend grouping (has both Saturday and Sunday services)
   const isWeekendCampus = currentCampus?.has_saturday_service && currentCampus?.has_sunday_service;

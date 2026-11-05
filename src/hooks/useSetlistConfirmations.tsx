@@ -206,21 +206,27 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
         "video_director", "production_manager", "campus_pastor"
       ];
       const hasLeadershipRole = roles.some(r => leadershipRoles.includes(r));
-      const isFullAdmin = roles.some((role) => ["admin", "campus_admin"].includes(role));
-      const canViewAllSetlists = roles.some((role) =>
-        [
-          "admin",
-          "campus_admin",
-          "campus_worship_pastor",
-          "network_student_pastor",
-          "student_pastor",
-          "student_worship_pastor",
-          "childrens_pastor",
-          "network_worship_pastor",
-          "network_worship_leader",
-          "campus_pastor",
-        ].includes(role),
-      );
+      const { data: viewAllSetlists, error: viewAllError } = await supabase.rpc("has_capability", {
+        _user_id: user.id,
+        _cap: "view_all_setlists",
+        _app: resourceAppKey,
+      });
+      const canViewAllSetlists = viewAllError
+        ? roles.some((role) =>
+            [
+              "admin",
+              "campus_admin",
+              "campus_worship_pastor",
+              "network_student_pastor",
+              "student_pastor",
+              "student_worship_pastor",
+              "childrens_pastor",
+              "network_worship_pastor",
+              "network_worship_leader",
+              "campus_pastor",
+            ].includes(role),
+          )
+        : Boolean(viewAllSetlists);
       const isVolunteerOnly = (roles.includes("volunteer") || roles.includes("member")) && !hasLeadershipRole;
 
       // Get user's campuses
@@ -707,7 +713,7 @@ export function usePublishedSetlists(campusId?: string, ministryType?: string, i
 
       // Even for non-admin leaders, custom-service contexts must stay roster-scoped.
       // This avoids showing the wrong service when multiple services share the same date/campus/ministry.
-      if (!isFullAdmin) {
+      if (!canViewAllSetlists) {
         setlists = setlists.filter((setlist) => {
           // Camp session sets (Kids Camp / Student Camp morning/afternoon/evening) carry a
           // custom_service_id for service-flow scoping, but they are not a true

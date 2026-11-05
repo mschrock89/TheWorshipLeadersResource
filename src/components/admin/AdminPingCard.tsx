@@ -18,6 +18,8 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
+import { campusOffersMinistry } from "@/lib/campusSetup";
 import { useProfiles } from "@/hooks/useProfiles";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useActiveCampMode } from "@/hooks/useCampMode";
@@ -95,6 +97,7 @@ export function AdminPingCard() {
   const { data: userRoles = [] } = useUserRoles(user?.id);
   const { data: activeCamp } = useActiveCampMode();
   const [campusId, setCampusId] = useState<string>("all");
+  const { enabled: campusMinistries } = useCampusMinistrySet(campusId === "all" ? null : campusId);
   const [useCampAudience, setUseCampAudience] = useState(false);
   const [selectedMinistries, setSelectedMinistries] = useState<string[]>([]);
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
@@ -123,12 +126,13 @@ export function AdminPingCard() {
   });
 
   const ministryOptions = useMemo<MinistryOption[]>(() => {
-    const baseOptions: MinistryOption[] = isStudentApp
+    const baseOptions: MinistryOption[] = (isStudentApp
       ? [
           { value: STUDENT_TEAM_BUILDER_MINISTRY_TYPE, label: "Students" },
           { value: "life_groups", label: "Life Groups" },
         ]
-      : SET_PLANNER_MINISTRY_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+      : SET_PLANNER_MINISTRY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
+    ).filter((option) => campusOffersMinistry(campusMinistries, option.value));
 
     const teamOptions = (teamsQuery.data || []).map((team) => ({
       value: `team:${team.id}`,
@@ -140,7 +144,7 @@ export function AdminPingCard() {
       optionsByValue.set(option.value, option);
     });
     return Array.from(optionsByValue.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [isStudentApp, teamsQuery.data]);
+  }, [campusMinistries, isStudentApp, teamsQuery.data]);
 
   const gradeOptions = isStudentApp
     ? useCampAudience && activeCamp

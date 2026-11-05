@@ -525,8 +525,15 @@ export function useAdminCampusId() {
       const assignedCampusIds = (campusRows || []).map((row) => row.campus_id).filter(Boolean);
       const fallbackCampusId = profileRow?.default_campus_id || assignedCampusIds[0] || null;
 
-      // Check if user is org admin
-      const isOrgAdmin = hasOrgAdminPrivilegesForResourceApp(data.map((row) => row.role), getCurrentResourceAppKey());
+      // Full admin access is the unrestricted campus scope. The checkbox, not the role name, decides it.
+      const { data: fullAdmin, error: fullAdminError } = await supabase.rpc("has_capability", {
+        _user_id: user.id,
+        _cap: "admin_full",
+        _app: getCurrentResourceAppKey(),
+      });
+      const isOrgAdmin = fullAdminError
+        ? hasOrgAdminPrivilegesForResourceApp(data.map((row) => row.role), getCurrentResourceAppKey())
+        : Boolean(fullAdmin);
       if (isOrgAdmin) {
         return {
           isOrgAdmin: true,

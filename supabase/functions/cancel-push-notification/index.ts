@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resourceAppFromRequest, userHasAnyCapability } from "../_shared/requireCapability.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,14 +53,12 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const { data: roleRows, error: roleError } = await serviceClient
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
-
-    if (roleError) throw roleError;
-
-    const isAdmin = (roleRows || []).some((row) => row.role === "admin");
+    const isAdmin = await userHasAnyCapability(
+      serviceClient,
+      user.id,
+      ["admin_tools", "admin_full"],
+      resourceAppFromRequest(req),
+    );
     if (!isAdmin) {
       return new Response(JSON.stringify({ error: "Admin access required" }), {
         status: 403,

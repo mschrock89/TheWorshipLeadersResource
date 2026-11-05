@@ -107,7 +107,7 @@ export default function Team() {
   const { data: campusMinistryPositions = [] } = useAllCampusMinistryPositions();
   const { data: directoryBaseRoles = [] } = useDirectoryBaseRoles();
   const { data: campuses = [] } = useCampuses();
-  const { canManageTeam, isAdmin } = useAuth();
+  const { canManageTeam, can } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -762,7 +762,7 @@ export default function Team() {
               onSendEmail={canManageTeam ? handleSendIndividualEmail : undefined}
               onResetPassword={canManageTeam ? handleResetPassword : undefined}
               onManageRoles={canManageTeam ? handleManageRoles : undefined}
-              onDelete={isAdmin ? handleDeleteProfile : undefined}
+              onDelete={can("admin_tools") ? handleDeleteProfile : undefined}
             />
           ))}
         </div>

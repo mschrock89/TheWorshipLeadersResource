@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resourceAppFromRequest, userHasAnyCapability } from "../_shared/requireCapability.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -188,32 +189,12 @@ serve(async (req) => {
       );
     }
 
-    const allowedRoles = [
-      'admin',
-      'campus_admin',
-      'campus_worship_pastor',
-      'student_worship_pastor',
-      'childrens_pastor',
-      'video_director',
-      'production_manager',
-      'network_worship_pastor',
-      'network_worship_leader',
-      'network_student_pastor',
-      'leader',
-    ];
-
-    let isAllowed = false;
-    for (const role of allowedRoles) {
-      const { data } = await userClient.rpc('has_role', {
-        _user_id: user.id,
-        _role: role,
-      });
-
-      if (data) {
-        isAllowed = true;
-        break;
-      }
-    }
+    const isAllowed = await userHasAnyCapability(
+      userClient,
+      user.id,
+      ["manage_team", "admin_tools", "admin_full"],
+      resourceAppFromRequest(req),
+    );
 
     if (!isAllowed) {
       console.error('User does not have import permissions:', user.id);

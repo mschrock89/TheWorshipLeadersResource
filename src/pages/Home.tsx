@@ -12,7 +12,6 @@ import {
   Music,
   Settings,
   Users,
-  Wrench,
   ArrowLeftRight,
   BookOpen,
   ListMusic,
@@ -31,7 +30,6 @@ import { useProfile } from "@/hooks/useProfiles";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { Badge } from "@/components/ui/badge";
 import { useIsApprover, usePendingApprovalCount } from "@/hooks/useSetlistApprovals";
-import { useDrumTechAccess } from "@/hooks/useDrumTech";
 import { usePendingSwapRequestsCount } from "@/hooks/useSwapRequests";
 import { usePendingGapInviteCount } from "@/hooks/useGapRequests";
 import { useMyIncompleteDevoCount } from "@/hooks/useDevoAssignments";
@@ -116,7 +114,6 @@ export default function Home() {
   const { data: pendingSwaps = 0 } = usePendingSwapRequestsCount();
   const { data: pendingGapInvites = 0 } = usePendingGapInviteCount();
   const { data: incompleteDevoCount = 0 } = useMyIncompleteDevoCount();
-  const drumTechAccess = useDrumTechAccess();
   const roleNames = roles.map((role) => role.role);
   const isAuditionCandidate = isAuditionCandidateRole(roleNames);
   const isStudentBase = isStudentBaseRole(roleNames);
@@ -276,14 +273,6 @@ export default function Home() {
                       <Link to="/calendar" className="flex items-center gap-2">
                         <ListMusic className="h-4 w-4" />
                         Calendar
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  {!isStudentApp && !isAuditionCandidate && !isStudentBase && drumTechAccess.hasAnyAccess && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/drum-tech" className="flex items-center gap-2">
-                        <Wrench className="h-4 w-4" />
-                        Drum Tech
                       </Link>
                     </DropdownMenuItem>
                   )}

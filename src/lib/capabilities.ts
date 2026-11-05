@@ -1,12 +1,11 @@
-// Capability keys and the legacy fail-safe resolver.
+// Capability keys and the resolver the permissions screen edits.
 //
-// The DB (role_capabilities + has_capability) is the source of truth once the
-// permissions migration is applied. Until then — or if that query ever fails —
-// useCapabilities falls back to legacyCapabilitiesFromRoles below, which
-// reproduces the exact role logic that used to live in useAuth / useSetlist*.
-// Keep this in lockstep with the seed in
-// supabase/migrations/20260708120000_add_permissions_capabilities_foundation.sql.
+// role_capabilities + user_capability_overrides are the source of truth.
+// Each checkbox grants only that capability. Full admin access does not
+// imply the others. If the tables cannot be read, useCapabilities falls
+// back to legacyCapabilitiesFromRoles.
 
+import { supabase } from "@/integrations/supabase/client";
 import type { ResourceAppKey } from "@/lib/resourceApps";
 
 export const CAPABILITIES = {
@@ -23,6 +22,7 @@ export const CAPABILITIES = {
   WEEKEND_RUNDOWN: "weekend_rundown",
   PUBLISH_SET_WITHOUT_APPROVAL: "publish_set_without_approval",
   LIVE_LINE_NOTES: "live_line_notes",
+  POST_FEED: "post_feed",
 } as const;
 
 export type CapabilityKey = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -130,10 +130,59 @@ export function legacyCapabilitiesFromRoles(
 }
 
 /**
- * Given a resolved capability set, does it satisfy `cap`? admin_full is a
- * break-glass superset (mirrors has_capability in SQL) so full admins pass
- * every check until the Phase 5 cutover removes that fallback.
+ * A capability is allowed only when that exact key is granted. Full admin
+ * access is its own checkbox and does not unlock the rest.
  */
 export function capabilitySetAllows(caps: Set<string>, cap: CapabilityKey | string): boolean {
-  return caps.has(cap) || caps.has(CAPABILITIES.ADMIN_FULL);
+  return caps.has(cap);
+}
+
+/** Role grants plus per-user overrides for this app. Exact keys only. */
+export async function fetchCapabilitySet(userId: string, resourceApp: string): Promise<Set<string>> {
+  const { data: roleRows, error: rolesError } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId);
+
+  if (rolesError) {
+    console.error("fetchCapabilitySet: failed to load roles:", rolesError);
+    return new Set<string>();
+  }
+
+  const roles = (roleRows || []).map((row) => row.role as string);
+  const appScope = [resourceApp, "all"];
+  const [{ data: grants, error: grantsError }, { data: overrides, error: overridesError }] =
+    await Promise.all([
+      supabase
+        .from("role_capabilities")
+        .select("capability_key, role, resource_app")
+        .in("resource_app", appScope),
+      supabase
+        .from("user_capability_overrides")
+        .select("capability_key, granted, resource_app, expires_at")
+        .eq("user_id", userId)
+        .in("resource_app", appScope),
+    ]);
+
+  if (grantsError || overridesError) {
+    console.error("fetchCapabilitySet: falling back to role defaults", grantsError || overridesError);
+    return legacyCapabilitiesFromRoles(roles, resourceApp);
+  }
+
+  const roleSet = new Set(roles);
+  const caps = new Set<string>();
+  for (const grant of grants || []) {
+    if (roleSet.has(grant.role as string)) caps.add(grant.capability_key);
+  }
+
+  const nowMs = Date.now();
+  const revoked = new Set<string>();
+  for (const override of overrides || []) {
+    if (override.expires_at && new Date(override.expires_at).getTime() <= nowMs) continue;
+    if (override.granted) caps.add(override.capability_key);
+    else revoked.add(override.capability_key);
+  }
+  for (const key of revoked) caps.delete(key);
+
+  return caps;
 }

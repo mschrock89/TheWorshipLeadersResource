@@ -5,6 +5,7 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useNetworkWideCampus, Campus } from "@/hooks/useCampuses";
 import { ServiceScheduleEditor } from "@/components/admin/ServiceScheduleEditor";
+import { CampusSetupEditor } from "@/components/admin/CampusSetupEditor";
 import { CustomService, useCustomServiceDefinitions, useDeleteCustomService } from "@/hooks/useCustomServices";
 import { CustomServiceBuilderDialog } from "@/components/admin/CustomServiceBuilderDialog";
 import { useLeadershipRoles } from "@/hooks/useLeadershipRoles";
@@ -21,7 +22,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Settings, Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, Flag, RotateCcw, type LucideIcon } from "lucide-react";
+import { Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Trash2, CalendarClock, Upload, FileText, ChevronDown, Bell, BookOpen, Megaphone, Tent, Users, Coffee, Inbox, Pencil, ScrollText, Flag, RotateCcw, Building2, type LucideIcon } from "lucide-react";
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
@@ -36,7 +37,6 @@ import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import Papa from "papaparse";
 import { getTeachingMinistryAliases, normalizeTeachingWeekDateForMinistry } from "@/hooks/useTeachingSchedule";
 import { useActiveCovenant, useCovenantSignatureCount, useResetCovenantSignatures, useUploadCovenantDocument } from "@/hooks/useCovenant";
-import { useUserRole } from "@/hooks/useUserRoles";
 import { getCovenantTerminology, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { ModerationInbox } from "@/components/moderation/ModerationInbox";
 
@@ -488,7 +488,8 @@ export default function AdminTools() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { user, can, isLoading: authLoading } = useAuth();
+  const canUseAdminTools = can("admin_tools");
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const { data: networkWideCampus = null } = useNetworkWideCampus();
   const { data: leadershipData, isLoading: leadershipLoading } = useLeadershipRoles();
@@ -496,8 +497,6 @@ export default function AdminTools() {
   const deleteCustomService = useDeleteCustomService();
   const { data: activeCovenant } = useActiveCovenant(user?.id);
   const { data: covenantSignatureCount = 0 } = useCovenantSignatureCount(activeCovenant?.document.id);
-  const { data: userRole } = useUserRole(user?.id);
-  const isOrgAdmin = userRole === "admin";
   const uploadCovenantDocument = useUploadCovenantDocument();
   const resetCovenantSignatures = useResetCovenantSignatures();
 
@@ -671,9 +670,9 @@ export default function AdminTools() {
       : []),
     {
       id: "service-schedule",
-      title: "Service Schedule",
-      description: "Open a campus and set service days and times for any ministry.",
-      icon: Settings,
+      title: "Campuses",
+      description: "Add a campus, choose its ministries, and set service days and times.",
+      icon: Building2,
     },
     {
       id: "service-flow",
@@ -786,10 +785,10 @@ export default function AdminTools() {
 
   // Redirect non-admins
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    if (!authLoading && !canUseAdminTools) {
       navigate("/dashboard");
     }
-  }, [authLoading, isAdmin, navigate]);
+  }, [authLoading, canUseAdminTools, navigate]);
 
   useEffect(() => {
     if (!teachingCampusId && campuses[0]?.id) {
@@ -1502,7 +1501,7 @@ export default function AdminTools() {
     );
   }
 
-  if (!isAdmin) return null;
+  if (!canUseAdminTools) return null;
 
   return (
     <div className="mx-auto w-full max-w-6xl py-0 sm:py-4">
@@ -1842,12 +1841,12 @@ export default function AdminTools() {
                 <p className="text-sm text-muted-foreground">
                   {activeCovenant.document.description || `This is the currently active ${covenantTerminology.noun} shown to the team.`}
                 </p>
-                {isOrgAdmin && (
+                {canUseAdminTools && (
                   <div className="mt-4 space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">Reset signatures</p>
                       <p className="text-xs text-muted-foreground">
-                        Organization Admins can clear every signature on this {covenantTerminology.noun}.
+                        Anyone with Admin Tools access can clear every signature on this {covenantTerminology.noun}.
                         Each person, including you, will be asked to sign it again on their dashboard.
                       </p>
                     </div>
@@ -2378,33 +2377,50 @@ export default function AdminTools() {
       )}
 
       {/* Service Schedule Section */}
-      {activeTool?.id === "service-schedule" && (
+      {activeTool?.id === "service-schedule" && !searchParams.get("campus") && (
       <ServiceScheduleEditor
         campuses={campuses}
         campusesLoading={campusesLoading}
-        campusId={searchParams.get("campus")}
-        ministryType={searchParams.get("ministry")}
+        campusId={null}
+        ministryType={null}
         onSelectCampus={(campusId) => {
           setSearchParams((params) => {
             const next = new URLSearchParams(params);
             next.set("tool", "service-schedule");
             next.set("campus", campusId);
-            next.set("ministry", "weekend");
+            next.delete("ministry");
             return next;
           });
         }}
-        onSelectMinistry={(ministry) => {
+        onSelectMinistry={() => undefined}
+        onBack={() => undefined}
+        onAddCampus={() => {
           setSearchParams((params) => {
             const next = new URLSearchParams(params);
-            next.set("ministry", ministry);
+            next.set("tool", "service-schedule");
+            next.set("campus", "new");
             return next;
           });
         }}
+      />
+      )}
+      {activeTool?.id === "service-schedule" && searchParams.get("campus") && (
+      <CampusSetupEditor
+        campuses={campuses}
+        campusId={searchParams.get("campus") === "new" ? null : searchParams.get("campus")}
         onBack={() => {
           setSearchParams((params) => {
             const next = new URLSearchParams(params);
             next.delete("campus");
             next.delete("ministry");
+            return next;
+          });
+        }}
+        onSaved={(campusId) => {
+          setSearchParams((params) => {
+            const next = new URLSearchParams(params);
+            next.set("tool", "service-schedule");
+            next.set("campus", campusId);
             return next;
           });
         }}

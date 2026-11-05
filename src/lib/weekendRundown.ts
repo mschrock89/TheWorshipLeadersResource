@@ -1,4 +1,4 @@
-import { getCurrentResourceAppKey, hasOrgAdminPrivilegesForResourceApp } from "@/lib/resourceApp";
+import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export const WEEKEND_RUNDOWN_STATUS_OPTIONS = [
   { value: "no_issues", label: "No Issues" },
@@ -63,19 +63,6 @@ export function clearWeekendRundownDraft(
 ) {
   if (typeof window === "undefined" || !userId || !campusId) return;
   window.localStorage.removeItem(getWeekendRundownDraftKey(userId, campusId, weekendDate));
-}
-
-const WEEKEND_RUNDOWN_ADMIN_ROLES = new Set([
-  "admin",
-  "campus_admin",
-]);
-
-export function canAccessWeekendRundown(roleNames: string[]) {
-  return hasOrgAdminPrivilegesForResourceApp(roleNames) || roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
-}
-
-export function canReviewWeekendSongs(roleNames: string[]) {
-  return hasOrgAdminPrivilegesForResourceApp(roleNames) || roleNames.some((role) => WEEKEND_RUNDOWN_ADMIN_ROLES.has(role));
 }
 
 export function getWeekendRundownTargetSunday(now = new Date()) {

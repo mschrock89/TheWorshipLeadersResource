@@ -97,9 +97,8 @@ export function SongAvailabilityList({
         break;
       }
       case 'new-songs': {
-        // New songs are still inside their first few plays, and that count has
-        // to cover the song's whole history. Older songs can look new when only
-        // the last 24 months of plays are loaded.
+        // New songs were introduced in the year being planned and are still
+        // inside their first few plays. A song from a previous year is not new.
         filtered = filtered.filter(a =>
           a.isNewSong &&
           (overridesEnabled || !publishedSetlistSongIds.has(a.song.id))

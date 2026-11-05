@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Loader2, Megaphone, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
+import { campusOffersMinistry } from "@/lib/campusSetup";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   useDeleteServiceScript,
@@ -315,7 +317,6 @@ export default function ServiceScriptsAdmin() {
   const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const canManage = canManageServiceScripts(roles.map((role) => role.role));
-  const ministries = useMemo(() => getViewMinistryFilterOptions(null), []);
   const [campusId, setCampusId] = useState(() => localStorage.getItem("service-scripts-campus") || "");
   const [ministryType, setMinistryType] = useState(
     () => localStorage.getItem("service-scripts-ministry") || defaultScriptMinistry(getCurrentResourceAppKey()),
@@ -323,6 +324,16 @@ export default function ServiceScriptsAdmin() {
   const [monthStart, setMonthStart] = useState(() => currentMonthStart());
 
   const selectedCampusId = campusId || campuses[0]?.id || "";
+  const { enabled: campusMinistries } = useCampusMinistrySet(selectedCampusId || null);
+  const ministries = useMemo(
+    () => getViewMinistryFilterOptions(null).filter((ministry) => campusOffersMinistry(campusMinistries, ministry.value)),
+    [campusMinistries],
+  );
+  useEffect(() => {
+    if (!campusMinistries) return;
+    if (ministries.some((ministry) => ministry.value === ministryType)) return;
+    if (ministries[0]) setMinistryType(ministries[0].value);
+  }, [campusMinistries, ministries, ministryType]);
   const weekends = useMemo(() => weekendStartsInMonth(monthStart), [monthStart]);
   const scriptsQuery = useServiceScripts(canManage ? selectedCampusId : null, ministryType, monthStart);
 

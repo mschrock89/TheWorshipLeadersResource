@@ -60,6 +60,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCapabilities } from "@/hooks/useCapabilities";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
+import { campusOffersMinistry } from "@/lib/campusSetup";
 import { useUserAdminCampuses } from "@/hooks/useUserRoles";
 import {
   type FeedCategory,
@@ -739,11 +741,14 @@ export default function Feed({
     ?? null;
   const feedCampusId = campInstanceId ? null : selectedCampusId;
   const resourceAppKey = getCurrentResourceAppKey();
+  const { enabled: campusMinistries } = useCampusMinistrySet(feedCampusId);
   const feedScopeOptions = useMemo(() => {
     const options = getFeedScopeOptions(resourceAppKey);
-    if (campInstanceId || selectedCampusId) return options;
-    return options.filter((option) => option.value === NETWORK_WIDE_FEED_TYPE);
-  }, [campInstanceId, resourceAppKey, selectedCampusId]);
+    const scoped = campInstanceId || selectedCampusId
+      ? options
+      : options.filter((option) => option.value === NETWORK_WIDE_FEED_TYPE);
+    return scoped.filter((option) => campusOffersMinistry(campusMinistries, option.value));
+  }, [campInstanceId, campusMinistries, resourceAppKey, selectedCampusId]);
   const [selectedMinistryType, setSelectedMinistryType] = useState<string>(() =>
     getDefaultFeedMinistryType(resourceAppKey),
   );

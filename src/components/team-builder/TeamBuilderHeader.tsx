@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Users, Building2, Music, Eye, Home, FileDown } from "lucide-react";
 import {
@@ -19,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
+import { campusOffersMinistry } from "@/lib/campusSetup";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { Campus, RotationPeriod } from "@/hooks/useTeamBuilder";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
@@ -80,12 +83,22 @@ export function TeamBuilderHeader({
   canExportPdf = false,
 }: TeamBuilderHeaderProps) {
   const isStudentTeamBuilder = isStudentResourceAppKey(getCurrentResourceAppKey());
+  const { enabled: campusMinistries } = useCampusMinistrySet(selectedCampusId);
   const ministryFilterOrder = isStudentTeamBuilder
     ? STUDENT_TEAM_BUILDER_MINISTRY_FILTER_ORDER
     : WORSHIP_TEAM_BUILDER_MINISTRY_FILTER_ORDER;
   const ministryOptions = ministryFilterOrder
     .map((value) => getTeamBuilderMinistryOption(value))
-    .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry));
+    .filter((ministry): ministry is (typeof MINISTRY_TYPES)[number] => Boolean(ministry))
+    .filter((ministry) => campusOffersMinistry(campusMinistries, ministry.value));
+  const ministryOptionKey = ministryOptions.map((ministry) => ministry.value).join(",");
+
+  useEffect(() => {
+    if (!campusMinistries) return;
+    if (ministryOptions.some((ministry) => ministry.value === selectedMinistryType)) return;
+    const next = ministryOptions[0]?.value;
+    if (next) onMinistryTypeChange(next);
+  }, [campusMinistries, ministryOptionKey, ministryOptions, onMinistryTypeChange, selectedMinistryType]);
 
   return (
     <div className="mb-6">

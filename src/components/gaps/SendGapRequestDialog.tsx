@@ -18,11 +18,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
+import { campusOffersMinistry } from "@/lib/campusSetup";
 import {
   type GapCandidate,
   usePreviewGapRecipients,
   useSendGapRequest,
 } from "@/hooks/useGapRequests";
+import { cn } from "@/lib/cn";
 import { getMinistryLabel, getTeamBuilderSlotCategories, MINISTRY_TYPES, POSITION_SLOTS } from "@/lib/constants";
 import { formatGapDate, formatGapPosition } from "@/lib/gapRequests";
 import { getWeekendPairDate, isWeekend } from "@/lib/utils";
@@ -40,6 +43,67 @@ function churchToday() {
 
 function toggle(values: string[], value: string, checked: boolean) {
   return checked ? Array.from(new Set([...values, value])) : values.filter((item) => item !== value);
+}
+
+function CheckGrid({
+  label,
+  options,
+  selected,
+  onChange,
+  columns = 2,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  columns?: 1 | 2;
+}) {
+  const selectedCount = options.filter((option) => selected.includes(option.value)).length;
+  const allSelected = options.length > 0 && selectedCount === options.length;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+          <span className="ml-1.5 tabular-nums normal-case tracking-normal text-foreground/80">
+            {selectedCount}/{options.length}
+          </span>
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => onChange(allSelected ? [] : options.map((option) => option.value))}
+        >
+          {allSelected ? "Clear" : "All"}
+        </Button>
+      </div>
+      <div className={cn("grid gap-1.5", columns === 1 ? "grid-cols-1" : "grid-cols-2")}>
+        {options.map((option) => {
+          const checked = selected.includes(option.value);
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                "flex min-h-10 cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-sm leading-snug transition-colors",
+                checked
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border/80 bg-background/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              <Checkbox
+                checked={checked}
+                onCheckedChange={(next) => onChange(toggle(selected, option.value, next === true))}
+              />
+              <span className="min-w-0">{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export interface SendGapRequestDefaults {
@@ -82,19 +146,36 @@ export function SendGapRequestDialog({
   const [candidates, setCandidates] = useState<GapCandidate[] | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const { enabled: campusMinistries } = useCampusMinistrySet(campusId || null);
+  const ministryOptions = useMemo(
+    () => MINISTRY_OPTIONS.filter((ministry) =>
+      ministry.value === ministryType
+      || targetMinistryTypes.includes(ministry.value)
+      || campusOffersMinistry(campusMinistries, ministry.value),
+    ),
+    [campusMinistries, ministryType, targetMinistryTypes],
+  );
 
   const myCampuses = useMemo(
     () => userCampuses.map((entry) => entry.campuses).filter(Boolean),
     [userCampuses],
   );
   const gapCampusOptions = isAdmin || myCampuses.length === 0 ? allCampuses : myCampuses;
+  const selectableCampusIds = useMemo(
+    () => new Set(gapCampusOptions.map((campus) => campus.id)),
+    [gapCampusOptions],
+  );
   const slotOptions = useMemo(() => slotOptionsForMinistry(ministryType), [ministryType]);
   const position = POSITION_SLOTS.find((slot) => slot.slot === positionSlot)?.position || "";
   const pairDate = scheduleDate && isWeekend(scheduleDate) ? getWeekendPairDate(scheduleDate) : null;
 
   useEffect(() => {
     if (!open) return;
-    const initialCampus = defaults?.campusId || myCampuses[0]?.id || "";
+    const assignedDefault = myCampuses.find((campus) => campus.id === defaults?.campusId);
+    const initialCampus =
+      (defaults?.campusId && !assignedDefault?.is_network_wide ? defaults.campusId : "") ||
+      myCampuses.find((campus) => !campus.is_network_wide)?.id ||
+      "";
     const initialMinistry = defaults?.ministryType || "weekend_team";
     setCampusId(initialCampus);
     setMinistryType(initialMinistry);
@@ -112,12 +193,19 @@ export function SendGapRequestDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Network Wide is not a campus you can schedule a gap for. Drop it once the
+  // real campus list is loaded, and fill in the person's first physical campus.
   useEffect(() => {
-    if (!campusId && myCampuses[0]?.id && open) {
-      setCampusId(myCampuses[0].id);
-      setTargetCampusIds((current) => (current.length ? current : [myCampuses[0].id]));
-    }
-  }, [campusId, myCampuses, open]);
+    if (!open || selectableCampusIds.size === 0) return;
+    if (campusId && selectableCampusIds.has(campusId)) return;
+    const fallback = myCampuses.find((campus) => !campus.is_network_wide && selectableCampusIds.has(campus.id))?.id || "";
+    if (campusId !== fallback) setCampusId(fallback);
+    setTargetCampusIds((current) => {
+      const kept = current.filter((id) => selectableCampusIds.has(id));
+      if (kept.length) return kept;
+      return fallback ? [fallback] : [];
+    });
+  }, [open, campusId, myCampuses, selectableCampusIds]);
 
   // Any change to who we're reaching invalidates the previewed list.
   useEffect(() => {
@@ -183,83 +271,105 @@ export function SendGapRequestDialog({
   }, [candidates, search]);
 
   const positionLabel = position ? formatGapPosition(position) : "matching";
+  const previewBlocker = !scheduleDate
+    ? "Pick the date of the gap."
+    : scheduleDate < churchToday()
+      ? "That date has already passed."
+      : !campusId
+        ? "Choose the campus with the gap."
+        : !position
+          ? "Choose the open slot."
+          : targetCampusIds.length === 0
+            ? "Choose at least one campus to notify."
+            : targetMinistryTypes.length === 0
+              ? "Choose at least one ministry to notify."
+              : null;
+  const readyToSend = Boolean(candidates?.length) && selectedUserIds.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg sm:p-0">
+        <DialogHeader className="shrink-0 space-y-1 px-5 pb-3 pr-12 pt-5 text-left sm:px-6 sm:pt-6">
           <DialogTitle className="flex items-center gap-2">
             <Megaphone className="h-5 w-5 text-primary" />
             Send a Gap Request
           </DialogTitle>
           <DialogDescription>
-            {intro ||
-              "Push a request to every volunteer in a position. They can answer Yes or No right from the notification."}
+            {intro || "Volunteers get a notification and can answer Yes or No. You approve who is added to the roster."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="gap-date">Date</Label>
-              <Input
-                id="gap-date"
-                type="date"
-                min={churchToday()}
-                value={scheduleDate}
-                onChange={(event) => setScheduleDate(event.target.value)}
-              />
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-1 sm:px-6">
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="gap-date">Date</Label>
+                <Input
+                  id="gap-date"
+                  type="date"
+                  min={churchToday()}
+                  value={scheduleDate}
+                  onChange={(event) => setScheduleDate(event.target.value)}
+                  className="text-left text-sm [color-scheme:dark]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Campus with the gap</Label>
+                <Select
+                  value={campusId && selectableCampusIds.has(campusId) ? campusId : undefined}
+                  onValueChange={handleCampusChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose campus" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gapCampusOptions.map((campus) => (
+                      <SelectItem key={campus.id} value={campus.id}>
+                        {campus.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Campus with the gap</Label>
-              <Select value={campusId} onValueChange={handleCampusChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose campus" />
-                </SelectTrigger>
-                <SelectContent>
-                  {gapCampusOptions.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Ministry</Label>
-              <Select value={ministryType} onValueChange={handleMinistryChange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MINISTRY_OPTIONS.map((ministry) => (
-                    <SelectItem key={ministry.value} value={ministry.value}>
-                      {ministry.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Open slot</Label>
-              <Select value={positionSlot} onValueChange={setPositionSlot}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose slot" />
-                </SelectTrigger>
-                <SelectContent>
-                  {slotOptions.map((slot) => (
-                    <SelectItem key={slot.slot} value={slot.slot}>
-                      {slot.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Ministry</Label>
+                <Select value={ministryType} onValueChange={handleMinistryChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ministryOptions.map((ministry) => (
+                      <SelectItem key={ministry.value} value={ministry.value}>
+                        {ministry.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Open slot</Label>
+                <Select value={positionSlot || undefined} onValueChange={setPositionSlot}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose slot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {slotOptions.map((slot) => (
+                      <SelectItem key={slot.slot} value={slot.slot}>
+                        {slot.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           {pairDate && (
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-start gap-2 rounded-md border border-border/80 px-2.5 py-2 text-sm leading-snug">
               <Checkbox
+                className="mt-0.5"
                 checked={coversWeekendPair}
                 onCheckedChange={(checked) => setCoversWeekendPair(checked === true)}
               />
@@ -267,45 +377,25 @@ export function SendGapRequestDialog({
             </label>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            Volunteers who say yes wait for your approval. When you approve one, they're added to this slot on the
-            scheduled team's roster for {pairDate && coversWeekendPair ? "both days" : "that date"}.
-          </p>
-
-          <div className="space-y-2 rounded-lg border p-3">
-            <p className="text-sm font-medium">Who should get this?</p>
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Campuses</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {allCampuses.map((campus) => (
-                  <label key={campus.id} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={targetCampusIds.includes(campus.id)}
-                      onCheckedChange={(checked) =>
-                        setTargetCampusIds((current) => toggle(current, campus.id, checked === true))
-                      }
-                    />
-                    {campus.name}
-                  </label>
-                ))}
-              </div>
+          <div className="space-y-3 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Who should get this?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {`People who serve ${positionLabel === "matching" ? "this slot" : positionLabel} on the teams you check. A yes waits for your approval, then they're added for ${pairDate && coversWeekendPair ? "both days" : "that date"}.`}
+              </p>
             </div>
-            <div className="space-y-1.5 pt-1">
-              <p className="text-xs text-muted-foreground">Ministries</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {MINISTRY_OPTIONS.map((ministry) => (
-                  <label key={ministry.value} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={targetMinistryTypes.includes(ministry.value)}
-                      onCheckedChange={(checked) =>
-                        setTargetMinistryTypes((current) => toggle(current, ministry.value, checked === true))
-                      }
-                    />
-                    {ministry.label}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <CheckGrid
+              label="Campuses"
+              options={allCampuses.map((campus) => ({ value: campus.id, label: campus.name }))}
+              selected={targetCampusIds}
+              onChange={setTargetCampusIds}
+            />
+            <CheckGrid
+              label="Ministries"
+              options={ministryOptions.map((ministry) => ({ value: ministry.value, label: ministry.label }))}
+              selected={targetMinistryTypes}
+              onChange={setTargetMinistryTypes}
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -319,22 +409,13 @@ export function SendGapRequestDialog({
             />
           </div>
 
-          {candidates === null ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full gap-2"
-              disabled={!canPreview || preview.isPending}
-              onClick={handlePreview}
-            >
-              {preview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
-              Find {positionLabel} volunteers
-            </Button>
-          ) : candidates.length === 0 ? (
+          {candidates !== null && candidates.length === 0 ? (
             <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No one is assigned to {positionLabel} in those campuses and ministries. Try reaching more campuses or ministries.
+              No one is assigned to {positionLabel} on those teams. Check more campuses or ministries, then look again.
             </p>
-          ) : (
+          ) : null}
+
+          {candidates && candidates.length > 0 ? (
             <div className="space-y-2 rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">
@@ -345,11 +426,18 @@ export function SendGapRequestDialog({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    className="h-7 px-2 text-xs"
                     onClick={() => setSelectedUserIds(candidates.map((candidate) => candidate.id))}
                   >
                     All
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedUserIds([])}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setSelectedUserIds([])}
+                  >
                     None
                   </Button>
                 </div>
@@ -397,23 +485,35 @@ export function SendGapRequestDialog({
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
-        <DialogFooter>
+        <div className="shrink-0 space-y-2 border-t px-5 py-3 sm:px-6">
+          {previewBlocker && candidates === null ? (
+            <p className="text-left text-xs text-muted-foreground">{previewBlocker}</p>
+          ) : null}
+        <DialogFooter className="flex-row justify-end">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            className="gap-2"
-            disabled={!candidates?.length || selectedUserIds.length === 0 || send.isPending}
-            onClick={handleSend}
-          >
-            {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-            Send to {selectedUserIds.length}
-          </Button>
+          {readyToSend ? (
+            <Button type="button" className="gap-2" disabled={send.isPending} onClick={handleSend}>
+              {send.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+              Send to {selectedUserIds.length}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={!canPreview || preview.isPending}
+              onClick={handlePreview}
+            >
+              {preview.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+              Find volunteers
+            </Button>
+          )}
         </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

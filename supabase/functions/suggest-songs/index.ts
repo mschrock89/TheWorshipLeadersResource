@@ -266,6 +266,7 @@ Deno.serve(async (req) => {
         isInRegularRotation,
         firstUsed: songStats?.first_used,
         usageWindowStart: usageWindowStartStr,
+        referenceDate: weekendDate,
       });
       const isDeepCut = usesInPastYear <= 1;
 

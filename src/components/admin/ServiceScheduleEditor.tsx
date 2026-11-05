@@ -45,6 +45,7 @@ type ServiceScheduleEditorProps = {
   onSelectCampus: (campusId: string) => void;
   onSelectMinistry: (ministryType: string) => void;
   onBack: () => void;
+  onAddCampus?: () => void;
 };
 
 export function ServiceScheduleEditor({
@@ -55,6 +56,7 @@ export function ServiceScheduleEditor({
   onSelectCampus,
   onSelectMinistry,
   onBack,
+  onAddCampus,
 }: ServiceScheduleEditorProps) {
   const selectedMinistry = SERVICE_SCHEDULE_MINISTRY_OPTIONS.some((option) => option.value === ministryType)
     ? ministryType!
@@ -101,14 +103,22 @@ export function ServiceScheduleEditor({
     return (
       <Card>
         <CardHeader className="pb-2">
-          <div className="space-y-1">
-            <CardTitle className="text-xl font-semibold flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Service Schedule
-            </CardTitle>
-            <CardDescription>
-              Open a campus to set service days and times for any ministry.
-            </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-xl font-semibold flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Campuses
+              </CardTitle>
+              <CardDescription>
+                Add a campus, choose its ministries, and set service days and times.
+              </CardDescription>
+            </div>
+            {onAddCampus ? (
+              <Button onClick={onAddCampus} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add campus
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent>
@@ -118,6 +128,8 @@ export function ServiceScheduleEditor({
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
+          ) : campuses.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No campuses yet. Add the first one to set its ministries and service times.</p>
           ) : (
             <div className="space-y-3">
               {campuses.map((entry) => {

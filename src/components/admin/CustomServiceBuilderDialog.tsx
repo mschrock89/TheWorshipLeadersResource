@@ -12,6 +12,8 @@ import {
   useUpdateCustomService,
 } from "@/hooks/useCustomServices";
 import { POSITION_LABELS, POSITION_SLOTS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { campusOffersMinistry } from "@/lib/campusSetup";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -270,6 +272,13 @@ export function CustomServiceBuilderDialog({
 
   const [campusId, setCampusId] = useState("");
   const [ministry, setMinistry] = useState("weekend");
+  const { enabled: campusMinistries } = useCampusMinistrySet(campusId || null);
+  const ministryOptions = useMemo(
+    () => SET_PLANNER_MINISTRY_OPTIONS.filter(
+      (option) => option.value === ministry || campusOffersMinistry(campusMinistries, option.value),
+    ),
+    [campusMinistries, ministry],
+  );
   const [serviceName, setServiceName] = useState("");
   const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [startTime, setStartTime] = useState("");
@@ -526,12 +535,12 @@ export function CustomServiceBuilderDialog({
                 <Select value={ministry} onValueChange={setMinistry} disabled={isEditMode}>
                   <SelectTrigger>
                     <CompactSelectValue
-                      label={SET_PLANNER_MINISTRY_OPTIONS.find((option) => option.value === ministry)?.label}
+                      label={ministryOptions.find((option) => option.value === ministry)?.label}
                       placeholder="Ministry"
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {SET_PLANNER_MINISTRY_OPTIONS.map((option) => (
+                    {ministryOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>

@@ -72,6 +72,7 @@ import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
+import { wasIntroducedInCalendarYear } from "@/lib/songRotation";
 import { isWeekendServiceTypeName } from "@/lib/weekendServiceType";
 import { cn } from "@/lib/cn";
 
@@ -290,10 +291,7 @@ export default function Songs() {
     const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     const currentYear = new Date().getFullYear();
-    const yearStart = `${currentYear}-01-01`;
-    const nextYearStart = `${currentYear + 1}-01-01`;
-    const wasIntroducedThisYear = (firstScheduled: string | null) =>
-      !!firstScheduled && firstScheduled >= yearStart && firstScheduled < nextYearStart;
+    const yearReference = `${currentYear}-01-01`;
 
     // Build a map of song_id -> campus-filtered usage count (ALL TIME for display, last 52 weeks for rotation stats)
     const usageMap = new Map<string, { count: number; lastUsed: string | null; upcomingCount: number; lastScheduled: string | null; firstScheduled: string | null; introducedThisYear: boolean }>();
@@ -319,10 +317,10 @@ export default function Songs() {
       // about 24 months, so a returning song can look new if we trust those alone.
       const globalFirstUsed = song.first_used?.slice(0, 10) || null;
       const libraryIntroducedThisYear = globalFirstUsed
-        ? wasIntroducedThisYear(globalFirstUsed)
-        : wasIntroducedThisYear(firstScheduledEver);
+        ? wasIntroducedInCalendarYear(globalFirstUsed, yearReference)
+        : wasIntroducedInCalendarYear(firstScheduledEver, yearReference);
       const introducedThisYear =
-        libraryIntroducedThisYear && wasIntroducedThisYear(firstScheduledEver);
+        libraryIntroducedThisYear && wasIntroducedInCalendarYear(firstScheduledEver, yearReference);
       const hasAdventWeekendUsage = scheduledUsages.some((u) => isAdventWeekendDate(u.plan_date));
 
       // Store in map for table display - use ALL TIME count and last used

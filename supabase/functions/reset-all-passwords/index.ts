@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resourceAppFromRequest, userHasAnyCapability } from "../_shared/requireCapability.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,13 +39,14 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is an admin
-    const { data: hasRole } = await userClient.rpc('has_role', { 
-      _user_id: user.id, 
-      _role: 'admin' 
-    });
+    const canReset = await userHasAnyCapability(
+      userClient,
+      user.id,
+      ["admin_tools", "admin_full"],
+      resourceAppFromRequest(req),
+    );
 
-    if (!hasRole) {
+    if (!canReset) {
       return new Response(
         JSON.stringify({ error: 'Only admins can reset passwords' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

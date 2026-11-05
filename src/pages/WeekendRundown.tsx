@@ -20,9 +20,8 @@ import {
   useWeekendRundownEntries,
   useWeekendRundownSetSongs,
 } from "@/hooks/useWeekendRundown";
+import { CAPABILITIES } from "@/lib/capabilities";
 import {
-  canAccessWeekendRundown,
-  canReviewWeekendSongs,
   clearWeekendRundownDraft,
   getRundownDateOptions,
   getWednesdayRundownTargetDate,
@@ -48,19 +47,18 @@ function getInitials(name: string | null) {
 }
 
 export default function WeekendRundown() {
-  const { user } = useAuth();
+  const { user, can, isAdmin } = useAuth();
   const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
   const { data: campuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const campusContext = useCampusSelectionOptional();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const roleNames = roles.map((role) => role.role);
   const isStudentApp = isCurrentStudentResourceApp();
   const rundownName = isStudentApp ? "Wednesday Rundown" : "Weekend Rundown";
   const rundownDayName = isStudentApp ? "Wednesday" : "weekend";
-  const hasAccess = canAccessWeekendRundown(roleNames);
-  const canReviewSongs = !isStudentApp && canReviewWeekendSongs(roleNames);
+  const hasAccess = can(CAPABILITIES.WEEKEND_RUNDOWN);
+  const canReviewSongs = !isStudentApp && hasAccess;
 
   const rundownDateOptions = useMemo(
     () => getRundownDateOptions(isStudentApp),
@@ -98,7 +96,7 @@ export default function WeekendRundown() {
   }, [defaultWeekendDate, isStudentApp, searchParams, setSearchParams]);
 
   const accessibleCampusIds = useMemo(() => {
-    if (roleNames.some((role) => role === "admin" || role === "network_worship_pastor" || role === "network_worship_leader")) {
+    if (isAdmin) {
       return campuses.map((campus) => campus.id);
     }
 
@@ -108,7 +106,7 @@ export default function WeekendRundown() {
         ...roles.map((entry) => entry.admin_campus_id).filter(Boolean) as string[],
       ]),
     );
-  }, [campuses, roleNames, roles, userCampuses]);
+  }, [campuses, isAdmin, roles, userCampuses]);
 
   const availableCampuses = useMemo(() => {
     if (accessibleCampusIds.length === 0) return [];

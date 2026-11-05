@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resourceAppFromRequest, userHasAnyCapability } from "../_shared/requireCapability.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,14 +39,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user is admin using the has_role function
-    const { data: isAdmin, error: roleError } = await userClient.rpc('has_role', {
-      _user_id: callingUser.id,
-      _role: 'admin'
-    });
+    let canDelete = false;
+    try {
+      canDelete = await userHasAnyCapability(
+        userClient,
+        callingUser.id,
+        ["admin_tools", "admin_full"],
+        resourceAppFromRequest(req),
+      );
+    } catch (roleError) {
+      console.error('Role check error:', roleError);
+      return new Response(
+        JSON.stringify({ error: 'Only admins can delete profiles' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    if (roleError || !isAdmin) {
-      console.error('Role check error:', roleError, 'isAdmin:', isAdmin);
+    if (!canDelete) {
+      console.error('Delete refused for', callingUser.id);
       return new Response(
         JSON.stringify({ error: 'Only admins can delete profiles' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

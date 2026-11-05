@@ -167,7 +167,7 @@ export function useSongAvailability(
       // Classification rules:
       // - Deep Cut: 1 or less uses in past 12 months
       // - Regular Rotation: 3 or more uses in past 12 months OR 4+ uses in the loaded history
-      // - New Song: fewer than 4 uses, and the loaded history covers its whole life
+      // - New Song: introduced in the year being planned, still under 4 uses
       const isInRegularRotation = usesInPastYear >= 3 || totalUses >= REGULAR_ROTATION_MIN_USES;
       const isDeepCut = usesInPastYear <= 1;
       const isNewSong = isSongInNewRotation({
@@ -175,6 +175,7 @@ export function useSongAvailability(
         isInRegularRotation,
         firstUsed: song.first_used,
         usageWindowStart: usageWindowStartStr,
+        referenceDate: targetDateStr,
       });
 
       // Find last used date and most recently used key

@@ -29,63 +29,65 @@ export function useCampusMinistrySchedules() {
   });
 }
 
+export async function persistCampusMinistrySchedule({
+  campusId,
+  ministryType,
+  drafts,
+}: {
+  campusId: string;
+  ministryType: string;
+  drafts: DayScheduleDraft[];
+}) {
+  const rows = drafts
+    .filter((draft) => draft.enabled)
+    .map((draft) => ({
+      campus_id: campusId,
+      ministry_type: ministryType,
+      day_of_week: draft.day,
+      service_times: [...new Set(draft.times.map((time) => time.trim().slice(0, 5)).filter(Boolean))].sort(),
+    }))
+    .filter((row) => row.service_times.length > 0);
+
+  if (rows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("campus_ministry_service_schedules")
+      .upsert(rows, { onConflict: "campus_id,ministry_type,day_of_week" });
+    if (upsertError) throw upsertError;
+  }
+
+  const keptDays = rows.map((row) => row.day_of_week);
+  let deleteQuery = supabase
+    .from("campus_ministry_service_schedules")
+    .delete()
+    .eq("campus_id", campusId)
+    .eq("ministry_type", ministryType);
+  if (keptDays.length > 0) {
+    deleteQuery = deleteQuery.not("day_of_week", "in", `(${keptDays.join(",")})`);
+  }
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) throw deleteError;
+
+  if (ministryType === "weekend") {
+    const columns = weekendColumnsFromDrafts(drafts);
+    const { error: campusError } = await supabase
+      .from("campuses")
+      .update({
+        has_saturday_service: columns.has_saturday_service,
+        has_sunday_service: columns.has_sunday_service,
+        saturday_service_time: columns.saturday_service_time,
+        sunday_service_time: columns.sunday_service_time,
+      })
+      .eq("id", campusId);
+    if (campusError) throw campusError;
+  }
+}
+
 export function useSaveCampusMinistrySchedule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({
-      campusId,
-      ministryType,
-      drafts,
-    }: {
-      campusId: string;
-      ministryType: string;
-      drafts: DayScheduleDraft[];
-    }) => {
-      const rows = drafts
-        .filter((draft) => draft.enabled)
-        .map((draft) => ({
-          campus_id: campusId,
-          ministry_type: ministryType,
-          day_of_week: draft.day,
-          service_times: [...new Set(draft.times.map((time) => time.trim().slice(0, 5)).filter(Boolean))].sort(),
-        }))
-        .filter((row) => row.service_times.length > 0);
-
-      if (rows.length > 0) {
-        const { error: upsertError } = await supabase
-          .from("campus_ministry_service_schedules")
-          .upsert(rows, { onConflict: "campus_id,ministry_type,day_of_week" });
-        if (upsertError) throw upsertError;
-      }
-
-      const keptDays = rows.map((row) => row.day_of_week);
-      let deleteQuery = supabase
-        .from("campus_ministry_service_schedules")
-        .delete()
-        .eq("campus_id", campusId)
-        .eq("ministry_type", ministryType);
-      if (keptDays.length > 0) {
-        deleteQuery = deleteQuery.not("day_of_week", "in", `(${keptDays.join(",")})`);
-      }
-      const { error: deleteError } = await deleteQuery;
-      if (deleteError) throw deleteError;
-
-      if (ministryType === "weekend") {
-        const columns = weekendColumnsFromDrafts(drafts);
-        const { error: campusError } = await supabase
-          .from("campuses")
-          .update({
-            has_saturday_service: columns.has_saturday_service,
-            has_sunday_service: columns.has_sunday_service,
-            saturday_service_time: columns.saturday_service_time,
-            sunday_service_time: columns.sunday_service_time,
-          })
-          .eq("id", campusId);
-        if (campusError) throw campusError;
-      }
-    },
+    mutationFn: persistCampusMinistrySchedule,
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["campus-ministry-schedules"] }),

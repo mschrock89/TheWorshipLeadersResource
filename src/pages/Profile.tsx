@@ -34,6 +34,8 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry, getViewMinistryFilterOptions } from "@/lib/constants";
+import { campusOffersMinistry } from "@/lib/campusSetup";
+import { useAllCampusMinistries } from "@/hooks/useCampusMinistries";
 import { profileUsesAdminPushPreferences } from "@/lib/adminPushPrefs";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
@@ -124,6 +126,7 @@ export default function Profile() {
 
   const { data: profile, isLoading } = useProfile(profileId);
   const { data: campuses = [] } = useCampuses();
+  const campusMinistryLists = useAllCampusMinistries();
   const { data: networkWideCampus } = useNetworkWideCampus();
   const { data: userCampuses = [] } = useUserCampuses(profileId);
   const { data: userRoles = [], isLoading: isRolesLoading } = useUserRoles(profileId);
@@ -1353,7 +1356,15 @@ export default function Profile() {
                                   Boolean(ministry) && !("hidden" in ministry && ministry.hidden)
                                 )
                                 // The Network Wide campus only offers camp-family ministries (Student Camp, Kids Camp).
-                                .filter((ministry) => !campus.is_network_wide || isCampFamilyMinistry(ministry.value))
+                                // A physical campus with a saved ministry list only offers those ministries.
+                                .filter((ministry) => campus.is_network_wide
+                                  ? isCampFamilyMinistry(ministry.value)
+                                  : campusOffersMinistry(
+                                      campusMinistryLists.isSuccess
+                                        ? campusMinistryLists.byCampus.get(campus.id) ?? null
+                                        : null,
+                                      ministry.value,
+                                    ))
                                 .map((ministry) => {
                                 const isActive = campusMinistries.includes(ministry.value);
                                 return (

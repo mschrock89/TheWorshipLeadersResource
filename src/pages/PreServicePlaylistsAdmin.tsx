@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { CAPABILITIES } from "@/lib/capabilities";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useEndServiceAmbientTrack } from "@/hooks/useEndServiceAmbientTrack";
 import { usePreServicePlaylist } from "@/hooks/usePreServicePlaylist";
@@ -36,7 +37,8 @@ export default function PreServicePlaylistsAdmin() {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const ambientFileRef = useRef<HTMLInputElement | null>(null);
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { can, isLoading: authLoading } = useAuth();
+  const isAdmin = can(CAPABILITIES.ADMIN_TOOLS);
   const { data: campuses = [], isLoading: campusesLoading } = useCampuses();
   const currentPeriod = fallbackPlaylistPeriod(new Date().toISOString().slice(0, 10));
   const [campusId, setCampusId] = useState(() => localStorage.getItem(CAMPUS_KEY) || "");

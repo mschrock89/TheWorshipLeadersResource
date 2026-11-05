@@ -26,20 +26,36 @@ export function isSongGloballyNew(song: SongHistory): boolean {
   return !hasAllTimeHistory && (song.usages?.length || 0) === 0;
 }
 
+/** First service falls in the same calendar year as the date being planned. */
+export function wasIntroducedInCalendarYear(
+  firstUsed: string | null | undefined,
+  referenceDate: string,
+): boolean {
+  const first = dateOnly(firstUsed);
+  const reference = dateOnly(referenceDate);
+  if (!first || !reference) return false;
+  return first.slice(0, 4) === reference.slice(0, 4);
+}
+
 /**
- * New-song spacing applies only while the usage rows cover the song's whole
- * history. Those rows stop at 24 months, so an older first service means a
- * small recent count is a returning song, not a new one.
+ * New-song spacing matches the song library: introduced during the calendar
+ * year being planned, still under four plays, and not already in rotation.
+ * Usage rows stop at 24 months, so a first service older than that window is
+ * a returning song. A first service inside the window but before this year
+ * is established too.
  */
 export function isSongInNewRotation(input: {
   totalUses: number;
   isInRegularRotation: boolean;
   firstUsed: string | null | undefined;
   usageWindowStart: string;
+  referenceDate: string;
 }): boolean {
   const firstUsed = dateOnly(input.firstUsed);
+  const introducedThisYear = wasIntroducedInCalendarYear(firstUsed, input.referenceDate);
   const recentRowsCoverFullHistory = !firstUsed || firstUsed >= input.usageWindowStart;
   return (
+    introducedThisYear &&
     recentRowsCoverFullHistory &&
     input.totalUses > 0 &&
     input.totalUses < REGULAR_ROTATION_MIN_USES &&

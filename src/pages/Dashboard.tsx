@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserRoles } from "@/hooks/useUserRoles";
 import { useProfiles, useUpcomingBirthdays, useUpcomingAnniversaries } from "@/hooks/useProfiles";
 import { useCampuses, useUserCampuses, useProfilesWithCampuses } from "@/hooks/useCampuses";
 import { QuickStats } from "@/components/dashboard/QuickStats";
@@ -21,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, ClipboardList, UsersRound } from "lucide-react";
-import { canAccessWeekendRundown } from "@/lib/weekendRundown";
+import { CAPABILITIES } from "@/lib/capabilities";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
 import { ServiceScriptWidget } from "@/components/dashboard/ServiceScriptWidget";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
@@ -30,6 +29,7 @@ export default function Dashboard() {
     user,
     isLeader,
     canManageTeam,
+    can,
     isAdmin
   } = useAuth();
 
@@ -41,7 +41,6 @@ export default function Dashboard() {
     data: profiles = [],
     isLoading: profilesLoading
   } = useProfiles();
-  const { data: roles = [] } = useUserRoles(user?.id);
   const {
     data: upcomingBirthdays = [],
     isLoading: birthdaysLoading
@@ -99,7 +98,9 @@ export default function Dashboard() {
 
   // Check if user is a regular volunteer (not a leader/admin)
   const isVolunteer = !canManageTeam;
-  const canOpenWeekendRundown = canAccessWeekendRundown(roles.map((role) => role.role));
+  const canOpenWeekendRundown = can(CAPABILITIES.WEEKEND_RUNDOWN);
+  const canPlanSet = can(CAPABILITIES.PLAN_SET);
+  const canUseAdminTools = can(CAPABILITIES.ADMIN_TOOLS);
   const isStudentApp = isCurrentStudentResourceApp();
   const quickActions = [
     {
@@ -170,7 +171,7 @@ export default function Dashboard() {
       iconClassName: "border-amber-300/25 bg-amber-400/15 text-amber-100",
       buttonClassName: "bg-amber-400 text-slate-950 hover:bg-amber-300",
     },
-    ...(isAdmin
+    ...(canUseAdminTools
       ? [{
           title: "Admin Tools",
           description: "Handle service settings, system controls, and organization-level configuration.",
@@ -184,8 +185,14 @@ export default function Dashboard() {
       : []),
   ];
   const visibleQuickActions = quickActions.filter((action) => {
-    if (isStudentApp && action.to === "/set-planner") {
-      return false;
+    if (action.to === "/set-planner") {
+      return !isStudentApp && canPlanSet;
+    }
+    if (action.to === "/team-builder") {
+      return canManageTeam;
+    }
+    if (action.to === "/admin-tools") {
+      return true;
     }
     if (action.to === "/weekend-rundown") {
       return canOpenWeekendRundown;

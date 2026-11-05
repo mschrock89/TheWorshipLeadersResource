@@ -55,7 +55,8 @@ function PassageSidebarSection({
 
 export default function Bible() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
+  const isAdmin = can("post_feed");
   const [searchParams, setSearchParams] = useSearchParams();
   const defaultReference = "John 1";
   const defaultTranslation = getBibleReaderTranslation(null);

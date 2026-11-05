@@ -19,7 +19,8 @@ import {
   useWeekendRundownHistoryDetail,
   useWeekendRundownSetSongs,
 } from "@/hooks/useWeekendRundown";
-import { canAccessWeekendRundown, GOOD_FIT_LABEL, WEEKEND_RUNDOWN_STATUS_OPTIONS } from "@/lib/weekendRundown";
+import { CAPABILITIES } from "@/lib/capabilities";
+import { GOOD_FIT_LABEL, WEEKEND_RUNDOWN_STATUS_OPTIONS } from "@/lib/weekendRundown";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 
 function getInitials(name: string | null) {
@@ -34,19 +35,18 @@ function statusLabel(status: string) {
 }
 
 export default function WeekendRundownHistory() {
-  const { user } = useAuth();
+  const { user, can, isAdmin } = useAuth();
   const { data: roles = [], isLoading: rolesLoading } = useUserRoles(user?.id);
   const { data: campuses = [] } = useCampuses();
   const { data: userCampuses = [] } = useUserCampuses(user?.id);
   const campusContext = useCampusSelectionOptional();
 
-  const roleNames = roles.map((role) => role.role);
   const isStudentApp = isCurrentStudentResourceApp();
   const rundownName = isStudentApp ? "Wednesday Rundown" : "Weekend Rundown";
-  const hasAccess = canAccessWeekendRundown(roleNames);
+  const hasAccess = can(CAPABILITIES.WEEKEND_RUNDOWN);
 
   const accessibleCampusIds = useMemo(() => {
-    if (roleNames.some((role) => role === "admin" || role === "network_worship_pastor" || role === "network_worship_leader")) {
+    if (isAdmin) {
       return campuses.map((campus) => campus.id);
     }
 
@@ -56,7 +56,7 @@ export default function WeekendRundownHistory() {
         ...roles.map((entry) => entry.admin_campus_id).filter(Boolean) as string[],
       ]),
     );
-  }, [campuses, roleNames, roles, userCampuses]);
+  }, [campuses, isAdmin, roles, userCampuses]);
 
   const availableCampuses = useMemo(() => {
     if (accessibleCampusIds.length === 0) return [];

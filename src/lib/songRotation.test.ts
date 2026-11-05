@@ -20,6 +20,7 @@ test("a long-running song with only a few recent plays is not new", () => {
       isInRegularRotation: false,
       firstUsed: inChristAlone.first_used,
       usageWindowStart,
+      referenceDate: "2026-11-08",
     }),
     false,
   );
@@ -51,15 +52,29 @@ test("older history still counts when the recent usage rows are empty", () => {
   );
 });
 
-test("a song introduced inside the usage window with fewer than 4 plays is new", () => {
+test("a song introduced this year with fewer than 4 plays is new", () => {
   assert.equal(
     isSongInNewRotation({
       totalUses: 2,
       isInRegularRotation: false,
       firstUsed: "2026-06-14",
       usageWindowStart,
+      referenceDate: "2026-11-08",
     }),
     true,
+  );
+});
+
+test("a song first used last year is not new, even with one recent play", () => {
+  assert.equal(
+    isSongInNewRotation({
+      totalUses: 1,
+      isInRegularRotation: false,
+      firstUsed: "2025-08-09",
+      usageWindowStart,
+      referenceDate: "2026-11-08",
+    }),
+    false,
   );
 });
 
@@ -70,6 +85,7 @@ test("four or more plays, or regular rotation, leaves the new-song phase", () =>
       isInRegularRotation: true,
       firstUsed: "2026-01-04",
       usageWindowStart,
+      referenceDate: "2026-11-08",
     }),
     false,
   );
