@@ -60,6 +60,23 @@ export function SongMapBar({
       : Math.min(durationSeconds, Math.max(0, (elapsedAt - startedAt - pausedDurationMs) / 1000));
   const progress = durationSeconds > 0 ? elapsed / durationSeconds : 0;
   const sectionCues = cues.filter((cue) => cue.kind === "section");
+  const orderedSections = [...sectionCues].sort(
+    (left, right) => left.offsetSeconds - right.offsetSeconds || left.id.localeCompare(right.id),
+  );
+  const editingSectionIndex =
+    draft?.kind === "section" && draft.id ? orderedSections.findIndex((cue) => cue.id === draft.id) : -1;
+  const previousSection =
+    draft?.kind !== "section"
+      ? null
+      : editingSectionIndex >= 0
+        ? (orderedSections[editingSectionIndex - 1] ?? null)
+        : ([...orderedSections].reverse().find((cue) => cue.offsetSeconds < draft.offsetSeconds) ?? null);
+  const nextSection =
+    draft?.kind !== "section"
+      ? null
+      : editingSectionIndex >= 0
+        ? (orderedSections[editingSectionIndex + 1] ?? null)
+        : (orderedSections.find((cue) => cue.offsetSeconds > draft.offsetSeconds) ?? null);
   const noteCues = cues.filter((cue) => cue.kind !== "section");
   const playingSection = startedAt == null ? null : activeSongMapCue(sectionCues, elapsed);
   const playingNote = startedAt == null ? null : activeSongMapCue(noteCues, elapsed);
@@ -265,6 +282,30 @@ export function SongMapBar({
             <span className="text-xs font-semibold tabular-nums text-muted-foreground">
               {formatSongMapTime(draft.offsetSeconds)}
             </span>
+            {draft.kind === "section" ? (
+              <span className="inline-flex shrink-0 items-center">
+                <button
+                  type="button"
+                  disabled={!previousSection}
+                  className="inline-flex h-5 w-4 items-center justify-center text-xs font-bold leading-none text-foreground disabled:opacity-30"
+                  onClick={() => previousSection && openDraft(previousSection.offsetSeconds, previousSection)}
+                  aria-label="Previous section"
+                  title="Previous section"
+                >
+                  {"<"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!nextSection}
+                  className="inline-flex h-5 w-4 items-center justify-center text-xs font-bold leading-none text-foreground disabled:opacity-30"
+                  onClick={() => nextSection && openDraft(nextSection.offsetSeconds, nextSection)}
+                  aria-label="Next section"
+                  title="Next section"
+                >
+                  {">"}
+                </button>
+              </span>
+            ) : null}
             <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
               Nudge
             </span>
