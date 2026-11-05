@@ -91,9 +91,11 @@ serve(async (req) => {
 
     const confirmerName = confirmerProfile?.full_name || "A team member";
 
-    // 3. Admins only hear about people they oversee, or setlists they built.
-    // Overseeing means a ministry assignment at this campus that matches the set
-    // (weekend aliases count as the same ministry). Building the set is draft_sets.created_by.
+    // 3. Only Campus Admins of this campus who oversee the set's ministry.
+    // Org Admins, campus worship pastors, and production managers are included
+    // only when they also have Campus Admin for this campus. A ministry
+    // assignment or having built the set does not qualify on its own.
+    // Weekend aliases count as the same ministry.
     const setMinistry = canonicalMinistryType(draftSet.ministry_type as string | null);
     const setCreatedBy = (draftSet.created_by as string | null) || null;
 
@@ -168,9 +170,6 @@ serve(async (req) => {
     const recipientUserIds = Array.from(rolesByUser.keys()).filter((userId) => {
       if (userId === confirmerId) return false;
 
-      const builtThisSet = Boolean(setCreatedBy && userId === setCreatedBy);
-      if (builtThisSet) return true;
-
       if (!adminReceivesCampusPush(rolesByUser.get(userId) || [], campusesByUser.get(userId) || [], [setCampusId])) {
         return false;
       }
@@ -212,7 +211,6 @@ serve(async (req) => {
         resourceAppKey: "worship",
         campusId: setCampusId,
         ministryType: draftSet.ministry_type,
-        campusScopeExemptUserIds: setCreatedBy ? [setCreatedBy] : [],
         vars: {
           name: confirmerName,
           date: formattedDate,

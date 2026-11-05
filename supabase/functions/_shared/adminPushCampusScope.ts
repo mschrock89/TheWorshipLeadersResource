@@ -1,19 +1,17 @@
 // Admin-audience pushes (setlist confirms, swap leader notices, break requests,
 // unanswered-swap gaps) should reach an admin only for campuses they cover.
 // Serving, chat, and other personal pushes are not in this set.
+//
+// Org Admins and Campus Admins only cover campuses they are a Campus Admin for.
+// A home-campus assignment, a ministry assignment, or building the setlist does
+// not add a campus. Network pastors who are not admins still follow their
+// campus assignments.
 
 export const ADMIN_CAMPUS_SCOPED_PUSH_TYPES = new Set([
   "setlist-confirmed",
   "swap-confirmed",
   "swap-unanswered-gap",
   "break-request",
-]);
-
-const CAMPUS_LIMITED_ROLES = new Set([
-  "admin",
-  "campus_admin",
-  "network_worship_pastor",
-  "network_worship_leader",
 ]);
 
 export type AdminCampusRole = {
@@ -23,11 +21,14 @@ export type AdminCampusRole = {
 
 /**
  * Campuses this person should receive admin pushes for.
- * null means they are not limited to a campus (a network admin with no campus
- * assignment, or someone who is not an admin).
+ * null means they are not limited (someone who is not an Admin or Org Admin,
+ * or a network pastor with no campus assignment).
+ * An empty list means they are an Admin or Org Admin with no Campus Admin
+ * campuses, so they receive none of these pushes.
  *
- * Campus Admin rows win. Otherwise an admin or network pastor who is assigned
- * to campuses only hears about those campuses.
+ * Org Admins and Campus Admins only hear about campuses on their Campus Admin
+ * rows. Network pastors who are not admins hear about campuses they are
+ * assigned to.
  */
 export function adminPushCampusLimit(
   roleRows: AdminCampusRole[],
@@ -40,11 +41,15 @@ export function adminPushCampusLimit(
         .map((row) => row.admin_campus_id as string),
     ),
   );
-  if (adminCampuses.length > 0) return adminCampuses;
 
-  const isCampusLimitedRole = roleRows.some((row) => CAMPUS_LIMITED_ROLES.has(row.role));
+  const isOrgOrCampusAdmin = roleRows.some((row) => row.role === "admin" || row.role === "campus_admin");
+  if (isOrgOrCampusAdmin) return adminCampuses;
+
+  const isNetworkLeader = roleRows.some((row) =>
+    row.role === "network_worship_pastor" || row.role === "network_worship_leader"
+  );
   const assigned = Array.from(new Set(assignedCampusIds.filter(Boolean)));
-  if (isCampusLimitedRole && assigned.length > 0) return assigned;
+  if (isNetworkLeader && assigned.length > 0) return assigned;
 
   return null;
 }
