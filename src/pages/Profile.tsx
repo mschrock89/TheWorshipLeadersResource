@@ -739,7 +739,7 @@ export default function Profile() {
             
             {/* Role Display & Management */}
             <div className="mt-3 flex flex-col items-center gap-3">
-              {isLeader && !isOwnProfile ? (
+              {isLeader ? (
                 <>
                   {/* Leadership Roles (can have multiple) */}
                   <div className="flex flex-col items-center gap-2">
