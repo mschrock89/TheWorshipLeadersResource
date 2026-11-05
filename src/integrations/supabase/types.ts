@@ -4635,6 +4635,48 @@ export type Database = {
           },
         ]
       }
+      user_admin_push_prefs: {
+        Row: {
+          campus_id: string
+          channel: string
+          enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campus_id: string
+          channel: string
+          enabled: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campus_id?: string
+          channel?: string
+          enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_admin_push_settings: {
+        Row: {
+          explicit_only: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          explicit_only?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          explicit_only?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_campus_ministry_positions: {
         Row: {
           campus_id: string

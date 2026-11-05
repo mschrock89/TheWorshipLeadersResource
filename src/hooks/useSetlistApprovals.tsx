@@ -470,6 +470,7 @@ export function useSubmitForApproval() {
             // Setlists are a Worship-only feature; scope to worship subscriptions.
             metadata: {
               resourceAppKey: "worship",
+              campusId: thisSet.campus_id,
               ministryType: thisSet.ministry_type,
             },
           },

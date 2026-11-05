@@ -10,6 +10,7 @@ import { useUserCampusMinistryPositions, useToggleCampusMinistryPosition } from 
 import { useCandidateAudition, useUpsertAudition } from "@/hooks/useAuditions";
 import { AvatarUpload } from "@/components/profile/AvatarUpload";
 import { DeleteAccountSection } from "@/components/profile/DeleteAccountSection";
+import { AdminPushPreferences } from "@/components/profile/AdminPushPreferences";
 import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
 import { PushMinistryPreferences } from "@/components/settings/PushMinistryPreferences";
 import { TestPushNotification } from "@/components/settings/TestPushNotification";
@@ -33,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, LEADERSHIP_ROLES, BASE_ROLES, MINISTRY_TYPES, STUDENT_TEAM_BUILDER_MINISTRY_TYPE, isCampFamilyMinistry, getViewMinistryFilterOptions } from "@/lib/constants";
+import { profileUsesAdminPushPreferences } from "@/lib/adminPushPrefs";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { supabase } from "@/integrations/supabase/client";
@@ -1301,6 +1303,14 @@ export default function Profile() {
                     ))}
                   </div>
                 </div>
+              )}
+
+              {(isOwnProfile || canManageTeam) && profileId && profileUsesAdminPushPreferences(userRoles.map((role) => role.role)) && (
+                <AdminPushPreferences
+                  userId={profileId}
+                  campuses={assignableCampuses.map((campus) => ({ id: campus.id, name: campus.name }))}
+                  canEdit={isOwnProfile || canManageTeam}
+                />
               )}
 
               {/* Ministry Types and Positions per Campus */}

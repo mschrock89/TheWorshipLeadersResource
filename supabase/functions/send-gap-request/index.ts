@@ -219,6 +219,7 @@ serve(async (req: Request): Promise<Response> => {
       iosCategory: "GAP_REQUEST",
       metadata: {
         resourceAppKey,
+        campusId,
         ministryType,
         gapRequestId: gapRequest.id,
         vars: {

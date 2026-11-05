@@ -13,6 +13,7 @@ import {
   readCampusScopeExemptUserIds,
   readPushCampusIds,
 } from "../_shared/adminPushCampusScope.ts";
+import { adminPushChannelForType, allowsAdminPush } from "../_shared/adminPushPrefs.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -895,6 +896,72 @@ serve(async (req) => {
               recipientDeviceCount: 0,
               skipped: true,
               reason: "No admin recipients for this campus",
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
+    const adminChannel = isAdminTestPush ? null : adminPushChannelForType(pushType);
+    if (adminChannel && recipientUserIds.length > 0) {
+      const [prefResult, settingResult] = await Promise.all([
+        supabase
+          .from("user_admin_push_prefs")
+          .select("user_id, campus_id, channel, enabled")
+          .in("user_id", recipientUserIds)
+          .eq("channel", adminChannel),
+        supabase
+          .from("user_admin_push_settings")
+          .select("user_id, explicit_only")
+          .in("user_id", recipientUserIds),
+      ]);
+
+      if (prefResult.error || settingResult.error) {
+        console.warn(
+          "Could not load admin push preferences (continuing without filter):",
+          prefResult.error?.message || settingResult.error?.message,
+        );
+      } else {
+        const prefsByUser = new Map<string, Array<{ campusId: string; channel: string; enabled: boolean }>>();
+        for (const row of prefResult.data || []) {
+          const list = prefsByUser.get(row.user_id) || [];
+          list.push({ campusId: row.campus_id, channel: row.channel, enabled: row.enabled });
+          prefsByUser.set(row.user_id, list);
+        }
+        const explicitByUser = new Map<string, boolean>();
+        for (const row of settingResult.data || []) {
+          explicitByUser.set(row.user_id, row.explicit_only === true);
+        }
+
+        const beforeCount = recipientUserIds.length;
+        recipientUserIds = recipientUserIds.filter((userId) =>
+          allowsAdminPush({
+            explicitOnly: explicitByUser.get(userId) ?? false,
+            prefs: prefsByUser.get(userId) ?? [],
+            channel: adminChannel,
+            campusIds: notificationCampusIds,
+          }),
+        );
+        const dropped = beforeCount - recipientUserIds.length;
+        if (dropped > 0) {
+          console.log(
+            `Admin push prefs filtered ${dropped} recipient(s) for ${adminChannel}`,
+          );
+        }
+
+        if (recipientUserIds.length === 0) {
+          console.log("Push skipped: no recipients opted into this admin notification");
+          return new Response(
+            JSON.stringify({
+              success: true,
+              sent: 0,
+              failed: 0,
+              total: 0,
+              recipientUserCount: 0,
+              recipientDeviceCount: 0,
+              skipped: true,
+              reason: "No recipients opted into this admin notification",
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
