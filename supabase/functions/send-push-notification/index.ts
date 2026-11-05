@@ -10,10 +10,13 @@ import { applyPushTemplates } from "../_shared/pushTemplate.ts";
 import {
   ADMIN_CAMPUS_SCOPED_PUSH_TYPES,
   adminReceivesCampusPush,
+  campusLookupFromPushTag,
+  campusNameFromPushMetadata,
   readCampusScopeExemptUserIds,
   readPushCampusIds,
 } from "../_shared/adminPushCampusScope.ts";
 import { adminPushChannelForType, allowsAdminPush } from "../_shared/adminPushPrefs.ts";
+import { omitAppleWebPushWhenNativeExists } from "../_shared/nativePushDelivery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -579,6 +582,53 @@ async function sendPushNotification(
   }
 }
 
+function campusIdFromRelation(value: unknown): string | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!row || typeof row !== "object" || !("campus_id" in row)) return null;
+  const campusId = (row as { campus_id?: unknown }).campus_id;
+  return typeof campusId === "string" && campusId ? campusId : null;
+}
+
+// Older leadership pushes omit campusId. The profile menu can only override an
+// Org Admin when we know which campus the push is about.
+async function resolveLeadershipCampusIds(
+  supabase: ReturnType<typeof createClient>,
+  metadata: Record<string, unknown> | undefined,
+  tag: string | undefined,
+): Promise<string[]> {
+  const explicit = readPushCampusIds(metadata);
+  if (explicit.length > 0) return explicit;
+
+  const campusName = campusNameFromPushMetadata(metadata);
+  if (campusName) {
+    const { data, error } = await supabase.from("campuses").select("id").ilike("name", campusName);
+    if (!error && data?.length) {
+      return data
+        .map((row) => row.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+    }
+  }
+
+  const lookup = campusLookupFromPushTag(tag);
+  if (!lookup) return [];
+
+  if (lookup.source === "break_request") {
+    const { data, error } = await supabase
+      .from("break_requests")
+      .select("rotation_periods(campus_id)")
+      .eq("id", lookup.id)
+      .maybeSingle();
+    if (error || !data) return [];
+    const campusId = campusIdFromRelation(data.rotation_periods);
+    return campusId ? [campusId] : [];
+  }
+
+  const table = lookup.source === "draft_set" ? "draft_sets" : "swap_requests";
+  const { data, error } = await supabase.from(table).select("campus_id").eq("id", lookup.id).maybeSingle();
+  if (error || !data?.campus_id) return [];
+  return [data.campus_id];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -828,7 +878,18 @@ serve(async (req) => {
     }
 
     const pushType = definitionKey || payload.contextType || "";
-    const notificationCampusIds = isAdminTestPush ? [] : readPushCampusIds(payload.metadata);
+    let notificationCampusIds = isAdminTestPush ? [] : readPushCampusIds(payload.metadata);
+    if (
+      !isAdminTestPush &&
+      notificationCampusIds.length === 0 &&
+      adminPushChannelForType(pushType) &&
+      recipientUserIds.length > 0
+    ) {
+      notificationCampusIds = await resolveLeadershipCampusIds(supabase, payload.metadata, payload.tag);
+      if (notificationCampusIds.length > 0) {
+        payload.metadata = { ...(payload.metadata || {}), campusId: notificationCampusIds[0] };
+      }
+    }
     if (
       !isAdminTestPush &&
       ADMIN_CAMPUS_SCOPED_PUSH_TYPES.has(pushType) &&
@@ -1008,7 +1069,8 @@ serve(async (req) => {
       );
     }
 
-    const { data: subscriptions, error: fetchError } = await query;
+    const { data: fetchedSubscriptions, error: fetchError } = await query;
+    const subscriptions = omitAppleWebPushWhenNativeExists(fetchedSubscriptions || []);
 
     if (fetchError) {
       console.error("Error fetching subscriptions:", fetchError);

@@ -27,7 +27,7 @@ export function AdminPushPreferences({ userId, campuses, canEdit }: AdminPushPre
           Admin notifications by campus
         </Label>
         <p className="mt-1 text-sm text-muted-foreground">
-          Choose the leadership notifications this person gets at each campus. Serving reminders, chat, and a swap sent directly to them stay separate.
+          These choices decide the leadership notifications for each campus. They override the pushes an Org Admin would otherwise get. Serving reminders, chat, and a swap sent directly to them stay separate.
         </p>
       </div>
 
