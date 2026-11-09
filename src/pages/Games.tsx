@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, CircleDot, Gamepad2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { requestGameFullscreen } from "@/components/games/GameFullscreen";
 import { haptic } from "@/lib/haptics";
 
 const gameActions = [
@@ -40,6 +41,7 @@ const gameActions = [
 export default function Games() {
   const handleGameLaunch = () => {
     haptic("light");
+    requestGameFullscreen();
   };
 
   const handleGameLaunchKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => {

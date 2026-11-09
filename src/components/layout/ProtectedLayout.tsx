@@ -10,6 +10,7 @@ import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
 } from "@/lib/constants";
+import { GAME_ROUTES } from "@/components/games/GameFullscreen";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 
@@ -168,6 +169,8 @@ export function ProtectedLayout({
 
   const isOnChatPage = location.pathname === "/chat";
   const isLiveMode = location.pathname === "/live";
+  const isGameRoute = (GAME_ROUTES as readonly string[]).includes(location.pathname);
+  const isImmersive = isLiveMode || isGameRoute;
   
   // Check if audio player is active to add extra padding
   const audioPlayer = useAudioPlayerSafe();
@@ -186,14 +189,14 @@ export function ProtectedLayout({
     <CampusSelectionProvider value={campusSelectionValue}>
       <MinistrySelectionProvider value={ministrySelectionValue}>
         <div className="min-h-full bg-background">
-          {!isLiveMode && (
+          {!isImmersive && (
             <Suspense fallback={<div className="h-14 border-b border-border bg-card" />}>
               <MainHeader />
             </Suspense>
           )}
           <main
             className={
-              isLiveMode
+              isImmersive
                 ? "p-0"
                 : isOnChatPage
                 ? ""

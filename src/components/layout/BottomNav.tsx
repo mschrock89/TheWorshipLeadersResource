@@ -24,8 +24,9 @@ import { useActiveCampMode } from "@/hooks/useCampMode";
 import { useKeyboardOffset } from "@/hooks/useKeyboardOffset";
 import { useLiveModeAccess } from "@/hooks/useCanOpenLiveMode";
 import { useNextLiveService } from "@/hooks/useNextLiveService";
+import { GAME_ROUTES } from "@/components/games/GameFullscreen";
 
-export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms", "/live"]);
+export const BOTTOM_NAV_HIDDEN_ROUTES = new Set(["/chat", "/privacy", "/terms", "/live", ...GAME_ROUTES]);
 
 type NavItem = {
   to: string;

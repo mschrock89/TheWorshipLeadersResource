@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GameFullscreen } from "@/components/games/GameFullscreen";
+import { GameScoreReadout } from "@/components/games/GameScore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { haptic } from "@/lib/haptics";
-import { Play, Pause, RotateCcw, Gamepad2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Play, Pause, RotateCcw, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Point = { x: number; y: number };
 type Direction = { x: number; y: number };
@@ -71,7 +72,7 @@ function DirectionPad({
   compact?: boolean;
 }) {
   return (
-    <div className={`relative mx-auto select-none ${compact ? "h-[205px] w-[205px]" : "h-[250px] w-[250px] sm:h-[320px] sm:w-[320px]"}`}>
+    <div className={`relative mx-auto select-none ${compact ? "h-[clamp(132px,24dvh,180px)] w-[clamp(132px,24dvh,180px)]" : "h-[clamp(148px,26dvh,220px)] w-[clamp(148px,26dvh,220px)]"}`}>
       <div className={`absolute rounded-full bg-[radial-gradient(circle,rgba(53,176,229,0.38),rgba(39,116,157,0)_72%)] blur-2xl ${compact ? "inset-5" : "inset-6 sm:inset-8"}`} />
 
       <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
@@ -402,32 +403,112 @@ export default function Snake() {
   const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-start justify-between gap-3 max-[400px]:gap-2">
-        <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Snake</h1>
-          <p className="text-sm text-muted-foreground sm:text-base">Simple arcade mode with a global top-10 leaderboard.</p>
-        </div>
-        <Gamepad2 className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" />
-      </div>
+    <GameFullscreen
+      title="Snake"
+      aspect="square"
+      hint="Arrow keys or WASD. On a phone, use the pad."
+      stats={<GameScoreReadout score={score} best={myBest} />}
+      gameOver={
+        isGameOver
+          ? {
+              score,
+              best: myBest,
+              onPlayAgain: () => resetGame(true),
+            }
+          : null
+      }
+      controls={
+        <>
+          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
+            <Button
+              className="h-12 text-base"
+              onClick={() => {
+                haptic("light");
+                if (isGameOver) {
+                  resetGame(true);
+                  return;
+                }
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader className="px-4 pb-2 pt-4 sm:px-6 sm:pb-3 sm:pt-6">
-            <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-              <span>Game</span>
-              <div className="flex flex-wrap items-center gap-2 text-xs font-normal sm:text-sm">
-                <Badge variant="secondary">Score: {score}</Badge>
-                <Badge variant="outline">Best: {myBest}</Badge>
+                if (score === 0 && snake.length === INITIAL_SNAKE.length && !isRunning) {
+                  setIsRunning(true);
+                  return;
+                }
+
+                setIsRunning((prev) => !prev);
+              }}
+            >
+              {isRunning ? (
+                <>
+                  <Pause className="mr-2 h-4 w-4" /> Pause
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" /> {isGameOver ? "Play Again" : "Start"}
+                </>
+              )}
+            </Button>
+
+            <Button className="h-12 text-base" variant="outline" onClick={() => {
+              haptic("light");
+              resetGame(false);
+            }}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Reset
+            </Button>
+          </div>
+
+          <div className="sm:hidden">
+            <DirectionPad
+              compact={isCompactPhone}
+              onDirection={updateDirection}
+              onCenter={() => {
+                if (isGameOver) {
+                  resetGame(true);
+                  return;
+                }
+                setIsRunning((prev) => !prev);
+              }}
+            />
+          </div>
+        </>
+      }
+      leaderboard={
+        <>
+          {leaderboardQuery.isError && (
+            <p className="text-sm text-destructive">
+              {(leaderboardQuery.error as Error).message.includes("snake_high_scores")
+                ? "Leaderboard unavailable: database migration is missing. Apply Supabase migration 20260306110000_add_snake_high_scores.sql."
+                : `Could not load leaderboard: ${(leaderboardQuery.error as Error).message}`}
+            </p>
+          )}
+          {leaderboard.length === 0 && !leaderboardQuery.isError && (
+            <p className="text-sm text-muted-foreground">No scores yet. Be the first to post one.</p>
+          )}
+
+          {leaderboard.map((row, index) => {
+            const profile = profileById.get(row.user_id);
+            const name = profile?.full_name || "Unknown player";
+
+            return (
+              <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
+                    <AvatarFallback>{getInitials(name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm font-medium">{name}</span>
+                </div>
+                <Badge>{row.score}</Badge>
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 px-4 pb-4 sm:space-y-4 sm:px-6 sm:pb-6">
+            );
+          })}
+        </>
+      }
+    >
             <div
-              className="relative mx-auto grid w-full max-w-[232px] overflow-hidden rounded-md border bg-muted/30 min-[401px]:max-w-[280px] sm:max-w-[420px]"
+              className="relative grid h-full w-full overflow-hidden rounded-md border bg-muted/30"
               style={{
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
-                aspectRatio: "1 / 1",
               }}
             >
               {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, index) => {
@@ -470,103 +551,6 @@ export default function Snake() {
                 />
               ))}
             </div>
-
-            <div className="mx-auto grid w-full max-w-[232px] grid-cols-2 gap-2 min-[401px]:max-w-[280px] sm:flex sm:max-w-[420px] sm:flex-wrap sm:items-center">
-              <Button
-                className="col-span-1 h-9 text-sm sm:h-11 sm:text-base"
-                onClick={() => {
-                  haptic("light");
-                  if (isGameOver) {
-                    resetGame(true);
-                    return;
-                  }
-
-                  if (score === 0 && snake.length === INITIAL_SNAKE.length && !isRunning) {
-                    setIsRunning(true);
-                    return;
-                  }
-
-                  setIsRunning((prev) => !prev);
-                }}
-              >
-                {isRunning ? (
-                  <>
-                    <Pause className="mr-2 h-4 w-4" /> Pause
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" /> {isGameOver ? "Play Again" : "Start"}
-                  </>
-                )}
-              </Button>
-
-              <Button className="col-span-1 h-9 text-sm sm:h-11 sm:text-base" variant="outline" onClick={() => {
-                haptic("light");
-                resetGame(false);
-              }}>
-                <RotateCcw className="mr-2 h-4 w-4" /> Reset
-              </Button>
-
-              {isGameOver && <Badge className="col-span-2 w-fit" variant="destructive">Game Over</Badge>}
-            </div>
-
-            <div className="sm:hidden">
-              <DirectionPad
-                compact={isCompactPhone}
-                onDirection={updateDirection}
-                onCenter={() => {
-                  if (isGameOver) {
-                    resetGame(true);
-                    return;
-                  }
-                  setIsRunning((prev) => !prev);
-                }}
-              />
-            </div>
-
-            <p className="text-xs text-muted-foreground sm:text-sm">Use arrow keys or WASD. On mobile, use the Roku-style pad.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Leaderboard</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {leaderboardQuery.isError && (
-                <p className="text-sm text-destructive">
-                  {(leaderboardQuery.error as Error).message.includes("snake_high_scores")
-                    ? "Leaderboard unavailable: database migration is missing. Apply Supabase migration 20260306110000_add_snake_high_scores.sql."
-                    : `Could not load leaderboard: ${(leaderboardQuery.error as Error).message}`}
-                </p>
-              )}
-              {leaderboard.length === 0 && !leaderboardQuery.isError && (
-                <p className="text-sm text-muted-foreground">No scores yet. Be the first to post one.</p>
-              )}
-
-              {leaderboard.map((row, index) => {
-                const profile = profileById.get(row.user_id);
-                const name = profile?.full_name || "Unknown player";
-
-                return (
-                  <div key={row.user_id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="w-5 text-sm text-muted-foreground">{index + 1}</span>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={profile?.avatar_url || undefined} alt={name} />
-                        <AvatarFallback>{getInitials(name)}</AvatarFallback>
-                      </Avatar>
-                      <span className="truncate text-sm font-medium">{name}</span>
-                    </div>
-                    <Badge>{row.score}</Badge>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    </GameFullscreen>
   );
 }
