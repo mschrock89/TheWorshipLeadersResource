@@ -1,6 +1,6 @@
 {
-  "name": "Wrshp Resource",
-  "short_name": "Wrshp Resource",
+  "name": "My Church Resource",
+  "short_name": "My Church Resource",
   "description": "Manage your worship team, track birthdays and anniversaries, and keep everyone connected.",
   "start_url": "/",
   "display": "standalone",
