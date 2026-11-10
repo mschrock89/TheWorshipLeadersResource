@@ -3,14 +3,9 @@ import emLogo from "@/assets/em-logo-transparent-new.png";
 import { isNativeApp } from "@/lib/native";
 import { getResourceAppForLocation, STUDENT_RESOURCE_APP_KEYS } from "@/lib/resourceApps";
 
-const HOLD_MS = 2300;
+const HOLD_MS = 2900;
 const EXIT_MS = 560;
 const WORDMARK = "EXPERIENCE MUSIC";
-
-const logoMask = {
-  WebkitMaskImage: `url(${emLogo})`,
-  maskImage: `url(${emLogo})`,
-} as const;
 
 function shouldShowLaunchIntro() {
   const app = getResourceAppForLocation();
@@ -64,20 +59,21 @@ export function LaunchIntro() {
   return (
     <div className={`launch-intro${phase === "exit" ? " is-leaving" : ""}`} aria-hidden="true">
       <div className="launch-intro-stage">
-        <span className="launch-intro-ring" />
-        <span className="launch-intro-ring delay-2" />
-        <span className="launch-intro-orbit" />
-        <div className="launch-intro-mark" style={logoMask}>
-          <div className="launch-intro-mark-fill" />
-          <div className="launch-intro-sheen" />
-        </div>
-        <p className="launch-intro-word">
-          {WORDMARK.split("").map((character, index) => (
-            <span key={`${character}-${index}`} style={{ animationDelay: `${980 + index * 32}ms` }}>
-              {character === " " ? "\u00A0" : character}
-            </span>
-          ))}
-        </p>
+        <svg className="launch-intro-mark" viewBox="0 0 500 500">
+          <defs>
+            <mask id="launch-intro-mask" maskUnits="userSpaceOnUse">
+              <path className="launch-intro-stroke box" pathLength="1" d="M125 100 H225.5 V359.5 H125 Z" />
+              <path className="launch-intro-stroke bar" pathLength="1" d="M125 227.5 H203" />
+              <path
+                className="launch-intro-stroke m"
+                pathLength="1"
+                d="M226 100 H234 L301 363 L370 100 H375.5 V359.5"
+              />
+            </mask>
+          </defs>
+          <image href={emLogo} width="500" height="500" mask="url(#launch-intro-mask)" />
+        </svg>
+        <p className="launch-intro-word">{WORDMARK}</p>
       </div>
     </div>
   );

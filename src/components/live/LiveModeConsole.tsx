@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
+import { iphoneLiveSafeClass } from "@/lib/screenSafeArea";
 import { isListenerHosting, isListenerStation, LIVE_STATIONS, liveChatRoomOf, liveStationLabel, liveStationUsesPreServicePlayer, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
 import {
   applyAudioRoutingDefault,
@@ -679,7 +680,7 @@ export function LiveModeConsole({
 
   if (access.isLoading) {
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background">
+      <div className={cn("fixed inset-0 z-40 flex items-center justify-center bg-background", iphoneLiveSafeClass(navigator.userAgent))}>
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -717,7 +718,7 @@ export function LiveModeConsole({
     const videoMessages = live.chatMessages.filter((message) => message.room === "video");
     const videoTab = tab === "chat" ? "chat" : "flow";
     return (
-      <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
+      <div className={cn("fixed inset-0 z-40 flex flex-col bg-background text-foreground", iphoneLiveSafeClass(navigator.userAgent))}>
         <LiveConsoleHeader
           calendarHref={calendarHref}
           campusName={campusName}
@@ -833,7 +834,7 @@ export function LiveModeConsole({
   const currentSong = currentItem?.item_type === "song" ? currentItem : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
+    <div className={cn("fixed inset-0 z-40 flex flex-col bg-background text-foreground", iphoneLiveSafeClass(navigator.userAgent))}>
       <LiveConsoleHeader
         calendarHref={calendarHref}
         campusName={campusName}
@@ -1153,7 +1154,11 @@ function LiveConsoleHeader({
   return (
     <header className="shrink-0 border-b border-border bg-card">
       <div className="flex items-center gap-2 px-2 pt-1.5">
-        <Link to={calendarHref} aria-label="Back to calendar" className="shrink-0 rounded-md p-1.5 hover:bg-muted">
+        <Link
+          to={calendarHref}
+          aria-label="Back to calendar"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-muted"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.22em] text-primary">Live</p>
@@ -1186,7 +1191,7 @@ function LiveConsoleHeader({
 
 function StatusScreen({ title, body, href }: { title: string; body: string; href: string }) {
   return (
-    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+    <div className={cn("fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-background px-6 text-center", iphoneLiveSafeClass(navigator.userAgent))}>
       <h1 className="text-2xl font-bold">{title}</h1>
       <p className="max-w-sm text-muted-foreground">{body}</p>
       <Button asChild>

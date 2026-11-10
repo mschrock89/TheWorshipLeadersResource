@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.worshipleadersresource.app",
-  appName: "My Church Resource",
+  appName: "Resource",
   webDir: "dist",
   ios: {
     backgroundColor: "#1c1f21",

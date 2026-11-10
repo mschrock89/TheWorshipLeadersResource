@@ -1,9 +1,10 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Trophy, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { haptic } from "@/lib/haptics";
+import { isNativeApp } from "@/lib/native";
 import { GameOverCelebration } from "@/components/games/GameScore";
 
 export const GAME_ROUTES = ["/snake", "/pong", "/galaga"] as const;
@@ -16,15 +17,34 @@ const boardSizeClass: Record<BoardAspect, string> = {
   "4/3": "aspect-[4/3] h-[min(100cqh,calc(100cqw*3/4))] w-[min(100cqw,calc(100cqh*4/3))]",
 };
 
-export function requestGameFullscreen() {
+function requestGameFullscreen() {
   const root = document.documentElement;
-  if (document.fullscreenElement || typeof root.requestFullscreen !== "function") return;
+  if (isNativeApp() || document.fullscreenElement || typeof root.requestFullscreen !== "function") return;
   void root.requestFullscreen().catch(() => {});
 }
 
 function exitBrowserFullscreen() {
   if (!document.fullscreenElement || typeof document.exitFullscreen !== "function") return;
   void document.exitFullscreen().catch(() => {});
+}
+
+async function hideNativeStatusBar() {
+  try {
+    const { StatusBar } = await import("@capacitor/status-bar");
+    await StatusBar.hide();
+  } catch (error) {
+    console.error("Failed to hide the status bar for a game:", error);
+  }
+}
+
+async function showNativeStatusBar() {
+  try {
+    const { StatusBar, Style } = await import("@capacitor/status-bar");
+    await StatusBar.show();
+    await StatusBar.setStyle({ style: Style.Dark });
+  } catch (error) {
+    console.error("Failed to restore the status bar after a game:", error);
+  }
 }
 
 export function GameFullscreen({
@@ -62,12 +82,21 @@ export function GameFullscreen({
     navigate("/games");
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    if (isNativeApp()) {
+      void hideNativeStatusBar();
+    } else {
+      requestGameFullscreen();
+    }
     return () => {
       document.body.style.overflow = previousOverflow;
-      exitBrowserFullscreen();
+      if (isNativeApp()) {
+        void showNativeStatusBar();
+      } else {
+        exitBrowserFullscreen();
+      }
     };
   }, []);
 
@@ -100,32 +129,32 @@ export function GameFullscreen({
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="relative z-30 flex shrink-0 items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4">
-        <Button
-          type="button"
-          aria-label="Exit game"
-          onClick={leaveGame}
-          className="h-12 shrink-0 gap-2 rounded-full bg-foreground px-5 text-base font-semibold text-background shadow-lg hover:bg-foreground/90 [&_svg]:size-5"
-        >
-          <X />
-          Exit
-        </Button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-lg font-semibold leading-none sm:text-xl">{title}</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{stats}</div>
+      <div className="relative z-30 shrink-0 space-y-2 px-3 pt-2 sm:px-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button
+            type="button"
+            aria-label="Exit game"
+            onClick={leaveGame}
+            className="h-14 shrink-0 gap-2 rounded-full bg-foreground px-5 text-lg font-semibold text-background shadow-lg hover:bg-foreground/90 [&_svg]:size-6"
+          >
+            <X />
+            Exit
+          </Button>
+          <p className="min-w-0 flex-1 truncate text-center font-display text-xl font-semibold leading-none sm:text-2xl">{title}</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              haptic("light");
+              setScoresOpen(true);
+            }}
+            className="h-14 shrink-0 gap-2 rounded-full px-5 text-lg font-semibold [&_svg]:size-6"
+          >
+            <Trophy />
+            Scores
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            haptic("light");
-            setScoresOpen(true);
-          }}
-          className="h-12 shrink-0 gap-2 rounded-full px-4 text-base font-semibold [&_svg]:size-5"
-        >
-          <Trophy />
-          <span className="hidden min-[420px]:inline">Scores</span>
-        </Button>
+        <div className="flex items-end gap-4 overflow-x-auto pb-1">{stats}</div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col landscape:max-sm:flex-row">
@@ -137,11 +166,11 @@ export function GameFullscreen({
 
         {(controls || hint) && (
           <div
-            className="shrink-0 space-y-2 px-3 pt-2 landscape:max-sm:flex landscape:max-sm:w-[min(240px,42vw)] landscape:max-sm:flex-col landscape:max-sm:justify-center landscape:max-sm:overflow-y-auto landscape:max-sm:px-2"
+            className="shrink-0 space-y-3 px-3 pt-2 landscape:max-sm:flex landscape:max-sm:w-[min(280px,46vw)] landscape:max-sm:flex-col landscape:max-sm:justify-center landscape:max-sm:overflow-y-auto landscape:max-sm:px-2"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
           >
             {controls}
-            {hint ? <p className="text-center text-xs text-muted-foreground sm:text-sm">{hint}</p> : null}
+            {hint ? <p className="hidden text-center text-sm text-muted-foreground sm:block">{hint}</p> : null}
           </div>
         )}
       </div>

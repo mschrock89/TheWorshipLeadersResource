@@ -8,6 +8,8 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { LiveModeConsole } from "@/components/live/LiveModeConsole";
 import { liveServiceMinistry } from "@/lib/liveMode";
+import { cn } from "@/lib/cn";
+import { iphoneLiveSafeClass } from "@/lib/screenSafeArea";
 
 const SERVICE_MINISTRIES = new Set<string>(SET_PLANNER_MINISTRY_OPTIONS.map((option) => option.value));
 
@@ -61,7 +63,7 @@ export default function LiveMode() {
 
   if (authLoading || userCampusesLoading || (isProductionManager && allCampusesLoading)) {
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background">
+      <div className={cn("fixed inset-0 z-40 flex items-center justify-center bg-background", iphoneLiveSafeClass(navigator.userAgent))}>
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
@@ -69,7 +71,7 @@ export default function LiveMode() {
 
   if (!campusId) {
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-background px-6 text-center">
+      <div className={cn("fixed inset-0 z-40 flex items-center justify-center bg-background px-6 text-center", iphoneLiveSafeClass(navigator.userAgent))}>
         <p className="text-muted-foreground">Choose a campus before opening Live Mode.</p>
       </div>
     );

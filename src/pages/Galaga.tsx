@@ -621,7 +621,6 @@ export default function Galaga() {
   const setControl = useCallback((key: "left" | "right" | "shoot", value: boolean) => {
     controlsRef.current[key] = value;
   }, []);
-  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
     <GameFullscreen
@@ -650,9 +649,9 @@ export default function Galaga() {
       }
       controls={
         <>
-          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
+          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3">
             <Button
-              className="h-12 text-base"
+              className="h-16 rounded-xl text-lg [&_svg]:size-6"
               onClick={() => {
                 haptic("light");
                 if (isGameOver) {
@@ -674,7 +673,7 @@ export default function Galaga() {
               )}
             </Button>
 
-            <Button className="h-12 text-base" variant="outline" onClick={() => {
+            <Button className="h-16 rounded-xl text-lg [&_svg]:size-6" variant="outline" onClick={() => {
               haptic("light");
               resetGame(false);
             }}>
@@ -682,10 +681,10 @@ export default function Galaga() {
             </Button>
           </div>
 
-          <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-2 sm:hidden">
+          <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-3 sm:hidden">
             <Button
               variant="outline"
-              className={`touch-none ${isCompactPhone ? "h-14" : "h-16"}`}
+              className="h-24 touch-none rounded-2xl [&_svg]:size-12"
               aria-label="Move left"
               onPointerDown={() => {
                 haptic("selection");
@@ -696,11 +695,10 @@ export default function Galaga() {
               onPointerCancel={() => setControl("left", false)}
               onPointerLeave={() => setControl("left", false)}
             >
-              <ChevronLeft className="h-10 w-10" />
+              <ChevronLeft className="h-12 w-12" />
             </Button>
             <Button
-              variant="outline"
-              className={`touch-none ${isCompactPhone ? "h-14" : "h-16"}`}
+              className="h-24 touch-none rounded-2xl bg-amber-400 text-amber-950 hover:bg-amber-300 [&_svg]:size-12"
               aria-label="Fire"
               onPointerDown={() => {
                 haptic("selection");
@@ -710,11 +708,11 @@ export default function Galaga() {
               onPointerCancel={() => setControl("shoot", false)}
               onPointerLeave={() => setControl("shoot", false)}
             >
-              <Crosshair className="h-10 w-10" />
+              <Crosshair className="h-12 w-12" />
             </Button>
             <Button
               variant="outline"
-              className={`touch-none ${isCompactPhone ? "h-14" : "h-16"}`}
+              className="h-24 touch-none rounded-2xl [&_svg]:size-12"
               aria-label="Move right"
               onPointerDown={() => {
                 haptic("selection");
@@ -725,7 +723,7 @@ export default function Galaga() {
               onPointerCancel={() => setControl("right", false)}
               onPointerLeave={() => setControl("right", false)}
             >
-              <ChevronRight className="h-10 w-10" />
+              <ChevronRight className="h-12 w-12" />
             </Button>
           </div>
         </>
@@ -856,13 +854,6 @@ export default function Galaga() {
                 <div className="absolute bottom-[0%] right-[16%] h-[20%] w-[14%] rounded-b-full bg-cyan-50/90" />
               </div>
 
-              <div className="absolute inset-x-0 top-3 flex items-center justify-center gap-5 font-display text-3xl font-semibold tabular-nums text-white/90 sm:text-4xl">
-                <span>{frame.score}</span>
-                <span className="text-white/35">•</span>
-                <span>L{frame.level}</span>
-                <span className="text-white/35">•</span>
-                <span>{frame.lives} ships</span>
-              </div>
             </div>
     </GameFullscreen>
   );

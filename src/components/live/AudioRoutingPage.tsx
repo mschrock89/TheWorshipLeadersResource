@@ -22,6 +22,7 @@ import {
   writeAudioRoutingDefault,
 } from "@/lib/audioRouting";
 import { cn } from "@/lib/cn";
+import { iphoneLiveSafeClass } from "@/lib/screenSafeArea";
 import { readChannelColorStore, resolveChannelTone } from "@/lib/channelColors";
 import { readTalkbackBindings, writeTalkbackBindingStore } from "@/lib/liveMode";
 import { createInputAudioContext, listSystemAudioInputs, probeInputChannelCount, type SystemAudioInput } from "@/lib/systemAudioInputs";
@@ -156,9 +157,9 @@ export function AudioRoutingPage({ sessionId, channels, onClose, onBindingsChang
   const selected = inputs.find((input) => input.deviceId === deviceId);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
+    <div className={cn("fixed inset-0 z-50 flex flex-col bg-background text-foreground", iphoneLiveSafeClass(navigator.userAgent))}>
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <button type="button" aria-label="Back to Live Mode" onClick={onClose} className="rounded-md p-2 hover:bg-muted">
+        <button type="button" aria-label="Back to Live Mode" onClick={onClose} className="inline-flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="min-w-0">

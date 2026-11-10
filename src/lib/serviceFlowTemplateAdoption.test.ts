@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   flowCanBeReplacedByTemplate,
   flowMatchesTemplateShape,
+  missingTemplateRows,
 } from "./serviceFlowTemplateAdoption.ts";
 
 const weekendTemplate = [
@@ -39,6 +40,32 @@ test("a renamed or retimed row is kept", () => {
   ];
   assert.equal(flowCanBeReplacedByTemplate(renamed, weekendTemplate), false);
   assert.equal(flowCanBeReplacedByTemplate(retimed, weekendTemplate), false);
+});
+
+test("a flow that kept template order gets back only the deleted rows", () => {
+  const template = [
+    { item_type: "header", title: "PRE-SERVICE", sequence_order: 0 },
+    { item_type: "item", title: "iPod Music", sequence_order: 1 },
+    { item_type: "item", title: "Pre-Roll Video", sequence_order: 2 },
+    { item_type: "header", title: "ANNCOUNCEMENTS", sequence_order: 3 },
+    { item_type: "song_placeholder", title: "Song 1", sequence_order: 8 },
+    { item_type: "song_placeholder", title: "Song 2", sequence_order: 9 },
+    { item_type: "song_placeholder", title: "Song 4", sequence_order: 11 },
+  ];
+  const flow = [
+    { sequence_order: 0 },
+    { sequence_order: 2 },
+    { sequence_order: 8 },
+    { sequence_order: 11 },
+  ];
+  assert.deepEqual(
+    missingTemplateRows(flow, template).map((item) => item.title),
+    ["iPod Music", "ANNCOUNCEMENTS", "Song 2"],
+  );
+  assert.deepEqual(
+    missingTemplateRows([{ sequence_order: 0 }, { sequence_order: 99 }], template),
+    [],
+  );
 });
 
 test("song-only flows adopt a template, edited rundowns with headers do not", () => {

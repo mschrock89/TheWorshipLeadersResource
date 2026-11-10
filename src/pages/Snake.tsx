@@ -72,7 +72,7 @@ function DirectionPad({
   compact?: boolean;
 }) {
   return (
-    <div className={`relative mx-auto select-none ${compact ? "h-[clamp(132px,24dvh,180px)] w-[clamp(132px,24dvh,180px)]" : "h-[clamp(148px,26dvh,220px)] w-[clamp(148px,26dvh,220px)]"}`}>
+    <div className={`relative mx-auto touch-none select-none ${compact ? "h-[clamp(188px,32dvh,240px)] w-[clamp(188px,32dvh,240px)]" : "h-[clamp(210px,34dvh,280px)] w-[clamp(210px,34dvh,280px)]"}`}>
       <div className={`absolute rounded-full bg-[radial-gradient(circle,rgba(53,176,229,0.38),rgba(39,116,157,0)_72%)] blur-2xl ${compact ? "inset-5" : "inset-6 sm:inset-8"}`} />
 
       <svg viewBox="0 0 320 320" className="absolute inset-0 h-full w-full drop-shadow-[0_24px_40px_rgba(30,8,66,0.55)]" aria-hidden="true">
@@ -104,36 +104,36 @@ function DirectionPad({
           haptic("selection");
           onDirection({ x: 0, y: -1 });
         }}
-        className={`absolute left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "top-1 h-16 w-20" : "top-2 h-20 w-24 sm:top-4 sm:h-24 sm:w-28"}`}
+        className={`absolute left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "top-1 h-20 w-24" : "top-1 h-24 w-28 sm:top-3 sm:h-28 sm:w-32"}`}
       >
-        <ChevronUp className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
+        <ChevronUp className={`mx-auto stroke-[2.6] ${compact ? "h-10 w-10" : "h-12 w-12 sm:h-14 sm:w-14"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: -1, y: 0 });
         }}
-        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "left-1 h-20 w-16" : "left-2 h-24 w-20 sm:left-4 sm:h-28 sm:w-24"}`}
+        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "left-1 h-24 w-20" : "left-1 h-28 w-24 sm:left-3 sm:h-32 sm:w-28"}`}
       >
-        <ChevronLeft className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
+        <ChevronLeft className={`mx-auto stroke-[2.6] ${compact ? "h-10 w-10" : "h-12 w-12 sm:h-14 sm:w-14"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: 1, y: 0 });
         }}
-        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "right-1 h-20 w-16" : "right-2 h-24 w-20 sm:right-4 sm:h-28 sm:w-24"}`}
+        className={`absolute top-1/2 z-20 -translate-y-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "right-1 h-24 w-20" : "right-1 h-28 w-24 sm:right-3 sm:h-32 sm:w-28"}`}
       >
-        <ChevronRight className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
+        <ChevronRight className={`mx-auto stroke-[2.6] ${compact ? "h-10 w-10" : "h-12 w-12 sm:h-14 sm:w-14"}`} />
       </button>
       <button
         onClick={() => {
           haptic("selection");
           onDirection({ x: 0, y: 1 });
         }}
-        className={`absolute bottom-0 left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "h-16 w-20" : "bottom-2 h-20 w-24 sm:bottom-4 sm:h-24 sm:w-28"}`}
+        className={`absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-xl text-white active:scale-[0.985] ${compact ? "h-20 w-24" : "bottom-1 h-24 w-28 sm:bottom-3 sm:h-28 sm:w-32"}`}
       >
-        <ChevronDown className={`mx-auto stroke-[2.6] ${compact ? "h-8 w-8" : "h-10 w-10 sm:h-12 sm:w-12"}`} />
+        <ChevronDown className={`mx-auto stroke-[2.6] ${compact ? "h-10 w-10" : "h-12 w-12 sm:h-14 sm:w-14"}`} />
       </button>
 
       <button
@@ -141,7 +141,7 @@ function DirectionPad({
           haptic("light");
           onCenter();
         }}
-        className={`absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full font-semibold leading-none text-white active:scale-[0.985] ${compact ? "h-[52px] w-[52px] text-lg" : "h-[62px] w-[62px] text-xl sm:h-[72px] sm:w-[72px] sm:text-2xl"}`}
+        className={`absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-full font-semibold leading-none text-white active:scale-[0.985] ${compact ? "h-16 w-16 text-xl" : "h-[72px] w-[72px] text-2xl sm:h-20 sm:w-20"}`}
       >
         <span className="relative -top-px">OK</span>
       </button>
@@ -400,7 +400,6 @@ export default function Snake() {
   );
   const myBest = myBestQuery.data ?? 0;
   const cellSizePercent = 100 / BOARD_SIZE;
-  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
     <GameFullscreen
@@ -419,9 +418,9 @@ export default function Snake() {
       }
       controls={
         <>
-          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
+          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3">
             <Button
-              className="h-12 text-base"
+              className="h-16 rounded-xl text-lg [&_svg]:size-6"
               onClick={() => {
                 haptic("light");
                 if (isGameOver) {
@@ -448,7 +447,7 @@ export default function Snake() {
               )}
             </Button>
 
-            <Button className="h-12 text-base" variant="outline" onClick={() => {
+            <Button className="h-16 rounded-xl text-lg [&_svg]:size-6" variant="outline" onClick={() => {
               haptic("light");
               resetGame(false);
             }}>
@@ -458,7 +457,6 @@ export default function Snake() {
 
           <div className="sm:hidden">
             <DirectionPad
-              compact={isCompactPhone}
               onDirection={updateDirection}
               onCenter={() => {
                 if (isGameOver) {

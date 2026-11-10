@@ -385,7 +385,6 @@ export default function Pong() {
 
   const leaderboard = leaderboardQuery.data ?? [];
   const myBest = myBestQuery.data ?? 0;
-  const isCompactPhone = typeof window !== "undefined" ? window.innerWidth <= 400 : false;
 
   return (
     <GameFullscreen
@@ -412,9 +411,9 @@ export default function Pong() {
       }
       controls={
         <>
-          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-2">
+          <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3">
             <Button
-              className="h-12 text-base"
+              className="h-16 rounded-xl text-lg [&_svg]:size-6"
               onClick={() => {
                 haptic("light");
                 if (isGameOver) {
@@ -436,7 +435,7 @@ export default function Pong() {
               )}
             </Button>
 
-            <Button className="h-12 text-base" variant="outline" onClick={() => {
+            <Button className="h-16 rounded-xl text-lg [&_svg]:size-6" variant="outline" onClick={() => {
               haptic("light");
               resetMatch(false);
             }}>
@@ -444,7 +443,7 @@ export default function Pong() {
             </Button>
           </div>
 
-          <div
+            <div
             className="mx-auto grid w-full max-w-md grid-cols-2 gap-3 select-none sm:hidden"
             style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
             onContextMenu={(event) => event.preventDefault()}
@@ -452,7 +451,7 @@ export default function Pong() {
             <Button
               variant="outline"
               aria-label="Move paddle up"
-              className={`touch-none select-none text-3xl ${isCompactPhone ? "h-14" : "h-16"}`}
+              className="h-24 touch-none select-none rounded-2xl [&_svg]:size-12"
               onPointerDown={() => {
                 haptic("selection");
                 keysRef.current.up = true;
@@ -467,12 +466,12 @@ export default function Pong() {
                 keysRef.current.up = false;
               }}
             >
-              <ChevronUp className="h-10 w-10" />
+              <ChevronUp className="h-12 w-12" />
             </Button>
             <Button
               variant="outline"
               aria-label="Move paddle down"
-              className={`touch-none select-none text-3xl ${isCompactPhone ? "h-14" : "h-16"}`}
+              className="h-24 touch-none select-none rounded-2xl [&_svg]:size-12"
               onPointerDown={() => {
                 haptic("selection");
                 keysRef.current.down = true;
@@ -487,7 +486,7 @@ export default function Pong() {
                 keysRef.current.down = false;
               }}
             >
-              <ChevronDown className="h-10 w-10" />
+              <ChevronDown className="h-12 w-12" />
             </Button>
           </div>
         </>
@@ -557,7 +556,7 @@ export default function Pong() {
                 }}
               />
 
-              <div className="absolute inset-x-0 top-3 flex items-center justify-center gap-6 font-display text-4xl font-semibold tabular-nums text-white/90 sm:text-5xl">
+              <div className="absolute inset-x-0 top-3 flex items-center justify-center gap-6 font-display text-3xl font-semibold tabular-nums text-white/90 sm:text-4xl">
                 <span>{frame.playerScore}</span>
                 <span className="text-white/40">:</span>
                 <span>{frame.aiScore}</span>

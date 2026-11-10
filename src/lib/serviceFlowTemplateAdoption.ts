@@ -8,6 +8,7 @@ export type TemplateShapeItem = {
   item_type: string;
   title: string;
   default_duration_seconds?: number | null;
+  sequence_order?: number;
 };
 
 function isSongPlaceholder(item: { item_type?: string | null; title?: string | null }): boolean {
@@ -66,6 +67,22 @@ export function flowMatchesTemplateShape(
  * when it was only the setlist (no template was applied), or when it is
  * still an unmodified copy of the template it was generated from.
  */
+/**
+ * Template rows whose sequence number is missing from a flow that still uses
+ * the template's original order. A reordered or hand-built flow is left alone.
+ * Renamed rows that kept their sequence number are not treated as missing.
+ */
+export function missingTemplateRows<T extends TemplateShapeItem & { sequence_order: number }>(
+  flowItems: Array<{ sequence_order: number }>,
+  templateItems: T[],
+): T[] {
+  if (flowItems.length === 0 || templateItems.length === 0) return [];
+  const templateOrders = new Set(templateItems.map((item) => item.sequence_order));
+  if (!flowItems.every((item) => templateOrders.has(item.sequence_order))) return [];
+  const flowOrders = new Set(flowItems.map((item) => item.sequence_order));
+  return templateItems.filter((item) => !flowOrders.has(item.sequence_order));
+}
+
 export function flowCanBeReplacedByTemplate(
   flowItems: FlowShapeItem[],
   sourceTemplateItems: TemplateShapeItem[] | null,

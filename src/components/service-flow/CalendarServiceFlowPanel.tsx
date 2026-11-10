@@ -4,6 +4,7 @@ import { ChevronDown, Plus, Printer, Radio } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   generateServiceFlowFromTemplate,
+  restoreMissingTemplateItems,
   syncServiceFlowSongDurationsFromMarkers,
   syncServiceFlowSongsFromDraftSet,
   syncServiceFlowVocalistsFromDraftSet,
@@ -562,6 +563,9 @@ export function CalendarServiceFlowPanel({
       hasSyncedSetlist.current = true;
       try {
         let changed = false;
+        if (appliedTemplateId) {
+          changed = (await restoreMissingTemplateItems(activeFlowId, appliedTemplateId)) || changed;
+        }
         if (syncDraftSetId && !isKidsCampSetMinistryType(effectiveMinistryType)) {
           changed =
             (await syncServiceFlowSongsFromDraftSet(activeFlowId, syncDraftSetId)) ||
@@ -599,6 +603,7 @@ export function CalendarServiceFlowPanel({
     void syncFromSetlist();
   }, [
     activeFlowId,
+    appliedTemplateId,
     date,
     effectiveMinistryType,
     flowCampusId,

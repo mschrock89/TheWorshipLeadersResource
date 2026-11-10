@@ -15,13 +15,13 @@ function ScoreFigure({
   featured?: boolean;
 }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+    <div className="shrink-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">{label}</p>
       <p
         className={`font-display font-semibold leading-none tabular-nums ${
           featured
-            ? "text-4xl text-foreground min-[480px]:text-5xl"
-            : "text-2xl text-foreground/80 min-[480px]:text-3xl"
+            ? "text-3xl text-foreground sm:text-4xl"
+            : "text-2xl text-foreground/80 sm:text-3xl"
         }`}
       >
         {value}
@@ -42,7 +42,7 @@ export function GameScoreReadout({
   extras?: { label: string; value: number | string }[];
 }) {
   return (
-    <div className="flex flex-wrap items-end gap-x-4 gap-y-1 sm:gap-x-6">
+    <div className="flex items-end gap-x-5 sm:gap-x-6">
       <ScoreFigure label={scoreLabel} value={score} featured />
       <ScoreFigure label="Best" value={best} featured />
       {extras.map((item) => (

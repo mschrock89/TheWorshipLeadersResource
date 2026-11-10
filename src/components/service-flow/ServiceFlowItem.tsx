@@ -27,41 +27,32 @@ interface ServiceFlowItemProps {
 
 function ServiceStartControl({
   active,
-  showLabel,
   onToggle,
 }: {
   active: boolean;
-  showLabel: boolean;
   onToggle: () => void;
 }) {
   return (
-    <>
-      {showLabel ? (
-        <span className="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-          Ends at start
-        </span>
-      ) : null}
-      <Button
-        type="button"
-        variant={active ? "default" : "ghost"}
-        size="icon"
-        className={cn("h-6 w-6", !active && "text-muted-foreground hover:text-foreground")}
-        onClick={onToggle}
-        title={
-          active
-            ? "Service starts when this line ends. Click to clear."
-            : "Service starts when this line ends"
-        }
-        aria-pressed={active}
-        aria-label={
-          active
-            ? "Service starts when this line ends. Clear the mark."
-            : "Mark that the service starts when this line ends"
-        }
-      >
-        <Flag className="h-3.5 w-3.5" />
-      </Button>
-    </>
+    <Button
+      type="button"
+      variant={active ? "default" : "ghost"}
+      size="icon"
+      className={cn("h-6 w-6 shrink-0", !active && "text-muted-foreground hover:text-foreground")}
+      onClick={onToggle}
+      title={
+        active
+          ? "Service starts when this line ends. Click to clear."
+          : "Service starts when this line ends"
+      }
+      aria-pressed={active}
+      aria-label={
+        active
+          ? "Service starts when this line ends. Clear the mark."
+          : "Mark that the service starts when this line ends"
+      }
+    >
+      <Flag className="h-3.5 w-3.5" />
+    </Button>
   );
 }
 
@@ -280,6 +271,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
         data-flow-item-title={printTitleSlug}
         className={cn(
           "flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 bg-card border rounded-md",
+          (marksServiceStart || endsAtServiceStart) && "border-primary",
           isDragging && "opacity-50 shadow-lg"
         )}
       >
@@ -295,43 +287,41 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
             {clockTime}
           </span>
         ) : null}
-        <ServiceStartControl
-          active={marksServiceStart}
-          showLabel={endsAtServiceStart || marksServiceStart}
-          onToggle={toggleServiceStart}
-        />
         <Music className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        {isEditingTitle ? (
-          <Input
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitTitle();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                cancelTitleEdit();
-              }
-            }}
-            autoFocus
-            className="h-8 min-w-0 flex-1 text-sm"
-          />
-        ) : canEditTitle ? (
-          <button
-            type="button"
-            className="service-flow-song-title min-w-0 flex-1 truncate text-left text-sm font-medium hover:text-foreground"
-            onClick={beginTitleEdit}
-            title="Click to edit title"
-          >
-            {resolvedTitle}
-          </button>
-        ) : (
-          <span className="service-flow-song-title min-w-0 flex-1 truncate text-sm font-medium">
-            {resolvedTitle}
-          </span>
-        )}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          {isEditingTitle ? (
+            <Input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitTitle();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelTitleEdit();
+                }
+              }}
+              autoFocus
+              className="h-8 min-w-0 flex-1 text-sm"
+            />
+          ) : canEditTitle ? (
+            <button
+              type="button"
+              className="service-flow-song-title min-w-0 shrink truncate text-left text-sm font-medium hover:text-foreground"
+              onClick={beginTitleEdit}
+              title="Click to edit title"
+            >
+              {resolvedTitle}
+            </button>
+          ) : (
+            <span className="service-flow-song-title min-w-0 shrink truncate text-sm font-medium">
+              {resolvedTitle}
+            </span>
+          )}
+          <ServiceStartControl active={marksServiceStart} onToggle={toggleServiceStart} />
+        </div>
         {(item.song?.bpm || item.song_key || vocalistDisplay) && (
           <div className="service-flow-song-meta order-last flex w-full min-w-0 items-center gap-2 pl-6 sm:order-none sm:ml-auto sm:w-auto sm:justify-end sm:pl-0 sm:text-right">
             {item.song?.bpm && (
@@ -374,6 +364,7 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
       data-flow-item-title={printTitleSlug}
       className={cn(
         "flex flex-wrap items-center gap-2 px-3 py-2 bg-card border rounded-md",
+        (marksServiceStart || endsAtServiceStart) && "border-primary",
         isDragging && "opacity-50 shadow-lg"
       )}
     >
@@ -389,38 +380,36 @@ export const ServiceFlowItem = memo(function ServiceFlowItem({
           {clockTime}
         </span>
       ) : null}
-      <ServiceStartControl
-        active={marksServiceStart}
-        showLabel={endsAtServiceStart || marksServiceStart}
-        onToggle={toggleServiceStart}
-      />
-      {isEditingTitle ? (
-        <Input
-          value={titleDraft}
-          onChange={(e) => setTitleDraft(e.target.value)}
-          onBlur={commitTitle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commitTitle();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              cancelTitleEdit();
-            }
-          }}
-          autoFocus
-          className="h-8 flex-1 text-sm"
-        />
-      ) : (
-        <button
-          type="button"
-          className="flex-1 text-left text-sm hover:text-foreground"
-          onClick={beginTitleEdit}
-          title="Click to edit speaker, placeholder, or title"
-        >
-          {resolvedTitle}
-        </button>
-      )}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {isEditingTitle ? (
+          <Input
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTitle();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelTitleEdit();
+              }
+            }}
+            autoFocus
+            className="h-8 min-w-0 flex-1 text-sm"
+          />
+        ) : (
+          <button
+            type="button"
+            className="min-w-0 shrink truncate text-left text-sm hover:text-foreground"
+            onClick={beginTitleEdit}
+            title="Click to edit speaker, placeholder, or title"
+          >
+            {resolvedTitle}
+          </button>
+        )}
+        <ServiceStartControl active={marksServiceStart} onToggle={toggleServiceStart} />
+      </div>
       <FlowItemNotes notes={item.notes} onCommit={commitNotes} />
       <Button
         variant="ghost"

@@ -12,7 +12,7 @@ import {
   isSpecialtyCustomServiceMinistry,
   isWeekendMinistryType,
 } from "@/lib/customServiceMinistry";
-import { flowCanBeReplacedByTemplate } from "@/lib/serviceFlowTemplateAdoption";
+import { flowCanBeReplacedByTemplate, missingTemplateRows } from "@/lib/serviceFlowTemplateAdoption";
 
 function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
@@ -1032,6 +1032,51 @@ function pairSongsToFlowItems<TDraft extends PairableSong, TFlow extends Pairabl
   }
 
   return pairs;
+}
+
+/**
+ * Put back template rows that were removed from a flow which still uses that
+ * template's sequence numbers. Edited titles, notes, and durations on the
+ * rows that remain are left as they are.
+ */
+export async function restoreMissingTemplateItems(
+  serviceFlowId: string,
+  templateId: string,
+): Promise<boolean> {
+  if (!serviceFlowId || !templateId) return false;
+
+  const [{ data: templateItems, error: templateError }, { data: flowItems, error: flowError }] =
+    await Promise.all([
+      supabase
+        .from("service_flow_template_items")
+        .select("item_type, title, default_duration_seconds, sequence_order")
+        .eq("template_id", templateId)
+        .order("sequence_order", { ascending: true }),
+      supabase
+        .from("service_flow_items")
+        .select("sequence_order")
+        .eq("service_flow_id", serviceFlowId),
+    ]);
+  if (templateError) throw templateError;
+  if (flowError) throw flowError;
+
+  const missing = missingTemplateRows(flowItems || [], templateItems || []);
+  if (missing.length === 0) return false;
+
+  const { error: insertError } = await supabase.from("service_flow_items").insert(
+    missing.map((item) => ({
+      service_flow_id: serviceFlowId,
+      item_type: item.item_type === "song_placeholder" ? "item" : item.item_type,
+      title: item.title,
+      duration_seconds: item.default_duration_seconds,
+      sequence_order: item.sequence_order,
+      song_id: null,
+      song_key: null,
+      vocalist_id: null,
+    })),
+  );
+  if (insertError) throw insertError;
+  return true;
 }
 
 /**

@@ -5,6 +5,16 @@
  */
 export const ANDROID_TABLET_NAV_FALLBACK_PX = 56;
 
+export const IPHONE_LIVE_SAFE_CLASS = "iphone-live-safe";
+
+export function isIPhone(userAgent: string) {
+  return /iPhone|iPod/i.test(userAgent);
+}
+
+export function iphoneLiveSafeClass(userAgent: string) {
+  return isIPhone(userAgent) ? IPHONE_LIVE_SAFE_CLASS : "";
+}
+
 export function isAndroidTablet(userAgent: string) {
   if (!/Android/i.test(userAgent)) return false;
   if (/SM-[TXP]\d/i.test(userAgent)) return true;

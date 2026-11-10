@@ -191,6 +191,25 @@
   .pt-safe {
     padding-top: env(safe-area-inset-top, 0px);
   }
+
+  /* Live Mode is full-bleed. On iPhone the back control otherwise sits in the
+     status-bar band, under the Dynamic Island, and cannot be tapped. The
+     reported inset is often 0 in the native webview, so portrait keeps a 59px
+     floor (the island's top safe area) and landscape keeps that floor on the sides. */
+  .iphone-live-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), 59px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  @media (orientation: landscape) {
+    .iphone-live-safe {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-right: max(env(safe-area-inset-right, 0px), 59px);
+      padding-left: max(env(safe-area-inset-left, 0px), 59px);
+    }
+  }
   
   .pb-safe-nav {
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
@@ -1431,90 +1450,36 @@ html.service-flow-export-mode .service-flow-page .service-flow-print-single {
 .launch-intro-mark {
   position: absolute;
   inset: 0;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  animation:
-    launch-intro-pulse 1.15s cubic-bezier(0.22, 1, 0.36, 1) both,
-    launch-intro-glow 1.35s ease-out 0.15s both;
+  width: 100%;
+  height: 100%;
 }
 
-.launch-intro-mark-fill,
-.launch-intro-sheen {
-  position: absolute;
-  inset: 0;
+.launch-intro-stroke {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 12;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
-.launch-intro-mark-fill {
-  background: #fff;
+.launch-intro-stroke.box {
+  animation: launch-intro-draw 0.85s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-.launch-intro-sheen {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    transparent 36%,
-    rgba(53, 176, 229, 0.15) 44%,
-    #ffffff 50%,
-    #7fd4f5 56%,
-    transparent 66%
-  );
-  background-size: 220% 100%;
-  background-position: 130% 0;
-  mix-blend-mode: multiply;
-  animation: launch-intro-sheen 1.25s cubic-bezier(0.4, 0, 0.2, 1) 0.28s both;
+.launch-intro-stroke.bar {
+  animation: launch-intro-draw 0.32s cubic-bezier(0.4, 0, 0.2, 1) 0.72s forwards;
 }
 
-.launch-intro-ring,
-.launch-intro-orbit {
-  position: absolute;
-  left: 50%;
-  top: 46%;
-  border-radius: 999px;
-  pointer-events: none;
-}
-
-.launch-intro-ring {
-  width: 46%;
-  height: 46%;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 16px rgba(53, 176, 229, 0.45);
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.82);
-  animation: launch-intro-ring 1.25s ease-out 0.12s forwards;
-}
-
-.launch-intro-ring.delay-2 {
-  animation-delay: 0.62s;
-  border-color: rgba(127, 212, 245, 0.9);
-}
-
-.launch-intro-orbit {
-  width: 58%;
-  height: 58%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0 70%,
-    rgba(53, 176, 229, 0.15) 78%,
-    #ffffff 88%,
-    rgba(53, 176, 229, 0.8) 94%,
-    transparent 100%
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1px));
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  animation: launch-intro-orbit 1.45s cubic-bezier(0.33, 0, 0.2, 1) 0.08s forwards;
+.launch-intro-stroke.m {
+  animation: launch-intro-draw 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.95s forwards;
 }
 
 .launch-intro-word {
   position: absolute;
   top: 80%;
   left: 50%;
-  display: flex;
   margin: 0;
   color: rgba(255, 255, 255, 0.86);
   font-family: "Nunito Sans", system-ui, sans-serif;
@@ -1523,13 +1488,9 @@ html.service-flow-export-mode .service-flow-page .service-flow-print-single {
   letter-spacing: 0.42em;
   line-height: 1;
   white-space: nowrap;
-  transform: translateX(calc(-50% + 0.21em));
-}
-
-.launch-intro-word span {
-  display: inline-block;
   opacity: 0;
-  animation: launch-intro-letter 0.42s ease forwards;
+  transform: translateX(calc(-50% + 0.21em));
+  animation: launch-intro-letter 0.45s ease 1.7s forwards;
 }
 
 @keyframes launch-intro-leave {
@@ -1544,95 +1505,34 @@ html.service-flow-export-mode .service-flow-page .service-flow-print-single {
   }
 }
 
-@keyframes launch-intro-glow {
-  0% {
-    filter: drop-shadow(0 0 0 rgba(127, 212, 245, 0));
-  }
-  45% {
-    filter: drop-shadow(0 0 14px rgba(127, 212, 245, 0.95));
-  }
-  100% {
-    filter: drop-shadow(0 0 0 rgba(127, 212, 245, 0));
-  }
-}
-
-@keyframes launch-intro-pulse {
-  0% {
-    transform: scale(1);
-  }
-  38% {
-    transform: scale(1.045);
-  }
-  68% {
-    transform: scale(0.985);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes launch-intro-sheen {
+@keyframes launch-intro-draw {
   to {
-    background-position: -40% 0;
-  }
-}
-
-@keyframes launch-intro-ring {
-  0% {
-    opacity: 0.8;
-    transform: translate(-50%, -50%) scale(0.82);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(2.7);
-  }
-}
-
-@keyframes launch-intro-orbit {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  12% {
-    opacity: 1;
-  }
-  78% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) rotate(280deg);
+    stroke-dashoffset: 0;
   }
 }
 
 @keyframes launch-intro-letter {
   from {
     opacity: 0;
-    transform: translateY(7px);
+    transform: translateX(calc(-50% + 0.21em)) translateY(7px);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateX(calc(-50% + 0.21em));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .launch-intro-mark,
-  .launch-intro-sheen,
-  .launch-intro-ring,
-  .launch-intro-orbit,
-  .launch-intro-word span {
+  .launch-intro-stroke,
+  .launch-intro-word {
     animation: none;
-    filter: none;
   }
 
-  .launch-intro-word span {
+  .launch-intro-stroke {
+    stroke-dashoffset: 0;
+  }
+
+  .launch-intro-word {
     opacity: 1;
-  }
-
-  .launch-intro-ring,
-  .launch-intro-orbit,
-  .launch-intro-sheen {
-    opacity: 0;
   }
 }
