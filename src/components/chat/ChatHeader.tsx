@@ -96,7 +96,7 @@ export function ChatHeader({
               <button
                 key={ministry.value}
                 onClick={() => onSelectMinistry(ministry.value)}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-none text-sm font-medium transition-colors whitespace-nowrap ${
                   isSelected
                     ? "bg-primary text-primary-foreground"
                     : "bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700"
@@ -105,7 +105,7 @@ export function ChatHeader({
                 <span className="md:hidden">{toCompactLabel(ministry.label)}</span>
                 <span className="hidden md:inline">{ministry.label}</span>
                 {unreadCount > 0 && !isSelected && (
-                  <span className="flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                  <span className="flex items-center justify-center min-w-4 h-4 px-1 rounded-none bg-primary text-primary-foreground text-xs font-bold">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}

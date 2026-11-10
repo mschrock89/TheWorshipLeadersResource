@@ -88,7 +88,7 @@ export function MentionPicker({ searchTerm, onSelect, onClose, position, campusI
   return (
     <div
       ref={listRef}
-      className="absolute z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-lg max-h-48 overflow-y-auto w-64"
+      className="absolute z-50 bg-zinc-900 border border-zinc-700 rounded-none shadow-lg max-h-48 overflow-y-auto w-64"
       style={{ bottom: position.top, left: position.left }}
     >
       {filteredProfiles.slice(0, 5).map((profile, index) => (

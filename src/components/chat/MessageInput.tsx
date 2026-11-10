@@ -25,6 +25,8 @@ interface MessageInputProps {
   onSendMessage: (content: string, attachments?: string[]) => void;
   onTyping?: (isTyping: boolean) => void;
   onFocusChange?: (focused: boolean) => void;
+  /** True only while the on-screen keyboard is covering the page, not merely when the field is focused. */
+  keyboardOpen?: boolean;
   campusName?: string;
   campusId?: string | null;
   ministryType?: string | null;
@@ -46,6 +48,7 @@ export function MessageInput({
   onSendMessage,
   onTyping,
   onFocusChange,
+  keyboardOpen = false,
   campusName = "the group",
   campusId,
   ministryType
@@ -367,10 +370,10 @@ export function MessageInput({
 
   return (
     <div 
-      className="relative px-3 bg-[#191A1C]"
+      className="relative px-3 bg-black"
       style={{
-        paddingTop: isKeyboardOpen ? 2 : 0,
-        paddingBottom: isKeyboardOpen
+        paddingTop: keyboardOpen ? 2 : 0,
+        paddingBottom: keyboardOpen
           ? (isIOSDevice ? 0 : 'env(safe-area-inset-bottom, 0px)')
           : 'max(8px, env(safe-area-inset-bottom, 0px))',
       }}
@@ -398,21 +401,21 @@ export function MessageInput({
             className="fixed inset-0 z-40"
             onClick={() => setShowAttachMenu(false)}
           />
-          <div className="absolute bottom-16 left-3 z-50 bg-zinc-900 border border-zinc-700 rounded-xl p-2 shadow-lg">
+          <div className="absolute bottom-16 left-3 z-50 bg-zinc-900 border border-zinc-700 rounded-none p-2 shadow-lg">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-none transition-colors"
             >
-              <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-blue-600 flex items-center justify-center">
                 <Plus className="h-4 w-4" />
               </div>
               <span>File</span>
             </button>
             <button
               onClick={handleCameraCapture}
-              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-none transition-colors"
             >
-              <div className="h-8 w-8 rounded-full bg-green-600 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-green-600 flex items-center justify-center">
                 <Camera className="h-4 w-4" />
               </div>
               <span>Camera</span>
@@ -446,10 +449,10 @@ export function MessageInput({
                   <img 
                     src={pf.preview} 
                     alt="Preview" 
-                    className="h-16 w-16 object-cover rounded-xl border border-zinc-700"
+                    className="h-16 w-16 object-cover rounded-none border border-zinc-700"
                   />
                 ) : (
-                  <div className="h-16 w-16 flex flex-col items-center justify-center bg-zinc-800 rounded-xl border border-zinc-700 p-1">
+                  <div className="h-16 w-16 flex flex-col items-center justify-center bg-zinc-800 rounded-none border border-zinc-700 p-1">
                     <span className="text-xs text-zinc-400 text-center truncate w-full">
                       {pf.file.name.split('.').pop()?.toUpperCase()}
                     </span>
@@ -461,7 +464,7 @@ export function MessageInput({
                 <button
                   type="button"
                   onClick={() => removeFile(index)}
-                  className="absolute -top-1 -right-1 bg-zinc-700 hover:bg-zinc-600 rounded-full p-0.5"
+                  className="absolute -top-1 -right-1 bg-zinc-700 hover:bg-zinc-600 rounded-none p-0.5"
                 >
                   <X className="h-3 w-3 text-white" />
                 </button>
@@ -487,7 +490,7 @@ export function MessageInput({
         )}
 
         {/* Main input box */}
-        <div className="flex-1 min-w-0 flex items-end bg-[#2C2C2E] rounded-2xl px-3 py-2">
+        <div className="flex-1 min-w-0 flex items-end bg-[#2C2C2E] rounded-none px-3 py-2">
           <textarea
             ref={inputRef}
             value={message}
@@ -531,7 +534,7 @@ export function MessageInput({
             // a blur flips isKeyboardOpen and swaps the composer's bottom padding,
             // which is what made the bar snap down after sending.
             onMouseDown={(e) => e.preventDefault()}
-            className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 mb-1"
+            className="h-8 w-8 rounded-none bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 mb-1"
           >
             {isUploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

@@ -379,11 +379,25 @@ function PostCard({
         </div>
 
         {post.revoked_at ? (
-          <div className="px-4 py-8 sm:px-6">
-            <p className="text-lg font-semibold text-foreground">This post was revoked</p>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-              An administrator removed this post after it was reported. The original content is no longer visible.
-            </p>
+          <div className="space-y-5 px-4 py-8 sm:px-6">
+            <div>
+              <p className="text-lg font-semibold text-foreground">This post was revoked</p>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                An administrator removed this post after it was reported. The original content is no longer visible.
+              </p>
+            </div>
+            {isAdmin ? (
+              <div className="flex items-center border-t border-white/6 pt-5">
+                <button
+                  className="ml-auto inline-flex items-center gap-2 rounded-full px-2.5 py-2 text-destructive transition-colors hover:bg-destructive/10 sm:px-3"
+                  onClick={() => onDelete(post)}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
         <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">

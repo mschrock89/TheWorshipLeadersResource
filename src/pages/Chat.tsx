@@ -577,7 +577,7 @@ function ChatContent() {
       {/* Keep document flow height while the shell is fixed over the keyboard. */}
       {isKeyboardPinned && <div style={{ height: closedChatHeight }} aria-hidden />}
       <div
-        className={`flex flex-col overflow-hidden max-w-full ${isKeyboardPinned ? "bg-[#191A1C]" : "bg-black"}`}
+        className="flex flex-col overflow-hidden max-w-full bg-black"
         style={
           isKeyboardPinned
             ? {
@@ -680,12 +680,12 @@ function ChatContent() {
          (!hasClickedJumpToLastRead || firstUnreadIndex !== lastSeenUnreadIndexRef.current) && (
           <button
             onClick={scrollToLastRead}
-            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-all animate-in fade-in slide-in-from-top-2 duration-200 z-10"
+            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-none bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-all animate-in fade-in slide-in-from-top-2 duration-200 z-10"
           >
             <ArrowUp className="h-4 w-4" />
             <span className="text-sm font-medium">Jump to last read</span>
             {unreadCount > 0 && (
-              <span className="flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-white/20 text-xs font-bold">
+              <span className="flex items-center justify-center min-w-5 h-5 px-1.5 rounded-none bg-white/20 text-xs font-bold">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -696,10 +696,10 @@ function ChatContent() {
         {showScrollButton && messages.length > 0 && (
           <button
             onClick={() => pinToLatestMessage("smooth")}
-            className="absolute bottom-3 right-3 flex items-center gap-2 rounded-full bg-zinc-800 border border-zinc-700 shadow-lg hover:bg-zinc-700 transition-colors px-3 py-2 z-10"
+            className="absolute bottom-3 right-3 flex items-center gap-2 rounded-none bg-zinc-800 border border-zinc-700 shadow-lg hover:bg-zinc-700 transition-colors px-3 py-2 z-10"
           >
             {newMessageCount > 0 && (
-              <span className="flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-bold animate-in fade-in zoom-in duration-200">
+              <span className="flex items-center justify-center min-w-5 h-5 px-1.5 rounded-none bg-primary text-primary-foreground text-xs font-bold animate-in fade-in zoom-in duration-200">
                 {newMessageCount > 99 ? "99+" : newMessageCount}
               </span>
             )}
@@ -711,14 +711,15 @@ function ChatContent() {
       {/* Typing + composer — typing sits above input, outside the scroll pane */}
       <div className="flex-shrink-0 relative z-10">
         {!keyboardActive && (
-          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-[#191A1C] to-transparent pointer-events-none" />
+          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-black to-transparent pointer-events-none" />
         )}
         <TypingIndicator typingUsers={typingUsers} />
-        <div className={`bg-[#191A1C] ${keyboardActive ? '' : 'backdrop-blur-md border-t border-zinc-800/50'}`}>
+        <div className="bg-black">
           <MessageInput
             onSendMessage={handleSendMessage}
             onTyping={setTyping}
             onFocusChange={handleComposerFocusChange}
+            keyboardOpen={isKeyboardOpen}
             campusName={getChatDisplayName()}
             campusId={selectedCampusId}
             ministryType={selectedMinistryType}

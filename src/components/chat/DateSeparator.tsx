@@ -14,7 +14,7 @@ export function DateSeparator({ date }: DateSeparatorProps) {
 
   return (
     <div className="flex items-center justify-center my-4">
-      <span className="px-4 py-1.5 rounded-full bg-zinc-800/80 text-xs text-zinc-400 font-medium">
+      <span className="px-4 py-1.5 rounded-none bg-zinc-800/80 text-xs text-zinc-400 font-medium">
         {formatDate(date)}
       </span>
     </div>

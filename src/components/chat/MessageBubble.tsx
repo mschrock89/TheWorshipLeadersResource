@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Smile, Pencil, Trash2, X, Check, Paperclip, Flag } from "lucide-react";
+import { SmilePlus, Pencil, Trash2, X, Check, Paperclip, Flag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { PersonModerationSheet, type ModerationTarget } from "@/components/moderation/PersonModerationSheet";
@@ -222,7 +222,7 @@ export function MessageBubble({
               <img 
                 src={url} 
                 alt="Attachment" 
-                className="max-w-[280px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                className="max-w-[280px] rounded-none object-cover cursor-pointer hover:opacity-90 transition-opacity"
                 loading="lazy"
               />
             </a>
@@ -232,7 +232,7 @@ export function MessageBubble({
               href={url} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors max-w-[280px]"
+              className="flex items-center gap-2 rounded-md border border-zinc-700 bg-black px-4 py-3 text-sm text-zinc-200 transition-colors hover:bg-zinc-900 max-w-[280px]"
             >
               <Paperclip className="h-4 w-4 flex-shrink-0" />
               <span className="truncate">
@@ -251,7 +251,7 @@ export function MessageBubble({
         <img 
           src={content} 
           alt="GIF" 
-          className="max-w-[280px] rounded-xl"
+          className="max-w-[280px] rounded-none"
           loading="lazy"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = 'none';
@@ -307,7 +307,7 @@ export function MessageBubble({
             <button
               type="button"
               onClick={() => setPersonOpen(true)}
-              className="flex min-w-0 items-center gap-3 rounded-full text-left hover:opacity-80"
+              className="flex min-w-0 items-center gap-3 rounded-none text-left hover:opacity-80"
             >
               <Avatar className="h-7 w-7 flex-shrink-0">
                 <AvatarImage src={message.profiles?.avatar_url || undefined} />
@@ -339,7 +339,7 @@ export function MessageBubble({
                 if (e.key === "Enter") handleSaveEdit();
                 if (e.key === "Escape") handleCancelEdit();
               }}
-              className="flex-1 bg-zinc-800 text-white text-sm rounded-xl px-3 py-2 outline-none border border-zinc-600 focus:border-zinc-500"
+              className="flex-1 bg-zinc-800 text-white text-sm rounded-none px-3 py-2 outline-none border border-zinc-600 focus:border-zinc-500"
             />
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveEdit}>
               <Check className="h-4 w-4 text-green-500" />
@@ -351,13 +351,13 @@ export function MessageBubble({
         ) : (
           <div>
             {message.revoked_at ? (
-              <div className="inline-block rounded-2xl bg-zinc-800/40 px-4 py-2.5">
+              <div className="inline-block rounded-md border border-zinc-700 bg-black px-4 py-2.5">
                 <p className="text-sm italic leading-relaxed text-zinc-400">This message was revoked</p>
               </div>
             ) : (
               <>
             {message.content && !isGifUrl(message.content) && (
-              <div className="inline-block bg-zinc-800/80 rounded-2xl px-4 py-2.5">
+              <div className="inline-block rounded-md border border-zinc-700 bg-black px-4 py-2.5">
                 <p className="text-sm text-zinc-100 leading-relaxed break-words">
                   {renderContent(message.content)}
                 </p>
@@ -385,7 +385,7 @@ export function MessageBubble({
                 <button
                   type="button"
                   className={cn(
-                    "flex items-center gap-1 px-2.5 py-1 rounded-full text-sm transition-all duration-150 active:scale-125 hover:scale-110",
+                    "flex items-center gap-1 px-2.5 py-1 rounded-none text-sm transition-all duration-150 active:scale-125 hover:scale-110",
                     data.hasReacted
                       ? "bg-blue-500/20 border border-blue-500/40"
                       : "bg-zinc-800 hover:bg-zinc-700 border border-transparent"
@@ -401,7 +401,7 @@ export function MessageBubble({
                 sideOffset={8}
                 className="w-72 border-zinc-700/80 bg-transparent p-0 shadow-none"
               >
-                <div className="relative overflow-hidden rounded-[24px] border border-zinc-700/80 bg-zinc-950/95 p-3 text-zinc-100 shadow-2xl backdrop-blur-md">
+                <div className="relative overflow-hidden rounded-none border border-zinc-700/80 bg-zinc-950/95 p-3 text-zinc-100 shadow-2xl backdrop-blur-md">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -414,7 +414,7 @@ export function MessageBubble({
                         size="sm"
                         variant="ghost"
                         className={cn(
-                          "h-8 rounded-full px-3 text-xs",
+                          "h-8 rounded-none px-3 text-xs",
                           data.hasReacted
                             ? "bg-blue-500/15 text-blue-200 hover:bg-blue-500/25"
                             : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
@@ -437,7 +437,7 @@ export function MessageBubble({
                         .map((reaction) => (
                           <div
                             key={reaction.id}
-                            className="flex items-center gap-3 rounded-2xl bg-zinc-900/80 px-3 py-2"
+                            className="flex items-center gap-3 rounded-none bg-zinc-900/80 px-3 py-2"
                           >
                             <Avatar className="h-8 w-8 flex-shrink-0">
                               <AvatarImage src={reaction.profiles?.avatar_url || undefined} />
@@ -465,13 +465,13 @@ export function MessageBubble({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label="Add reaction"
+                aria-label="Add a different emoji"
                 className={cn(
-                  "hidden h-7 w-7 items-center justify-center rounded-full bg-zinc-800/60 transition-colors hover:bg-zinc-700 md:flex md:opacity-0 md:group-hover:opacity-100",
-                  !hasReactions && "md:h-0 md:w-0 md:overflow-hidden md:group-hover:h-7 md:group-hover:w-7"
+                  "flex h-7 w-7 items-center justify-center rounded-none border border-transparent bg-zinc-800 text-zinc-300 transition-colors hover:bg-zinc-700",
+                  !hasReactions && "hidden md:flex md:h-0 md:w-0 md:overflow-hidden md:opacity-0 md:group-hover:h-7 md:group-hover:w-7 md:group-hover:opacity-100"
                 )}
               >
-                <Smile className="h-3.5 w-3.5 text-zinc-400" />
+                <SmilePlus className="h-4 w-4" />
               </button>
             </PopoverTrigger>
             <PopoverContent
@@ -522,7 +522,7 @@ export function MessageBubble({
         onOpenChange={setActionsOpen}
         shouldScaleBackground={false}
       >
-        <DrawerContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+        <DrawerContent className="rounded-none border-zinc-800 bg-zinc-950 text-zinc-100">
           <DrawerHeader>
             <DrawerTitle className="text-center text-sm font-medium text-zinc-400">
               {isOwnMessage ? "Your message" : getDisplayName(message.profiles?.full_name ?? null)}
@@ -537,7 +537,7 @@ export function MessageBubble({
                   onToggleReaction(message.id, emoji);
                   setActionsOpen(false);
                 }}
-                className="rounded-full p-1.5 text-2xl hover:bg-zinc-800"
+                className="rounded-none p-1.5 text-2xl hover:bg-zinc-800"
               >
                 {emoji}
               </button>
@@ -549,7 +549,7 @@ export function MessageBubble({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
+                  className="h-12 w-full justify-start gap-3 rounded-none bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
                   onClick={handleStartEdit}
                 >
                   <Pencil className="h-4 w-4" />
@@ -558,7 +558,7 @@ export function MessageBubble({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-red-300 hover:bg-zinc-800 hover:text-red-200"
+                  className="h-12 w-full justify-start gap-3 rounded-none bg-zinc-900 text-red-300 hover:bg-zinc-800 hover:text-red-200"
                   onClick={() => {
                     setActionsOpen(false);
                     setShowDeleteDialog(true);
@@ -572,7 +572,7 @@ export function MessageBubble({
               <Button
                 type="button"
                 variant="ghost"
-                className="h-12 w-full justify-start gap-3 rounded-xl bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
+                className="h-12 w-full justify-start gap-3 rounded-none bg-zinc-900 text-zinc-100 hover:bg-zinc-800 hover:text-white"
                 onClick={() => {
                   setActionsOpen(false);
                   setReportOpen(true);
