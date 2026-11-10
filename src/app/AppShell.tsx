@@ -21,6 +21,7 @@ import type { ComponentType, ReactNode } from "react";
 import { lazy, Suspense, useLayoutEffect } from "react";
 import { getRouterBasename } from "@/lib/resourceApps";
 import { isNativeApp } from "@/lib/native";
+import { LaunchIntro } from "@/components/native/LaunchIntro";
 import { NativePushTapHandler } from "@/components/native/NativePushTapHandler";
 
 export type RouteDefinition = {
@@ -265,6 +266,7 @@ export function AppShell({
                 <BottomNav />
                 <AppOnboardingTour />
                 <NativePushTapHandler />
+                <LaunchIntro />
               </AudioPlayerProvider>
             </AttendanceTrackingProvider>
           </AuthProvider>

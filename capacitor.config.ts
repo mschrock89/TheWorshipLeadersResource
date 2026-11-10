@@ -11,8 +11,8 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 1500,
-      launchAutoHide: true,
+      // Stay up until LaunchIntro paints the same mark, then the motion plays.
+      launchAutoHide: false,
       backgroundColor: "#1c1f21",
       showSpinner: false,
     },

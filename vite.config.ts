@@ -3,27 +3,58 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
-// In production Vercel rewrites /hs and /ms to the student HTML entries
-// (see vercel.json); mirror that in the dev server, which would otherwise
-// fall back to index.html (the worship entry) for those paths.
-function studentEntryRewrite(): Plugin {
-  const rewrite = (url: string | undefined) => {
-    const pathname = (url ?? "").split("?")[0];
+// Mirror the production entry split in the dev server. Vercel rewrites /hs,
+// /ms, and /admin (see vercel.json). Charts is its own deploy at /, so here
+// it lives under /charts and would otherwise fall through to the worship app.
+function appEntryRewrite(): Plugin {
+  const rewritePath = (pathname: string) => {
     if (pathname === "/hs" || pathname.startsWith("/hs/")) return "/students-hs.html";
     if (pathname === "/ms" || pathname.startsWith("/ms/")) return "/students-ms.html";
     if (pathname === "/admin" || pathname.startsWith("/admin/")) return "/admin.html";
+    if (
+      pathname === "/charts/" ||
+      (pathname.startsWith("/charts/") && !pathname.slice("/charts/".length).includes("."))
+    ) {
+      return "/charts/index.html";
+    }
     return null;
   };
 
   return {
-    name: "student-entry-rewrite",
+    name: "app-entry-rewrite",
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => {
-        if (req.headers.accept?.includes("text/html")) {
-          req.url = rewrite(req.url) ?? req.url;
+      server.middlewares.use((req, res, next) => {
+        if (!req.headers.accept?.includes("text/html") || !req.url) {
+          next();
+          return;
         }
+        const queryIndex = req.url.indexOf("?");
+        const pathname = queryIndex === -1 ? req.url : req.url.slice(0, queryIndex);
+        const query = queryIndex === -1 ? "" : req.url.slice(queryIndex);
+        if (pathname === "/charts") {
+          res.statusCode = 302;
+          res.setHeader("Location", `/charts/${query}`);
+          res.end();
+          return;
+        }
+        const rewritten = rewritePath(pathname);
+        if (rewritten) req.url = `${rewritten}${query}`;
         next();
       });
+    },
+    transformIndexHtml: {
+      order: "pre",
+      handler(html, ctx) {
+        const filename = ctx.filename ?? "";
+        if (!filename.endsWith(`${path.sep}charts${path.sep}index.html`)) return html;
+        // Absolute URLs so a refresh on /charts/setlists/:id still loads this entry.
+        // The standalone charts dev server does not use this plugin.
+        return html
+          .replace('href="manifest.json"', 'href="/charts/manifest.json"')
+          .replace('href="icon-192.png"', 'href="/charts/icon-192.png"')
+          .replace('href="icon-1024.png"', 'href="/charts/icon-1024.png"')
+          .replace('src="./main.tsx"', 'src="/charts/main.tsx"');
+      },
     },
   };
 }
@@ -87,7 +118,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react(), studentEntryRewrite(), mode === "development" && componentTagger()].filter(Boolean),
+    plugins: [react(), appEntryRewrite(), mode === "development" && componentTagger()].filter(Boolean),
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
