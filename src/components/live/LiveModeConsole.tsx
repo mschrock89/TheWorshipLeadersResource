@@ -4,7 +4,7 @@ import { format, parseISO } from "date-fns";
 import { ArrowLeft, Loader2, Radio, Settings2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { MINISTRY_TYPES } from "@/lib/constants";
+import { isKidsCampSetMinistryType, MINISTRY_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/cn";
 import { iphoneLiveSafeClass } from "@/lib/screenSafeArea";
 import { isListenerHosting, isListenerStation, LIVE_STATIONS, liveChatRoomOf, liveStationLabel, liveStationUsesPreServicePlayer, readLiveStation, readTalkbackBindings, TALKBACK_TRANSCRIPT_ENABLED, writeLiveStation, writeTalkbackBindingStore, type LiveChatRoom, type LiveStation } from "@/lib/liveMode";
@@ -37,7 +37,14 @@ import { useLiveSession } from "@/hooks/useLiveSession";
 import { useToast } from "@/hooks/use-toast";
 import { useSongMapCues } from "@/hooks/useSongMapCues";
 import { dropSongSectionMarkers } from "@/lib/dropSongSectionMarkers";
-import { useSaveServiceFlowItem, useServiceFlow, useServiceFlowItems } from "@/hooks/useServiceFlow";
+import {
+  syncServiceFlowSongDurationsFromMarkers,
+  syncServiceFlowSongsFromDraftSet,
+  syncServiceFlowVocalistsFromDraftSet,
+  useSaveServiceFlowItem,
+  useServiceFlow,
+  useServiceFlowItems,
+} from "@/hooks/useServiceFlow";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
 import { recurringServiceTimesForDate } from "@/lib/campusMinistrySchedule";
@@ -197,6 +204,74 @@ export function LiveModeConsole({
     customServiceId,
   );
   const { data: items = [], isLoading: itemsLoading } = useServiceFlowItems(flow?.id || null);
+  const hasPlacedSongs = useRef(false);
+  useEffect(() => {
+    hasPlacedSongs.current = false;
+  }, [flow?.id, campusId, ministryType, serviceDate, customServiceId]);
+
+  // Write the posted setlist into Song Placeholder rows. Calendar does this when
+  // that panel opens; Live is often opened on its own and was leaving the slots blank.
+  useEffect(() => {
+    const placeSongTitles = async () => {
+      if (!flow?.id || itemsLoading || items.length === 0) return;
+      if (hasPlacedSongs.current || isKidsCampSetMinistryType(ministryType)) return;
+      hasPlacedSongs.current = true;
+
+      try {
+        let setId = draftSetId || flow.draft_set_id || live.session?.draft_set_id || null;
+        if (!setId) {
+          let query = supabase
+            .from("draft_sets")
+            .select("id")
+            .eq("campus_id", campusId)
+            .eq("ministry_type", ministryType)
+            .eq("plan_date", serviceDate)
+            .eq("status", "published");
+          if (customServiceId) query = query.eq("custom_service_id", customServiceId);
+          const { data, error } = await query
+            .order("published_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (error) throw error;
+          setId = data?.id || null;
+        }
+        if (!setId) {
+          hasPlacedSongs.current = false;
+          return;
+        }
+
+        const songsChanged = await syncServiceFlowSongsFromDraftSet(flow.id, setId);
+        const vocalistsChanged = await syncServiceFlowVocalistsFromDraftSet(flow.id, setId);
+        const updatedCount = await syncServiceFlowSongDurationsFromMarkers({
+          campusId,
+          ministryType,
+          serviceDate,
+          draftSetId: setId,
+          serviceFlowId: flow.id,
+        });
+        if (songsChanged || vocalistsChanged || updatedCount > 0) {
+          await queryClient.invalidateQueries({ queryKey: ["service-flow-items", flow.id] });
+        }
+      } catch (error) {
+        hasPlacedSongs.current = false;
+        console.error("Failed to place Live service flow song titles:", error);
+      }
+    };
+
+    void placeSongTitles();
+  }, [
+    campusId,
+    customServiceId,
+    draftSetId,
+    flow?.draft_set_id,
+    flow?.id,
+    items.length,
+    itemsLoading,
+    live.session?.draft_set_id,
+    ministryType,
+    queryClient,
+    serviceDate,
+  ]);
   const lineNoteAccess = useCanUseLiveLineNotes(campusId);
   const lineNoteItemIds = useMemo(() => items.map((item) => item.id), [items]);
   const lineNotes = useLiveLineNotes(

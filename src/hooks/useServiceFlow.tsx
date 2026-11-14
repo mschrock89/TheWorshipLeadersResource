@@ -13,6 +13,7 @@ import {
   isWeekendMinistryType,
 } from "@/lib/customServiceMinistry";
 import { flowCanBeReplacedByTemplate, missingTemplateRows } from "@/lib/serviceFlowTemplateAdoption";
+import { isOpenSongSlot, planServiceFlowSongPlacement } from "@/lib/serviceFlowSongSlots";
 
 function isMissingServiceFlowCustomServiceColumn(error: unknown): boolean {
   const message = (error as { message?: string } | null)?.message?.toLowerCase() || "";
@@ -616,13 +617,9 @@ function isTemplateSongPlaceholder(templateItem: {
   title?: string | null;
 }): boolean {
   if (templateItem.item_type === "song_placeholder") return true;
-  // Headers are never song placeholders.
   if (templateItem.item_type === "header") return false;
-  // For "item" (or untyped) rows, a literal "Song 1" / "Song 2" label still counts as a
-  // song placeholder. Renaming the row to anything else (e.g. "Morning Meeting") turns it
-  // into a plain item, which is how a template author opts a row out of being a song slot.
-  const title = (templateItem.title || "").trim();
-  return /^song\s*\d+\b/i.test(title);
+  // "Song", "Song 1", and "Song Placeholder" stay slots until someone renames the row.
+  return isOpenSongSlot({ item_type: "item", title: templateItem.title });
 }
 
 // Headers that mark the start of the afternoon portion of a full-day Kids Camp template.
@@ -1082,9 +1079,10 @@ export async function restoreMissingTemplateItems(
 /**
  * Copy the current posted setlist songs onto an existing service flow without
  * rebuilding headers or custom items. Matches by song_id first, then unused
- * song slots in order (so swapping Great Is Thy Faithfulness for How Great
- * Thou Art updates that worship-set row). Extra setlist songs are appended
- * after the last song. Unmatched flow songs are left alone.
+ * song rows in order (so swapping Great Is Thy Faithfulness for How Great
+ * Thou Art updates that worship-set row). Open "Song Placeholder" rows receive
+ * the songs that did not land in an existing song row. Anything still left is
+ * appended after the last song.
  */
 async function syncServiceFlowSongItemsFromSongs(
   serviceFlowId: string,
@@ -1104,93 +1102,57 @@ async function syncServiceFlowSongItemsFromSongs(
   if (flowItemsError) throw flowItemsError;
   if (!flowItems || flowItems.length === 0) return false;
 
-  const flowSongItems = flowItems.filter((item) => item.item_type === "song");
-  if (flowSongItems.length === 0) return false;
-
-  const draftSongs = songs.map((song, index) => ({
-    id: `draft-${index}-${song.id}`,
-    song_id: song.id,
-    title: song.title,
-    song_key: song.key || null,
-  }));
-
-  const pairs = pairSongsToFlowItems(draftSongs, flowSongItems);
-  const pairedDraftIds = new Set(pairs.map((pair) => pair.draft.id));
-  const writeTasks: Promise<unknown>[] = [];
-  let changed = false;
-
-  for (const { draft, flow } of pairs) {
-    const nextSongId = draft.song_id;
-    const nextTitle = draft.title;
-    const nextKey = draft.song_key;
-    const songChanged = (flow.song_id ?? null) !== nextSongId;
-    const titleChanged = (flow.title || "") !== (nextTitle || "");
-    const keyChanged = (flow.song_key ?? null) !== nextKey;
-    // A renamed line on this service stays put while the same song is still in the slot.
-    const keepCustomTitle =
-      !songChanged && titleChanged && !/^song\s*\d+\b/i.test((flow.title || "").trim());
-
-    if (!songChanged && (!titleChanged || keepCustomTitle) && !keyChanged) continue;
-
-    const updatePayload: {
-      song_id: string | null;
-      title: string;
-      song_key: string | null;
-      duration_seconds?: null;
-    } = {
-      song_id: nextSongId,
-      title: keepCustomTitle ? flow.title : nextTitle,
-      song_key: nextKey,
-    };
-    // Old marker lengths belong to the previous song; clear so duration sync
-    // can apply the replacement's practice-track time.
-    if (songChanged) {
-      updatePayload.duration_seconds = null;
-    }
-
-    writeTasks.push(
-      supabase.from("service_flow_items").update(updatePayload).eq("id", flow.id),
-    );
-    changed = true;
+  const plan = planServiceFlowSongPlacement(flowItems, songs);
+  if (plan.updates.length === 0 && plan.inserts.length === 0 && plan.shifts.length === 0) {
+    return false;
   }
 
-  const leftoverSongs = draftSongs.filter((song) => !pairedDraftIds.has(song.id));
-  if (leftoverSongs.length > 0) {
-    const lastSongOrder = Math.max(...flowSongItems.map((item) => item.sequence_order));
-    const shiftBy = leftoverSongs.length;
-    const toShift = flowItems
-      .filter((item) => item.sequence_order > lastSongOrder)
-      .sort((a, b) => b.sequence_order - a.sequence_order);
+  const writeTasks = [
+    ...plan.shifts.map((shift) =>
+      supabase
+        .from("service_flow_items")
+        .update({ sequence_order: shift.sequence_order })
+        .eq("id", shift.id),
+    ),
+    ...plan.updates.map((update) => {
+      const payload: {
+        item_type: "song";
+        song_id: string;
+        title: string;
+        song_key: string | null;
+        duration_seconds?: null;
+      } = {
+        item_type: "song",
+        song_id: update.song_id,
+        title: update.title,
+        song_key: update.song_key,
+      };
+      if (update.clearDuration) payload.duration_seconds = null;
+      return supabase.from("service_flow_items").update(payload).eq("id", update.id);
+    }),
+  ];
 
-    for (const item of toShift) {
-      writeTasks.push(
-        supabase
-          .from("service_flow_items")
-          .update({ sequence_order: item.sequence_order + shiftBy })
-          .eq("id", item.id),
-      );
-    }
-
+  if (plan.inserts.length > 0) {
     writeTasks.push(
       supabase.from("service_flow_items").insert(
-        leftoverSongs.map((song, index) => ({
+        plan.inserts.map((song) => ({
           service_flow_id: serviceFlowId,
           item_type: "song",
           title: song.title,
           duration_seconds: null,
-          sequence_order: lastSongOrder + 1 + index,
+          sequence_order: song.sequence_order,
           song_id: song.song_id,
           song_key: song.song_key,
           vocalist_id: null,
         })),
       ),
     );
-    changed = true;
   }
 
-  if (writeTasks.length === 0) return false;
-  await Promise.all(writeTasks);
-  return changed;
+  const results = await Promise.all(writeTasks);
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
+  return true;
 }
 
 /**
