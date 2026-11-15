@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
-import { Plus, Camera, X, Loader2, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { Plus, Camera, X, Loader2, Send, AtSign, Smile, Mic } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { MentionPicker } from "./MentionPicker";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,16 +9,17 @@ import { haptic } from "@/lib/haptics";
 import { isNativeApp } from "@/lib/native";
 import { CameraSource, isPhotoPickerCancel, pickNativePhoto } from "@/lib/pickNativePhoto";
 
-// Detect if we're on iOS
-function isIOS(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_FILES = 5;
+const COMPOSER_EMOJIS = [
+  "😊", "😂", "❤️", "👍", "🙏", "🔥", "🎉", "😍",
+  "😭", "👏", "💯", "✨", "🙌", "😎", "🤔", "😢",
+  "😮", "💪", "🎵", "🎶", "✝️", "😅", "🤍", "👋",
+];
+
+const composerIconClass =
+  "flex h-10 w-9 shrink-0 items-center justify-center text-white active:opacity-60 disabled:opacity-30";
 
 interface MessageInputProps {
   onSendMessage: (content: string, attachments?: string[]) => void;
@@ -61,8 +61,9 @@ export function MessageInput({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,16 +71,19 @@ export function MessageInput({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
-  const isIOSDevice = useMemo(() => isIOS(), []);
   // Refs so a native `beforeinput` listener (attached once) always sees the
   // latest send handler / mention state, and so we can dedupe against keydown.
   const doSendRef = useRef<() => void>(() => {});
   const mentionActiveRef = useRef(false);
   const keydownHandledRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordTimerRef = useRef<number | null>(null);
+  const recordActionRef = useRef<"send" | "cancel">("cancel");
   mentionActiveRef.current = mentionSearch !== null;
 
   const handleFocus = useCallback(() => {
-    setIsKeyboardOpen(true);
     onFocusChange?.(true);
     // Stop iOS from scrolling the focused field into a mid-screen dead zone
     // before our chat shell has pinned to the visual viewport.
@@ -87,7 +91,6 @@ export function MessageInput({
   }, [onFocusChange]);
 
   const handleBlur = useCallback(() => {
-    setIsKeyboardOpen(false);
     onFocusChange?.(false);
   }, [onFocusChange]);
 
@@ -164,7 +167,6 @@ export function MessageInput({
 
     const validFiles = newPendingFiles.filter(pf => !pf.error);
     setPendingFiles(prev => [...prev, ...validFiles]);
-    setShowAttachMenu(false);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -366,16 +368,153 @@ export function MessageInput({
 
   const isImage = (file: File) => file.type.startsWith('image/');
   const validFilesCount = pendingFiles.filter(pf => !pf.error).length;
-  const placeholder = isKeyboardOpen ? "Message…" : `Message ${campusName}`;
+  const placeholder = `Message ${campusName}`;
+  const hasDraft = message.trim().length > 0 || pendingFiles.length > 0;
+
+  const stopRecordStream = () => {
+    recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordStreamRef.current = null;
+    if (recordTimerRef.current != null) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  };
+
+  const sendVoiceFile = async (file: File) => {
+    if (!user) return;
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const { error } = await supabase.storage.from("chat-attachments").upload(fileName, file);
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from("chat-attachments").getPublicUrl(fileName);
+      onSendMessage("", [urlData.publicUrl]);
+      haptic("light");
+    } catch (error) {
+      console.error("Voice message failed:", error);
+      toast({
+        title: "Couldn't send voice message",
+        description: "Try again, or attach the recording as a file.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const startRecording = async () => {
+    if (isRecording || isUploading || typeof MediaRecorder === "undefined") {
+      if (typeof MediaRecorder === "undefined") {
+        toast({
+          title: "Voice messages aren't available",
+          description: "This device can't record audio in the app.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      const mimeType = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((type) =>
+        MediaRecorder.isTypeSupported(type)
+      );
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const action = recordActionRef.current;
+        const type = recorder.mimeType || mimeType || "audio/mp4";
+        const blob = new Blob(recordChunksRef.current, { type });
+        stopRecordStream();
+        recorderRef.current = null;
+        setIsRecording(false);
+        setRecordSeconds(0);
+        if (action !== "send" || blob.size < 800) return;
+        const ext = type.includes("webm") ? "webm" : "m4a";
+        void sendVoiceFile(new File([blob], `voice-${Date.now()}.${ext}`, { type }));
+      };
+      recordActionRef.current = "cancel";
+      recorder.start();
+      recorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordSeconds(0);
+      setShowEmoji(false);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((seconds) => seconds + 1);
+      }, 1000);
+    } catch (error) {
+      console.error("Microphone error:", error);
+      stopRecordStream();
+      toast({
+        title: "Microphone unavailable",
+        description: "Allow microphone access in Settings to send a voice message.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = (action: "send" | "cancel") => {
+    recordActionRef.current = action;
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      stopRecordStream();
+      setIsRecording(false);
+      setRecordSeconds(0);
+      return;
+    }
+    recorder.stop();
+  };
+
+  useEffect(() => {
+    return () => {
+      recordActionRef.current = "cancel";
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
+      stopRecordStream();
+    };
+  }, []);
+
+  const insertAtCursor = (text: string, mention = false) => {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? message.length;
+    const end = el?.selectionEnd ?? start;
+    const next = message.slice(0, start) + text + message.slice(end);
+    setMessage(next);
+    handleTypingStart();
+    if (mention) {
+      setMentionSearch("");
+      setMentionStartIndex(start);
+    }
+    const cursor = start + text.length;
+    requestAnimationFrame(() => {
+      const node = inputRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(cursor, cursor);
+      node.style.height = "auto";
+      node.style.height = `${Math.min(node.scrollHeight, 128)}px`;
+    });
+  };
+
+  const formatRecordTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   return (
     <div 
       className="relative px-3 bg-black"
       style={{
-        paddingTop: keyboardOpen ? 2 : 0,
+        paddingTop: 8,
         paddingBottom: keyboardOpen
-          ? (isIOSDevice ? 0 : 'env(safe-area-inset-bottom, 0px)')
-          : 'max(8px, env(safe-area-inset-bottom, 0px))',
+          ? 8
+          : "max(8px, env(safe-area-inset-bottom, 0px))",
       }}
       onWheel={(e) => e.stopPropagation()}
     >
@@ -394,32 +533,25 @@ export function MessageInput({
         />
       )}
 
-      {/* Attachment menu overlay */}
-      {showAttachMenu && (
+      {showEmoji && !isRecording && (
         <>
-          <div 
-            className="fixed inset-0 z-40"
-            onClick={() => setShowAttachMenu(false)}
-          />
-          <div className="absolute bottom-16 left-3 z-50 bg-zinc-900 border border-zinc-700 rounded-none p-2 shadow-lg">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-none transition-colors"
-            >
-              <div className="h-8 w-8 rounded-none bg-blue-600 flex items-center justify-center">
-                <Plus className="h-4 w-4" />
-              </div>
-              <span>File</span>
-            </button>
-            <button
-              onClick={handleCameraCapture}
-              className="flex items-center gap-3 w-full px-3 py-2 text-zinc-200 hover:bg-zinc-800 rounded-none transition-colors"
-            >
-              <div className="h-8 w-8 rounded-none bg-green-600 flex items-center justify-center">
-                <Camera className="h-4 w-4" />
-              </div>
-              <span>Camera</span>
-            </button>
+          <div className="fixed inset-0 z-40" onClick={() => setShowEmoji(false)} />
+          <div className="absolute bottom-full left-0 right-0 z-50 mb-2 grid grid-cols-8 gap-1 rounded-2xl border border-white/15 bg-zinc-900 p-2 shadow-lg">
+            {COMPOSER_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                aria-label={`Insert ${emoji}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  insertAtCursor(emoji);
+                  setShowEmoji(false);
+                }}
+                className="flex h-9 items-center justify-center text-[22px] active:opacity-60"
+              >
+                {emoji}
+              </button>
+            ))}
           </div>
         </>
       )}
@@ -474,75 +606,126 @@ export function MessageInput({
         </div>
       )}
 
-      <form ref={formRef} onSubmit={handleSubmit} className="flex items-end gap-2">
-        {/* Plus button - hidden when typing */}
-        {!message.trim() && pendingFiles.length === 0 && (
-          <Button
+      <form ref={formRef} onSubmit={handleSubmit}>
+        <div className="flex min-h-[46px] items-center rounded-[24px] border border-white/35 bg-black pl-0.5 pr-1">
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowAttachMenu(!showAttachMenu)}
-            disabled={isUploading || validFilesCount >= MAX_FILES}
-            className="h-10 w-10 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0 mb-0.5"
-          >
-            <Plus className="h-6 w-6" />
-          </Button>
-        )}
-
-        {/* Main input box */}
-        <div className="flex-1 min-w-0 flex items-end bg-[#2C2C2E] rounded-none px-3 py-2">
-          <textarea
-            ref={inputRef}
-            value={message}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            placeholder={placeholder}
-            autoComplete="off"
-            autoCorrect="on"
-            autoCapitalize="sentences"
-            spellCheck="true"
-            enterKeyHint="send"
-            rows={1}
-            className="flex-1 min-w-0 bg-transparent text-white placeholder:text-zinc-500 outline-none text-base resize-none max-h-32 overflow-y-auto scrollbar-none leading-normal"
-            disabled={isUploading}
-          />
-        </div>
-
-
-        {/* Camera button - hidden when typing or files pending */}
-        {!message.trim() && pendingFiles.length === 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={handleCameraCapture}
-            className="h-9 w-9 text-zinc-400 hover:text-white hover:bg-transparent flex-shrink-0 mb-0.5"
-          >
-            <Camera className="h-5 w-5" />
-          </Button>
-        )}
-
-        {/* Send button - shown when typing or files pending */}
-        {(message.trim() || pendingFiles.length > 0) && (
-          <Button
-            type="submit"
-            size="icon"
-            disabled={isUploading}
-            // Keep focus on the textarea so tapping Send never blurs the field —
-            // a blur flips isKeyboardOpen and swaps the composer's bottom padding,
-            // which is what made the bar snap down after sending.
+            aria-label="Add a file"
             onMouseDown={(e) => e.preventDefault()}
-            className="h-8 w-8 rounded-none bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0 mb-1"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || isRecording || validFilesCount >= MAX_FILES}
+            className={composerIconClass}
           >
-            {isUploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        )}
+            <Plus className="h-[22px] w-[22px]" strokeWidth={1.75} />
+          </button>
+
+          {isRecording ? (
+            <div className="flex min-h-[44px] flex-1 items-center gap-2 px-1 text-white">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+              <span className="text-[15px] tabular-nums">{formatRecordTime(recordSeconds)}</span>
+              <span className="text-[15px] text-zinc-400">Recording</span>
+            </div>
+          ) : (
+            <textarea
+              ref={inputRef}
+              value={message}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              placeholder={placeholder}
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck="true"
+              enterKeyHint="enter"
+              rows={1}
+              className="max-h-32 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 text-white outline-none placeholder:text-[#c7c7cc] scrollbar-none"
+              disabled={isUploading}
+            />
+          )}
+
+          {isRecording ? (
+            <>
+              <button
+                type="button"
+                aria-label="Cancel recording"
+                onClick={() => stopRecording("cancel")}
+                className={composerIconClass}
+              >
+                <X className="h-5 w-5" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label="Send voice message"
+                onClick={() => stopRecording("send")}
+                disabled={isUploading}
+                className={composerIconClass}
+              >
+                <Send className="h-5 w-5" strokeWidth={1.75} />
+              </button>
+            </>
+          ) : hasDraft ? (
+            <button
+              type="submit"
+              aria-label="Send"
+              disabled={isUploading}
+              // Keep focus on the textarea so tapping Send never blurs the field.
+              onMouseDown={(e) => e.preventDefault()}
+              className={composerIconClass}
+            >
+              {isUploading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" strokeWidth={1.75} />
+              )}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                aria-label="Mention someone"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setShowEmoji(false);
+                  insertAtCursor("@", true);
+                }}
+                className={composerIconClass}
+              >
+                <AtSign className="h-[22px] w-[22px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label="Add an emoji"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setShowEmoji((open) => !open)}
+                className={composerIconClass}
+              >
+                <Smile className="h-[22px] w-[22px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label="Record a voice message"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={startRecording}
+                disabled={isUploading}
+                className={composerIconClass}
+              >
+                <Mic className="h-[22px] w-[22px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label="Take a photo"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleCameraCapture}
+                disabled={isUploading || validFilesCount >= MAX_FILES}
+                className={composerIconClass}
+              >
+                <Camera className="h-[22px] w-[22px]" strokeWidth={1.75} />
+              </button>
+            </>
+          )}
+        </div>
 
         {/* Hidden file inputs — tabIndex -1 avoids iOS Prev/Next accessory bar */}
         <input

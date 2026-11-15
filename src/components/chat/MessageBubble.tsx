@@ -211,13 +211,25 @@ export function MessageBubble({
     return url.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i);
   };
 
+  const isAudioUrl = (url: string) => {
+    return /\.(m4a|mp3|aac|wav|ogg|weba)(\?|$)/i.test(url) || /voice-[^/]+\.webm(\?|$)/i.test(url);
+  };
+
   const renderAttachments = (attachments: string[] | null) => {
     if (!attachments || attachments.length === 0) return null;
 
     return (
       <div className="flex flex-col gap-2 mt-2">
         {attachments.map((url, index) => (
-          isImageUrl(url) ? (
+          isAudioUrl(url) ? (
+            <audio
+              key={index}
+              controls
+              preload="metadata"
+              src={url}
+              className="h-10 w-full max-w-[260px]"
+            />
+          ) : isImageUrl(url) ? (
             <a key={index} href={url} target="_blank" rel="noopener noreferrer">
               <img 
                 src={url} 
