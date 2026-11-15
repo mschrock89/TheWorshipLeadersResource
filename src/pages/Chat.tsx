@@ -26,6 +26,7 @@ import {
   getChatMinistryTypesForResourceApp,
   getDefaultChatMinistryTypeForResourceApp,
   getUniqueNormalizedChatMinistries,
+  normalizeChatMinistryType,
 } from "@/lib/chat";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
@@ -572,6 +573,11 @@ function ChatContent() {
     return `${campusName} ${ministryLabel}`.trim();
   };
 
+  const composerName =
+    normalizeChatMinistryType(selectedMinistryType) === "weekend"
+      ? "Weekend Worship"
+      : getChatDisplayName();
+
   return (
     <>
       {/* Keep document flow height while the shell is fixed over the keyboard. */}
@@ -717,7 +723,7 @@ function ChatContent() {
             onTyping={setTyping}
             onFocusChange={handleComposerFocusChange}
             keyboardOpen={isKeyboardOpen}
-            campusName={getChatDisplayName()}
+            campusName={composerName}
             campusId={selectedCampusId}
             ministryType={selectedMinistryType}
           />
