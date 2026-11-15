@@ -710,9 +710,6 @@ function ChatContent() {
 
       {/* Typing + composer — typing sits above input, outside the scroll pane */}
       <div className="flex-shrink-0 relative z-10">
-        {!keyboardActive && (
-          <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-black to-transparent pointer-events-none" />
-        )}
         <TypingIndicator typingUsers={typingUsers} />
         <div className="bg-black">
           <MessageInput
