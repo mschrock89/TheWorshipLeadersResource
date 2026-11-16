@@ -40,10 +40,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus, Upload } from "lucide-react";
+import { Users, Mail, ChevronDown, Send, RefreshCw, Home, UserPlus, Upload, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { MINISTRY_TYPES, POSITION_LABELS, POSITION_CATEGORIES, ROLE_LABELS, getMinistryLabel, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import emLogo from "@/assets/em-logo-transparent-new.png";
 
 const normalizePositionFilterValue = (value: string) =>
   value
@@ -124,6 +125,7 @@ export default function Team() {
   const [roleMember, setRoleMember] = useState<Profile | undefined>();
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   const search = searchParams.get("search") ?? "";
   const sortBy = searchParams.get("sort") ?? "name";
@@ -634,6 +636,82 @@ export default function Team() {
   const notYetEmailedCount = filteredProfiles.filter((profile) => !profile.welcome_email_sent_at).length;
   const alreadyEmailedCount = filteredProfiles.filter((profile) => !!profile.welcome_email_sent_at).length;
 
+  const directoryFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+
+    if (search.trim()) labels.push(`Search: ${search.trim()}`);
+    if (campusFilter !== "all") {
+      labels.push(campuses.find((campus) => campus.id === campusFilter)?.name || "Selected campus");
+    }
+    if (positionFilter !== "all") labels.push(POSITION_LABELS[positionFilter] || positionFilter);
+    if (genderFilter === "male") labels.push("Male");
+    if (genderFilter === "female") labels.push("Female");
+    if (genderFilter === "not_set") labels.push("Gender not set");
+    if (roleFilter === OTHER_MINISTRIES_ROLE_FILTER) labels.push("Other Ministries");
+    else if (roleFilter !== "all") labels.push(ROLE_LABELS[roleFilter] || roleFilter);
+    if (sortBy.startsWith("ministry:")) {
+      labels.push(getDirectoryMinistryLabel(sortBy.replace("ministry:", "")));
+    }
+
+    return labels;
+  }, [search, campusFilter, campuses, positionFilter, genderFilter, roleFilter, sortBy]);
+
+  const handleDownloadPdf = async () => {
+    if (filteredProfiles.length === 0 || isDownloadingPdf) return;
+
+    setIsDownloadingPdf(true);
+    try {
+      const { downloadTeamDirectoryPdf, loadTeamDirectoryLogo } = await import("@/lib/teamDirectoryPdf");
+      const logoDataUrl = await loadTeamDirectoryLogo(emLogo);
+      const personCount = filteredProfiles.length;
+      const countLabel = personCount === profiles.length
+        ? `${personCount} ${personCount === 1 ? "person" : "people"}`
+        : `${personCount} of ${profiles.length} people`;
+
+      downloadTeamDirectoryPdf({
+        countLabel,
+        filters: directoryFilterLabels,
+        logoDataUrl,
+        members: filteredProfiles.map((member) => {
+          const groups = ministryPositionGroupsByUser.get(member.id) || [];
+          const ministries = groups.map((group) => ({
+            label: group.ministryLabel,
+            positions: group.positions.map((position) => POSITION_LABELS[position] || position),
+          }));
+
+          if (ministries.length === 0 && member.positions?.length) {
+            ministries.push({
+              label: "Positions",
+              positions: member.positions.map((position) => POSITION_LABELS[position] || position),
+            });
+          }
+
+          return {
+            name: member.full_name || "Unnamed",
+            email: member.email || "",
+            phone: member.phone || "",
+            campuses: userCampusMap[member.id]?.names || [],
+            ministries,
+          };
+        }),
+      });
+
+      toast({
+        title: "Directory downloaded",
+        description: `Saved ${personCount} team ${personCount === 1 ? "member" : "members"} to a PDF.`,
+      });
+    } catch (error: unknown) {
+      const description = error instanceof Error ? error.message : "Something went wrong while creating the PDF.";
+      toast({
+        title: "Couldn't create the PDF",
+        description,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
   return (
     <RefreshableContainer queryKeys={[["profiles"]]}>
       {/* Breadcrumb Navigation */}
@@ -662,8 +740,18 @@ export default function Team() {
             {profiles.length} team member{profiles.length !== 1 ? "s" : ""}
           </p>
         </div>
-        {canManageTeam && (
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
+        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
+          <Button
+            className="col-span-2 w-full sm:col-span-1 sm:w-auto"
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={isLoading || isDownloadingPdf || filteredProfiles.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {isDownloadingPdf ? "Preparing PDF..." : "Download PDF"}
+          </Button>
+          {canManageTeam && (
+            <>
             <Button className="w-full" variant="outline" onClick={() => setCreateMemberDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
               New Member
@@ -709,8 +797,9 @@ export default function Team() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
