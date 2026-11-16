@@ -23,6 +23,7 @@ import { Users, ArrowRight, MapPin, Music, ListChecks, ShieldCheck, Wrench, Clip
 import { CAPABILITIES } from "@/lib/capabilities";
 import { CovenantCard } from "@/components/dashboard/CovenantCard";
 import { ServiceScriptWidget } from "@/components/dashboard/ServiceScriptWidget";
+import { TutorialVideosWidget } from "@/components/dashboard/TutorialVideosWidget";
 import { isCurrentStudentResourceApp } from "@/lib/resourceApp";
 export default function Dashboard() {
   const {
@@ -326,6 +327,10 @@ export default function Dashboard() {
 
       <section className="mt-6">
         <ApprovedTimeAwayWidget />
+      </section>
+
+      <section className="mt-6">
+        <TutorialVideosWidget />
       </section>
 
       {/* Leader tip */}
