@@ -26,6 +26,7 @@ import { Plus, ArrowLeft, Shield, KeyRound, Loader2, ListOrdered, ListMusic, Tra
 import { TemplateManager } from "@/components/service-flow/TemplateManager";
 import { AdminPingCard } from "@/components/admin/AdminPingCard";
 import { CampModeAdminCard } from "@/components/admin/CampModeAdminCard";
+import { CovenantSignatureTracker } from "@/components/admin/CovenantSignatureTracker";
 import {
   AdminToolCard as Card,
   AdminToolCardContent as CardContent,
@@ -1841,6 +1842,9 @@ export default function AdminTools() {
                 <p className="text-sm text-muted-foreground">
                   {activeCovenant.document.description || `This is the currently active ${covenantTerminology.noun} shown to the team.`}
                 </p>
+                <div className="mt-4 border-t border-border pt-4">
+                  <CovenantSignatureTracker documentId={activeCovenant.document.id} />
+                </div>
                 {canUseAdminTools && (
                   <div className="mt-4 space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
                     <div className="space-y-1">

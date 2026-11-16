@@ -101,6 +101,34 @@ export function useCovenantSignatureCount(documentId?: string) {
   });
 }
 
+export interface CovenantRosterEntry {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  campus_names: string[];
+  typed_name: string | null;
+  signed_at: string | null;
+}
+
+export function useCovenantSignatureRoster(documentId?: string, enabled = true) {
+  const { user, isLoading } = useAuth();
+
+  return useQuery({
+    queryKey: ["covenant-signature-roster", documentId],
+    enabled: enabled && !!user && !isLoading && !!documentId,
+    queryFn: async () => {
+      const db = supabase as any;
+      const { data, error } = await db.rpc("get_covenant_signature_roster", {
+        _document_id: documentId,
+      });
+
+      if (error) throw error;
+      return (data ?? []) as CovenantRosterEntry[];
+    },
+  });
+}
+
 export function useSignCovenant() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -140,6 +168,7 @@ export function useSignCovenant() {
       const { noun } = getCovenantTerminology();
       queryClient.invalidateQueries({ queryKey: ["active-covenant"] });
       queryClient.invalidateQueries({ queryKey: ["covenant-signature-count", signature.document_id] });
+      queryClient.invalidateQueries({ queryKey: ["covenant-signature-roster", signature.document_id] });
       toast({
         title: `${noun} signed`,
         description: `Your ${noun} acknowledgment has been saved.`,
@@ -177,6 +206,7 @@ export function useResetCovenantSignatures() {
       const { noun } = getCovenantTerminology();
       queryClient.invalidateQueries({ queryKey: ["active-covenant"] });
       queryClient.invalidateQueries({ queryKey: ["covenant-signature-count", documentId] });
+      queryClient.invalidateQueries({ queryKey: ["covenant-signature-roster", documentId] });
       toast({
         title: `${noun} signatures reset`,
         description:
