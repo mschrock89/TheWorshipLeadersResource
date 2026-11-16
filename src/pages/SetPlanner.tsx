@@ -803,6 +803,14 @@ export default function SetPlanner() {
       })),
     );
 
+  const lastUsedKeyBySongId = useMemo(() => {
+    const keys: Record<string, string> = {};
+    for (const item of availability) {
+      if (item.suggestedKey) keys[item.song.id] = item.suggestedKey;
+    }
+    return keys;
+  }, [availability]);
+
   const teachingDateStr = format(selectedDate, "yyyy-MM-dd");
 
   useEffect(() => {
@@ -1626,6 +1634,7 @@ export default function SetPlanner() {
               rejectionNotes={rejectionNotes}
               vocalistRundownNotes={vocalistRundownNotes}
               vocalistRundownNotesLoading={vocalistRundownNotesLoading}
+              lastUsedKeyBySongId={lastUsedKeyBySongId}
               publishButton={
                 approvalStatus !== "pending_approval" && approvalStatus !== "scheduled" ? (
                   <PublishSetlistDialog

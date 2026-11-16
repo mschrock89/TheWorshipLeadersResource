@@ -8,11 +8,14 @@ import { GOOD_FIT_LABEL } from "@/lib/weekendRundown";
 interface VocalistRundownNotesPanelProps {
   notes: VocalistRundownNote[];
   isLoading?: boolean;
+  /** Most recent key each song was used in, keyed by song id. */
+  lastUsedKeyBySongId?: Record<string, string>;
 }
 
 export function VocalistRundownNotesPanel({
   notes,
   isLoading = false,
+  lastUsedKeyBySongId = {},
 }: VocalistRundownNotesPanelProps) {
   const notesByVocalist = useMemo(() => {
     const groups = new Map<string, { vocalistName: string; notes: VocalistRundownNote[] }>();
@@ -49,7 +52,7 @@ export function VocalistRundownNotesPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold leading-tight">Notes from past rundowns</p>
           <p className="text-xs text-muted-foreground">
-            These singers are scheduled again. Notes left for them on previous weekends.
+            These singers are scheduled again. Notes left for them on previous weekends, with the last key each song was used in.
           </p>
         </div>
       </div>
@@ -64,6 +67,11 @@ export function VocalistRundownNotesPanel({
                   <Badge variant="outline" className="text-[10px]">
                     {note.song_title}
                   </Badge>
+                  {lastUsedKeyBySongId[note.song_id] ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      Last used {lastUsedKeyBySongId[note.song_id]}
+                    </Badge>
+                  ) : null}
                   <Badge variant="outline" className="text-[10px]">
                     {format(parseISO(note.weekend_date), "MMM d, yyyy")}
                   </Badge>

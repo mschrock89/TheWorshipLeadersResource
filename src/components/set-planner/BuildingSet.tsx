@@ -48,6 +48,8 @@ interface BuildingSetProps {
   rejectionNotes?: string | null;
   vocalistRundownNotes?: VocalistRundownNote[];
   vocalistRundownNotesLoading?: boolean;
+  /** Most recent key each song was used in, keyed by song id. */
+  lastUsedKeyBySongId?: Record<string, string>;
 }
 
 export function BuildingSet({
@@ -71,6 +73,7 @@ export function BuildingSet({
   rejectionNotes,
   vocalistRundownNotes = [],
   vocalistRundownNotesLoading = false,
+  lastUsedKeyBySongId,
 }: BuildingSetProps) {
   const isMobile = useIsMobile();
   const [isEditing, setIsEditing] = useState(false);
@@ -409,6 +412,7 @@ export function BuildingSet({
             <VocalistRundownNotesPanel
               notes={vocalistRundownNotes}
               isLoading={vocalistRundownNotesLoading}
+              lastUsedKeyBySongId={lastUsedKeyBySongId}
             />
           </div>
         </ScrollArea>
