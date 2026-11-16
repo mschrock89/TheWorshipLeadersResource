@@ -76,7 +76,7 @@ export function TutorialVideosWidget() {
           if (!open) setActive(null);
         }}
       >
-        <DialogContent className="w-auto max-w-[95vw] gap-0 overflow-hidden border-0 bg-black p-0">
+        <DialogContent className="w-auto max-w-[95vw] justify-items-center gap-0 sm:w-auto overflow-hidden border-0 bg-black p-0">
           <DialogTitle className="sr-only">{active?.title}</DialogTitle>
           {active ? (
             <iframe
