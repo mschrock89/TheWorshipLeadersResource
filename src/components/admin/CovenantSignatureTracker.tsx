@@ -10,7 +10,7 @@ import { CompactSelectValue } from "@/components/ui/compact-select-value";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCovenantSignatureRoster } from "@/hooks/useCovenant";
-import { getCovenantTerminology } from "@/lib/resourceApp";
+import { getCovenantTerminology, getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 type StatusFilter = "all" | "signed" | "unsigned";
 
@@ -30,6 +30,12 @@ function getInitials(name: string | null, email: string) {
 function formatPercent(signed: number, total: number) {
   if (total === 0) return "0%";
   return `${Math.round((signed / total) * 100)}%`;
+}
+
+function rosterScopeLabel(appKey: string) {
+  if (appKey === "students_hs") return "HS worship volunteers.";
+  if (appKey === "students_ms") return "MS worship volunteers.";
+  return "Worship volunteers on HS, MS, Weekend Worship, and Evident.";
 }
 
 export function CovenantSignatureTracker({ documentId }: { documentId: string }) {
@@ -111,7 +117,7 @@ export function CovenantSignatureTracker({ documentId }: { documentId: string })
           <div>
             <p className="text-sm font-medium">Signature tracker</p>
             <p className="text-xs text-muted-foreground">
-              Everyone on this app's teams, plus anyone who has already signed.
+              {rosterScopeLabel(getCurrentResourceAppKey())}
             </p>
           </div>
           <p className="text-2xl font-semibold tabular-nums">{formatPercent(signedCount, totalCount)}</p>
