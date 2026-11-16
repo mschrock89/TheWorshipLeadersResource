@@ -11,7 +11,7 @@ type Tutorial = {
 
 const TUTORIALS: Tutorial[] = [
   { title: "Where things live", src: "out/where-things-live-mobile.mp4", poster: "out/poster.jpg" },
-  { title: "Turn on push notifications", src: "out/turn-on-push-mobile.mp4", poster: "out/turn-on-push-poster.jpg" },
+  { title: "Push notifications", src: "out/turn-on-push-mobile.mp4", poster: "out/turn-on-push-poster.jpg" },
   { title: "Find my schedule", src: "out/find-my-schedule-mobile.mp4", poster: "out/find-my-schedule-poster.jpg" },
   { title: "Confirm a setlist", src: "out/confirm-setlist-mobile.mp4", poster: "out/confirm-setlist-poster.jpg" },
   { title: "Complete a swap", src: "out/complete-a-swap-mobile.mp4", poster: "out/complete-a-swap-poster.jpg" },
