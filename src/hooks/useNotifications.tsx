@@ -117,12 +117,15 @@ type AdminPingRecipientForNotification = {
   admin_pings: AdminPingForNotification | AdminPingForNotification[] | null;
 };
 
-export function useNotifications() {
+export function useNotifications(options?: { active?: boolean }) {
+  const active = options?.active ?? false;
   const { user, isAdmin } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
   const { data: activeCamp } = useActiveCampMode();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [badgeCount, setBadgeCount] = useState(0);
+  const [hasFullList, setHasFullList] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [readIdsLoaded, setReadIdsLoaded] = useState(false);
   const readIdsRef = useRef<Set<string>>(new Set());
@@ -134,8 +137,8 @@ export function useNotifications() {
 
   // Fetch read notification IDs from database
   useEffect(() => {
-    if (!user) {
-      setReadIdsLoaded(false);
+    if (!user || !active) {
+      if (!user) setReadIdsLoaded(false);
       return;
     }
     
@@ -153,7 +156,7 @@ export function useNotifications() {
     };
     
     loadReadIds();
-  }, [user]);
+  }, [user, active]);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -683,6 +686,7 @@ export function useNotifications() {
       notifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       setNotifications(notifs);
+      setHasFullList(true);
     } finally {
       setIsLoading(false);
     }
@@ -690,21 +694,60 @@ export function useNotifications() {
 
   // Only fetch notifications AFTER read IDs have been loaded
   useEffect(() => {
-    if (readIdsLoaded) {
-      fetchNotifications();
-    }
-  }, [fetchNotifications, readIdsLoaded]);
+    if (!active || !readIdsLoaded) return;
+    void fetchNotifications().catch(() => {
+      // The panel stays usable; the badge count is independent of this list.
+    });
+  }, [active, fetchNotifications, readIdsLoaded]);
+
+  // The closed bell only needs a count. The full list scans sets, events, and
+  // swaps, and listens to those whole tables, so it waits until the bell is opened.
+  useEffect(() => {
+    if (!user || active) return;
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const delay = 1200 + Math.floor(Math.random() * 4500);
+
+    const loadCount = async () => {
+      const { count, error } = await supabase
+        .from("in_app_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .is("read_at", null);
+      if (!cancelled && !error) setBadgeCount(count || 0);
+    };
+
+    const timer = window.setTimeout(() => {
+      void loadCount();
+      channel = supabase
+        .channel(`notification-badge-${user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "in_app_notifications", filter: `user_id=eq.${user.id}` },
+          () => {
+            void loadCount();
+          },
+        )
+        .subscribe();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [user, active]);
 
   // Subscribe to realtime changes for all notification sources.
   // Debounce refetches so bursts of org-wide writes don't stampede the client.
   useEffect(() => {
-    if (!user || !readIdsLoaded) return;
+    if (!active || !user || !readIdsLoaded) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleRefresh = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        void fetchNotifications();
+        void fetchNotifications().catch(() => {});
       }, 1500);
     };
 
@@ -751,7 +794,7 @@ export function useNotifications() {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [user, readIdsLoaded, fetchNotifications]);
+  }, [active, user, readIdsLoaded, fetchNotifications]);
 
   const markAsRead = useCallback(async (notificationId: string) => {
     if (!user) return;
@@ -821,7 +864,9 @@ export function useNotifications() {
     }
   }, [user, notifications]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = hasFullList
+    ? notifications.filter((n) => !n.read).length
+    : badgeCount;
 
   return {
     notifications,

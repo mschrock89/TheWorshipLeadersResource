@@ -13,6 +13,19 @@ const SUPABASE_PROJECT_REF = REMOTE_SUPABASE_URL
   ? new URL(REMOTE_SUPABASE_URL).hostname.split(".")[0]
   : "supabase";
 const SUPABASE_STORAGE_KEY = `sb-${SUPABASE_PROJECT_REF}-auth-token`;
+// Reads fail fast when the database is saturated. Writes, including file
+// uploads, keep a longer limit.
+function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+  const method = (init?.method || "GET").toUpperCase();
+  const timeoutMs = method === "GET" || method === "HEAD" ? 15_000 : 60_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  if (init?.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +38,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
     autoRefreshToken: true,
   },
   global: {
+    fetch: fetchWithTimeout,
     headers: {
       "x-resource-app-key": getCurrentResourceAppKey(),
     },

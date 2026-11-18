@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 
 export type GapRequestStatus = "open" | "filled" | "cancelled";
@@ -180,10 +181,12 @@ export function useGapRequests() {
 export function usePendingGapInviteCount() {
   const { user } = useAuth();
   const resourceAppKey = getCurrentResourceAppKey();
+  const ready = useDeferredEnabled(!!user?.id);
 
   return useQuery({
     queryKey: ["gap-requests", "pending-count", user?.id, resourceAppKey],
-    enabled: !!user?.id,
+    enabled: ready,
+    staleTime: 60 * 1000,
     queryFn: async () => {
       const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
       const { count, error } = await supabase

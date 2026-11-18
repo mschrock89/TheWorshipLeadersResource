@@ -164,15 +164,7 @@ export function TeamTemplateDialog({
   const productionFields =
     ministryType === "eon_weekend"
       ? PRODUCTION_FIELDS.filter((field) => field.key === "foh" || field.key === "propresenter")
-      : ministryType === "ms_hs_production" || ministryType === "hs_production"
-        ? PRODUCTION_FIELDS.filter(
-            (field) =>
-              field.key === "foh" ||
-              field.key === "mon" ||
-              field.key === "lighting" ||
-              field.key === "propresenter",
-          )
-        : PRODUCTION_FIELDS;
+      : PRODUCTION_FIELDS;
 
   useEffect(() => {
     if (!open) return;
@@ -192,7 +184,7 @@ export function TeamTemplateDialog({
   const totalVocalists = Object.values(vocalSelections).filter((value) => value !== "none").length;
   const totalInstruments = Object.values(bandCounts).reduce((sum, count) => sum + count, 0);
   const totalProductionSlots = productionFields.reduce(
-    (sum, field) => sum + productionCounts[field.key],
+    (sum: number, field) => sum + productionCounts[field.key],
     0,
   );
   const totalVideoSlots = Object.values(videoCounts).reduce((sum, count) => sum + count, 0);

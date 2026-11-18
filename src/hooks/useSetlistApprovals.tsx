@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { useDeferredEnabled } from "./useDeferredEnabled";
 import { useToast } from "./use-toast";
 import {
   shouldPublishDirectly,
@@ -247,6 +248,7 @@ async function fetchVisiblePendingApprovals(): Promise<PendingApproval[]> {
 // Check if the current user is an approver (any user named in an approval rule).
 export function useIsApprover() {
   const { user } = useAuth();
+  const ready = useDeferredEnabled(!!user?.id);
 
   return useQuery({
     queryKey: ["is-approver", user?.id],
@@ -254,7 +256,8 @@ export function useIsApprover() {
       if (!user?.id) return false;
       return isApproverUser(user.id);
     },
-    enabled: !!user?.id,
+    enabled: ready,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -304,7 +307,8 @@ export function usePendingApprovalCount() {
       return approvals.length;
     },
     enabled: isApprover === true,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 60 * 1000,
+    refetchInterval: 120000,
   });
 }
 

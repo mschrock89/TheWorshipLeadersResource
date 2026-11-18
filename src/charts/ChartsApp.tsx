@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createAppQueryClient } from "@/lib/queryClient";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,7 +13,7 @@ import { ChartsSetlistsPage } from "@/charts/pages/ChartsSetlistsPage";
 import { ChartsSetDetailPage } from "@/charts/pages/ChartsSetDetailPage";
 import { ChartsViewerPage } from "@/charts/pages/ChartsViewerPage";
 
-const queryClient = new QueryClient();
+const queryClient = createAppQueryClient();
 
 function resolveChartsBasename() {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");

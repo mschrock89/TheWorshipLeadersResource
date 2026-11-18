@@ -35,8 +35,8 @@ import { format, nextSunday, nextSaturday, isSaturday, isSunday, isWednesday, ad
 import { CalendarIcon, ListMusic, Home, Music, Settings, Sparkles, Users, X, FileText } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
-import { campusOffersMinistry } from "@/lib/campusSetup";
+import { POSITION_LABELS, SET_PLANNER_MINISTRY_OPTIONS, getViewMinistryLabel, isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { campusOffersViewMinistry } from "@/lib/campusSetup";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -44,7 +44,7 @@ import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 
 const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
-const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) => {
+const SET_BUILDER_SESSION_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((option) => {
   if (option.value === "kids_camp") {
     return [
       { value: "kids_camp_morning", label: "Kids Camp Morning" },
@@ -58,6 +58,29 @@ const SET_BUILDER_MINISTRY_OPTIONS = SET_PLANNER_MINISTRY_OPTIONS.flatMap((optio
     ];
   }
   return [option];
+});
+
+/** Same sequence as the calendar ministry menu. Camp sessions stay with their ministry. */
+const SET_BUILDER_MINISTRY_ORDER = [
+  "weekend",
+  "eon",
+  "eon_weekend",
+  "encounter",
+  "ms_hs",
+  "evident",
+  "student_camp_morning",
+  "student_camp_evening",
+  "prayer_night",
+  "worship_night",
+  "kids_camp_morning",
+  "kids_camp_afternoon",
+] as const;
+
+const SET_BUILDER_MINISTRY_OPTIONS = SET_BUILDER_MINISTRY_ORDER.flatMap((value) => {
+  const option = SET_BUILDER_SESSION_OPTIONS.find((item) => item.value === value);
+  if (!option) return [];
+  const label = value === "ms_hs" || value === "evident" ? getViewMinistryLabel(value) : option.label;
+  return [{ ...option, label }];
 });
 
 const NETWORK_WIDE_SET_BUILDER_MINISTRY_OPTIONS = SET_BUILDER_MINISTRY_OPTIONS.filter((option) =>
@@ -273,7 +296,7 @@ export default function SetPlanner() {
   const ministryOptions = (isNetworkWideCampus
     ? NETWORK_WIDE_SET_BUILDER_MINISTRY_OPTIONS
     : SET_BUILDER_MINISTRY_OPTIONS
-  ).filter((option) => campusOffersMinistry(campusMinistries, option.value));
+  ).filter((option) => campusOffersViewMinistry(campusMinistries, option.value));
   const showCampusSelector =
     availableCampuses.length > 1 || hasNetworkAccess || isAdmin || isNetworkWideCampus;
 

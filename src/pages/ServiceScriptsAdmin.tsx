@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
-import { campusOffersMinistry } from "@/lib/campusSetup";
+import { campusOffersViewMinistry } from "@/lib/campusSetup";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   useDeleteServiceScript,
@@ -326,7 +326,7 @@ export default function ServiceScriptsAdmin() {
   const selectedCampusId = campusId || campuses[0]?.id || "";
   const { enabled: campusMinistries } = useCampusMinistrySet(selectedCampusId || null);
   const ministries = useMemo(
-    () => getViewMinistryFilterOptions(null).filter((ministry) => campusOffersMinistry(campusMinistries, ministry.value)),
+    () => getViewMinistryFilterOptions(null).filter((ministry) => campusOffersViewMinistry(campusMinistries, ministry.value)),
     [campusMinistries],
   );
   useEffect(() => {

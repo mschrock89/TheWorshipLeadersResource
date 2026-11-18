@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 import {
   hasProductionLiveAssignment,
   hasVideoLiveAssignment,
@@ -24,9 +25,10 @@ export function useLiveModeAccess(campusId?: string | null): LiveModeAccess {
   const { user, isAdmin, isProductionManager, isVideoDirector } = useAuth();
   const productionRole = isProductionManager;
   const videoRole = isVideoDirector && !isAdmin && !isProductionManager;
+  const ready = useDeferredEnabled(!!user?.id, 3000);
   const assignments = useQuery({
     queryKey: ["live-mode-access", user?.id],
-    enabled: !!user?.id,
+    enabled: ready,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const [ministries, positions] = await Promise.all([
@@ -46,7 +48,8 @@ export function useLiveModeAccess(campusId?: string | null): LiveModeAccess {
   });
 
   const rows = (assignments.data || []).filter((row) => onCampus(campusId, row.campus_id));
-  const audience: LiveModeAudience | null = assignments.isLoading && !productionRole && !videoRole
+  const assignmentsPending = !!user?.id && !ready;
+  const audience: LiveModeAudience | null = (assignmentsPending || assignments.isLoading) && !productionRole && !videoRole
     ? null
     : resolveLiveAudience({
         isAdmin,
@@ -54,7 +57,7 @@ export function useLiveModeAccess(campusId?: string | null): LiveModeAccess {
         isVideoDirector: videoRole,
         rows,
       });
-  const waitingForAssignment = !!user?.id && !productionRole && !videoRole && assignments.isLoading;
+  const waitingForAssignment = !!user?.id && !productionRole && !videoRole && (assignmentsPending || assignments.isLoading);
 
   return {
     canOpen: audience !== null,

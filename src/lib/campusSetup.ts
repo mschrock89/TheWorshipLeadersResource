@@ -1,4 +1,8 @@
-import { isNetworkWideMinistryType } from "./constants.ts";
+import {
+  isNetworkWideMinistryType,
+  normalizeViewMinistrySelection,
+  pairedProductionMinistry,
+} from "./constants.ts";
 import {
   SERVICE_SCHEDULE_MINISTRY_OPTIONS,
   buildDayScheduleDrafts,
@@ -51,6 +55,21 @@ export function campusOffersMinistry(
   if (ministryType === "campus_wide" || ministryType === "network_wide") return true;
   if (isNetworkWideMinistryType(ministryType)) return true;
   return enabled.has(campusMinistryKey(ministryType));
+}
+
+/**
+ * A campus offers a combined worship view when it offers the worship ministry
+ * or the production crew that view includes. Applies to every campus the same way.
+ */
+export function campusOffersViewMinistry(
+  enabled: ReadonlySet<string> | null | undefined,
+  ministryType: string | null | undefined,
+): boolean {
+  const view = normalizeViewMinistrySelection(ministryType) || ministryType;
+  if (!view) return false;
+  if (campusOffersMinistry(enabled, view)) return true;
+  const pairedProduction = pairedProductionMinistry(view);
+  return Boolean(pairedProduction && campusOffersMinistry(enabled, pairedProduction));
 }
 
 export function buildCampusMinistryDrafts({

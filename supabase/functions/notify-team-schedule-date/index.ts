@@ -59,10 +59,12 @@ const ADMIN_LIKE_ROLES = new Set([
 ]);
 
 
+const SEPARATE_PRODUCTION_MINISTRIES = new Set(["production", "ms_hs_production", "hs_production"]);
+
 interface NotifyScheduleRequest {
   scheduleDate: string;
   campusId: string;
-  ministryType: "production" | "video" | "speaker";
+  ministryType: "production" | "ms_hs_production" | "hs_production" | "video" | "speaker";
   teamId?: string | null;
   customServiceId?: string | null;
   previewOnly?: boolean;
@@ -183,7 +185,11 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (ministryType !== "production" && ministryType !== "video" && ministryType !== "speaker") {
+    if (
+      !SEPARATE_PRODUCTION_MINISTRIES.has(ministryType) &&
+      ministryType !== "video" &&
+      ministryType !== "speaker"
+    ) {
       return new Response(
         JSON.stringify({ error: "Only production, video, or speaker schedule notifications are supported" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -241,7 +247,7 @@ serve(async (req: Request): Promise<Response> => {
     );
     const hasCampusAccess = isAdminLike || userCampusIds.has(campusId);
     const hasMinistryAccess =
-      (ministryType === "production" && roleNames.includes("production_manager")) ||
+      (SEPARATE_PRODUCTION_MINISTRIES.has(ministryType) && roleNames.includes("production_manager")) ||
       (
         ministryType === "video" &&
         (roleNames.includes("video_director") || roleNames.includes("production_manager"))
@@ -306,7 +312,7 @@ serve(async (req: Request): Promise<Response> => {
         rolesByUser.set(assignment.user_id, roles);
       }
       const eligibleRoles =
-        ministryType === "production" ? CUSTOM_SERVICE_PRODUCTION_ROLES : CUSTOM_SERVICE_VIDEO_ROLES;
+        SEPARATE_PRODUCTION_MINISTRIES.has(ministryType) ? CUSTOM_SERVICE_PRODUCTION_ROLES : CUSTOM_SERVICE_VIDEO_ROLES;
       recipientUserIds = Array.from(rolesByUser.entries())
         .filter(([, roles]) => !roles.has("vocalist") && Array.from(roles).some((role) => eligibleRoles.has(role)))
         .map(([userId]) => userId);

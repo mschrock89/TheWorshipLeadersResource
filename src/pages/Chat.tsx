@@ -240,16 +240,8 @@ function ChatContent() {
         scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: "smooth" });
       } else {
         // Direct assignment is more reliable than scrollTo("auto") on iOS.
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
-
-      lastMessageRef.current?.scrollIntoView({
-        behavior,
-        block: "end",
-        inline: "nearest",
-      });
-
-      if (behavior !== "smooth") {
+        // Stay inside this scroller — scrollIntoView also pans the window, which
+        // detaches the iOS caret from the composer.
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
 
@@ -266,9 +258,16 @@ function ChatContent() {
     setHasClickedJumpToLastRead(true);
     lastSeenUnreadIndexRef.current = firstUnreadIndex;
     setTimeout(() => {
-      if (lastReadRef.current) {
-        lastReadRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      const target = lastReadRef.current;
+      const scrollElement = document.querySelector(
+        "[data-pull-to-refresh-container]",
+      ) as HTMLDivElement | null;
+      if (!target || !scrollElement) return;
+      const nextTop =
+        scrollElement.scrollTop +
+        (target.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top) -
+        scrollElement.clientHeight / 2;
+      scrollElement.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
     }, 50);
   }, [firstUnreadIndex]);
 
@@ -451,8 +450,13 @@ function ChatContent() {
 
   // Pin the chat shell to the visible visual viewport while focused / keyboard
   // open. Use top+height (not bottom) — iOS fixed `bottom` overshoots and leaves
-  // the black gap above the keyboard. Never subtract the header from visualHeight
-  // again; measure the visible band under the header instead.
+  // the black gap above the keyboard.
+  //
+  // iOS pans the visual viewport to "reveal" the focused field, then keeps
+  // drawing the caret at that panned spot. scrollIntoView on the message list
+  // does the same pan. The field (inside the fixed shell) moves; the caret
+  // stays in the gap above the keyboard, and the app header scrolls off.
+  // Hold the document at scroll 0 so the caret and the field share one origin.
   useLayoutEffect(() => {
     const updateKeyboardLayout = () => {
       const viewport = window.visualViewport;
@@ -461,12 +465,20 @@ function ChatContent() {
         return;
       }
 
-      const visualTop = viewport.offsetTop;
-      const visualBottom = viewport.offsetTop + viewport.height;
-      const header = document.querySelector("header");
-      const headerBottom = header?.getBoundingClientRect().bottom ?? visualTop;
-      const top = Math.round(Math.max(visualTop, headerBottom));
-      const height = Math.round(Math.max(0, visualBottom - top));
+      if (viewport.offsetTop > 0 || window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
+
+      // Only the app header, and only the part actually on screen. Subtracting a
+      // header that has already panned away shortens the shell and leaves the
+      // black gap the caret falls into.
+      const header = document.querySelector("[data-app-header]");
+      const headerRect = header?.getBoundingClientRect();
+      const headerBottom = headerRect
+        ? Math.min(viewport.height, Math.max(0, headerRect.bottom))
+        : 0;
+      const top = Math.round(viewport.offsetTop + headerBottom);
+      const height = Math.round(Math.max(0, viewport.height - headerBottom));
 
       setKeyboardLayout((prev) =>
         prev && prev.top === top && prev.height === height ? prev : { top, height }
@@ -479,6 +491,7 @@ function ChatContent() {
     viewport?.addEventListener("resize", updateKeyboardLayout);
     viewport?.addEventListener("scroll", updateKeyboardLayout);
     window.addEventListener("resize", updateKeyboardLayout);
+    window.addEventListener("scroll", updateKeyboardLayout);
 
     let rafId = 0;
     let frames = 0;
@@ -487,7 +500,6 @@ function ChatContent() {
       const tick = () => {
         if (cancelled) return;
         updateKeyboardLayout();
-        if (isAtBottomRef.current) pinToLatestMessage("auto");
         frames += 1;
         if (frames < 45) {
           rafId = requestAnimationFrame(tick);
@@ -501,9 +513,10 @@ function ChatContent() {
       viewport?.removeEventListener("resize", updateKeyboardLayout);
       viewport?.removeEventListener("scroll", updateKeyboardLayout);
       window.removeEventListener("resize", updateKeyboardLayout);
+      window.removeEventListener("scroll", updateKeyboardLayout);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [keyboardActive, composerFocused, visualHeight, offsetTop, pinToLatestMessage]);
+  }, [keyboardActive, composerFocused, visualHeight, offsetTop]);
 
   // Compute our own viewport height (minus the 56px header) instead of relying
   // on a definite-height ancestor: the app scrolls naturally, so height:100%
@@ -583,7 +596,7 @@ function ChatContent() {
       {/* Keep document flow height while the shell is fixed over the keyboard. */}
       {isKeyboardPinned && <div style={{ height: closedChatHeight }} aria-hidden />}
       <div
-        className="flex flex-col overflow-hidden max-w-full bg-black"
+        className="flex min-h-0 max-w-full flex-col bg-black"
         style={
           isKeyboardPinned
             ? {

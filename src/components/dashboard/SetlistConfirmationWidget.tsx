@@ -21,6 +21,7 @@ import {
   getSessionSetVariants,
   getMinistrySession,
 } from "@/lib/constants";
+import { worshipSetlistMinistry } from "@/lib/linkedProduction";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate, type RosterMember } from "@/hooks/useTeamRosterForDate";
 import { useCampuses, type Campus } from "@/hooks/useCampuses";
@@ -659,7 +660,13 @@ function SetlistRow({
 
       const customRoleMatchesFilter = (role: string) => {
         if (targetRosterMinistry === "all") return true;
-        if (targetRosterMinistry === "production") return POSITION_CATEGORIES.audio.includes(role);
+        if (
+          targetRosterMinistry === "production" ||
+          targetRosterMinistry === "ms_hs_production" ||
+          targetRosterMinistry === "hs_production"
+        ) {
+          return POSITION_CATEGORIES.audio.includes(role);
+        }
         if (targetRosterMinistry === "video") return POSITION_CATEGORIES.video.includes(role);
         return true;
       };
@@ -884,6 +891,13 @@ export function SetlistConfirmationWidget({ selectedCampusId }: SetlistConfirmat
   const visibleSetlists = useMemo(() => {
     if (ministryFilter === "all" || ministryFilter === "production" || ministryFilter === "video") {
       return setlists;
+    }
+
+    const worshipMinistry = worshipSetlistMinistry(ministryFilter);
+    if (worshipMinistry && worshipMinistry !== ministryFilter) {
+      return setlists.filter(
+        (setlist) => setlist.ministry_type === worshipMinistry || setlist.ministry_type === ministryFilter,
+      );
     }
 
     return setlists.filter((setlist) => {

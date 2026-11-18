@@ -56,7 +56,7 @@ export function MainHeader() {
     return user?.email?.substring(0, 2).toUpperCase() || "?";
   };
   const initials = getInitials();
-  return <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-sm" style={{
+  return <header data-app-header="" className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-sm" style={{
     paddingTop: 'env(safe-area-inset-top, 0px)'
   }}>
       <div className="container flex h-14 items-center justify-between px-4 relative">

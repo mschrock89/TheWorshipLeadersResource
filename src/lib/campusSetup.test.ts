@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { campusOffersMinistry, campusSetupError, buildCampusMinistryDrafts } from "./campusSetup.ts";
+import { campusOffersMinistry, campusOffersViewMinistry, campusSetupError, buildCampusMinistryDrafts } from "./campusSetup.ts";
 
 test("a campus with no ministry list still offers every ministry", () => {
   assert.equal(campusOffersMinistry(null, "encounter"), true);
@@ -13,6 +13,19 @@ test("weekend worship and its aliases follow the weekend ministry", () => {
   assert.equal(campusOffersMinistry(enabled, "weekend_team"), true);
   assert.equal(campusOffersMinistry(enabled, "production"), false);
   assert.equal(campusOffersMinistry(enabled, "encounter"), true);
+});
+
+test("every campus keeps worship and production as one view", () => {
+  const weekendOnly = new Set(["weekend"]);
+  const productionOnly = new Set(["production"]);
+  const hsProductionOnly = new Set(["hs_production"]);
+  const combined = new Set(["ms_hs_production"]);
+  assert.equal(campusOffersViewMinistry(weekendOnly, "weekend_team"), true);
+  assert.equal(campusOffersViewMinistry(productionOnly, "weekend_team"), true);
+  assert.equal(campusOffersViewMinistry(hsProductionOnly, "encounter"), true);
+  assert.equal(campusOffersViewMinistry(combined, "ms_hs"), true);
+  assert.equal(campusOffersViewMinistry(weekendOnly, "encounter"), false);
+  assert.equal(campusOffersViewMinistry(null, "evident"), true);
 });
 
 test("network-wide ministries and feed scopes are not gated by a campus", () => {

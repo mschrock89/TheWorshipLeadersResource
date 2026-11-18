@@ -9,6 +9,7 @@ import {
   isNetworkWideMinistryType,
   isSessionSetMinistryType,
 } from "@/lib/constants";
+import { worshipSetlistMinistry } from "@/lib/linkedProduction";
 
 export interface Song {
   id: string;
@@ -245,6 +246,10 @@ export function useSongsWithStats() {
             return "MS Worship Weekend";
           case "ms_hs":
             return "MS/HS Worship";
+          case "ms_hs_production":
+            return "MS/HS Production";
+          case "hs_production":
+            return "HS Production";
           case "evident":
             return "Evident";
           case "er":
@@ -359,6 +364,10 @@ export function useServicePlans(options?: { upcoming?: boolean; past?: boolean; 
             return "MS Worship Weekend";
           case "ms_hs":
             return "MS/HS Worship";
+          case "ms_hs_production":
+            return "MS/HS Production";
+          case "hs_production":
+            return "HS Production";
           case "evident":
             return "Evident";
           case "er":
@@ -955,8 +964,11 @@ export function useSongsForDate(
       // the Evening setlist when Morning has nothing published.
       let effectiveMinistryTypes: string[];
       if (ministryFilter && ministryFilter !== "all") {
+        const setlistMinistry = worshipSetlistMinistry(ministryFilter);
         if (ministryFilter === "weekend_team") {
           effectiveMinistryTypes = ["weekend", "production", "video"];
+        } else if (setlistMinistry && setlistMinistry !== ministryFilter) {
+          effectiveMinistryTypes = [setlistMinistry];
         } else if (isSessionSetMinistryType(ministryFilter)) {
           const { sessionLabel } = getMinistrySession(ministryFilter);
           effectiveMinistryTypes = sessionLabel

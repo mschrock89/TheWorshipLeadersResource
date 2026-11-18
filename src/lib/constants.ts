@@ -371,16 +371,16 @@ export const MINISTRY_TEAM_FILTER: Record<string, string[] | null> = {
   // Evening A/B are Student Camp only — never Weekend Worship options.
   student_camp: ["Team 1", "Team 2", "Team 3", "Team 4", "Evening A", "Evening B"],
   prayer_night: [], // Custom-services only; no standard team rotation filter
-  encounter: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Worship
+  encounter: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Same team options as Weekend Worship
   eon: ["Team 1", "Team 2", "Team 3", "Team 4"], // MS Worship uses the full 4-team rotation
   eon_weekend: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for MS Worship Weekend
-  ms_hs: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for combined MS/HS Worship
+  ms_hs: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Same team options as Weekend Worship
   evident: ["Team 1", "Team 2"], // 2 teams for Evident (smaller ministry)
   er: ["Team 1", "Team 2"], // 2 teams for ER (smaller ministry)
   speaker: ["Team 1", "Team 2", "Team 3", "Team 4", "5th Sunday"], // Speakers rotate independently from Weekend Worship and include the special 5th Sunday team
-  production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Production
-  ms_hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for MS/HS Production
-  hs_production: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for HS Production
+  production: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Same team options as Weekend Worship
+  ms_hs_production: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Same team options as Weekend Worship, separate roster
+  hs_production: ["Team 1", "Team 2", "Team 3", "Team 4", "Simple Worship", "5th Sunday"], // Same team options as Weekend Worship, separate roster
   video: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Video
   creative: ["Team 1", "Team 2", "Team 3", "Team 4"], // All 4 teams for Creative
   students: [...STUDENT_TEAM_NAMES],
@@ -582,36 +582,98 @@ export function getMinistryLabel(ministryType: string | null | undefined): strin
 /** Shared filter order for Calendar, My Setlists, and Default Ministry preference. */
 export const CALENDAR_MINISTRY_FILTER_ORDER = [
   "weekend_team",
-  "worship_night",
-  "kids_camp",
+  "eon",
+  "eon_weekend",
+  "encounter",
+  "ms_hs",
+  "evident",
   "student_camp",
   "production",
   "ms_hs_production",
   "hs_production",
   "video",
-  "encounter",
-  "eon",
-  "eon_weekend",
-  "ms_hs",
-  "evident",
   "er",
   "audition",
   "speaker",
   "prayer_night",
+  "worship_night",
+  "kids_camp",
 ] as const;
+
+/**
+ * Production crews that are scheduled on their own ministry but viewed with the
+ * worship ministry they serve. They stay out of the campus/ministry pickers.
+ */
+const FOLDED_VIEW_PRODUCTION_MINISTRIES = new Set([
+  "production",
+  "hs_production",
+  "ms_hs_production",
+]);
+
+const VIEW_MINISTRY_PARENT: Record<string, string> = {
+  production: "weekend_team",
+  hs_production: "encounter",
+  ms_hs_production: "ms_hs",
+};
+
+const VIEW_MINISTRY_LABELS: Record<string, string> = {
+  ms_hs: "MS/HS Worship/Production",
+  evident: "Evident/Production",
+};
+
+/** Map a stored production-only ministry onto the worship view that includes it. */
+export function normalizeViewMinistrySelection(
+  ministryType: string | null | undefined,
+): string | null {
+  if (!ministryType) return ministryType ?? null;
+  return VIEW_MINISTRY_PARENT[ministryType] ?? ministryType;
+}
+
+/**
+ * Separate production ministry shown inside a worship view.
+ * Null when that crew is assigned on the worship team itself (MS Worship, Evident).
+ */
+export function pairedProductionMinistry(
+  ministryType: string | null | undefined,
+): string | null {
+  const view = normalizeViewMinistrySelection(ministryType) || ministryType;
+  if (view === "weekend_team" || view === "weekend" || view === "sunday_am") return "production";
+  if (view === "encounter") return "hs_production";
+  if (view === "ms_hs") return "ms_hs_production";
+  return null;
+}
+
+/** Production positions live on the worship roster instead of a second ministry. */
+export function productionLivesOnWorshipTeam(
+  ministryType: string | null | undefined,
+): boolean {
+  const view = normalizeViewMinistrySelection(ministryType) || ministryType;
+  return view === "eon" || view === "eon_weekend" || view === "evident";
+}
+
+export function getViewMinistryLabel(ministryType: string | null | undefined): string {
+  const view = normalizeViewMinistrySelection(ministryType) || ministryType;
+  if (!view) return "";
+  return VIEW_MINISTRY_LABELS[view] || getMinistryLabel(view);
+}
 
 export type CalendarMinistryFilterValue = (typeof CALENDAR_MINISTRY_FILTER_ORDER)[number];
 
 export function getViewMinistryFilterOptions(
   allowedMinistryTypes: readonly string[] | null | undefined,
-): Array<(typeof MINISTRY_TYPES)[number]> {
+): Array<Omit<(typeof MINISTRY_TYPES)[number], "label"> & { label: string }> {
   return CALENDAR_MINISTRY_FILTER_ORDER
+    .filter((value) => !FOLDED_VIEW_PRODUCTION_MINISTRIES.has(value))
     .filter((value) => !allowedMinistryTypes || allowedMinistryTypes.includes(value))
     .map((value) => MINISTRY_TYPES.find((ministry) => ministry.value === value))
     .filter(
       (ministry): ministry is (typeof MINISTRY_TYPES)[number] =>
         Boolean(ministry) && !("hidden" in ministry && ministry.hidden),
-    );
+    )
+    .map((ministry) => ({
+      ...ministry,
+      label: VIEW_MINISTRY_LABELS[ministry.value] ?? ministry.label,
+    }));
 }
 
 export function isValidViewMinistryFilter(
@@ -619,6 +681,7 @@ export function isValidViewMinistryFilter(
   allowedMinistryTypes: readonly string[] | null | undefined,
 ): ministryType is string {
   if (!ministryType) return false;
+  if (FOLDED_VIEW_PRODUCTION_MINISTRIES.has(ministryType)) return false;
   if (allowedMinistryTypes && !allowedMinistryTypes.includes(ministryType)) return false;
   return (CALENDAR_MINISTRY_FILTER_ORDER as readonly string[]).includes(ministryType);
 }

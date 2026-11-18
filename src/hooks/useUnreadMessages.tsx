@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { getChatMinistryTypesForResourceApp, normalizeChatMinistryType } from "@/lib/chat";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -21,7 +22,8 @@ let unreadChannelSeq = 0;
 
 export function useUnreadMessages(campInstanceId?: string | null) {
   const { user } = useAuth();
-  const { data: userCampuses } = useUserCampuses(user?.id);
+  const shellReady = useDeferredEnabled(!!user);
+  const { data: userCampuses } = useUserCampuses(shellReady ? user?.id : undefined);
   const queryClient = useQueryClient();
   const resourceAppKey = getCurrentResourceAppKey();
   const chatMinistryTypes = getChatMinistryTypesForResourceApp(resourceAppKey);
@@ -104,8 +106,8 @@ export function useUnreadMessages(campInstanceId?: string | null) {
 
   const query = useQuery({
     queryKey,
-    enabled: !!user && campusIds.length > 0,
-    staleTime: 15 * 1000,
+    enabled: shellReady && !!user && campusIds.length > 0,
+    staleTime: 60 * 1000,
     queryFn: async (): Promise<UnreadCount[]> => {
       if (!unreadCountsRpcMissing) {
         const { data, error } = await supabase.rpc("get_unread_chat_counts", {
@@ -122,6 +124,15 @@ export function useUnreadMessages(campInstanceId?: string | null) {
             }))
             .filter((uc) => uc.count > 0 && knownMinistryValues.has(uc.ministryType));
         }
+
+        // A timeout or overload must not fan out into one count query per
+        // campus and ministry. Only the "function is not deployed" case
+        // uses that fallback.
+        const missing =
+          error.code === "PGRST202" ||
+          error.message.includes("get_unread_chat_counts") ||
+          error.message.includes("Could not find the function");
+        if (!missing) throw error;
         unreadCountsRpcMissing = true;
       }
 
@@ -186,7 +197,7 @@ export function useUnreadMessages(campInstanceId?: string | null) {
   // Subscribe to new messages for realtime updates. Each instance invalidates the
   // shared query (deduped by react-query) instead of keeping its own counter.
   useEffect(() => {
-    if (!user || campusIds.length === 0) return;
+    if (!shellReady || !user || campusIds.length === 0) return;
 
     const channel = supabase
       .channel(`unread-messages-${++unreadChannelSeq}`)
@@ -228,7 +239,7 @@ export function useUnreadMessages(campInstanceId?: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [campInstanceId, user, campusIds.length, resourceAppKey, queryClient, queryKey]);
+  }, [shellReady, campInstanceId, user, campusIds.length, resourceAppKey, queryClient, queryKey]);
 
   const totalUnread = unreadCounts.reduce((sum, uc) => sum + uc.count, 0);
 

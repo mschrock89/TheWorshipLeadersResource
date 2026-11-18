@@ -726,27 +726,29 @@ export function MessageInput({
             </>
           )}
         </div>
-
-        {/* Hidden file inputs — tabIndex -1 avoids iOS Prev/Next accessory bar */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
-          onChange={handleFileSelect}
-          className="hidden"
-          tabIndex={-1}
-        />
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileSelect}
-          className="hidden"
-          tabIndex={-1}
-        />
       </form>
+
+      {/* Outside the form so iOS does not add the Prev/Next accessory bar. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+        onChange={handleFileSelect}
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { toast } from "sonner";
 
@@ -303,11 +304,25 @@ export function useMyDevoAssignments() {
 }
 
 export function useMyIncompleteDevoCount() {
-  const query = useMyDevoAssignments();
-  return {
-    ...query,
-    data: (query.data || []).filter((a) => ACTIVE_STATUSES.includes(a.status)).length,
-  };
+  const { user } = useAuth();
+  const resourceApp = getCurrentResourceAppKey();
+  const ready = useDeferredEnabled(!!user?.id);
+
+  return useQuery({
+    queryKey: ["devo-assignments", "mine-count", user?.id, resourceApp],
+    enabled: ready,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("devo_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("assignee_id", user!.id)
+        .eq("resource_app_key", resourceApp)
+        .in("status", ACTIVE_STATUSES);
+      if (error) throw error;
+      return count || 0;
+    },
+  });
 }
 
 export function useAdminDevoAssignments(seriesId?: string | null) {

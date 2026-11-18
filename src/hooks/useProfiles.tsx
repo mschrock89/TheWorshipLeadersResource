@@ -236,6 +236,7 @@ export function useProfile(id: string | undefined) {
       } as Profile;
     },
     enabled: !!id && !!user && !isLoading,
+    staleTime: 60 * 1000,
   });
 }
 

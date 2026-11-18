@@ -137,6 +137,63 @@ export function capabilitySetAllows(caps: Set<string>, cap: CapabilityKey | stri
   return caps.has(cap);
 }
 
+type RoleGrantRow = {
+  capability_key: string;
+  role: string;
+  resource_app: string;
+};
+
+const ROLE_GRANT_TTL_MS = 10 * 60 * 1000;
+const roleGrantCache = new Map<string, { at: number; rows: RoleGrantRow[] }>();
+const roleGrantInflight = new Map<string, Promise<RoleGrantRow[] | null>>();
+
+// The grant table is the same for every person in an app. Cache it so a
+// reload during a crowded launch does not scan it again.
+async function loadRoleGrants(resourceApp: string): Promise<RoleGrantRow[] | null> {
+  const memory = roleGrantCache.get(resourceApp);
+  if (memory && Date.now() - memory.at < ROLE_GRANT_TTL_MS) return memory.rows;
+
+  const storageKey = `role-caps:${resourceApp}`;
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { at: number; rows: RoleGrantRow[] };
+      if (Date.now() - parsed.at < ROLE_GRANT_TTL_MS && Array.isArray(parsed.rows)) {
+        roleGrantCache.set(resourceApp, parsed);
+        return parsed.rows;
+      }
+    }
+  } catch {
+    // Private browsing can reject sessionStorage.
+  }
+
+  const existing = roleGrantInflight.get(resourceApp);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const { data, error } = await supabase
+      .from("role_capabilities")
+      .select("capability_key, role, resource_app")
+      .in("resource_app", [resourceApp, "all"]);
+    if (error || !data) return null;
+    const entry = { at: Date.now(), rows: data as RoleGrantRow[] };
+    roleGrantCache.set(resourceApp, entry);
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(entry));
+    } catch {
+      // Ignore quota and private-mode failures.
+    }
+    return entry.rows;
+  })();
+
+  roleGrantInflight.set(resourceApp, request);
+  try {
+    return await request;
+  } finally {
+    roleGrantInflight.delete(resourceApp);
+  }
+}
+
 /** Role grants plus per-user overrides for this app. Exact keys only. */
 export async function fetchCapabilitySet(userId: string, resourceApp: string): Promise<Set<string>> {
   const { data: roleRows, error: rolesError } = await supabase
@@ -151,21 +208,17 @@ export async function fetchCapabilitySet(userId: string, resourceApp: string): P
 
   const roles = (roleRows || []).map((row) => row.role as string);
   const appScope = [resourceApp, "all"];
-  const [{ data: grants, error: grantsError }, { data: overrides, error: overridesError }] =
-    await Promise.all([
-      supabase
-        .from("role_capabilities")
-        .select("capability_key, role, resource_app")
-        .in("resource_app", appScope),
-      supabase
-        .from("user_capability_overrides")
-        .select("capability_key, granted, resource_app, expires_at")
-        .eq("user_id", userId)
-        .in("resource_app", appScope),
-    ]);
+  const [{ data: overrides, error: overridesError }, grants] = await Promise.all([
+    supabase
+      .from("user_capability_overrides")
+      .select("capability_key, granted, resource_app, expires_at")
+      .eq("user_id", userId)
+      .in("resource_app", appScope),
+    loadRoleGrants(resourceApp),
+  ]);
 
-  if (grantsError || overridesError) {
-    console.error("fetchCapabilitySet: falling back to role defaults", grantsError || overridesError);
+  if (overridesError || !grants) {
+    console.error("fetchCapabilitySet: falling back to role defaults", overridesError);
     return legacyCapabilitiesFromRoles(roles, resourceApp);
   }
 

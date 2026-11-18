@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserCampuses } from "@/hooks/useCampuses";
 import { POSITION_SLOTS, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { isSeparateProductionMinistry } from "@/lib/linkedProduction";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
@@ -137,7 +138,7 @@ const assignmentMatchesRosterFilter = (
 
   if (
     (inferredPositionCategory === "Band" || inferredPositionCategory === "Vocalists") &&
-    (ministryType === "production" || ministryType === "video")
+    (isSeparateProductionMinistry(ministryType) || ministryType === "video")
   ) {
     return false;
   }

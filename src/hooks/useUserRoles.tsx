@@ -103,6 +103,7 @@ export function useUserRoles(userId: string | undefined) {
       return data?.map(r => ({ role: r.role as AppRole, admin_campus_id: r.admin_campus_id })) || [];
     },
     enabled: !!userId,
+    staleTime: 60 * 1000,
   });
 }
 

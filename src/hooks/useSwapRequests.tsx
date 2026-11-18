@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useRef } from "react";
@@ -275,9 +276,11 @@ export function usePendingSwapRequestsCount() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const resourceAppKey = getCurrentResourceAppKey();
+  const ready = useDeferredEnabled(!!user);
 
   const query = useQuery({
     queryKey: ["swap-requests-count", user?.id, resourceAppKey],
+    staleTime: 60 * 1000,
     queryFn: async () => {
       const [{ data: requests, error: requestsError }, { data: dismissals, error: dismissalsError }] = await Promise.all([
         supabase
@@ -298,11 +301,11 @@ export function usePendingSwapRequestsCount() {
       const dismissedIds = new Set((dismissals || []).map((dismissal) => dismissal.swap_request_id));
       return (requests || []).filter((request) => !dismissedIds.has(request.id)).length;
     },
-    enabled: !!user,
+    enabled: ready,
   });
 
   useEffect(() => {
-    if (!user) return;
+    if (!ready || !user) return;
 
     const invalidateCount = () => {
       queryClient.invalidateQueries({ queryKey: ["swap-requests-count", user.id] });
@@ -325,7 +328,7 @@ export function usePendingSwapRequestsCount() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient, resourceAppKey]);
+  }, [ready, user, queryClient, resourceAppKey]);
 
   return query;
 }

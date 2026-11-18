@@ -6,6 +6,7 @@ import { getAppUrl } from "@/lib/resourceApps";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { isNativeApp } from "@/lib/native";
 import { CAPABILITIES, capabilitySetAllows, fetchCapabilitySet, type CapabilityKey } from "@/lib/capabilities";
+import { useDeferredEnabled } from "@/hooks/useDeferredEnabled";
 
 interface AuthContextType {
   user: User | null;
@@ -31,9 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionLoading, setSessionLoading] = useState(true);
   const resourceApp = getCurrentResourceAppKey();
 
+  // Permissions are not required to paint the shell. Spread them so a crowd
+  // does not read the role tables in the same instant as sign-in.
+  const capsReady = useDeferredEnabled(!!user?.id, 2500);
   const capsQuery = useQuery({
     queryKey: ["capabilities", user?.id, resourceApp],
-    enabled: !!user?.id,
+    enabled: capsReady,
     staleTime: 5 * 60 * 1000,
     queryFn: () => fetchCapabilitySet(user!.id, resourceApp),
   });
@@ -52,25 +56,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isProductionManager = can(CAPABILITIES.PRODUCTION_MANAGER_TOOLS);
   const canManageTeam = can(CAPABILITIES.MANAGE_TEAM);
   const canSwitchCampusChat = can(CAPABILITIES.SWITCH_CAMPUS_CHAT);
-  const isLoading = sessionLoading || (!!user && capsQuery.isLoading && !capsQuery.data);
+  const isLoading = sessionLoading;
 
   useEffect(() => {
-    // Set up auth state listener FIRST
+    let active = true;
+    // Auth refresh shares the database. If that stalls, show the page anyway.
+    const timeout = window.setTimeout(() => {
+      if (active) setSessionLoading(false);
+    }, 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        if (!active) return;
         setSession(session);
         setUser(session?.user ?? null);
+        setSessionLoading(false);
       }
     );
 
-    // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
       setSession(session);
       setUser(session?.user ?? null);
       setSessionLoading(false);
+    }).catch(() => {
+      if (active) setSessionLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

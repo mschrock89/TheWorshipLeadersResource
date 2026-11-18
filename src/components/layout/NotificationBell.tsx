@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck, Megaphone, MapPin } from "lucide-react";
+import { Bell, Check, ArrowLeftRight, CheckCircle, XCircle, Music, CalendarPlus, Clock, FileCheck, Loader2, Megaphone, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -125,7 +125,8 @@ function NotificationItem({
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const [open, setOpen] = useState(false);
+  const { notifications, unreadCount, isLoading, markAsRead, markAllAsRead } = useNotifications({ active: open });
   const toggleEventRsvp = useToggleEventRsvp();
   const [selectedEventNotification, setSelectedEventNotification] = useState<Notification | null>(null);
 
@@ -142,7 +143,7 @@ export function NotificationBell() {
 
   return (
     <>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5" />
@@ -172,7 +173,11 @@ export function NotificationBell() {
             )}
           </div>
           <ScrollArea className="max-h-[400px]">
-            {notifications.length === 0 ? (
+            {isLoading && notifications.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground">
                 <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p className="text-sm">No notifications yet</p>

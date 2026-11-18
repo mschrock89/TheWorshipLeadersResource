@@ -40,8 +40,16 @@ import {
   isSessionSetMinistryType,
   normalizeSessionSetMinistryType,
   getViewMinistryFilterOptions,
+  getViewMinistryLabel,
   isValidViewMinistryFilter,
+  productionLivesOnWorshipTeam,
 } from "@/lib/constants";
+import {
+  calendarLinkedMinistries,
+  customServiceMinistriesForFilter,
+  isSeparateProductionMinistry,
+  linkedProductionFamily,
+} from "@/lib/linkedProduction";
 import { canonicalSwapPosition } from "@/lib/swapPositions";
 import { isSwapDateTooSoon, SWAP_NOTICE_ERROR } from "@/lib/swapNotice";
 import { filterValidSupportTeamScheduleEntries, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
@@ -58,7 +66,7 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
-import { campusGroupOffersMinistry } from "@/lib/campusSetup";
+import { campusGroupOffersMinistry, campusOffersViewMinistry } from "@/lib/campusSetup";
 import { useAllCampusMinistries } from "@/hooks/useCampusMinistries";
 import { getEffectiveCustomServiceMinistryType, getServiceFlowMinistryType } from "@/lib/customServiceMinistry";
 import { filterGroupTextRecipients, isAuditionCandidateRole, hasSupportPosition, hasWorshipPosition } from "@/lib/access";
@@ -180,28 +188,14 @@ const scheduleEntryMatchesCalendarFilter = (
 
   if (ministryFilter === "all") return true;
 
-  if (ministryFilter === "weekend_team") {
-    // Speakers rotate on their own rows, same as Production and Video. Those
-    // dates still have to highlight on the Weekend Worship calendar so the
-    // person scheduled (for example Announcements) can swap.
+  const linkedMinistries = calendarLinkedMinistries(ministryFilter);
+  if (linkedMinistries) {
+    // Worship and its production crew highlight together, the way Weekend
+    // Worship includes Production. Each family stays on its own ministry types.
     return (
-      normalizedEntryMinistry === "weekend" ||
-      entryMinistryType === "production" ||
-      entryMinistryType === "video" ||
-      entryMinistryType === "speaker"
+      linkedMinistries.includes(entryMinistryType || "") ||
+      linkedMinistries.includes(normalizedEntryMinistry)
     );
-  }
-
-  if (ministryFilter === "production") {
-    return (
-      entryMinistryType === "production" ||
-      normalizedEntryMinistry === "weekend" ||
-      entryMinistryType === "sunday_am"
-    );
-  }
-
-  if (ministryFilter === "video") {
-    return entryMinistryType === "video" || normalizedEntryMinistry === "weekend" || entryMinistryType === "sunday_am";
   }
 
   if (CALENDAR_WEEKEND_MINISTRY_FILTERS.has(ministryFilter)) {
@@ -221,6 +215,10 @@ const serviceOverrideMatchesMinistryFilter = (
     normalizeSessionSetMinistryType(ministryFilter) || ministryFilter;
 
   if (ministryFilter === "all") return true;
+  const linkedOverrideMinistries = calendarLinkedMinistries(ministryFilter);
+  if (linkedOverrideMinistries) {
+    return linkedOverrideMinistries.includes(normalizedMinistryType);
+  }
   if (ministryFilter === "weekend_team") {
     return WEEKEND_TEAM_OVERRIDE_MINISTRIES.has(normalizedMinistryType);
   }
@@ -338,6 +336,14 @@ const resolveSetlistPushMinistryType = (ministryType?: string) => {
     return "weekend_team";
   }
 
+  if (ministryType === "ms_hs_production") {
+    return "ms_hs";
+  }
+
+  if (ministryType === "hs_production") {
+    return "encounter";
+  }
+
   return normalizeWeekendWorshipMinistryType(ministryType) === "weekend"
     ? "weekend_team"
     : ministryType;
@@ -357,10 +363,12 @@ type CalendarAudition = {
   } | null;
 };
 
+type SupportScheduleMinistry = "production" | "ms_hs_production" | "hs_production" | "video" | "speaker";
+
 type ScheduleNotificationTarget = {
   campusId: string;
   campusName: string;
-  ministryType: "production" | "video" | "speaker";
+  ministryType: SupportScheduleMinistry;
   teamId: string;
   teamName: string;
 };
@@ -501,10 +509,6 @@ function StandardCalendar() {
   const appMinistryTypes = useMemo(
     () => getResourceAppMinistryTypes(resourceAppKey),
     [resourceAppKey],
-  );
-  const ministryFilterOptions = useMemo(
-    () => getViewMinistryFilterOptions(appMinistryTypes),
-    [appMinistryTypes],
   );
   const [localMinistryFilter, setLocalMinistryFilter] = useState<string>(
     () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
@@ -662,8 +666,9 @@ function StandardCalendar() {
       }
 
       if (ministryFilter && ministryFilter !== "all") {
-        if (ministryFilter === "weekend_team") {
-          query = query.in("custom_services.ministry_type", ["weekend", "production", "video"]);
+        const linkedCustomMinistries = customServiceMinistriesForFilter(ministryFilter);
+        if (linkedCustomMinistries) {
+          query = query.in("custom_services.ministry_type", linkedCustomMinistries);
         } else {
           query = query.eq("custom_services.ministry_type", ministryFilter);
         }
@@ -784,6 +789,26 @@ function StandardCalendar() {
     data: campuses = []
   } = useCampuses();
   const campusMinistryLists = useAllCampusMinistries();
+  const ministryFilterOptions = useMemo(() => {
+    const options = getViewMinistryFilterOptions(appMinistryTypes);
+    if (!campusFilter || campusFilter === "network-wide" || !campusMinistryLists.isSuccess) {
+      return options;
+    }
+    const enabled = campusMinistryLists.byCampus.get(campusFilter) ?? null;
+    return options.filter((ministry) => campusOffersViewMinistry(enabled, ministry.value));
+  }, [appMinistryTypes, campusFilter, campusMinistryLists.byCampus, campusMinistryLists.isSuccess]);
+  useEffect(() => {
+    if (!campusFilter || campusFilter === "network-wide" || !campusMinistryLists.isSuccess) return;
+    if (ministryFilterOptions.some((ministry) => ministry.value === ministryFilter)) return;
+    const next = ministryFilterOptions[0]?.value;
+    if (next) setMinistryFilter(next);
+  }, [
+    campusFilter,
+    campusMinistryLists.isSuccess,
+    ministryFilter,
+    ministryFilterOptions,
+    setMinistryFilter,
+  ]);
   const {
     data: ministrySchedules = [],
     isFetched: ministrySchedulesFetched,
@@ -1503,7 +1528,7 @@ function StandardCalendar() {
   ]);
 
   const inlineServiceFlowTargets = useMemo(() => {
-    if (!selectedDateStr || isCrossCampusReadOnly) return [];
+    if (!isAdmin || !selectedDateStr || isCrossCampusReadOnly) return [];
 
     if (selectedDayServices.length > 0) {
       return selectedDayServices.map((service) => ({
@@ -1587,6 +1612,7 @@ function StandardCalendar() {
     campusFilter,
     headerDraftSetId,
     headerFlowCampusId,
+    isAdmin,
     isCrossCampusReadOnly,
     ministryFilter,
     selectedDateStr,
@@ -1731,7 +1757,12 @@ function StandardCalendar() {
     let entries = teamSchedule.filter((entry) =>
       entry.schedule_date === selectedDateStr &&
       (entry.campus_id === campusFilter || entry.campus_id == null) &&
-      (entry.ministry_type === "production" || entry.ministry_type === "video" || entry.ministry_type === "speaker"),
+      (isSeparateProductionMinistry(entry.ministry_type) ||
+        entry.ministry_type === "video" ||
+        entry.ministry_type === "speaker") &&
+      (!ministryFilter ||
+        ministryFilter === "all" ||
+        scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter)),
     );
 
     if (activeRotationPeriodName) {
@@ -1752,7 +1783,7 @@ function StandardCalendar() {
         return [];
       }
 
-      if (entry.ministry_type === "production" && !roleNames.includes("production_manager")) {
+      if (isSeparateProductionMinistry(entry.ministry_type) && !roleNames.includes("production_manager")) {
         return [];
       }
 
@@ -1792,12 +1823,12 @@ function StandardCalendar() {
       return [{
         campusId: campusFilter,
         campusName: campuses.find((campus) => campus.id === campusFilter)?.name || "Campus",
-        ministryType: entry.ministry_type,
+        ministryType: entry.ministry_type as SupportScheduleMinistry,
         teamId: entry.team_id,
         teamName: videoServiceDayLabel ? `${baseTeamName} ${videoServiceDayLabel}` : baseTeamName,
       }];
     });
-  }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
+  }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, ministryFilter, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
 
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));
@@ -3428,7 +3459,7 @@ function TeamSchedulePushButton({
 }: {
   scheduleDate?: string | null;
   campusId?: string;
-  ministryType: "production" | "video" | "speaker";
+  ministryType: SupportScheduleMinistry;
   teamId?: string | null;
   customServiceId?: string | null;
   serviceLabel?: string;
@@ -3446,7 +3477,7 @@ function TeamSchedulePushButton({
 
   const canManageMinistry =
     isAdmin ||
-    (ministryType === "production" && isProductionManager) ||
+    (isSeparateProductionMinistry(ministryType) && isProductionManager) ||
     (ministryType === "video" && (isVideoDirector || isProductionManager)) ||
     (ministryType === "speaker" && canManageTeam);
 
@@ -3726,7 +3757,7 @@ function RosterOutreachWidget({
     positions: string[];
   }>;
   supportNotificationTargets?: ScheduleNotificationTarget[];
-  supportPushMinistry: "production" | "video" | "speaker" | null;
+  supportPushMinistry: SupportScheduleMinistry | null;
   supportPushScheduleDate?: string | null;
   supportPushTeamId?: string | null;
   supportPushCustomServiceId?: string | null;
@@ -3975,7 +4006,17 @@ function BandRoster({
         ? "weekend_team"
         : ministryFilter
       : undefined;
-  const isProductionMinistryFilter = effectiveMinistryFilter === "production";
+  const linkedFamily = linkedProductionFamily(ministryFilter);
+  const productionOnWorshipTeam = productionLivesOnWorshipTeam(
+    effectiveMinistryFilter || ministryFilter,
+  );
+  const productionScheduleMinistry = productionOnWorshipTeam
+    ? null
+    : linkedFamily?.productionType ?? "production";
+  const videoScheduleMinistry = linkedFamily ? linkedFamily.videoType : "video";
+  const speakerScheduleMinistry = linkedFamily ? linkedFamily.speakerType : "speaker";
+  const isProductionMinistryFilter =
+    !!effectiveMinistryFilter && effectiveMinistryFilter === productionScheduleMinistry;
   const isVideoMinistryFilter = effectiveMinistryFilter === "video";
   const isSpeakerMinistryFilter = effectiveMinistryFilter === "speaker";
   // Student Camp carries its production crew (FOH/MON/Lyrics) on the camp team itself rather
@@ -4006,9 +4047,18 @@ function BandRoster({
     },
     [effectiveScheduledEntries, timeOfDay],
   );
-  const productionEntry = useMemo(() => pickSupportEntry("production"), [pickSupportEntry]);
-  const videoEntry = useMemo(() => pickSupportEntry("video"), [pickSupportEntry]);
-  const speakerEntry = useMemo(() => pickSupportEntry("speaker"), [pickSupportEntry]);
+  const productionEntry = useMemo(
+    () => (productionScheduleMinistry ? pickSupportEntry(productionScheduleMinistry) : null),
+    [pickSupportEntry, productionScheduleMinistry],
+  );
+  const videoEntry = useMemo(
+    () => (videoScheduleMinistry ? pickSupportEntry(videoScheduleMinistry) : null),
+    [pickSupportEntry, videoScheduleMinistry],
+  );
+  const speakerEntry = useMemo(
+    () => (speakerScheduleMinistry ? pickSupportEntry(speakerScheduleMinistry) : null),
+    [pickSupportEntry, speakerScheduleMinistry],
+  );
 
   // Pick the schedule row that matches the active ministry filter. Weekend worship is the
   // default, but production/video views must key off their own schedule entry — otherwise
@@ -4036,7 +4086,7 @@ function BandRoster({
 
     if (isProductionMinistryFilter) {
       return (
-        effectiveScheduledEntries.find((entry) => entry.ministry_type === "production") ??
+        effectiveScheduledEntries.find((entry) => entry.ministry_type === productionScheduleMinistry) ??
         directScheduleEntries[0] ??
         null
       );
@@ -4058,9 +4108,23 @@ function BandRoster({
       );
     }
 
-    if (isWeekendTeamFilter) {
+    const worshipTypes = new Set(
+      linkedFamily?.worshipTypes ?? ["weekend", "sunday_am", "weekend_team"],
+    );
+    if (isWeekendTeamFilter || linkedFamily) {
       return (
-        directScheduleEntries.find((entry) => weekendMinistryAliases.has(entry.ministry_type ?? "")) ??
+        directScheduleEntries.find((entry) => worshipTypes.has(entry.ministry_type ?? "")) ??
+        directScheduleEntries[0] ??
+        null
+      );
+    }
+
+    if (effectiveMinistryFilter) {
+      const wanted = normalizeSessionSetMinistryType(effectiveMinistryFilter) || effectiveMinistryFilter;
+      return (
+        directScheduleEntries.find(
+          (entry) => (normalizeSessionSetMinistryType(entry.ministry_type) || entry.ministry_type) === wanted,
+        ) ??
         directScheduleEntries[0] ??
         null
       );
@@ -4078,7 +4142,10 @@ function BandRoster({
     isVideoMinistryFilter,
     isSpeakerMinistryFilter,
     isWeekendTeamFilter,
+    linkedFamily,
+    productionScheduleMinistry,
     weekendMinistryAliases,
+    effectiveMinistryFilter,
     timeOfDay,
     ministryFilter,
   ]);
@@ -4150,22 +4217,22 @@ function BandRoster({
   );
   const { data: productionRosterRaw = [] } = useTeamRosterForDate(
     productionRosterDate,
-    productionTeamId,
-    "production",
+    productionScheduleMinistry ? productionTeamId : undefined,
+    productionScheduleMinistry ?? "production",
     campusId,
     productionEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
   const { data: videoRosterRaw = [] } = useTeamRosterForDate(
     videoRosterDate,
-    videoTeamId,
-    "video",
+    videoScheduleMinistry ? videoTeamId : undefined,
+    videoScheduleMinistry ?? "video",
     campusId,
     videoEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
   const { data: speakerRosterRaw = [] } = useTeamRosterForDate(
     speakerRosterDate,
-    speakerTeamId,
-    "speaker",
+    speakerScheduleMinistry ? speakerTeamId : undefined,
+    speakerScheduleMinistry ?? "speaker",
     campusId,
     speakerEntry?.rotation_period ?? effectiveRotationPeriodName,
   );
@@ -4199,11 +4266,8 @@ function BandRoster({
   const showSupportSections = (supportOnly || showAudioVideo) && (rosterScope !== "worship" || amAssignedSupport);
 
   const serviceLabel = useMemo(() => {
-    if (ministryFilter && ministryFilter !== "all" && ministryFilter !== "weekend_team") {
-      return MINISTRY_TYPES.find((ministry) => ministry.value === ministryFilter)?.label || ministryFilter;
-    }
-    if (ministryFilter === "weekend_team") {
-      return "Weekend Worship";
+    if (ministryFilter && ministryFilter !== "all") {
+      return getViewMinistryLabel(ministryFilter) || ministryFilter;
     }
     return "this service";
   }, [ministryFilter]);
@@ -4383,7 +4447,7 @@ function BandRoster({
       order: 5
     },
     ms_hs: {
-      label: "MS/HS Worship",
+      label: "MS/HS Worship/Production",
       order: 5
     },
     sunday_am: {
@@ -4482,11 +4546,16 @@ function BandRoster({
   // band-team-derived video/production list instead of the scheduled crew.
   const directProductionMembers = normalizedProductionRoster.filter(memberHasProductionRole);
   const directVideoMembers = normalizedVideoRoster.filter(memberHasVideoRole);
+  const worshipTeamProductionMembers = productionOnWorshipTeam
+    ? normalizedRosterRaw.filter(memberHasProductionRole)
+    : [];
   const shownProductionMembers = isProductionMinistryFilter
     ? directProductionMembers
-    : normalizedProductionRoster.length > 0
-      ? directProductionMembers
-      : fallbackProductionMembers;
+    : productionOnWorshipTeam
+      ? worshipTeamProductionMembers
+      : normalizedProductionRoster.length > 0
+        ? directProductionMembers
+        : fallbackProductionMembers;
   const shownVideoMembers = isVideoMinistryFilter
     ? directVideoMembers
     : normalizedVideoRoster.length > 0
@@ -4542,17 +4611,20 @@ function BandRoster({
     isAdmin,
     roleNames,
   });
-  const supportPushMinistry =
-    supportSection ??
-    (ministryFilter === "production"
-      ? "production"
-      : ministryFilter === "video"
-        ? "video"
-        : ministryFilter === "speaker"
-          ? "speaker"
-          : null);
+  const supportPushMinistry: SupportScheduleMinistry | null =
+    supportSection === "video"
+      ? "video"
+      : supportSection === "production"
+        ? (productionScheduleMinistry as SupportScheduleMinistry)
+        : ministryFilter === productionScheduleMinistry
+          ? (productionScheduleMinistry as SupportScheduleMinistry)
+          : ministryFilter === "video"
+            ? "video"
+            : ministryFilter === "speaker"
+              ? "speaker"
+              : null;
   const supportPushEntry =
-    supportPushMinistry === "production"
+    isSeparateProductionMinistry(supportPushMinistry)
       ? productionEntry
       : supportPushMinistry === "video"
         ? videoEntry
@@ -4560,7 +4632,7 @@ function BandRoster({
           ? speakerEntry
           : null;
   const supportPushTeamId =
-    supportPushMinistry === "production"
+    isSeparateProductionMinistry(supportPushMinistry)
       ? productionTeamId
       : supportPushMinistry === "video"
         ? videoTeamId

@@ -9,6 +9,7 @@ import { useAudioPlayerSafe } from "@/hooks/useAudioPlayer";
 import {
   getViewMinistryFilterOptions,
   isValidViewMinistryFilter,
+  normalizeViewMinistrySelection,
 } from "@/lib/constants";
 import { GAME_ROUTES } from "@/components/games/GameFullscreen";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -146,12 +147,19 @@ export function ProtectedLayout({
   useEffect(() => {
     if (availableMinistryOptions.length === 0) return;
 
-    const storedIsValid = isValidViewMinistryFilter(selectedMinistryType, appMinistryTypes);
+    const storedMinistry = normalizeViewMinistrySelection(selectedMinistryType);
+    if (storedMinistry && storedMinistry !== selectedMinistryType) {
+      setSelectedMinistryType(storedMinistry);
+      return;
+    }
+
+    const storedIsValid = isValidViewMinistryFilter(storedMinistry, appMinistryTypes);
     if (storedIsValid) return;
 
-    if ((isAdmin || isLeader) && profile?.default_ministry_type) {
-      if (isValidViewMinistryFilter(profile.default_ministry_type, appMinistryTypes)) {
-        setSelectedMinistryType(profile.default_ministry_type);
+    const defaultMinistry = normalizeViewMinistrySelection(profile?.default_ministry_type);
+    if ((isAdmin || isLeader) && defaultMinistry) {
+      if (isValidViewMinistryFilter(defaultMinistry, appMinistryTypes)) {
+        setSelectedMinistryType(defaultMinistry);
         return;
       }
     }

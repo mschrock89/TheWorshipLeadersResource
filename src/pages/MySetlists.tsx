@@ -28,6 +28,8 @@ import {
 import { usePublishedSetlists, useConfirmSetlist, useConfirmSetlists } from "@/hooks/useSetlistConfirmations";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
+import { campusOffersViewMinistry } from "@/lib/campusSetup";
 import { MINISTRY_TYPES, normalizeWeekendWorshipMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType, getMinistrySession, getViewMinistryFilterOptions, isValidViewMinistryFilter, setlistMatchesMinistryFilter } from "@/lib/constants";
 import { groupByWeekend, parseLocalDate, formatWeekendGroupDateLabel, formatDateForDB } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -204,10 +206,6 @@ function StandardMySetlists() {
     () => getResourceAppMinistryTypes(resourceAppKey),
     [resourceAppKey],
   );
-  const ministryFilterOptions = useMemo(
-    () => getViewMinistryFilterOptions(appMinistryTypes),
-    [appMinistryTypes],
-  );
   const [localMinistryType, setLocalMinistryType] = useState<string>(
     () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
   );
@@ -267,11 +265,24 @@ function StandardMySetlists() {
     }
   }, [normalizedCampusId, selectedCampusId, setSelectedCampusId]);
 
+  const { enabled: campusMinistries, isLoading: campusMinistriesLoading } = useCampusMinistrySet(
+    normalizedCampusId === "__none__" ? null : normalizedCampusId,
+  );
+  const ministryFilterOptions = useMemo(() => {
+    const options = getViewMinistryFilterOptions(appMinistryTypes);
+    if (normalizedCampusId === "__none__" || campusMinistriesLoading) return options;
+    return options.filter((ministry) => campusOffersViewMinistry(campusMinistries, ministry.value));
+  }, [appMinistryTypes, campusMinistries, campusMinistriesLoading, normalizedCampusId]);
+
   useEffect(() => {
     if (ministryFilterOptions.length === 0) return;
-    if (!isValidViewMinistryFilter(selectedMinistryType, appMinistryTypes)) {
-      setSelectedMinistryType(ministryFilterOptions[0].value);
+    if (
+      isValidViewMinistryFilter(selectedMinistryType, appMinistryTypes) &&
+      ministryFilterOptions.some((ministry) => ministry.value === selectedMinistryType)
+    ) {
+      return;
     }
+    setSelectedMinistryType(ministryFilterOptions[0].value);
   }, [ministryFilterOptions, selectedMinistryType, appMinistryTypes, setSelectedMinistryType]);
 
   // "__none__" means the user has no campus at all — pass no filter rather than
