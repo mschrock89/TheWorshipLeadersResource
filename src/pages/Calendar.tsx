@@ -891,6 +891,35 @@ function StandardCalendar() {
       return [...new Set((data || []).map((row) => row.audition_date as string))];
     },
   });
+  const setlistRangeStart = monthStart < auditionDatesLookback ? monthStart : auditionDatesLookback;
+  const setlistRangeEnd = monthEnd > upcomingServiceHorizon ? monthEnd : upcomingServiceHorizon;
+  const { data: auditionSetlistDates = [], isFetched: auditionSetlistDatesFetched } = useQuery({
+    queryKey: ["calendar-audition-setlist-dates", campusFilter, setlistRangeStart, setlistRangeEnd],
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      let query = supabase
+        .from("draft_sets")
+        .select("plan_date")
+        .eq("ministry_type", "audition")
+        .eq("status", "published")
+        .gte("plan_date", setlistRangeStart)
+        .lte("plan_date", setlistRangeEnd);
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.eq("campus_id", campusFilter);
+      } else if (campusFilter === "network-wide") {
+        query = query.is("campus_id", null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return [...new Set((data || []).map((row) => row.plan_date as string))];
+    },
+  });
+  const auditionSetlistDateSet = useMemo(
+    () => new Set(auditionSetlistDates),
+    [auditionSetlistDates],
+  );
   const {
     scheduledDates,
     uniqueTeams
@@ -1140,6 +1169,7 @@ function StandardCalendar() {
     if (!usesRecurringServiceDay && !upcomingScheduleFetched) return;
     if (!ministrySchedulesFetched || !customServicesFetched || !serviceTimeOverridesFetched) return;
     if (needsAuditionServiceDates && canSeeCalendarAuditions && !auditionServiceDatesFetched) return;
+    if (needsAuditionServiceDates && !auditionSetlistDatesFetched) return;
 
     const filterKey = `${campusFilter}|${ministryFilter}`;
     if (lastAutoSelectFilterKeyRef.current === filterKey) return;
@@ -1161,6 +1191,7 @@ function StandardCalendar() {
         .map((service) => service.occurrence_date),
       ...filteredServiceTimeOverrides.map((override) => override.service_date),
       ...(needsAuditionServiceDates ? auditionServiceDates : []),
+      ...(needsAuditionServiceDates ? auditionSetlistDates : []),
     ];
     const scheduledDates = Array.from(
       new Set([
@@ -1202,6 +1233,8 @@ function StandardCalendar() {
   }, [
     auditionServiceDates,
     auditionServiceDatesFetched,
+    auditionSetlistDates,
+    auditionSetlistDatesFetched,
     campusFilter,
     canSeeCalendarAuditions,
     customServices,
@@ -2188,7 +2221,7 @@ function StandardCalendar() {
               const dayAuditions = getAuditionsForDay(day);
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const hasServiceTimeOverride = serviceTimeOverrideDateSet.has(dateStrForDay);
-              const hasAudition = dayAuditions.length > 0;
+              const hasAudition = dayAuditions.length > 0 || auditionSetlistDateSet.has(dateStrForDay);
               const hasOtherEvents = dayEvents.length > 0 || dayServices.length > 0 || hasServiceTimeOverride;
               const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
@@ -2235,7 +2268,7 @@ function StandardCalendar() {
                 !isSelected(day) &&
                 !showTeamHighlight &&
                 !showCustomAssignmentHighlight;
-              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
+              return <button key={day} onClick={() => setSelectedDate(new Date(year, month, day))} className={`relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 transition-colors ${isSelected(day) ? "bg-accent text-accent-foreground" : isToday(day) ? "ring-2 ring-primary text-foreground" : hasAudition ? "text-foreground ring-2 ring-sky-400 hover:bg-muted" : "text-foreground hover:bg-muted"}`} style={isSwappedOut && !isSelected(day) ? swappedOutStyle : showTeamHighlight ? {
                 boxShadow: `inset 0 0 0 2px ${effectiveTeamColor}`,
                 backgroundColor: `${effectiveTeamColor}15`
               } : showCustomAssignmentHighlight ? {
@@ -2255,7 +2288,7 @@ function StandardCalendar() {
                       {TeamIcon && <TeamIcon className="h-3.5 w-3.5" style={{
                     color: teamColor
                   }} />}
-                      {hasAudition && <Mic className="h-3 w-3 shrink-0 text-sky-500" aria-label="Audition" />}
+                      {hasAudition && <Mic className={`h-3.5 w-3.5 shrink-0 ${isSelected(day) ? "text-white" : "text-sky-400"}`} aria-label="Audition" />}
                       {hasOtherEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                       {isAdmin && teachingWeek && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" title={formatTeachingReference(teachingWeek)} />}
                       {hasCustomAssignment && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-sky-500" />}
@@ -2498,6 +2531,12 @@ function StandardCalendar() {
                 <div className="mt-1 min-w-0 space-y-2">
                   <div className="min-w-0 space-y-2">
                 <AuditionRosterList auditions={selectedDayAuditions} />
+                {selectedDateStr && auditionSetlistDateSet.has(selectedDateStr) && selectedDayAuditions.length === 0 ? (
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-sky-400">
+                    <Mic className="h-3.5 w-3.5" />
+                    Audition
+                  </p>
+                ) : null}
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
