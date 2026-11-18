@@ -15,7 +15,7 @@ import {
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
-import { overrideAppliesToRosterDate } from "@/lib/weekendPositionSplit";
+import { overrideAppliesToCampusService } from "@/lib/weekendPositionSplit";
 import {
   compareRosterFallbackPeriods,
   shouldBorrowRosterFromAnotherPeriod,
@@ -347,7 +347,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v24"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v25"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -562,8 +562,22 @@ export function useTeamRosterForDate(
       const { data: dateOverrides, error: dateOverridesError } = await overrideQuery;
       if (dateOverridesError) throw dateOverridesError;
 
+      let campusServiceDays: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null =
+        null;
+      if (campusId) {
+        const { data: campusRow, error: campusError } = await supabase
+          .from("campuses")
+          .select("has_saturday_service, has_sunday_service")
+          .eq("id", campusId)
+          .maybeSingle();
+        if (campusError) throw campusError;
+        campusServiceDays = campusRow;
+      }
+
       const allDateOverrides = ((dateOverrides || []) as TeamMemberDateOverrideRow[])
-        .filter((override) => overrideAppliesToRosterDate(override.schedule_date, dateStr))
+        .filter((override) =>
+          overrideAppliesToCampusService(override.schedule_date, dateStr, campusServiceDays),
+        )
         .sort((a, b) => {
           if (a.schedule_date === dateStr && b.schedule_date !== dateStr) return 1;
           if (b.schedule_date === dateStr && a.schedule_date !== dateStr) return -1;

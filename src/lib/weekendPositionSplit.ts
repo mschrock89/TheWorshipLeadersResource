@@ -1,4 +1,5 @@
 import { isBlankTeamBuilderAssignment } from "./teamBuilderBlankSlot.ts";
+import { getWeekendPairDate } from "./utils.ts";
 
 export type WeekendServiceDay = "saturday" | "sunday";
 
@@ -32,6 +33,26 @@ export function overrideAppliesToRosterDate(overrideDate: string, rosterDate: st
   if (rosterDay && overrideDay && rosterDay !== overrideDay) return false;
 
   return true;
+}
+
+/**
+ * Sunday-only campuses saved some fills on the Saturday key Team Builder used
+ * to group the weekend. Those fills belong on Sunday. A campus that also meets
+ * Saturday keeps Saturday and Sunday separate.
+ */
+export function overrideAppliesToCampusService(
+  overrideDate: string,
+  rosterDate: string,
+  campus?: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null,
+): boolean {
+  if (overrideAppliesToRosterDate(overrideDate, rosterDate)) return true;
+
+  const sundayOnly = !!campus && campus.has_sunday_service !== false && campus.has_saturday_service !== true;
+  if (!sundayOnly) return false;
+  if (getServiceDayForDate(rosterDate) !== "sunday" || getServiceDayForDate(overrideDate) !== "saturday") {
+    return false;
+  }
+  return getWeekendPairDate(overrideDate) === rosterDate;
 }
 
 export function assignmentsAreSamePerson(

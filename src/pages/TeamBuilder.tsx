@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Wand2, Trash2, Copy, Loader2, Settings, Save, SearchCheck, AlertTriangle, BellRing, Calendar, Plus, Eye, Megaphone } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -102,8 +102,9 @@ import {
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { assignmentBelongsOnServiceDay, defaultMinistryTypesForAssignment } from "@/lib/teamScheduleSupport";
 import { buildMyTeamViewAssignments } from "@/lib/teamBuilderViewAssignments";
+import { teamBuilderWeekendBucketKey } from "@/lib/campusWeekendPlanDate";
 import { assignmentsAreSamePerson, filterDatesForServiceDay, getServiceDayForDate } from "@/lib/weekendPositionSplit";
-import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
+import { campusHasServiceOnDate, formatPositionLabel, getWeekendPairDate, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
 
 const MANAGED_SIT_REASON_PREFIX = "Sat from Team Builder";
@@ -1006,12 +1007,22 @@ export default function TeamBuilder() {
     }, {});
   }, [visibleAssignments, blackoutDatesByUser, scheduleEntries, activeDateOverrides]);
 
+  const campusServiceScheduleEntries = useMemo(
+    () => scheduleEntries.filter((entry) => campusHasServiceOnDate(selectedCampus, entry.schedule_date)),
+    [scheduleEntries, selectedCampus],
+  );
+
+  const scheduleBucketKeyForDate = useCallback(
+    (date: string) =>
+      shouldCollapseWeekendIntoSingleBucket(selectedMinistryType) && isWeekend(date)
+        ? teamBuilderWeekendBucketKey(date, selectedCampus)
+        : date,
+    [selectedCampus, selectedMinistryType],
+  );
+
   const teamScheduleBuckets = useMemo(() => {
-    return scheduleEntries.reduce<Record<string, Array<{ key: string; dates: string[] }>>>((acc, entry) => {
-      const bucketKey =
-        shouldCollapseWeekendIntoSingleBucket(selectedMinistryType) && isWeekend(entry.schedule_date)
-          ? getWeekendKey(entry.schedule_date)
-          : entry.schedule_date;
+    return campusServiceScheduleEntries.reduce<Record<string, Array<{ key: string; dates: string[] }>>>((acc, entry) => {
+      const bucketKey = scheduleBucketKeyForDate(entry.schedule_date);
 
       if (!acc[entry.team_id]) {
         acc[entry.team_id] = [];
@@ -1033,7 +1044,7 @@ export default function TeamBuilder() {
 
       return acc;
     }, {});
-  }, [scheduleEntries, selectedMinistryType]);
+  }, [campusServiceScheduleEntries, scheduleBucketKeyForDate]);
 
   const weekendServiceDaysByTeam = useMemo(() => {
     if (!selectedCampus?.has_saturday_service || !selectedCampus?.has_sunday_service) {
@@ -1133,10 +1144,7 @@ export default function TeamBuilder() {
     });
 
     ministryVisibleDateOverrides.forEach((override) => {
-      const scheduleBucketKey = isWeekend(override.schedule_date) &&
-        shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
-          ? getWeekendKey(override.schedule_date)
-          : override.schedule_date;
+      const scheduleBucketKey = scheduleBucketKeyForDate(override.schedule_date);
       const serviceDay = getServiceDayForDate(override.schedule_date);
       const assignment = toAssignment(override, serviceDay);
       const dualWeekend = weekendServiceDaysByTeam[override.team_id]?.[scheduleBucketKey];
@@ -1159,7 +1167,11 @@ export default function TeamBuilder() {
         return;
       }
 
-      if (!shared[override.team_id][override.position_slot][scheduleBucketKey]) {
+      const current = shared[override.team_id][override.position_slot][scheduleBucketKey];
+      const bucketDay = getServiceDayForDate(scheduleBucketKey);
+      const incomingIsServiceDay = !bucketDay || serviceDay === bucketDay;
+      const currentIsServiceDay = !bucketDay || current?.service_day === bucketDay;
+      if (!current || (incomingIsServiceDay && !currentIsServiceDay)) {
         shared[override.team_id][override.position_slot][scheduleBucketKey] = assignment;
       }
     });
@@ -1184,16 +1196,13 @@ export default function TeamBuilder() {
       dateOverridesByTeamSlot: shared,
       weekendDayOverridesByTeamSlot: byDay,
     };
-  }, [ministryVisibleDateOverrides, selectedMinistryType, weekendServiceDaysByTeam]);
+  }, [ministryVisibleDateOverrides, scheduleBucketKeyForDate, weekendServiceDaysByTeam]);
 
   const blackoutConflictDatesByTeamSlotDateOverride = useMemo(() => {
     return ministryVisibleDateOverrides.reduce<Record<string, Record<string, Record<string, string[]>>>>((acc, override) => {
       if (!override.user_id) return acc;
 
-      const scheduleBucketKey = isWeekend(override.schedule_date) &&
-        shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
-          ? getWeekendKey(override.schedule_date)
-          : override.schedule_date;
+      const scheduleBucketKey = scheduleBucketKeyForDate(override.schedule_date);
 
       const conflictDates = (blackoutDatesByUser[override.user_id] || [])
         .filter((date) => date === override.schedule_date)
@@ -1214,7 +1223,7 @@ export default function TeamBuilder() {
       acc[override.team_id][override.position_slot][scheduleBucketKey] = Array.from(existing).sort();
       return acc;
     }, {});
-  }, [blackoutDatesByUser, ministryVisibleDateOverrides, selectedMinistryType]);
+  }, [blackoutDatesByUser, ministryVisibleDateOverrides, scheduleBucketKeyForDate]);
 
   const combinedConflictDatesByTeamSlot = useMemo(() => {
     const combined: Record<string, Record<string, string[]>> = {};
@@ -1360,10 +1369,7 @@ export default function TeamBuilder() {
       const team = teamById[override.team_id];
       if (!team) return;
 
-      const bucketKey = isWeekend(override.schedule_date) &&
-        shouldCollapseWeekendIntoSingleBucket(selectedMinistryType)
-          ? getWeekendKey(override.schedule_date)
-          : override.schedule_date;
+      const bucketKey = scheduleBucketKeyForDate(override.schedule_date);
       const recipient = recipientMap.get(override.user_id) || {
         userId: override.user_id,
         memberName: override.member_name,
@@ -1442,8 +1448,8 @@ export default function TeamBuilder() {
     displayTeamIdSet,
     effectiveTeamSnapshotByBucket,
     ministryVisibleDateOverrides,
+    scheduleBucketKeyForDate,
     scheduleDatesByTeam,
-    selectedMinistryType,
     selectedPeriod?.name,
     teamById,
     visibleAssignments,
@@ -1817,11 +1823,21 @@ export default function TeamBuilder() {
     teamId: string,
     bucketKey: string,
     serviceDay?: "saturday" | "sunday" | null,
-  ) =>
-    filterDatesForServiceDay(
+  ) => {
+    const dates = filterDatesForServiceDay(
       (teamScheduleBuckets[teamId] || []).find((bucket) => bucket.key === bucketKey)?.dates || [bucketKey],
       serviceDay,
     );
+    if (serviceDay) return dates;
+    const sundayOnly = !!selectedCampus && selectedCampus.has_sunday_service !== false && !selectedCampus.has_saturday_service;
+    if (!sundayOnly) return dates;
+    // Older Shelbyville fills were stored on Saturday. Keep that row in sync
+    // with the Sunday the calendar actually shows.
+    return Array.from(new Set(dates.flatMap((date) => {
+      const pair = getWeekendPairDate(date);
+      return pair ? [date, pair] : [date];
+    }))).sort();
+  };
 
   const formatAssignmentScheduleLabel = (
     dates: string[],
@@ -1843,7 +1859,11 @@ export default function TeamBuilder() {
     serviceDay?: "saturday" | "sunday" | null,
   ) => {
     if (!canEditCampus || isTeamLocked(team.id)) return;
-    const assignmentDates = scheduleDate ? datesForBucket(team.id, scheduleDate, serviceDay) : [];
+    const assignmentDates = scheduleDate
+      ? datesForBucket(team.id, scheduleDate, serviceDay).filter((date) =>
+          campusHasServiceOnDate(selectedCampus, date),
+        )
+      : [];
     setAssigningSlot({
       teamId: team.id,
       teamName: team.name,

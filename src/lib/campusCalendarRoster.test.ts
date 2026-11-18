@@ -5,6 +5,7 @@ import {
   isCalendarTeamScheduleVisible,
   isPublishedTeamBuilderAssignment,
   pickVisibleCampusScheduleEntry,
+  selectPublishedScheduleEntries,
   unpublishedTeamBuilderKey,
 } from "./campusCalendarRoster.ts";
 
@@ -12,6 +13,37 @@ const periods = [
   { id: "shelby-t3", name: "T3 2026" },
   { id: "shelby-t2", name: "T2 2026" },
 ];
+
+test("a campus schedule row still shows when that week's roster is empty", () => {
+  const gate = buildCampusCalendarRosterGate({
+    periods,
+    assignments: [],
+    hides: [],
+  });
+  const entries = selectPublishedScheduleEntries(
+    [
+      {
+        team_id: "team-4",
+        campus_id: "shelbyville",
+        schedule_date: "2026-11-22",
+        rotation_period: "T3 2026",
+        ministry_type: "weekend",
+        worship_teams: { name: "Team 4" },
+      },
+      {
+        team_id: "team-4",
+        campus_id: null,
+        schedule_date: "2026-11-21",
+        rotation_period: "T3 2026",
+        ministry_type: "weekend",
+        worship_teams: { name: "Team 4" },
+      },
+    ],
+    gate,
+  );
+
+  assert.deepEqual(entries.map((entry) => entry.schedule_date), ["2026-11-22"]);
+});
 
 test("an empty Team Builder period does not show copied or shared calendar teams", () => {
   const gate = buildCampusCalendarRosterGate({

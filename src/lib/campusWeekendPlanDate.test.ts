@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { anchorWeekendPlanDate } from "./campusWeekendPlanDate.ts";
+import { anchorWeekendPlanDate, teamBuilderWeekendBucketKey } from "./campusWeekendPlanDate.ts";
 
 const shelbyville = { has_saturday_service: false, has_sunday_service: true };
 const central = { has_saturday_service: true, has_sunday_service: true };
@@ -15,6 +15,12 @@ test("Shelbyville Set Builder uses Sunday, including when the picker lands on Sa
   const wednesday = new Date(2026, 10, 18);
   const nextService = anchorWeekendPlanDate(wednesday, shelbyville);
   assert.equal(nextService.getDate(), 22);
+});
+
+test("Shelbyville Team Builder weeks are the Sunday on the calendar", () => {
+  assert.equal(teamBuilderWeekendBucketKey("2026-11-22", shelbyville), "2026-11-22");
+  assert.equal(teamBuilderWeekendBucketKey("2026-11-21", shelbyville), "2026-11-22");
+  assert.equal(teamBuilderWeekendBucketKey("2026-11-22", central), "2026-11-21");
 });
 
 test("a campus that meets both days still plans the weekend from Saturday", () => {

@@ -291,6 +291,31 @@ function chooseScheduleRow<T extends CalendarScheduleEntryLike>(
   return allowOtherMinistry ? sorted[0] ?? null : null;
 }
 
+function isHiddenCampusScheduleEntry(
+  entry: CalendarScheduleEntryLike,
+  gate: CampusCalendarRosterGate,
+) {
+  const periodName = entry.rotation_period?.trim();
+  const teamId = entry.team_id;
+  if (!entry.campus_id || !periodName || !teamId || !gate.periodNames.has(periodName)) return true;
+  return !!gate.hiddenTeamIdsByPeriod.get(periodName)?.has(teamId);
+}
+
+/**
+ * Prefer teams the published roster actually has people on. When nobody is
+ * assigned, keep this campus's own schedule row so an empty Team Builder week
+ * still shows the same team. Shared rows stay hidden until someone is assigned.
+ */
+export function selectPublishedScheduleEntries<T extends CalendarScheduleEntryLike>(
+  entries: T[],
+  gate?: CampusCalendarRosterGate | null,
+): T[] {
+  if (!gate) return entries;
+  const staffed = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, gate));
+  if (staffed.length > 0) return staffed;
+  return entries.filter((entry) => !isHiddenCampusScheduleEntry(entry, gate));
+}
+
 /**
  * Calendar and Set Builder both use this. Prefer the team scheduled on the
  * requested date from the published roster. A weekend ministry can use the
@@ -305,9 +330,7 @@ export function pickVisibleCampusScheduleEntry<T extends CalendarScheduleEntryLi
     gate?: CampusCalendarRosterGate | null;
   },
 ): T | null {
-  const visible = options.gate
-    ? entries.filter((entry) => isCalendarTeamScheduleVisible(entry, options.gate as CampusCalendarRosterGate))
-    : entries;
+  const visible = selectPublishedScheduleEntries(entries, options.gate);
 
   const preferred = visible.filter((entry) => entry.schedule_date === options.preferredDate);
   const preferredMatch = chooseScheduleRow(preferred, options.campusId, options.ministryType, false);

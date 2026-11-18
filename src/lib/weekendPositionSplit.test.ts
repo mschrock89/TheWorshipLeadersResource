@@ -4,6 +4,7 @@ import {
   assignmentsAreSamePerson,
   filterDatesForServiceDay,
   getServiceDayForDate,
+  overrideAppliesToCampusService,
   overrideAppliesToRosterDate,
 } from "./weekendPositionSplit.ts";
 
@@ -17,6 +18,14 @@ test("a Saturday override does not fill Sunday", () => {
   assert.equal(overrideAppliesToRosterDate("2026-11-07", "2026-11-07"), true);
   assert.equal(overrideAppliesToRosterDate("2026-11-07", "2026-11-08"), false);
   assert.equal(overrideAppliesToRosterDate("2026-11-08", "2026-11-07"), false);
+});
+
+test("a Sunday-only campus keeps a Saturday fill on Sunday", () => {
+  const shelbyville = { has_saturday_service: false, has_sunday_service: true };
+  const central = { has_saturday_service: true, has_sunday_service: true };
+  assert.equal(overrideAppliesToCampusService("2026-11-21", "2026-11-22", shelbyville), true);
+  assert.equal(overrideAppliesToCampusService("2026-11-21", "2026-11-22", central), false);
+  assert.equal(overrideAppliesToCampusService("2026-11-22", "2026-11-22", shelbyville), true);
 });
 
 test("a Friday override can still cover a weekend day with no day split", () => {

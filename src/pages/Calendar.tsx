@@ -26,7 +26,7 @@ import {
 } from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
 import { useCampusCalendarRosterGate } from "@/hooks/useCampusCalendarRoster";
-import { isCalendarTeamScheduleVisible } from "@/lib/campusCalendarRoster";
+import { isCalendarTeamScheduleVisible, selectPublishedScheduleEntries } from "@/lib/campusCalendarRoster";
 import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -1425,10 +1425,7 @@ function StandardCalendar() {
     }
 
     entries = filterScheduleEntriesToDateRotation(entries, campusRotationPeriods);
-
-    if (campusRosterGate) {
-      entries = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, campusRosterGate));
-    }
+    entries = selectPublishedScheduleEntries(entries, campusRosterGate);
 
     return entries;
   }, [campusRosterGate, campusRotationPeriods, teamSchedule]);
