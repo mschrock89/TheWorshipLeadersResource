@@ -4,8 +4,8 @@
 // always resolved under the 'worship' scope regardless of which app's UI planned
 // the set.
 //
-// If the rules table isn't deployed yet, everything falls back to LEGACY_*,
-// which reproduces the old hardcoded constants exactly.
+// If the rules table isn't deployed yet, only Weekend Worship still requires
+// approval. Every other ministry publishes immediately.
 
 import { supabase } from "@/integrations/supabase/client";
 import { isSessionSetMinistryType, isWeekendTeamMinistryType } from "@/lib/constants";
@@ -18,14 +18,6 @@ const CHURCH_TIME_ZONE = "America/Chicago";
 /** Previous hardcoded approver (Kyle Elkins). Kept only as a deploy-order fallback. */
 export const LEGACY_APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
 const LEGACY_DIRECT_PUBLISHER_FIRST_NAMES = new Set(["eli", "christian"]);
-const LEGACY_DIRECT_PUBLISH_MINISTRY_TYPES = new Set([
-  "kids_camp",
-  "encounter",
-  "eon",
-  "eon_weekend",
-  "ms_hs",
-  "evident",
-]);
 
 export const SETLIST_APPROVAL_SCOPE = "worship";
 
@@ -46,8 +38,18 @@ function firstName(fullName: string | null | undefined) {
   return (fullName || "").trim().toLowerCase().split(/\s+/)[0] || "";
 }
 
+/** Weekend Worship is stored as weekend, weekend_team, or sunday_am. */
+function approvalMinistryKey(ministryType: string | null | undefined): string | null {
+  if (!ministryType) return null;
+  if (isWeekendTeamMinistryType(ministryType)) return "weekend";
+  return ministryType;
+}
+
 /**
- * Most-specific rule wins: campus+ministry > campus > ministry > app default.
+ * Most-specific ministry rule wins: campus + ministry, then ministry.
+ * A ministry with no rule does not require approval. A ministry-less row is the
+ * old default and applies only to Weekend Worship, until it is replaced by an
+ * explicit weekend rule.
  * Returns null when the rules table is unavailable, so callers can fall back.
  */
 export async function resolveApprovalRule(params: {
@@ -63,13 +65,17 @@ export async function resolveApprovalRule(params: {
 
   const rules = data as ApprovalRuleRow[];
   const campusId = params.campusId ?? null;
-  const ministryType = params.ministryType ?? null;
+  const ministryKey = approvalMinistryKey(params.ministryType);
 
   const score = (r: ApprovalRuleRow): number => {
-    // Reject rules that name a different campus/ministry than this set.
+    const ruleKey = approvalMinistryKey(r.ministry_type);
     if (r.campus_id !== null && r.campus_id !== campusId) return -1;
-    if (r.ministry_type !== null && r.ministry_type !== ministryType) return -1;
-    return (r.campus_id !== null ? 2 : 0) + (r.ministry_type !== null ? 1 : 0);
+    if (ruleKey === null) {
+      if (ministryKey !== "weekend") return -1;
+      return r.campus_id !== null ? 2 : 0;
+    }
+    if (ruleKey !== ministryKey) return -1;
+    return (r.campus_id !== null ? 2 : 0) + 1;
   };
 
   let best: ApprovalRuleRow | null = null;
@@ -82,7 +88,7 @@ export async function resolveApprovalRule(params: {
     }
   }
 
-  if (!best) return { requiresApproval: true, approverUserId: null };
+  if (!best) return { requiresApproval: false, approverUserId: null };
   return { requiresApproval: best.requires_approval, approverUserId: best.approver_user_id };
 }
 
@@ -117,15 +123,9 @@ export async function shouldPublishDirectly(params: {
   });
 
   if (rule === null) {
-    // Legacy fallback: tables not deployed yet.
+    // Legacy fallback: tables not deployed yet. Only Weekend Worship needs approval.
+    if (!isWeekendTeamMinistryType(params.ministryType)) return true;
     if (params.userId === LEGACY_APPROVER_USER_ID) return true;
-    if (
-      params.ministryType &&
-      (LEGACY_DIRECT_PUBLISH_MINISTRY_TYPES.has(params.ministryType) ||
-        isSessionSetMinistryType(params.ministryType))
-    ) {
-      return true;
-    }
     return LEGACY_DIRECT_PUBLISHER_FIRST_NAMES.has(firstName(params.fullName));
   }
 

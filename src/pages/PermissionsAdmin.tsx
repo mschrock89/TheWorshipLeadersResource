@@ -70,13 +70,10 @@ const RESOURCE_APPS: { value: ResourceAppScope; label: string }[] = [
 
 const prettyRole = (r: string) => r.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-// Radix Select can't use "" as an item value, so the "all ministries" default
-// rule is represented by this sentinel and mapped back to null on save.
-const DEFAULT_MINISTRY = "__default__";
-const ministryLabel = (value: string | null) =>
-  value
-    ? SET_PLANNER_MINISTRY_OPTIONS.find((o) => o.value === value)?.label ?? value
-    : "Default (all ministries)";
+const ministryLabel = (value: string) => {
+  if (value === "weekend" || value === "weekend_team" || value === "sunday_am") return "Weekend Worship";
+  return SET_PLANNER_MINISTRY_OPTIONS.find((o) => o.value === value)?.label ?? value;
+};
 
 // Temporary-access options for per-user overrides.
 const EXPIRY_OPTIONS = [
@@ -195,7 +192,7 @@ function ApprovalsTab() {
   const upsert = useUpsertApprovalRule();
   const del = useDeleteApprovalRule();
 
-  const [newMinistry, setNewMinistry] = useState<string>(DEFAULT_MINISTRY);
+  const [newMinistry, setNewMinistry] = useState<string>("weekend");
   const [newApprover, setNewApprover] = useState<string>("");
   const [newRequires, setNewRequires] = useState(true);
 
@@ -236,8 +233,8 @@ function ApprovalsTab() {
         <CardHeader>
           <CardTitle className="text-xl font-semibold">Setlist approvals</CardTitle>
           <CardDescription>
-            Who reviews a planned set before it publishes, and which ministries skip review. Most
-            specific rule wins (campus + ministry &gt; campus &gt; ministry &gt; default).
+            Who reviews a planned set before it publishes. A ministry with no rule publishes
+            immediately. A campus-specific rule overrides the all-campus rule for that ministry.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -255,20 +252,32 @@ function ApprovalsTab() {
               {rules.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">
-                    {r.ministry_type ? ministryLabel(r.ministry_type) : <Badge variant="secondary">Default</Badge>}
+                    {ministryLabel(r.ministry_type ?? "weekend")}
                   </TableCell>
                   <TableCell>{campusName(r.campus_id)}</TableCell>
                   <TableCell>
                     <Switch
                       checked={r.requires_approval}
-                      onCheckedChange={(v) => upsert.mutate({ ...r, requires_approval: v })}
+                      onCheckedChange={(v) =>
+                        upsert.mutate({
+                          ...r,
+                          ministry_type: r.ministry_type ?? "weekend",
+                          requires_approval: v,
+                        })
+                      }
                     />
                   </TableCell>
                   <TableCell>
                     {r.requires_approval ? (
                       <Select
                         value={r.approver_user_id ?? ""}
-                        onValueChange={(v) => upsert.mutate({ ...r, approver_user_id: v || null })}
+                        onValueChange={(v) =>
+                          upsert.mutate({
+                            ...r,
+                            ministry_type: r.ministry_type ?? "weekend",
+                            approver_user_id: v || null,
+                          })
+                        }
                       >
                         <SelectTrigger className="w-56"><SelectValue placeholder="Choose approver" /></SelectTrigger>
                         <SelectContent>
@@ -296,7 +305,7 @@ function ApprovalsTab() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg font-semibold">Add or edit a ministry rule</CardTitle>
-          <CardDescription>Pick a ministry, or the default to apply to every ministry without its own rule.</CardDescription>
+          <CardDescription>A ministry publishes immediately unless it has a rule here.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-4">
           <div className="grow">
@@ -304,9 +313,8 @@ function ApprovalsTab() {
             <Select value={newMinistry} onValueChange={setNewMinistry}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={DEFAULT_MINISTRY}>Default (all ministries)</SelectItem>
                 {SET_PLANNER_MINISTRY_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{ministryLabel(o.value)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -331,15 +339,14 @@ function ApprovalsTab() {
           <Button
             disabled={upsert.isPending}
             onClick={() => {
-              const ministry = newMinistry === DEFAULT_MINISTRY ? null : newMinistry;
-              // Upsert by scope: if a rule already exists for this ministry (or the
-              // default), edit it instead of inserting a duplicate (which the
-              // unique scope index would reject).
+              const ministry = newMinistry;
+              // Upsert by scope: if a rule already exists for this ministry, edit it
+              // instead of inserting a duplicate (which the unique scope index would reject).
               const existing = rules.find(
                 (r) =>
                   r.resource_app === "worship" &&
                   r.campus_id === null &&
-                  (r.ministry_type ?? null) === ministry,
+                  r.ministry_type === ministry,
               );
               upsert.mutate(
                 existing
@@ -355,11 +362,11 @@ function ApprovalsTab() {
                       requires_approval: newRequires,
                       approver_user_id: newRequires ? newApprover || null : null,
                     },
-                { onSuccess: () => { setNewMinistry(DEFAULT_MINISTRY); setNewApprover(""); setNewRequires(true); } },
+                { onSuccess: () => { setNewMinistry("weekend"); setNewApprover(""); setNewRequires(true); } },
               );
             }}
           >
-            <Plus className="mr-1 h-4 w-4" /> {newMinistry === DEFAULT_MINISTRY ? "Save default" : "Save rule"}
+            <Plus className="mr-1 h-4 w-4" /> Save rule
           </Button>
         </CardContent>
       </Card>
