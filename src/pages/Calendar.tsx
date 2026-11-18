@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Mic, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin, FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -368,6 +368,34 @@ type CalendarAudition = {
   } | null;
 };
 
+function AuditionRosterList({ auditions }: { auditions: CalendarAudition[] }) {
+  if (auditions.length === 0) return null;
+  return (
+    <div className="min-w-0">
+      <h4 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-sky-500">
+        <Mic className="h-3.5 w-3.5" />
+        Audition
+      </h4>
+      <div className="space-y-1.5">
+        {auditions.map((audition) => {
+          const name = audition.profiles?.full_name?.trim() || "Audition Candidate";
+          const initials = name.split(" ").map((part) => part[0]).join("").slice(0, 2);
+          const stageLabel = audition.stage === "pre_audition" ? "Pre-Audition" : "Audition";
+          return (
+            <div key={audition.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+              </Avatar>
+              <span className="min-w-0 flex-1 truncate text-foreground">{name}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{stageLabel}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 type SupportScheduleMinistry = "production" | "ms_hs_production" | "hs_production" | "video" | "speaker";
 
 type ScheduleNotificationTarget = {
@@ -625,8 +653,8 @@ function StandardCalendar() {
     [serviceTimeOverrides, ministryFilter],
   );
   const { data: auditions = [] } = useQuery({
-    queryKey: ["calendar-auditions", monthStart, monthEnd, campusFilter, isAdmin],
-    enabled: isAdmin,
+    queryKey: ["calendar-auditions", monthStart, monthEnd, campusFilter, isAdmin || canManageTeam],
+    enabled: isAdmin || canManageTeam,
     queryFn: async (): Promise<CalendarAudition[]> => {
       let query = supabase
         .from("auditions")
@@ -2117,7 +2145,8 @@ function StandardCalendar() {
               const dayAuditions = getAuditionsForDay(day);
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const hasServiceTimeOverride = serviceTimeOverrideDateSet.has(dateStrForDay);
-              const hasEvents = dayEvents.length > 0 || dayServices.length > 0 || dayAuditions.length > 0 || hasServiceTimeOverride;
+              const hasAudition = dayAuditions.length > 0;
+              const hasOtherEvents = dayEvents.length > 0 || dayServices.length > 0 || hasServiceTimeOverride;
               const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
               const teamColor = teamEntry?.worship_teams?.color;
@@ -2183,7 +2212,8 @@ function StandardCalendar() {
                       {TeamIcon && <TeamIcon className="h-3.5 w-3.5" style={{
                     color: teamColor
                   }} />}
-                      {hasEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                      {hasAudition && <Mic className="h-3 w-3 shrink-0 text-sky-500" aria-label="Audition" />}
+                      {hasOtherEvents && !TeamIcon && !isSwappedIn && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-primary" />}
                       {isAdmin && teachingWeek && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" title={formatTeachingReference(teachingWeek)} />}
                       {hasCustomAssignment && !isSwappedOut && <div className="h-1.5 w-1.5 rounded-full bg-sky-500" />}
                     </div>
@@ -2423,7 +2453,8 @@ function StandardCalendar() {
                   </div>}
 
                 <div className="mt-1 min-w-0 space-y-2">
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-2">
+                <AuditionRosterList auditions={selectedDayAuditions} />
                 {selectedDayServices.length > 0 ? (
                   <div className="space-y-2">
                     {selectedDayServices.map((service) => {
