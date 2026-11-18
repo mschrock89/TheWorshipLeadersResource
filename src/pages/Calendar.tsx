@@ -30,6 +30,7 @@ import {
   isCalendarTeamScheduleVisible,
   type CampusCalendarRosterGate,
 } from "@/lib/campusCalendarRoster";
+import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useSongsForDate } from "@/hooks/useSongs";
@@ -724,20 +725,17 @@ function StandardCalendar() {
   // active team per day, so pulling campus rows directly avoids missing dates
   // when a month spans multiple rotation periods.
   const effectiveCampusId = campusFilter && campusFilter !== "network-wide" ? campusFilter : null;
-  const { data: activeRotationPeriodName } = useQuery({
-    queryKey: ["calendar-active-rotation-period", effectiveCampusId],
+  const { data: campusRotationPeriods = [] } = useQuery({
+    queryKey: ["calendar-campus-rotation-periods", effectiveCampusId],
     enabled: !!effectiveCampusId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rotation_periods")
-        .select("name")
-        .eq("campus_id", effectiveCampusId)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
+        .select("id, name, year, trimester, is_active, start_date, end_date")
+        .eq("campus_id", effectiveCampusId!);
 
       if (error) throw error;
-      return data?.name ?? null;
+      return data ?? [];
     },
   });
   const { data: campusRosterGate } = useQuery({
@@ -1494,30 +1492,14 @@ function StandardCalendar() {
       }
     }
 
-    if (activeRotationPeriodName) {
-      const getRotationPreferenceKey = (entry: TeamScheduleEntry) =>
-        `${entry.ministry_type ?? "default"}:${entry.time_of_day ?? "all"}`;
-      const activeEntryKeys = new Set(
-        entries
-          .filter((entry) => entry.rotation_period === activeRotationPeriodName)
-          .map(getRotationPreferenceKey),
-      );
-
-      if (activeEntryKeys.size > 0) {
-        entries = entries.filter(
-          (entry) =>
-            entry.rotation_period === activeRotationPeriodName ||
-            !activeEntryKeys.has(getRotationPreferenceKey(entry)),
-        );
-      }
-    }
+    entries = filterScheduleEntriesToDateRotation(entries, campusRotationPeriods);
 
     if (campusRosterGate) {
       entries = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, campusRosterGate));
     }
 
     return entries;
-  }, [activeRotationPeriodName, campusRosterGate, teamSchedule]);
+  }, [campusRosterGate, campusRotationPeriods, teamSchedule]);
 
   // Get events for a specific day
   const getEventsForDay = (day: number, options?: { ignoreMinistryFilter?: boolean }): Event[] => {
@@ -1945,12 +1927,7 @@ function StandardCalendar() {
         scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter)),
     );
 
-    if (activeRotationPeriodName) {
-      const activeEntries = entries.filter((entry) => entry.rotation_period === activeRotationPeriodName);
-      if (activeEntries.length > 0) {
-        entries = activeEntries;
-      }
-    }
+    entries = filterScheduleEntriesToDateRotation(entries, campusRotationPeriods);
 
     if (campusRosterGate) {
       entries = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, campusRosterGate));
@@ -2012,7 +1989,7 @@ function StandardCalendar() {
         teamName: videoServiceDayLabel ? `${baseTeamName} ${videoServiceDayLabel}` : baseTeamName,
       }];
     });
-  }, [activeRotationPeriodName, campusFilter, campusRosterGate, campuses, isAdmin, ministryFilter, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
+  }, [campusFilter, campusRosterGate, campusRotationPeriods, campuses, isAdmin, ministryFilter, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
 
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));
@@ -4103,38 +4080,36 @@ function BandRoster({
     : null;
   const isNetworkWideRosterCampus = campusId === null;
 
-  // Step 1: fetch the active rotation period — identical to My Setlists.
-  // Network Wide Student Camp schedules don't own a campus period row; rely on
-  // the schedule entry's rotation_period / passed props instead.
-  const { data: bandRosterActivePeriodName } = useQuery({
-    queryKey: ["band-roster-active-rotation-period", campusId === null ? "network-wide" : campusId, resourceAppKey],
+  // Step 1: load this campus's trimesters. The day panel uses the one that
+  // contains the date, on every campus. Network Wide Student Camp has no
+  // campus period row and keeps the schedule entry it was given.
+  const { data: bandRosterRotationPeriods, isFetched: bandRosterPeriodsFetched } = useQuery({
+    queryKey: ["band-roster-rotation-periods", campusId === null ? "network-wide" : campusId],
     enabled: !!campusId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rotation_periods")
-        .select("name")
-        .eq("campus_id", campusId!)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
+        .select("id, name, year, trimester, is_active, start_date, end_date")
+        .eq("campus_id", campusId!);
       if (error) throw error;
-      return data?.name ?? null;
+      return data ?? [];
     },
   });
 
   // Step 2: query team_schedule for both weekend dates — exactly as My Setlists does.
-  // Wait until the active period name is resolved (undefined = still loading).
+  // Wait until the campus trimesters have loaded (undefined = still loading).
   const { data: directScheduleEntries = [] } = useQuery({
     queryKey: [
       "band-roster-schedule",
       dateStr,
       campusId === null ? "network-wide" : campusId,
       resourceAppKey,
-      bandRosterActivePeriodName,
+      bandRosterPeriodsFetched,
+      bandRosterRotationPeriods?.map((period) => period.id).join(",") ?? "",
     ],
     enabled:
       !!dateStr &&
-      (isNetworkWideRosterCampus || (!!campusId && bandRosterActivePeriodName !== undefined)),
+      (isNetworkWideRosterCampus || (!!campusId && bandRosterPeriodsFetched)),
     queryFn: async () => {
       const datesToCheck = [dateStr!];
       const dayOfWeek = date.getDay();
@@ -4163,17 +4138,11 @@ function BandRoster({
       if (error) throw error;
       if (!data || data.length === 0) return [];
 
-      // Step 3: drop stale old-rotation entries for any date that already has an
-      // active-rotation entry — same filter My Setlists applies before sorting.
-      const rows = bandRosterActivePeriodName
-        ? data.filter((entry) => {
-            const dateEntries = data.filter((c) => c.schedule_date === entry.schedule_date);
-            const activeEntries = dateEntries.filter(
-              (c) => c.rotation_period === bandRosterActivePeriodName,
-            );
-            return activeEntries.length === 0 || entry.rotation_period === bandRosterActivePeriodName;
-          })
-        : data;
+      // Step 3: keep the trimester that contains each date. An older copy that
+      // is still flagged active does not replace the current Team Builder row.
+      const rows = isNetworkWideRosterCampus
+        ? data
+        : filterScheduleEntriesToDateRotation(data, bandRosterRotationPeriods ?? []);
 
       // Step 4: sort — campus-specific first, exact date first, newer first.
       const sortedRows = [...rows].sort((a, b) => {

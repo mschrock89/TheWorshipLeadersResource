@@ -10,6 +10,8 @@ import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import {
   applyEffectiveActiveRotationPeriods,
   buildFirstScheduledDateByRotationName,
+  rotationPeriodNameForDate,
+  type RotationPeriodLike,
 } from "@/lib/rotationPeriods";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
@@ -345,7 +347,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v23"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v24"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -353,7 +355,25 @@ export function useTeamRosterForDate(
       if (campusIdsToFilter.length === 0) return [];
       
       let activePeriodIds: string[] = [];
-      if (campusId && rotationPeriodName) {
+      // Every campus: the trimester that contains this date wins over a period
+      // name or is_active flag passed in from an older schedule row.
+      const { data: datedPeriods, error: datedPeriodError } = await supabase
+        .from("rotation_periods")
+        .select("id, name, year, trimester, is_active, start_date, end_date")
+        .in("campus_id", campusIdsToFilter)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr);
+
+      if (datedPeriodError) throw datedPeriodError;
+      const coveringPeriods = (datedPeriods || []) as RotationPeriodLike[];
+      if (coveringPeriods.length > 0) {
+        const coveringName = rotationPeriodNameForDate(coveringPeriods, dateStr);
+        activePeriodIds = coveringPeriods
+          .filter((period) => period.name === coveringName)
+          .map((period) => period.id);
+      }
+
+      if (activePeriodIds.length === 0 && campusId && rotationPeriodName) {
         const { data: namedPeriods, error: namedPeriodError } = await supabase
           .from("rotation_periods")
           .select("id")
@@ -362,18 +382,6 @@ export function useTeamRosterForDate(
 
         if (namedPeriodError) throw namedPeriodError;
         activePeriodIds = (namedPeriods || []).map((period) => period.id);
-      }
-
-      if (activePeriodIds.length === 0) {
-        const { data: datedPeriods, error: datedPeriodError } = await supabase
-          .from("rotation_periods")
-          .select("id")
-          .in("campus_id", campusIdsToFilter)
-          .lte("start_date", dateStr)
-          .gte("end_date", dateStr);
-
-        if (datedPeriodError) throw datedPeriodError;
-        activePeriodIds = (datedPeriods || []).map((period) => period.id);
       }
 
       if (campusId && activePeriodIds.length === 0) {
@@ -450,10 +458,9 @@ export function useTeamRosterForDate(
         return assignmentMatchesRosterFilter(m, ministryType);
       });
 
-      // A date inside a campus rotation uses that rotation only. Shelbyville T3
-      // can be empty while an older trimester is still flagged active; borrowing
-      // that roster made the calendar show people Team Builder does not have
-      // on this date. Fall back only when no rotation covers the date at all.
+      // A date inside a campus rotation uses that rotation only, on every campus.
+      // An empty current trimester stays empty even when an older one is still
+      // flagged active. Borrow only when no rotation covers the date at all.
       if (shouldBorrowRosterFromAnotherPeriod(activePeriodIds.length, filteredMembers.length)) {
         const { data: fallbackMembers, error: fallbackMembersError } = await supabase
           .from("team_members")

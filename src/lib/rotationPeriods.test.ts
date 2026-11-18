@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyEffectiveActiveRotationPeriods,
+  filterScheduleEntriesToDateRotation,
   getEffectiveActiveRotationPeriodId,
+  rotationPeriodNameForDate,
 } from "./rotationPeriods.ts";
 
 const t1 = {
@@ -74,6 +76,53 @@ test("advances to T3 10 days before its first scheduled service", () => {
   );
 
   assert.equal(effectiveId, "t3");
+});
+
+test("every campus uses the trimester that contains the date, not a stale active flag", () => {
+  assert.equal(rotationPeriodNameForDate([t1, t2, t3], "2026-11-22"), "T3 2026");
+  assert.equal(rotationPeriodNameForDate([t1, t2, t3], "2026-06-07"), "T2 2026");
+  assert.equal(rotationPeriodNameForDate([t1, t2, t3], "2026-02-01"), "T1 2026");
+});
+
+test("a date outside every trimester falls back to the active flag", () => {
+  const gappedT3 = { ...t3, start_date: "2026-10-01" };
+  assert.equal(rotationPeriodNameForDate([t1, t2, gappedT3], "2026-09-15"), "T2 2026");
+});
+
+test("overlapping trimesters keep the later one", () => {
+  const overlappingT2 = { ...t2, end_date: "2026-09-30", is_active: true };
+  assert.equal(rotationPeriodNameForDate([t1, overlappingT2, t3], "2026-09-15"), "T3 2026");
+});
+
+test("an older active schedule row loses to the trimester that contains the date", () => {
+  const entries = [
+    {
+      schedule_date: "2026-11-22",
+      ministry_type: "weekend",
+      time_of_day: null,
+      rotation_period: "T1 2026",
+      team: "old",
+    },
+    {
+      schedule_date: "2026-11-22",
+      ministry_type: "weekend",
+      time_of_day: null,
+      rotation_period: "T3 2026",
+      team: "current",
+    },
+    {
+      schedule_date: "2026-11-22",
+      ministry_type: "production",
+      time_of_day: null,
+      rotation_period: "T1 2026",
+      team: "prod",
+    },
+  ];
+
+  assert.deepEqual(
+    filterScheduleEntriesToDateRotation(entries, [t1, t2, t3]).map((entry) => entry.team),
+    ["current", "prod"],
+  );
 });
 
 test("applyEffectiveActiveRotationPeriods puts (Active) on T3 during T3 dates", () => {

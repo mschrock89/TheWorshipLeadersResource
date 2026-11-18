@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
+import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
 import { normalizeSessionSetMinistryType } from "@/lib/constants";
 
 interface ScheduledTeamScheduleRow {
@@ -89,7 +90,7 @@ export function useScheduledTeamForDate(
     : null;
 
   return useQuery({
-    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType, resourceAppKey],
+    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType, resourceAppKey, "v2"],
     queryFn: async (): Promise<ScheduledTeam | null> => {
       if (!dateStr) return null;
 
@@ -119,7 +120,16 @@ export function useScheduledTeamForDate(
       const { data, error } = await query;
 
       if (error) throw error;
-      const filteredEntries = filterValidSupportTeamScheduleEntries((data || []) as ScheduledTeamScheduleRow[]);
+      let scheduleRows = (data || []) as ScheduledTeamScheduleRow[];
+      if (campusId) {
+        const { data: periods, error: periodError } = await supabase
+          .from("rotation_periods")
+          .select("id, name, year, trimester, is_active, start_date, end_date")
+          .eq("campus_id", campusId);
+        if (periodError) throw periodError;
+        scheduleRows = filterScheduleEntriesToDateRotation(scheduleRows, periods || []);
+      }
+      const filteredEntries = filterValidSupportTeamScheduleEntries(scheduleRows);
       const entry = resolveScheduledTeamEntry(filteredEntries, campusId, ministryType);
       if (!entry || !entry.worship_teams) return null;
 

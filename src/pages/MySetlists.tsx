@@ -53,6 +53,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getCurrentResourceAppKey, isCurrentStudentResourceApp } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
+import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
 
 const WEEKEND_SUPPORT_MINISTRY_TYPES = new Set(["production", "video"]);
 const WEEKEND_INDEPENDENT_MINISTRY_TYPES = new Set(["production", "video", "speaker"]);
@@ -1192,25 +1193,22 @@ function SetlistTeamRoster({
     enabled: !!effectiveCustomServiceId && !!planDate,
   });
 
-  const { data: activeRotationPeriodName } = useQuery({
-    queryKey: ["my-setlists-active-rotation-period", campusId, resourceAppKey],
+  const { data: campusRotationPeriods, isFetched: campusRotationPeriodsFetched } = useQuery({
+    queryKey: ["my-setlists-rotation-periods", campusId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("rotation_periods")
-        .select("name")
-        .eq("campus_id", campusId)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
+        .select("id, name, year, trimester, is_active, start_date, end_date")
+        .eq("campus_id", campusId);
 
       if (error) throw error;
-      return data?.name ?? null;
+      return data ?? [];
     },
     enabled: !!campusId && !effectiveCustomServiceId,
   });
 
   const { data: teamEntries = [], isLoading: loadingTeam } = useQuery({
-    queryKey: ["my-setlists-team-entries", planDate, campusId, rosterMinistryType, activeRotationPeriodName, resourceAppKey, "v3"],
+    queryKey: ["my-setlists-team-entries", planDate, campusId, rosterMinistryType, campusRotationPeriods?.map((period) => period.id).join(",") ?? "", resourceAppKey, "v4"],
     queryFn: async () => {
       const weekendAliases = ["weekend", "sunday_am", "weekend_team"];
       const datesToCheck = [planDate];
@@ -1246,15 +1244,7 @@ function SetlistTeamRoster({
 
       if (!data || data.length === 0) return [];
 
-      const rows = activeRotationPeriodName
-        ? data.filter((entry) => {
-            const dateEntries = data.filter((candidate) => candidate.schedule_date === entry.schedule_date);
-            const activeDateEntries = dateEntries.filter(
-              (candidate) => candidate.rotation_period === activeRotationPeriodName
-            );
-            return activeDateEntries.length === 0 || entry.rotation_period === activeRotationPeriodName;
-          })
-        : data;
+      const rows = filterScheduleEntriesToDateRotation(data, campusRotationPeriods ?? []);
 
       const sortedRows = [...rows].sort((a, b) => {
         const campusPriority = Number(Boolean(b.campus_id)) - Number(Boolean(a.campus_id));
@@ -1268,7 +1258,7 @@ function SetlistTeamRoster({
 
       return filterValidSupportTeamScheduleEntries(sortedRows);
     },
-    enabled: !!planDate && !!campusId && !effectiveCustomServiceId && activeRotationPeriodName !== undefined,
+    enabled: !!planDate && !!campusId && !effectiveCustomServiceId && campusRotationPeriodsFetched,
   });
 
   const teamEntry = useMemo(() => {

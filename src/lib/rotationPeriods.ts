@@ -125,3 +125,66 @@ export function applyEffectiveActiveRotationPeriods<T extends RotationPeriodLike
     is_active: period.id === effectiveActiveId,
   }));
 }
+
+/**
+ * The trimester that contains the service date, for any campus.
+ * A stale is_active flag is only used when the date sits outside every period.
+ */
+export function rotationPeriodNameForDate(
+  periods: RotationPeriodLike[],
+  dateStr: string,
+): string | null {
+  const covering = periods.filter((period) => periodCoversDate(period, dateStr));
+  if (covering.length > 0) {
+    const sorted = [...covering].sort(compareRotationPeriods);
+    const latest = sorted[sorted.length - 1];
+    return latest?.name ?? null;
+  }
+
+  return periods.find((period) => period.is_active)?.name ?? null;
+}
+
+export interface ScheduleRotationEntry {
+  schedule_date?: string | null;
+  rotation_period?: string | null;
+  ministry_type?: string | null;
+  time_of_day?: string | null;
+}
+
+function scheduleRotationSlotKey(entry: ScheduleRotationEntry) {
+  return `${entry.ministry_type ?? "default"}:${entry.time_of_day ?? "all"}`;
+}
+
+/**
+ * Keep the row from the trimester that contains each date. Another trimester's
+ * copy of the same ministry is dropped. A ministry the covering trimester never
+ * scheduled is left alone.
+ */
+export function filterScheduleEntriesToDateRotation<T extends ScheduleRotationEntry>(
+  entries: T[],
+  periods: RotationPeriodLike[],
+): T[] {
+  if (periods.length === 0 || entries.length === 0) return entries;
+
+  const byDate = new Map<string, T[]>();
+  for (const entry of entries) {
+    const date = entry.schedule_date ?? "";
+    const group = byDate.get(date);
+    if (group) group.push(entry);
+    else byDate.set(date, [entry]);
+  }
+
+  return entries.filter((entry) => {
+    const siblings = byDate.get(entry.schedule_date ?? "") ?? [];
+    const periodName = rotationPeriodNameForDate(periods, entry.schedule_date ?? "");
+    if (!periodName) return true;
+
+    const slotKey = scheduleRotationSlotKey(entry);
+    const coveringHasSlot = siblings.some(
+      (sibling) =>
+        sibling.rotation_period === periodName && scheduleRotationSlotKey(sibling) === slotKey,
+    );
+    if (!coveringHasSlot) return true;
+    return entry.rotation_period === periodName;
+  });
+}
