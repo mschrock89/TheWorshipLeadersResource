@@ -100,6 +100,7 @@ import {
 } from "@/lib/teamBuilderBlankSlot";
 import { getRequiredGenderForSlot, TeamTemplateConfig } from "@/lib/teamTemplates";
 import { assignmentBelongsOnServiceDay, defaultMinistryTypesForAssignment } from "@/lib/teamScheduleSupport";
+import { buildMyTeamViewAssignments } from "@/lib/teamBuilderViewAssignments";
 import { assignmentsAreSamePerson, filterDatesForServiceDay, getServiceDayForDate } from "@/lib/weekendPositionSplit";
 import { formatPositionLabel, getWeekendKey, isWeekend, parseLocalDate } from "@/lib/utils";
 import { getCurrentResourceAppKey, isStudentResourceAppKey } from "@/lib/resourceApp";
@@ -1041,6 +1042,13 @@ export default function TeamBuilder() {
       memberMatchesMinistryFilter(override.ministry_types, selectedMinistryType),
     );
   }, [activeDateOverrides, selectedMinistryType]);
+
+  // Manage All Teams stores one-date fills separately from the standing roster.
+  // My Team, drafts, and publish need that same saved list.
+  const myTeamViewAssignments = useMemo(
+    () => buildMyTeamViewAssignments(visibleAssignments, ministryVisibleDateOverrides),
+    [ministryVisibleDateOverrides, visibleAssignments],
+  );
 
   const displayTeamIdSet = useMemo(() => new Set(displayTeamIds), [displayTeamIds]);
 
@@ -2058,7 +2066,7 @@ export default function TeamBuilder() {
       rotationPeriodId: selectedPeriodId,
       campusId: selectedCampusId,
       ministryType: selectedMinistryType,
-      assignments: visibleAssignments,
+      assignments: myTeamViewAssignments,
     });
   };
 
@@ -2069,7 +2077,7 @@ export default function TeamBuilder() {
       rotationPeriodId: selectedPeriodId,
       campusId: selectedCampusId,
       ministryType: selectedMinistryType,
-      assignments: visibleAssignments,
+      assignments: myTeamViewAssignments,
       notifications: publishNotifications,
     });
     setPublishConfirmOpen(false);
@@ -2196,7 +2204,7 @@ export default function TeamBuilder() {
                 <MyTeamView
                   userId={user?.id || ""}
                   teams={displayTeams}
-                  members={visibleAssignments}
+                  members={myTeamViewAssignments}
                   isLoading={membersLoading}
                   periodName={selectedPeriod?.name}
                   isAdmin={true}
@@ -2270,7 +2278,7 @@ export default function TeamBuilder() {
                     <Button
                       variant="outline"
                       onClick={handleSaveDraft}
-                      disabled={!selectedPeriodId || !selectedCampusId || visibleAssignments.length === 0 || saveRotationDraft.isPending}
+                      disabled={!selectedPeriodId || !selectedCampusId || myTeamViewAssignments.length === 0 || saveRotationDraft.isPending}
                       className={utilityActionButtonClassName}
                     >
                       {saveRotationDraft.isPending ? (
@@ -2286,7 +2294,7 @@ export default function TeamBuilder() {
                       disabled={
                         !selectedPeriodId ||
                         !selectedCampusId ||
-                        (visibleAssignments.length === 0 && breakPushPreviewRecipients.length === 0) ||
+                        (myTeamViewAssignments.length === 0 && breakPushPreviewRecipients.length === 0) ||
                         publishRotation.isPending
                       }
                       className={utilityActionButtonClassName}
@@ -2310,7 +2318,7 @@ export default function TeamBuilder() {
                     <Button
                       variant="outline"
                       onClick={handleCrossCheck}
-                      disabled={!selectedPeriodId || !selectedPeriod || visibleAssignments.length === 0 || crossCheckRotationAssignments.isPending}
+                      disabled={!selectedPeriodId || !selectedPeriod || myTeamViewAssignments.length === 0 || crossCheckRotationAssignments.isPending}
                       className={utilityActionButtonClassName}
                     >
                       {crossCheckRotationAssignments.isPending ? (

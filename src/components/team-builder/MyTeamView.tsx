@@ -14,6 +14,19 @@ import { BreakRequestDialog } from "./BreakRequestDialog";
 import { BreakRequestsList } from "./BreakRequestsList";
 import { useMyBreakRequests } from "@/hooks/useBreakRequests";
 
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatAssignmentDates(dates: string[] | undefined) {
+  if (!dates || dates.length === 0) return "";
+  const labels = [...dates].sort().map((date) => {
+    const [, month, day] = date.split("-");
+    const monthLabel = MONTH_LABELS[Number(month) - 1] || month;
+    return `${monthLabel} ${Number(day)}`;
+  });
+  if (labels.length <= 4) return labels.join(", ");
+  return `${labels[0]}–${labels[labels.length - 1]}`;
+}
+
 const TEAM_ICONS: Record<string, React.ReactNode> = {
   star: <Star className="h-4 w-4" />,
   heart: <Heart className="h-4 w-4" />,
@@ -99,31 +112,36 @@ function CondensedTeamCard({
     ...(showCreative ? creativeSlots : []),
   ];
 
-  const getMemberForSlot = (slot: string) =>
-    visibleMembers.find(m => m.position_slot === slot);
+  const getMembersForSlot = (slot: string) =>
+    visibleMembers.filter((member) => member.position_slot === slot);
   const renderSlot = (slotConfig: (typeof POSITION_SLOTS)[0]) => {
-    const member = getMemberForSlot(slotConfig.slot);
-    if (!member) return null;
-    const isMe = member.user_id === userId;
+    const slotMembers = getMembersForSlot(slotConfig.slot);
+    if (slotMembers.length === 0) return null;
 
-    return (
-      <div
-        key={slotConfig.slot}
-        className={cn(
-          "flex items-center gap-2 text-xs py-1 px-2 rounded",
-          isMe ? "bg-primary/10" : "",
-        )}
-      >
-        <span className="text-muted-foreground w-16 shrink-0 truncate">{slotConfig.label}:</span>
-        <span className={cn("truncate", isMe && "font-medium text-primary")}>
-          {member.member_name}
-          {isMe && " (You)"}
-        </span>
-      </div>
-    );
+    return slotMembers.map((member) => {
+      const isMe = member.user_id === userId;
+      const dateLabel = formatAssignmentDates(member.schedule_dates);
+
+      return (
+        <div
+          key={member.id}
+          className={cn(
+            "flex items-center gap-2 text-xs py-1 px-2 rounded",
+            isMe ? "bg-primary/10" : "",
+          )}
+        >
+          <span className="text-muted-foreground w-16 shrink-0 truncate">{slotConfig.label}:</span>
+          <span className={cn("truncate", isMe && "font-medium text-primary")}>
+            {member.member_name}
+            {isMe && " (You)"}
+            {dateLabel && <span className="text-muted-foreground"> · {dateLabel}</span>}
+          </span>
+        </div>
+      );
+    });
   };
 
-  const filledCount = visibleSlots.filter(s => !!getMemberForSlot(s.slot)).length;
+  const filledCount = visibleSlots.filter((slot) => getMembersForSlot(slot.slot).length > 0).length;
   const totalSlots = visibleSlots.length;
 
   const renderSection = (
@@ -138,7 +156,7 @@ function CondensedTeamCard({
       </div>
       <div className="space-y-0.5">
         {slots.map(renderSlot)}
-        {slots.every(s => !getMemberForSlot(s.slot)) && (
+        {slots.every((slot) => getMembersForSlot(slot.slot).length === 0) && (
           <p className="text-xs text-muted-foreground italic px-2">No {title.toLowerCase()} assigned</p>
         )}
       </div>

@@ -41,6 +41,7 @@ import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
+import { anchorWeekendPlanDate } from "@/lib/campusWeekendPlanDate";
 
 const NETWORK_WIDE_CAMPUS_ID = "network-wide";
 
@@ -498,16 +499,21 @@ export default function SetPlanner() {
     window.scrollTo(0, 0);
   }, []);
 
-  // Regular Encounter / Weekend sets snap to their weekday. Custom services
-  // keep the actual service date (e.g. Friday Prayer & Worship Night).
+  // Regular Encounter / Weekend sets snap to a day that campus actually meets.
+  // Custom services keep the actual service date (e.g. Friday Prayer & Worship Night).
+  // Sunday-only campuses such as Shelbyville stay on Sunday so the roster matches
+  // Team Builder and the calendar.
   useEffect(() => {
     if (selectedCustomService) return;
     if (isMidweekMinistry && !isWednesday(selectedDate)) {
       setSelectedDate(nextWednesday(new Date()));
-    } else if (isWeekendStyleMinistry && isWednesday(selectedDate)) {
-      setSelectedDate(nextSaturday(new Date()));
+      return;
     }
-  }, [selectedMinistry, isMidweekMinistry, isWeekendStyleMinistry, selectedDate, selectedCustomService]);
+    if (!isWeekendStyleMinistry || !currentCampus) return;
+    const anchored = anchorWeekendPlanDate(selectedDate, currentCampus);
+    if (format(anchored, "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd")) return;
+    setSelectedDate(anchored);
+  }, [currentCampus, selectedMinistry, isMidweekMinistry, isWeekendStyleMinistry, selectedDate, selectedCustomService]);
 
   useEffect(() => {
     if (!selectedCustomService) return;
@@ -591,16 +597,8 @@ export default function SetPlanner() {
       } else {
         setSelectedDate(nextWednesday(date));
       }
-    } else if (isWeekendStyleMinistry && isWeekendCampus) {
-      // If Sunday is selected, use the previous Saturday
-      if (isSunday(date)) {
-        setSelectedDate(subDays(date, 1));
-      } else if (isSaturday(date)) {
-        setSelectedDate(date);
-      } else {
-        // For any other day, go to the next Saturday
-        setSelectedDate(nextSaturday(date));
-      }
+    } else if (isWeekendStyleMinistry) {
+      setSelectedDate(anchorWeekendPlanDate(date, currentCampus));
     } else {
       setSelectedDate(date);
     }

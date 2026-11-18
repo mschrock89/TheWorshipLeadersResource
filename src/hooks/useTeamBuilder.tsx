@@ -288,6 +288,8 @@ export interface TeamMemberAssignment {
   rotation_period_id: string | null;
   ministry_types: string[];
   service_day: string | null;
+  /** Set when this row is a one-date fill rather than the standing roster. */
+  schedule_dates?: string[];
 }
 
 export interface TeamMemberDateOverride {
@@ -1797,6 +1799,9 @@ function snapshotRotationDraftAssignments(
         assignment.position_slot,
       ),
       service_day: assignment.service_day,
+      ...(assignment.schedule_dates?.length
+        ? { schedule_dates: [...assignment.schedule_dates].sort() }
+        : {}),
     }));
 }
 
