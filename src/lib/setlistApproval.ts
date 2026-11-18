@@ -18,7 +18,14 @@ const CHURCH_TIME_ZONE = "America/Chicago";
 /** Previous hardcoded approver (Kyle Elkins). Kept only as a deploy-order fallback. */
 export const LEGACY_APPROVER_USER_ID = "22c10f05-955a-498c-b18f-2ac570868b35";
 const LEGACY_DIRECT_PUBLISHER_FIRST_NAMES = new Set(["eli", "christian"]);
-const LEGACY_DIRECT_PUBLISH_MINISTRY_TYPES = new Set(["kids_camp", "encounter", "eon", "eon_weekend", "ms_hs"]);
+const LEGACY_DIRECT_PUBLISH_MINISTRY_TYPES = new Set([
+  "kids_camp",
+  "encounter",
+  "eon",
+  "eon_weekend",
+  "ms_hs",
+  "evident",
+]);
 
 export const SETLIST_APPROVAL_SCOPE = "worship";
 
