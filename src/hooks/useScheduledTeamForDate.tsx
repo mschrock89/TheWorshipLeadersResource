@@ -3,7 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { filterValidSupportTeamScheduleEntries } from "@/lib/teamScheduleSupport";
 import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
-import { normalizeSessionSetMinistryType } from "@/lib/constants";
+import {
+  pickVisibleCampusScheduleEntry,
+  scheduleDatesForPublishedTeam,
+  scheduleMinistryMatches,
+} from "@/lib/campusCalendarRoster";
+import { useCampusCalendarRosterGate } from "@/hooks/useCampusCalendarRoster";
 
 interface ScheduledTeamScheduleRow {
   id: string;
@@ -11,6 +16,7 @@ interface ScheduledTeamScheduleRow {
   team_id: string;
   campus_id: string | null;
   ministry_type?: string | null;
+  rotation_period?: string | null;
   created_at?: string | null;
   worship_teams?: {
     id?: string;
@@ -28,24 +34,6 @@ interface ScheduledTeam {
   teamIcon: string;
   scheduleDate: string;
   campusId: string | null;
-}
-
-const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
-
-function ministryMatchesScheduleEntry(
-  entryMinistryType: string | null | undefined,
-  requestedMinistryType: string | null | undefined,
-) {
-  const normalizedRequestedMinistryType = normalizeSessionSetMinistryType(requestedMinistryType);
-
-  if (!normalizedRequestedMinistryType) return true;
-  if (!entryMinistryType) return false;
-
-  if (WEEKEND_MINISTRY_ALIASES.has(normalizedRequestedMinistryType)) {
-    return WEEKEND_MINISTRY_ALIASES.has(entryMinistryType);
-  }
-
-  return entryMinistryType === normalizedRequestedMinistryType;
 }
 
 export function resolveScheduledTeamEntry(
@@ -73,7 +61,7 @@ export function resolveScheduledTeamEntry(
   }
 
   const matchingEntry = sortedEntries.find((entry) =>
-    ministryMatchesScheduleEntry(entry.ministry_type, ministryType),
+    scheduleMinistryMatches(entry.ministry_type, ministryType),
   );
 
   return matchingEntry ?? sortedEntries[0] ?? null;
@@ -85,12 +73,15 @@ export function useScheduledTeamForDate(
   ministryType?: string | null,
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
+  const rosterGateQuery = useCampusCalendarRosterGate(campusId);
   const dateStr = date
     ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
     : null;
+  const gateReady = !campusId || rosterGateQuery.isFetched;
 
-  return useQuery({
-    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType, resourceAppKey, "v2"],
+  const scheduleQuery = useQuery({
+    queryKey: ["scheduled-team-for-date", dateStr, campusId, ministryType, resourceAppKey, rosterGateQuery.dataUpdatedAt, "v3"],
+    enabled: !!dateStr && gateReady,
     queryFn: async (): Promise<ScheduledTeam | null> => {
       if (!dateStr) return null;
 
@@ -102,11 +93,12 @@ export function useScheduledTeamForDate(
           team_id,
           campus_id,
           ministry_type,
+          rotation_period,
           created_at,
           worship_teams(id, name, color, icon)
         `)
         .eq("resource_app_key", resourceAppKey)
-        .eq("schedule_date", dateStr);
+        .in("schedule_date", scheduleDatesForPublishedTeam(dateStr));
 
       if (campusId === null) {
         // Network-wide ministries (Student Camp) prefer campus_id IS NULL rows, but older
@@ -130,7 +122,12 @@ export function useScheduledTeamForDate(
         scheduleRows = filterScheduleEntriesToDateRotation(scheduleRows, periods || []);
       }
       const filteredEntries = filterValidSupportTeamScheduleEntries(scheduleRows);
-      const entry = resolveScheduledTeamEntry(filteredEntries, campusId, ministryType);
+      const entry = pickVisibleCampusScheduleEntry(filteredEntries, {
+        campusId,
+        ministryType,
+        preferredDate: dateStr,
+        gate: campusId ? rosterGateQuery.data : null,
+      });
       if (!entry || !entry.worship_teams) return null;
 
       const team = entry.worship_teams as { id: string; name: string; color: string; icon: string };
@@ -145,6 +142,13 @@ export function useScheduledTeamForDate(
         campusId: entry.campus_id,
       };
     },
-    enabled: !!dateStr,
   });
+
+  const waitingForRoster = !!dateStr && !!campusId && !rosterGateQuery.isFetched;
+  return {
+    ...scheduleQuery,
+    isLoading: waitingForRoster || scheduleQuery.isLoading,
+    isPending: waitingForRoster || scheduleQuery.isPending,
+    isFetching: waitingForRoster || scheduleQuery.isFetching,
+  };
 }

@@ -10,6 +10,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { Mic, Guitar, ArrowRightLeft, Users } from "lucide-react";
 import { normalizeSessionSetMinistryType, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { parseScheduleRosterDate } from "@/lib/campusCalendarRoster";
 import { formatPositionLabel, sortPositionsByPriority } from "@/lib/utils";
 import { filterGroupTextRecipients } from "@/lib/access";
 
@@ -160,9 +161,13 @@ export function ScheduledTeamRoster({ targetDate, ministryType, campusId }: Sche
   // Weekend-family services should always show the full shared weekend roster.
   const rosterMinistryScope =
     normalizeWeekendWorshipMinistryType(normalizedMinistryType) === "weekend" ? "weekend_team" : normalizedMinistryType;
+  const rosterDate = useMemo(
+    () => parseScheduleRosterDate(scheduledTeam?.scheduleDate, targetDate),
+    [scheduledTeam?.scheduleDate, targetDate],
+  );
   
   const { data: roster, isLoading: rosterLoading } = useTeamRosterForDate(
-    targetDate,
+    rosterDate,
     scheduledTeam?.teamId,
     rosterMinistryScope,
     campusId

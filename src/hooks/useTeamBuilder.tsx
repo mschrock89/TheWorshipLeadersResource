@@ -1841,6 +1841,8 @@ export function useSaveRotationDraft() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-rotation-draft"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-team-for-date"] });
       toast({ title: "Rotation saved as draft" });
     },
     onError: (error) => {
@@ -1920,6 +1922,8 @@ export function usePublishRotation() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-rotation-draft"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-team-for-date"] });
       toast({
         title: "Rotation published",
         description:

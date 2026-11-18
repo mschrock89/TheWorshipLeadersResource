@@ -1,4 +1,4 @@
-import { isNetworkWideMinistryType } from "./constants.ts";
+import { isNetworkWideMinistryType, normalizeSessionSetMinistryType } from "./constants.ts";
 import {
   isBlankTeamBuilderAssignment,
   isBlankTeamBuilderMemberName,
@@ -38,7 +38,85 @@ export interface CalendarScheduleEntryLike {
   schedule_date?: string | null;
   rotation_period?: string | null;
   ministry_type?: string | null;
+  campus_id?: string | null;
+  created_at?: string | null;
   worship_teams?: { name?: string | null } | null;
+}
+
+const WEEKEND_MINISTRY_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);
+
+/** Weekend worship, production, and speakers share one Sat/Sun bucket. Video and MS Weekend do not. */
+export function ministrySharesWeekendTeam(ministryType: string | null | undefined) {
+  return !!ministryType && ministryType !== "video" && ministryType !== "eon_weekend";
+}
+
+export function weekendServicePairDate(dateStr: string): string | null {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay();
+  if (dayOfWeek === 6) date.setDate(date.getDate() + 1);
+  else if (dayOfWeek === 0) date.setDate(date.getDate() - 1);
+  else return null;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function scheduleDatesForPublishedTeam(dateStr: string) {
+  const pair = weekendServicePairDate(dateStr);
+  return pair ? [dateStr, pair] : [dateStr];
+}
+
+/** Roster lookup uses the day the published team is actually scheduled. */
+export function parseScheduleRosterDate(scheduleDate: string | null | undefined, fallback: Date) {
+  if (!scheduleDate) return fallback;
+  const [year, month, day] = scheduleDate.split("-").map(Number);
+  if (!year || !month || !day) return fallback;
+  return new Date(year, month - 1, day);
+}
+
+export function normalizePublishedTeamMinistry(ministry: string | null | undefined) {
+  const value = (ministry || "").trim();
+  if (!value || value === "weekend_team" || value === "sunday_am") return "weekend";
+  return value;
+}
+
+export function unpublishedTeamBuilderKey(
+  rotationPeriodId: string,
+  ministryType: string | null | undefined,
+) {
+  return `${rotationPeriodId}|${normalizePublishedTeamMinistry(ministryType)}`;
+}
+
+/**
+ * A saved draft with no publish time is hidden. No draft row, or a row with
+ * published_at, is the current published Team Builder.
+ */
+export function isPublishedTeamBuilderAssignment(
+  rotationPeriodId: string | null | undefined,
+  ministryTypes: string[] | null | undefined,
+  unpublishedKeys: ReadonlySet<string>,
+) {
+  if (!rotationPeriodId) return true;
+  const ministries = ministryTypes && ministryTypes.length > 0 ? ministryTypes : ["weekend"];
+  return ministries.some(
+    (ministry) => !unpublishedKeys.has(unpublishedTeamBuilderKey(rotationPeriodId, ministry)),
+  );
+}
+
+export function scheduleMinistryMatches(
+  entryMinistryType: string | null | undefined,
+  requestedMinistryType: string | null | undefined,
+) {
+  const normalizedRequestedMinistryType = normalizeSessionSetMinistryType(requestedMinistryType);
+
+  if (!normalizedRequestedMinistryType) return true;
+  if (!entryMinistryType) return false;
+
+  if (WEEKEND_MINISTRY_ALIASES.has(normalizedRequestedMinistryType)) {
+    return WEEKEND_MINISTRY_ALIASES.has(entryMinistryType);
+  }
+
+  return entryMinistryType === normalizedRequestedMinistryType;
 }
 
 function countsAsBuiltTeam(assignment: CampusRosterAssignment) {
@@ -132,11 +210,27 @@ function teamIsStaffed(
   return !!teamName && !!names?.has(teamName);
 }
 
+function teamIsStaffedOnDate(
+  periodName: string,
+  scheduleDate: string,
+  teamId: string,
+  teamName: string | null,
+  gate: CampusCalendarRosterGate,
+) {
+  const dateKey = `${periodName}|${scheduleDate}`;
+  return teamIsStaffed(
+    teamId,
+    teamName,
+    gate.staffedTeamIdsByDate.get(dateKey),
+    gate.staffedTeamNamesByDate.get(dateKey),
+  );
+}
+
 /**
- * A campus calendar shows a rotation team on a date only after Team Builder has
- * someone on that team. Standing members cover the whole period. A one-date
- * fill-in covers only that date, so a copied rotation does not fill the rest
- * of the trimester. Network-wide camp schedules are not campus rosters.
+ * A campus shows a rotation team on a date only after the published Team Builder
+ * has someone on that team. Standing members cover the whole period. A one-date
+ * fill covers that date, and a weekend fill covers Saturday and Sunday together
+ * except for Video and MS Weekend. Network-wide camp schedules are not campus rosters.
  */
 export function isCalendarTeamScheduleVisible(
   entry: CalendarScheduleEntryLike,
@@ -163,11 +257,74 @@ export function isCalendarTeamScheduleVisible(
 
   const scheduleDate = entry.schedule_date?.trim();
   if (!scheduleDate) return false;
-  const dateKey = `${periodName}|${scheduleDate}`;
-  return teamIsStaffed(
-    teamId,
-    teamName,
-    gate.staffedTeamIdsByDate.get(dateKey),
-    gate.staffedTeamNamesByDate.get(dateKey),
-  );
+  if (teamIsStaffedOnDate(periodName, scheduleDate, teamId, teamName, gate)) return true;
+
+  if (!ministrySharesWeekendTeam(entry.ministry_type)) return false;
+  const pairDate = weekendServicePairDate(scheduleDate);
+  if (!pairDate) return false;
+  return teamIsStaffedOnDate(periodName, pairDate, teamId, teamName, gate);
+}
+
+function preferCampusScheduleRow<T extends CalendarScheduleEntryLike>(
+  entries: T[],
+  campusId?: string | null,
+) {
+  return [...entries].sort((a, b) => {
+    const aCampusPriority = a.campus_id === campusId ? 2 : a.campus_id == null ? 1 : 0;
+    const bCampusPriority = b.campus_id === campusId ? 2 : b.campus_id == null ? 1 : 0;
+    if (aCampusPriority !== bCampusPriority) return bCampusPriority - aCampusPriority;
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+}
+
+function chooseScheduleRow<T extends CalendarScheduleEntryLike>(
+  entries: T[],
+  campusId: string | null | undefined,
+  ministryType: string | null | undefined,
+  allowOtherMinistry: boolean,
+) {
+  if (entries.length === 0) return null;
+  const sorted = preferCampusScheduleRow(entries, campusId);
+  if (!ministryType) return sorted[0] ?? null;
+  const match = sorted.find((entry) => scheduleMinistryMatches(entry.ministry_type, ministryType));
+  if (match) return match;
+  return allowOtherMinistry ? sorted[0] ?? null : null;
+}
+
+/**
+ * Calendar and Set Builder both use this. Prefer the team scheduled on the
+ * requested date from the published roster. A weekend ministry can use the
+ * other day of that weekend when the campus only published one of them.
+ */
+export function pickVisibleCampusScheduleEntry<T extends CalendarScheduleEntryLike>(
+  entries: T[],
+  options: {
+    campusId?: string | null;
+    ministryType?: string | null;
+    preferredDate: string;
+    gate?: CampusCalendarRosterGate | null;
+  },
+): T | null {
+  const visible = options.gate
+    ? entries.filter((entry) => isCalendarTeamScheduleVisible(entry, options.gate as CampusCalendarRosterGate))
+    : entries;
+
+  const preferred = visible.filter((entry) => entry.schedule_date === options.preferredDate);
+  const preferredMatch = chooseScheduleRow(preferred, options.campusId, options.ministryType, false);
+  if (preferredMatch) return preferredMatch;
+
+  if (ministrySharesWeekendTeam(options.ministryType)) {
+    const pairDate = weekendServicePairDate(options.preferredDate);
+    if (pairDate) {
+      const pairMatch = chooseScheduleRow(
+        visible.filter((entry) => entry.schedule_date === pairDate),
+        options.campusId,
+        options.ministryType,
+        false,
+      );
+      if (pairMatch) return pairMatch;
+    }
+  }
+
+  return chooseScheduleRow(preferred, options.campusId, options.ministryType, true);
 }

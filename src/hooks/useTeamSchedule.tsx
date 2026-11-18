@@ -113,6 +113,8 @@ export function useTeamSchedule(
     startDate?: string;
     endDate?: string;
     enabled?: boolean;
+    /** Keep each trimester's row so the date's current rotation can win. */
+    preserveRotationPeriods?: boolean;
   },
 ) {
   const resourceAppKey = getCurrentResourceAppKey();
@@ -120,9 +122,10 @@ export function useTeamSchedule(
     resourceAppKeys && resourceAppKeys.length > 0 ? Array.from(new Set(resourceAppKeys)) : [resourceAppKey];
   const startDate = options?.startDate;
   const endDate = options?.endDate;
+  const preserveRotationPeriods = options?.preserveRotationPeriods === true;
 
   return useQuery({
-    queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(","), startDate, endDate],
+    queryKey: ["team-schedule", rotationPeriod, campusId, scopedResourceAppKeys.join(","), startDate, endDate, preserveRotationPeriods],
     enabled: options?.enabled ?? true,
     queryFn: async () => {
       let query = supabase
@@ -163,7 +166,8 @@ export function useTeamSchedule(
         });
 
         for (const entry of sorted) {
-          const key = `${entry.schedule_date}-${entry.ministry_type || 'default'}-${(entry as TeamScheduleEntry).time_of_day || 'all'}`;
+          const rotationKey = preserveRotationPeriods ? `-${entry.rotation_period || ""}` : "";
+          const key = `${entry.schedule_date}-${entry.ministry_type || "default"}-${(entry as TeamScheduleEntry).time_of_day || "all"}${rotationKey}`;
           const existing = entriesByDate.get(key);
           const entryAny = entry as TeamScheduleEntry & { created_at?: string };
           

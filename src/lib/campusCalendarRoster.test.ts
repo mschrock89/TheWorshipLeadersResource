@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   buildCampusCalendarRosterGate,
   isCalendarTeamScheduleVisible,
+  isPublishedTeamBuilderAssignment,
+  pickVisibleCampusScheduleEntry,
+  unpublishedTeamBuilderKey,
 } from "./campusCalendarRoster.ts";
 
 const periods = [
@@ -211,6 +214,119 @@ test("blank slots and other periods do not invent a T3 roster", () => {
     ),
     true,
   );
+});
+
+test("a weekend fill on one day shows that team on the other day", () => {
+  const gate = buildCampusCalendarRosterGate({
+    periods,
+    assignments: [
+      {
+        rotationPeriodId: "shelby-t3",
+        teamId: "team-1",
+        teamName: "Team 1",
+        userId: "person-1",
+        memberName: "Avery",
+        scheduleDate: "2026-11-08",
+      },
+    ],
+    hides: [],
+  });
+
+  assert.equal(
+    isCalendarTeamScheduleVisible(
+      {
+        team_id: "team-1",
+        schedule_date: "2026-11-07",
+        rotation_period: "T3 2026",
+        ministry_type: "weekend",
+        worship_teams: { name: "Team 1" },
+      },
+      gate,
+    ),
+    true,
+  );
+  assert.equal(
+    isCalendarTeamScheduleVisible(
+      {
+        team_id: "team-1",
+        schedule_date: "2026-11-07",
+        rotation_period: "T3 2026",
+        ministry_type: "video",
+        worship_teams: { name: "Team 1" },
+      },
+      gate,
+    ),
+    false,
+  );
+});
+
+test("an unpublished draft does not count, and a published ministry still does", () => {
+  const unpublished = new Set([unpublishedTeamBuilderKey("shelby-t3", "weekend")]);
+
+  assert.equal(
+    isPublishedTeamBuilderAssignment("shelby-t3", ["weekend"], unpublished),
+    false,
+  );
+  assert.equal(
+    isPublishedTeamBuilderAssignment("shelby-t3", ["sunday_am"], unpublished),
+    false,
+  );
+  assert.equal(
+    isPublishedTeamBuilderAssignment("shelby-t3", ["video"], unpublished),
+    true,
+  );
+  assert.equal(
+    isPublishedTeamBuilderAssignment("shelby-t3", ["weekend"], new Set()),
+    true,
+  );
+});
+
+test("set builder uses the published weekend team, including the other weekend day", () => {
+  const gate = buildCampusCalendarRosterGate({
+    periods,
+    assignments: [
+      {
+        rotationPeriodId: "shelby-t3",
+        teamId: "team-2",
+        teamName: "Team 2",
+        userId: "person-1",
+        memberName: "Avery",
+        scheduleDate: "2026-11-08",
+      },
+    ],
+    hides: [],
+  });
+
+  const picked = pickVisibleCampusScheduleEntry(
+    [
+      {
+        team_id: "team-1",
+        schedule_date: "2026-11-07",
+        rotation_period: "T3 2026",
+        ministry_type: "weekend",
+        campus_id: "shelby",
+        created_at: "2026-11-01T00:00:00Z",
+        worship_teams: { name: "Team 1" },
+      },
+      {
+        team_id: "team-2",
+        schedule_date: "2026-11-08",
+        rotation_period: "T3 2026",
+        ministry_type: "weekend",
+        campus_id: "shelby",
+        created_at: "2026-11-02T00:00:00Z",
+        worship_teams: { name: "Team 2" },
+      },
+    ],
+    {
+      campusId: "shelby",
+      ministryType: "weekend",
+      preferredDate: "2026-11-07",
+      gate,
+    },
+  );
+
+  assert.equal(picked?.team_id, "team-2");
 });
 
 test("network-wide camp schedules stay on the calendar without a campus roster", () => {

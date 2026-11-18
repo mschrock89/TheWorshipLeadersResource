@@ -25,11 +25,8 @@ import {
   useRemoveCustomServiceAssignment,
 } from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
-import {
-  buildCampusCalendarRosterGate,
-  isCalendarTeamScheduleVisible,
-  type CampusCalendarRosterGate,
-} from "@/lib/campusCalendarRoster";
+import { useCampusCalendarRosterGate } from "@/hooks/useCampusCalendarRoster";
+import { isCalendarTeamScheduleVisible } from "@/lib/campusCalendarRoster";
 import { filterScheduleEntriesToDateRotation } from "@/lib/rotationPeriods";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
@@ -738,73 +735,7 @@ function StandardCalendar() {
       return data ?? [];
     },
   });
-  const { data: campusRosterGate } = useQuery({
-    queryKey: ["calendar-campus-roster", effectiveCampusId, resourceAppKey],
-    enabled: !!effectiveCampusId,
-    queryFn: async (): Promise<CampusCalendarRosterGate> => {
-      const { data: periods, error: periodsError } = await supabase
-        .from("rotation_periods")
-        .select("id, name")
-        .eq("campus_id", effectiveCampusId!);
-
-      if (periodsError) throw periodsError;
-
-      const periodRows = (periods || []).filter((period) => period.id && period.name);
-      const periodIds = periodRows.map((period) => period.id);
-      if (periodIds.length === 0) {
-        return buildCampusCalendarRosterGate({ periods: [], assignments: [], hides: [] });
-      }
-
-      const [membersResult, overridesResult, hidesResult] = await Promise.all([
-        supabase
-          .from("team_members")
-          .select("rotation_period_id, team_id, user_id, member_name, worship_teams(name)")
-          .in("rotation_period_id", periodIds),
-        supabase
-          .from("team_member_date_overrides")
-          .select("rotation_period_id, team_id, user_id, member_name, schedule_date, worship_teams(name)")
-          .in("rotation_period_id", periodIds),
-        supabase
-          .from("team_period_hides")
-          .select("rotation_period_id, team_id")
-          .in("rotation_period_id", periodIds),
-      ]);
-
-      if (membersResult.error) throw membersResult.error;
-      if (overridesResult.error) throw overridesResult.error;
-      if (hidesResult.error) throw hidesResult.error;
-
-      const teamNameOf = (
-        team: { name?: string | null } | { name?: string | null }[] | null,
-      ) => (Array.isArray(team) ? team[0]?.name : team?.name) ?? null;
-
-      const standingAssignments = (membersResult.data || []).map((row) => ({
-        rotationPeriodId: row.rotation_period_id,
-        teamId: row.team_id,
-        teamName: teamNameOf(row.worship_teams),
-        userId: row.user_id,
-        memberName: row.member_name,
-      }));
-      const dateAssignments = (overridesResult.data || []).map((row) => ({
-        rotationPeriodId: row.rotation_period_id,
-        teamId: row.team_id,
-        teamName: teamNameOf(row.worship_teams),
-        userId: row.user_id,
-        memberName: row.member_name,
-        scheduleDate: row.schedule_date,
-      }));
-      const assignments = [...standingAssignments, ...dateAssignments];
-
-      return buildCampusCalendarRosterGate({
-        periods: periodRows.map((period) => ({ id: period.id, name: period.name })),
-        assignments,
-        hides: (hidesResult.data || []).map((hide) => ({
-          rotationPeriodId: hide.rotation_period_id,
-          teamId: hide.team_id,
-        })),
-      });
-    },
-  });
+  const { data: campusRosterGate } = useCampusCalendarRosterGate(effectiveCampusId);
   const {
     data: teamSchedule = []
   } = useTeamSchedule(
@@ -818,6 +749,7 @@ function StandardCalendar() {
     {
       startDate: scheduleRangeStart,
       endDate: scheduleRangeEnd,
+      preserveRotationPeriods: true,
     },
   );
   const usesRecurringServiceDay =
@@ -2119,7 +2051,7 @@ function StandardCalendar() {
   };
 
 
-  return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"]]}>
+  return <RefreshableContainer queryKeys={[["events"], ["team-schedule"], ["my-team-assignments"], ["swap-requests-count"], ["calendar-custom-assignment-dates"], ["calendar-campus-roster"]]}>
       <div data-tour="calendar-page" className="bg-background overflow-x-hidden">
         <div className="w-full">
           {/* Filters + month on one compact row */}

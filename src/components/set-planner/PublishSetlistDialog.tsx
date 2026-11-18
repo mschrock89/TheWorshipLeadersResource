@@ -19,6 +19,7 @@ import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { supabase } from "@/integrations/supabase/client";
 import { isNetworkWideMinistryType, isSessionSetMinistryType, normalizeSessionSetMinistryType } from "@/lib/constants";
+import { parseScheduleRosterDate } from "@/lib/campusCalendarRoster";
 import { format } from "date-fns";
 
 interface PublishSetlistDialogProps {
@@ -61,7 +62,7 @@ export function PublishSetlistDialog({
     usesCustomServiceRoster ? null : rosterMinistryType,
   );
   const { data: roster } = useTeamRosterForDate(
-    usesCustomServiceRoster ? null : targetDate,
+    usesCustomServiceRoster ? null : parseScheduleRosterDate(scheduledTeam?.scheduleDate, targetDate),
     usesCustomServiceRoster ? undefined : scheduledTeam?.teamId,
     usesCustomServiceRoster ? undefined : rosterMinistryType,
     usesCustomServiceRoster ? undefined : campusId

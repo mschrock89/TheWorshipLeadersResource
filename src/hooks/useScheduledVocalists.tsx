@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { normalizeSessionSetMinistryType, normalizeWeekendWorshipMinistryType } from "@/lib/constants";
+import { parseScheduleRosterDate } from "@/lib/campusCalendarRoster";
 
 export interface ScheduledVocalist {
   userId: string;
@@ -32,9 +33,13 @@ export function useScheduledVocalists(
     campusId,
     rosterMinistryScope,
   );
+  const rosterDate = useMemo(
+    () => (targetDate ? parseScheduleRosterDate(scheduledTeam?.scheduleDate, targetDate) : null),
+    [scheduledTeam?.scheduleDate, targetDate],
+  );
 
   const { data: roster = [], isLoading: rosterLoading } = useTeamRosterForDate(
-    targetDate,
+    rosterDate,
     scheduledTeam?.teamId,
     rosterMinistryScope,
     campusId,
