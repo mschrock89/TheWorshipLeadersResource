@@ -41,6 +41,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useProfilesWithCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useRestoreDefaultCampus } from "@/hooks/useRestoreDefaultCampus";
 import {
   AttendanceStatus,
   LifeGroup,
@@ -659,8 +660,8 @@ export default function LifeGroups() {
   const isStudentApp = isCurrentStudentResourceApp();
   const resourceAppKey = getCurrentResourceAppKey();
   const gradeOptions = LIFE_GROUP_GRADE_OPTIONS[resourceAppKey] || [8, 9, 10, 11, 12];
-  const { data: allCampuses = [] } = useCampuses();
-  const { data: userCampuses = [] } = useUserCampuses(user?.id);
+  const { data: allCampuses = [], isLoading: campusesLoading } = useCampuses();
+  const { data: userCampuses = [], isLoading: userCampusesLoading } = useUserCampuses(user?.id);
   const { data: profileCampusMap = {} } = useProfilesWithCampuses();
   const { data: profiles = [] } = useProfiles();
   const [selectedCampusId, setSelectedCampusId] = useState<string>(() => {
@@ -733,6 +734,13 @@ export default function LifeGroups() {
     setSelectedCampusId(value);
     localStorage.setItem("life-groups-campus-filter", value);
   };
+
+  useRestoreDefaultCampus({
+    isReady: !campusesLoading && !userCampusesLoading,
+    selectedCampusId,
+    isSelectable: (campusId) => availableCampuses.some((campus) => campus?.id === campusId),
+    selectCampus: handleCampusChange,
+  });
 
   const handleSortChange = (value: string) => {
     setSortOption(value as LifeGroupSortOption);

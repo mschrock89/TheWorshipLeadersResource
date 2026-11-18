@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { CAPABILITIES } from "@/lib/capabilities";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useRestoreDefaultCampus } from "@/hooks/useRestoreDefaultCampus";
 import { useEndServiceAmbientTrack } from "@/hooks/useEndServiceAmbientTrack";
 import { usePreServicePlaylist } from "@/hooks/usePreServicePlaylist";
 import { cn } from "@/lib/cn";
@@ -71,6 +72,13 @@ export default function PreServicePlaylistsAdmin() {
     setCampusId(value);
     localStorage.setItem(CAMPUS_KEY, value);
   };
+
+  useRestoreDefaultCampus({
+    isReady: !campusesLoading,
+    selectedCampusId: campusId || null,
+    isSelectable: (nextCampusId) => campuses.some((campus) => campus.id === nextCampusId),
+    selectCampus: chooseCampus,
+  });
 
   const upload = (files: FileList | File[]) => {
     const selected = Array.from(files);

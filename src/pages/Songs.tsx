@@ -69,6 +69,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { usePcoConnection, useAnyPcoConnection } from "@/hooks/usePlanningCenter";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
+import { useProfile } from "@/hooks/useProfiles";
+import { useRestoreDefaultCampus } from "@/hooks/useRestoreDefaultCampus";
 import { useUserRole } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
 import { format, parseISO } from "date-fns";
@@ -92,6 +94,7 @@ export default function Songs() {
   }, []);
   
   const { user } = useAuth();
+  const { data: profile, isFetched: profileFetched } = useProfile(user?.id);
   const { data: connection, isLoading: connectionLoading } = usePcoConnection();
   const { data: hasAnyPcoConnection, isLoading: anyConnectionLoading } = useAnyPcoConnection();
   const { data: songs, isLoading: songsLoading } = useSongsWithStats();
@@ -111,8 +114,8 @@ export default function Songs() {
     ministry: selectedMinistry as any,
   });
   const { data: planSongs, isLoading: planSongsLoading } = usePlanSongs(selectedPlan?.id ?? null, selectedPlan?.pco_plan_id);
-  const { data: campuses } = useCampuses();
-  const { data: userCampuses } = useUserCampuses(user?.id);
+  const { data: campuses, isLoading: campusesLoading } = useCampuses();
+  const { data: userCampuses, isLoading: userCampusesLoading } = useUserCampuses(user?.id);
   const { data: userRole } = useUserRole(user?.id);
   const { data: allSyncProgress } = useAllSyncProgress();
   const deleteSong = useDeleteSong();
@@ -212,12 +215,32 @@ export default function Songs() {
     return campuses || [];
   }, [campuses, isVolunteer, userCampusIds]);
 
-  // Set default campus for volunteers
+  useRestoreDefaultCampus({
+    isReady: !campusesLoading && !userCampusesLoading,
+    selectedCampusId,
+    isSelectable: (campusId) => availableCampuses.some((campus) => campus.id === campusId),
+    selectCampus: setSelectedCampusId,
+  });
+
+  // Volunteers without a saved default stay on their assigned campus instead of "All".
   useEffect(() => {
+    if (campusesLoading || userCampusesLoading || (user && !profileFetched)) return;
+    const savedDefaultId = profile?.default_campus_id;
+    if (savedDefaultId && availableCampuses.some((campus) => campus.id === savedDefaultId)) return;
     if (isVolunteer && userCampusIds.length > 0 && selectedCampusId === "all") {
       setSelectedCampusId(userCampusIds[0]);
     }
-  }, [isVolunteer, userCampusIds, selectedCampusId]);
+  }, [
+    availableCampuses,
+    campusesLoading,
+    isVolunteer,
+    profile?.default_campus_id,
+    profileFetched,
+    selectedCampusId,
+    user,
+    userCampusIds,
+    userCampusesLoading,
+  ]);
 
   // Reset page when filters change
   useEffect(() => {

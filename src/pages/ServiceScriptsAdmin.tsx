@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses } from "@/hooks/useCampuses";
+import { useRestoreDefaultCampus } from "@/hooks/useRestoreDefaultCampus";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { campusOffersViewMinistry } from "@/lib/campusSetup";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -341,6 +342,13 @@ export default function ServiceScriptsAdmin() {
     setCampusId(value);
     localStorage.setItem("service-scripts-campus", value);
   };
+
+  useRestoreDefaultCampus({
+    isReady: !campusesLoading,
+    selectedCampusId: campusId || null,
+    isSelectable: (nextCampusId) => campuses.some((campus) => campus.id === nextCampusId),
+    selectCampus: handleCampusChange,
+  });
 
   const handleMinistryChange = (value: string) => {
     setMinistryType(value);

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfiles, useUpcomingBirthdays, useUpcomingAnniversaries } from "@/hooks/useProfiles";
+import { useRestoreDefaultCampus } from "@/hooks/useRestoreDefaultCampus";
 import { useCampuses, useUserCampuses, useProfilesWithCampuses } from "@/hooks/useCampuses";
 import { QuickStats } from "@/components/dashboard/QuickStats";
 import { UpcomingWidget } from "@/components/dashboard/UpcomingWidget";
@@ -53,10 +54,12 @@ export default function Dashboard() {
 
   // Campus selector state
   const {
-    data: allCampuses = []
+    data: allCampuses = [],
+    isLoading: campusesLoading,
   } = useCampuses();
   const {
-    data: userCampuses = []
+    data: userCampuses = [],
+    isLoading: userCampusesLoading,
   } = useUserCampuses(user?.id);
   const {
     data: profileCampusMap = {}
@@ -73,6 +76,15 @@ export default function Dashboard() {
     setSelectedCampusId(value);
     localStorage.setItem("dashboard-campus-filter", value);
   };
+
+  useRestoreDefaultCampus({
+    isReady: !campusesLoading && !userCampusesLoading,
+    selectedCampusId,
+    isSelectable: (campusId) =>
+      (isAdmin ? allCampuses : userCampuses.map((entry) => entry.campuses).filter(Boolean))
+        .some((campus) => campus?.id === campusId),
+    selectCampus: handleCampusChange,
+  });
 
   // Determine which campuses to show in the selector
   const availableCampuses = isAdmin ? allCampuses : userCampuses.map(uc => uc.campuses);

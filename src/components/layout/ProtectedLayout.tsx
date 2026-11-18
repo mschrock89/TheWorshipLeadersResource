@@ -1,4 +1,4 @@
-import { lazy, ReactNode, Suspense, useState, useEffect, useMemo, useCallback } from "react";
+import { lazy, ReactNode, Suspense, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useCampuses, useUserCampuses } from "@/hooks/useCampuses";
@@ -40,7 +40,8 @@ export function ProtectedLayout({
   const { user, isLeader, isAdmin } = useAuth();
   const { data: userCampuses, isLoading: userCampusesLoading } = useUserCampuses(user?.id);
   const { data: allCampuses, isLoading: allCampusesLoading } = useCampuses();
-  const { data: profile } = useProfile(user?.id);
+  const { data: profile, isFetched: profileFetched } = useProfile(user?.id);
+  const appliedDefaultCampusKeyRef = useRef<string | null>(null);
   const resourceAppKey = getCurrentResourceAppKey();
   const appMinistryTypes = useMemo(
     () => getResourceAppMinistryTypes(resourceAppKey),
@@ -113,9 +114,12 @@ export function ProtectedLayout({
     return userCampuses || [];
   }, [isLeader, allCampuses, userCampuses, assignedCampusIds]);
 
-  // Set default campus when campuses load, validate stored campus still exists
+  // On each visit, open the user's saved Default Campus. A campus they pick
+  // after that stays for the rest of the visit. The next load starts from the
+  // default again, instead of the last campus left in local storage.
   useEffect(() => {
     if (userCampusesLoading || allCampusesLoading) return;
+    if (user && !profileFetched) return;
 
     if (availableCampuses.length === 0) {
       if (selectedCampusId !== null) {
@@ -123,25 +127,38 @@ export function ProtectedLayout({
       }
       return;
     }
-    
-    // Check if stored campus is still valid ("network-wide" is a sentinel, not a real campus id)
+
+    const defaultCampusId = profile?.default_campus_id ?? null;
+    const defaultIsValid =
+      !!defaultCampusId && availableCampuses.some((campus) => campus.campus_id === defaultCampusId);
+    const defaultKey = user && defaultCampusId ? `${user.id}:${defaultCampusId}` : null;
+
+    if (defaultIsValid && defaultKey && appliedDefaultCampusKeyRef.current !== defaultKey) {
+      appliedDefaultCampusKeyRef.current = defaultKey;
+      if (selectedCampusId !== defaultCampusId) {
+        setSelectedCampusId(defaultCampusId);
+      }
+      return;
+    }
+
+    // "network-wide" is a sentinel, not a real campus id.
     const storedIsValid =
       selectedCampusId === "network-wide" ||
-      (selectedCampusId && availableCampuses.some(c => c.campus_id === selectedCampusId));
-    
+      (!!selectedCampusId && availableCampuses.some((campus) => campus.campus_id === selectedCampusId));
+
     if (!storedIsValid) {
-      // For admins/leaders, check if they have a default campus set in their profile
-      if ((isAdmin || isLeader) && profile?.default_campus_id) {
-        const defaultIsValid = availableCampuses.some(c => c.campus_id === profile.default_campus_id);
-        if (defaultIsValid) {
-          setSelectedCampusId(profile.default_campus_id);
-          return;
-        }
-      }
-      // Use first available campus (assigned first for leaders)
       setSelectedCampusId(availableCampuses[0].campus_id);
     }
-  }, [availableCampuses, selectedCampusId, setSelectedCampusId, isAdmin, isLeader, profile?.default_campus_id, userCampusesLoading, allCampusesLoading]);
+  }, [
+    availableCampuses,
+    selectedCampusId,
+    setSelectedCampusId,
+    profile?.default_campus_id,
+    profileFetched,
+    user,
+    userCampusesLoading,
+    allCampusesLoading,
+  ]);
 
   // Seed / validate ministry selection from profile default (admins/leaders) or app default.
   useEffect(() => {

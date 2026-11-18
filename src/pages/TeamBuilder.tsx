@@ -81,6 +81,7 @@ import {
 import { useBreakRequestsForPeriod } from "@/hooks/useBreakRequests";
 import { useTeamScheduleForCampus } from "@/hooks/useTeamScheduleEditor";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfiles";
 import { useProfilesWithCampuses, useUserCampuses, useNetworkWideCampus } from "@/hooks/useCampuses";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import {
@@ -464,6 +465,7 @@ function readTeamBuilderSearchParams() {
 
 export default function TeamBuilder() {
   const { user, isLoading: authLoading, isVideoDirector, isProductionManager, isAdmin } = useAuth();
+  const { data: profile, isFetched: profileFetched } = useProfile(user?.id);
   const { data: currentUserRoles = [] } = useUserRoles(user?.id);
   const [searchParams] = useSearchParams();
   const resourceAppKey = getCurrentResourceAppKey();
@@ -477,13 +479,18 @@ export default function TeamBuilder() {
   const pendingUrlPeriodIdRef = useRef<string | null>(initialSearch.period);
   const urlMinistryLockedRef = useRef(Boolean(initialSearch.ministry) && !isStudentTeamBuilder);
   const userChoseMinistryRef = useRef(false);
+  const seededCampusRef = useRef(false);
 
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const [selectedCampusId, setSelectedCampusId] = useState<string | null>(initialSearch.campus);
+  const [selectedCampusId, setSelectedCampusIdState] = useState<string | null>(initialSearch.campus);
+  const setSelectedCampusId = (campusId: string | null) => {
+    seededCampusRef.current = true;
+    setSelectedCampusIdState(campusId);
+  };
   const [gapRequestOpen, setGapRequestOpen] = useState(false);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(initialSearch.period);
   const [selectedMinistryType, setSelectedMinistryType] = useState<string>(
@@ -640,23 +647,41 @@ export default function TeamBuilder() {
     appliedSearchKeyRef.current = searchKey;
   }, [campuses, isStudentTeamBuilder, searchParams]);
 
-  // Auto-select campus on load
+  // Open this user's saved Default Campus every time Team Builder loads.
+  // A deep link campus wins. A campus picked after load stays until they leave.
   useEffect(() => {
+    if (seededCampusRef.current) return;
     if (campuses.length === 0 || !adminCampusInfo) return;
-    if (selectedCampusId && campuses.some((campus) => campus.id === selectedCampusId)) {
+    if (user && !profileFetched) return;
+
+    seededCampusRef.current = true;
+
+    const linkedCampus = initialSearch.campus
+      ? campuses.find((campus) => campus.id === initialSearch.campus)
+      : undefined;
+    if (linkedCampus) {
+      setSelectedCampusIdState(linkedCampus.id);
+      return;
+    }
+
+    const defaultCampus = profile?.default_campus_id
+      ? campuses.find((campus) => campus.id === profile.default_campus_id)
+      : undefined;
+    if (defaultCampus) {
+      setSelectedCampusIdState(defaultCampus.id);
       return;
     }
 
     if (adminCampusInfo.isOrgAdmin) {
       const murfCentral = campuses.find((c) => c.name === "Murfreesboro Central");
-      setSelectedCampusId(murfCentral?.id || campuses[0].id);
+      setSelectedCampusIdState(murfCentral?.id || campuses[0].id);
     } else if (adminCampusInfo.campusId && campuses.some((campus) => campus.id === adminCampusInfo.campusId)) {
-      setSelectedCampusId(adminCampusInfo.campusId);
+      setSelectedCampusIdState(adminCampusInfo.campusId);
     } else {
       const homeCampus = campuses.find((campus) => campus.id === adminCampusInfo.homeCampusId);
-      setSelectedCampusId(homeCampus?.id || campuses[0].id);
+      setSelectedCampusIdState(homeCampus?.id || campuses[0].id);
     }
-  }, [campuses, adminCampusInfo, selectedCampusId]);
+  }, [adminCampusInfo, campuses, initialSearch.campus, profile?.default_campus_id, profileFetched, user]);
 
   // Auto-select active period when campus changes
   useEffect(() => {
