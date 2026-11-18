@@ -78,6 +78,25 @@ test("an empty Team Builder period does not show copied or shared calendar teams
   );
 });
 
+test("a campus with no Team Builder does not inherit a shared team", () => {
+  const gate = buildCampusCalendarRosterGate({
+    periods: [],
+    assignments: [],
+    hides: [],
+  });
+  const shared = {
+    team_id: "team-4",
+    campus_id: null,
+    schedule_date: "2026-11-22",
+    rotation_period: "T3 2026",
+    ministry_type: "weekend",
+    worship_teams: { name: "Team 4" },
+  };
+
+  assert.equal(isCalendarTeamScheduleVisible(shared, gate), false);
+  assert.deepEqual(selectPublishedScheduleEntries([shared], gate), []);
+});
+
 test("a standing team shows on every date, and a one-date fill-in stays on that date", () => {
   const gate = buildCampusCalendarRosterGate({
     periods,

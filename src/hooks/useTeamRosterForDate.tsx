@@ -348,7 +348,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v27"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v28"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -430,24 +430,29 @@ export function useTeamRosterForDate(
       // Create a set of valid rotation period IDs for quick lookup
       const validRotationPeriodIdSet = new Set(rotationPeriodIds);
 
-      // Fetch team members for this team
-      let membersQuery = supabase
-        .from("team_members")
-        .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, service_day")
-        .eq("team_id", teamId)
-        .order("display_order");
+      // Team 1–4 share one team id across campuses. A campus with no rotation
+      // of its own must not inherit every other campus's roster for that id.
+      const campusHasNoRotation = !!campusId && rotationPeriodIds.length === 0;
+      let members: TeamMemberRow[] = [];
+      if (!campusHasNoRotation) {
+        let membersQuery = supabase
+          .from("team_members")
+          .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, service_day")
+          .eq("team_id", teamId)
+          .order("display_order");
 
-      if (rotationPeriodIds.length > 0) {
-        membersQuery = membersQuery.in("rotation_period_id", rotationPeriodIds);
+        if (rotationPeriodIds.length > 0) {
+          membersQuery = membersQuery.in("rotation_period_id", rotationPeriodIds);
+        }
+
+        const { data, error: membersError } = await membersQuery;
+        if (membersError) throw membersError;
+        members = (data || []) as TeamMemberRow[];
       }
-
-      const { data: members, error: membersError } = await membersQuery;
-
-      if (membersError) throw membersError;
 
       // Filter members by rotation period (must be in the campus-filtered rotation periods)
       // and optionally by ministry type
-      let filteredMembers = ((members || []) as TeamMemberRow[]).filter(m => {
+      let filteredMembers = members.filter(m => {
         if (validRotationPeriodIdSet.size > 0) {
           if (!m.rotation_period_id) return false;
           if (!validRotationPeriodIdSet.has(m.rotation_period_id)) return false;
@@ -550,18 +555,22 @@ export function useTeamRosterForDate(
         ? datesToCheck
         : [dateStr];
 
-      let overrideQuery = supabase
-        .from("team_member_date_overrides")
-        .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, schedule_date")
-        .eq("team_id", teamId)
-        .in("schedule_date", overrideDatesToCheck);
+      let dateOverrides: TeamMemberDateOverrideRow[] = [];
+      if (!campusHasNoRotation) {
+        let overrideQuery = supabase
+          .from("team_member_date_overrides")
+          .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, schedule_date")
+          .eq("team_id", teamId)
+          .in("schedule_date", overrideDatesToCheck);
 
-      if (rotationPeriodIds.length > 0) {
-        overrideQuery = overrideQuery.in("rotation_period_id", rotationPeriodIds);
+        if (rotationPeriodIds.length > 0) {
+          overrideQuery = overrideQuery.in("rotation_period_id", rotationPeriodIds);
+        }
+
+        const { data, error: dateOverridesError } = await overrideQuery;
+        if (dateOverridesError) throw dateOverridesError;
+        dateOverrides = (data || []) as TeamMemberDateOverrideRow[];
       }
-
-      const { data: dateOverrides, error: dateOverridesError } = await overrideQuery;
-      if (dateOverridesError) throw dateOverridesError;
 
       let campusServiceDays: { has_saturday_service?: boolean | null; has_sunday_service?: boolean | null } | null =
         null;

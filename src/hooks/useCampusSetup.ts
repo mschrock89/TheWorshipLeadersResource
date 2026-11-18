@@ -8,6 +8,7 @@ import {
   existingCampusSaveAction,
   type CampusMinistryDraft,
 } from "@/lib/campusSetup";
+import { buildDefaultRotationPeriods } from "@/lib/defaultRotationPeriods";
 import { ministryUsesRecurringSchedule, weekendColumnsFromDrafts } from "@/lib/campusMinistrySchedule";
 
 type AttendanceSupabase = {
@@ -253,6 +254,14 @@ export function useSaveCampusSetup() {
 
       if (!campusId) throw new Error("Could not save campus.");
 
+      if (created) {
+        const periods = buildDefaultRotationPeriods(campusId);
+        const { error: periodError } = await supabase
+          .from("rotation_periods")
+          .upsert(periods, { onConflict: "year,trimester,campus_id", ignoreDuplicates: true });
+        if (periodError) throw periodError;
+      }
+
       await replaceCampusMinistries(campusId, enabled.map((ministry) => ministry.ministryType));
 
       const cleared = input.ministries
@@ -310,6 +319,7 @@ export function useSaveCampusSetup() {
     onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["campuses"] }),
+        queryClient.invalidateQueries({ queryKey: ["rotation-periods"] }),
         queryClient.invalidateQueries({ queryKey: ["campus-ministries"] }),
         queryClient.invalidateQueries({ queryKey: ["campus-ministry-schedules"] }),
         queryClient.invalidateQueries({ queryKey: ["attendance-campuses"] }),

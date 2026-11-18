@@ -239,7 +239,13 @@ export function isCalendarTeamScheduleVisible(
   if (isNetworkWideMinistryType(entry.ministry_type)) return true;
 
   const periodName = entry.rotation_period?.trim();
-  if (!periodName || !gate.periodNames.has(periodName)) return true;
+  if (!periodName) return true;
+  if (!gate.periodNames.has(periodName)) {
+    // Shared template rows follow another campus's rotation. A campus that
+    // does not have that period does not inherit the team.
+    if (entry.campus_id == null) return false;
+    return true;
+  }
 
   const teamId = entry.team_id;
   if (!teamId) return true;
