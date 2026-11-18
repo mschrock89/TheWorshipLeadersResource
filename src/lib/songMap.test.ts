@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeSongMapCue, formatSongMapTime, songMapKindLabel, songMapOffsetFromRatio, songMapSectionAbbrev } from "./songMap.ts";
+import { activeSongMapCue, formatSongMapTime, songMapKindLabel, songMapOffsetFromRatio, songMapSectionAbbrev, upcomingSongMapCue } from "./songMap.ts";
 
 test("formats a song map clock", () => {
   assert.equal(formatSongMapTime(0), "0:00");
@@ -34,4 +34,17 @@ test("the prompt is the latest cue the playhead has reached", () => {
   assert.equal(activeSongMapCue(cues, 10)?.id, "intro");
   assert.equal(activeSongMapCue(cues, 45)?.id, "vocal");
   assert.equal(activeSongMapCue(cues, 200)?.id, "bridge");
+});
+
+test("the preview is the next user note still ahead", () => {
+  const cues = [
+    { id: "intro", offsetSeconds: 0, body: "Pads in" },
+    { id: "vocal", offsetSeconds: 45, body: "Vocal up" },
+    { id: "bridge", offsetSeconds: 150, body: "Open the room" },
+  ];
+
+  assert.equal(upcomingSongMapCue(cues, -1)?.id, "intro");
+  assert.equal(upcomingSongMapCue(cues, 10)?.id, "vocal");
+  assert.equal(upcomingSongMapCue(cues, 45)?.id, "bridge");
+  assert.equal(upcomingSongMapCue(cues, 150), null);
 });

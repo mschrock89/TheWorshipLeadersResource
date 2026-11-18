@@ -1,4 +1,5 @@
 import { Plus, Trash2, Clock } from "lucide-react";
+import { markerHasTime } from "@/lib/trackMarkerSongs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,8 +66,9 @@ export function ReferenceTrackMarkerInput({
   };
 
   const formatSeconds = (value: string) => {
+    if (!value.trim()) return "";
     const num = parseInt(value, 10);
-    if (isNaN(num)) return "00";
+    if (isNaN(num)) return "";
     const clamped = Math.min(Math.max(num, 0), 59);
     return clamped.toString().padStart(2, "0");
   };
@@ -224,7 +226,7 @@ export function introTimestampsToMarkers(
 // never silently dropped on save (e.g. when a title didn't match a setlist song).
 export function markersToDbFormat(markers: MarkerInput[]) {
   return markers
-    .filter((m) => m.songId || m.title.trim())
+    .filter((marker) => markerHasTime(marker) && (marker.songId || marker.title.trim()))
     .map((m, index) => ({
       title: m.title.trim(),
       timestamp_seconds:

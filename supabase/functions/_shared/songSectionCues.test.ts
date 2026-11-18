@@ -150,6 +150,58 @@ test("hears isolated misheard cue words and numbered calls", () => {
   ]);
 });
 
+test("keeps a pre-chorus and chorus a few seconds apart", () => {
+  const groups = detectSongSectionGroups(
+    segments([
+      [20, 21, "Pre-Chorus"],
+      [24.2, 25, "Chorus"],
+    ]),
+    [{ title: "Holy", timestampSeconds: 0, sequenceOrder: 0 }],
+    80,
+  );
+
+  assert.deepEqual(groups[0].sections, [
+    { offsetSeconds: 20, label: "Pre-Chorus" },
+    { offsetSeconds: 24, label: "Chorus" },
+  ]);
+});
+
+test("reads guide calls from word timestamps, including a count-in", () => {
+  const groups = detectSongSectionGroups(
+    {
+      segments: [{ start: 19, end: 99, text: "Verse one. Pre-chorus. Chorus. Hallelujah." }],
+      words: [
+        { word: "Verse", start: 19.3, end: 19.7 },
+        { word: "one", start: 19.8, end: 20.1 },
+        { word: "Pre-chorus", start: 71.9, end: 72.7 },
+        { word: "Chorus", start: 98.2, end: 98.7 },
+        { word: "Hallelujah", start: 102.4, end: 103.1 },
+        { word: "Verse", start: 385.8, end: 386.3 },
+        { word: "2", start: 386.8, end: 387.0 },
+        { word: "3", start: 387.7, end: 387.9 },
+        { word: "4", start: 388.5, end: 388.8 },
+        { word: "and", start: 400, end: 400.2 },
+        { word: "the", start: 400.3, end: 400.4 },
+        { word: "chorus", start: 400.5, end: 400.8 },
+        { word: "of", start: 400.9, end: 401 },
+        { word: "heaven", start: 401.1, end: 401.4 },
+      ],
+    },
+    [
+      { title: "Wild Rushing Wind", timestampSeconds: 0, sequenceOrder: 0 },
+      { title: "Grateful", timestampSeconds: 385, sequenceOrder: 1 },
+    ],
+    500,
+  );
+
+  assert.deepEqual(groups[0].sections, [
+    { offsetSeconds: 19, label: "Verse 1" },
+    { offsetSeconds: 72, label: "Pre-Chorus" },
+    { offsetSeconds: 98, label: "Chorus" },
+  ]);
+  assert.deepEqual(groups[1].sections, [{ offsetSeconds: 1, label: "Verse" }]);
+});
+
 test("uses the word timestamp when the segment starts late", () => {
   const groups = detectSongSectionGroups(
     {

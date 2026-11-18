@@ -31,6 +31,25 @@ export function activeSongMapCue<T extends { offsetSeconds: number }>(cues: T[],
   return active;
 }
 
+/** The next cue still ahead of the playhead. */
+export function upcomingSongMapCue<T extends { id?: string; offsetSeconds: number }>(
+  cues: T[],
+  elapsedSeconds: number,
+) {
+  let upcoming: T | null = null;
+  for (const cue of cues) {
+    if (cue.offsetSeconds <= elapsedSeconds) continue;
+    if (!upcoming || cue.offsetSeconds < upcoming.offsetSeconds) {
+      upcoming = cue;
+      continue;
+    }
+    if (cue.offsetSeconds === upcoming.offsetSeconds && (cue.id || "") < (upcoming.id || "")) {
+      upcoming = cue;
+    }
+  }
+  return upcoming;
+}
+
 export function songMapKindLabel(kind: SongMapKind) {
   if (kind === "mix") return "Mix";
   if (kind === "section") return "Section";

@@ -4,7 +4,10 @@
 export const SECTION_CUE_PROMPT =
   "Spoken worship guide cues. The voice calls sections by name: Intro, Verse, Verse 2, Pre-Chorus, Chorus, Bridge, Instrumental, Turnaround, Tag, Outro, Ending, Vamp, Channel, Breakdown.";
 
-const MIN_SECTION_GAP_SECONDS = 5;
+const SAME_CUE_GAP_SECONDS = 4;
+const DISTINCT_CUE_GAP_SECONDS = 1.2;
+const CUE_PAUSE_SECONDS = 0.4;
+const COUNT_GAP_SECONDS = 1.15;
 const LEADING_CUE_GAP_SECONDS = 1.5;
 const LAST_SONG_FALLBACK_SECONDS = 7200;
 
@@ -90,9 +93,10 @@ const WEAK_BASES: Record<string, string> = {
 
 const STRONG_TOKENS = new Set(Object.keys(STRONG_BASES));
 const NUMBERED_LABELS = new Set(["Verse", "Chorus", "Bridge", "Tag"]);
+const COUNT_TOKENS = new Set(["one", "two", "three", "four", "five", "six", "1", "2", "3", "4", "5", "6"]);
 
 function tokenize(text: string): string[] {
-  return text
+  return String(text || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
@@ -181,11 +185,15 @@ function strongHits(tokens: string[]): number {
 
 function isolateCueTokens(tokens: string[]): string[] {
   if (tokens.length !== 1) return tokens;
-  if (tokens[0] === "versus") return ["verse"];
-  if (tokens[0] === "intra") return ["intro"];
-  if (tokens[0] === "course" || tokens[0] === "choruse") return ["chorus"];
-  if (tokens[0] === "inst") return ["instrumental"];
-  return tokens;
+  return [normalizeCueToken(tokens[0])];
+}
+
+function normalizeCueToken(token: string): string {
+  if (token === "versus") return "verse";
+  if (token === "intra") return "intro";
+  if (token === "course" || token === "choruse") return "chorus";
+  if (token === "inst") return "instrumental";
+  return token;
 }
 
 function cueStart(
@@ -202,7 +210,86 @@ function cueStart(
 
 type HeardCue = { at: number; label: string };
 
+type TimedToken = { token: string; start: number; end: number };
+
+function wordsToTokens(words: SectionTranscript["words"]): TimedToken[] {
+  const tokens: TimedToken[] = [];
+  for (const word of words || []) {
+    const pieces = tokenize(word.word).map(normalizeCueToken);
+    pieces.forEach((token, index) => {
+      const start = word.start + index * 0.01;
+      const end = index === pieces.length - 1 ? Math.max(word.end, start) : start;
+      tokens.push({ token, start, end });
+    });
+  }
+  return tokens.filter((token) => Number.isFinite(token.start));
+}
+
+function countRunLength(tokens: TimedToken[], start: number, previousEnd: number): number {
+  let length = 0;
+  let cursor = start;
+  let end = previousEnd;
+  while (cursor < tokens.length && COUNT_TOKENS.has(tokens[cursor].token)) {
+    if (tokens[cursor].start - end > COUNT_GAP_SECONDS) break;
+    end = tokens[cursor].end;
+    length += 1;
+    cursor += 1;
+  }
+  return length;
+}
+
+function stripCountNumber(label: string): string {
+  return label.replace(/\s+\d+$/, "");
+}
+
+/** Guide calls are their own words, often followed by a count-in or the first lyric. */
+function hearCuesFromWords(words: SectionTranscript["words"]): HeardCue[] {
+  const tokens = wordsToTokens(words);
+  const heard: HeardCue[] = [];
+  let index = 0;
+
+  while (index < tokens.length) {
+    const phrase = parsePhrase(tokens.slice(index).map((token) => token.token));
+    if (!phrase) {
+      index += 1;
+      continue;
+    }
+
+    const used = phrase.tokensUsed;
+    let label = phrase.label;
+    const phraseEnd = tokens[index + used - 1];
+    const followingCounts = countRunLength(tokens, index + used, phraseEnd.end);
+    if (followingCounts > 0 && /\s\d+$/.test(label)) {
+      label = stripCountNumber(label);
+    }
+    const span = used + followingCounts;
+    const last = tokens[index + span - 1];
+    const previous = index > 0 ? tokens[index - 1] : null;
+    const next = tokens[index + span];
+    const gapBefore = previous ? tokens[index].start - previous.end : Number.POSITIVE_INFINITY;
+    const gapAfter = next ? next.start - last.end : Number.POSITIVE_INFINITY;
+    const countBefore = previous != null && COUNT_TOKENS.has(previous.token) && gapBefore <= COUNT_GAP_SECONDS;
+    const countAfter = followingCounts > 0;
+    const pausedBefore = gapBefore >= CUE_PAUSE_SECONDS || countBefore;
+    const pausedAfter = gapAfter >= CUE_PAUSE_SECONDS || countAfter;
+    const weakEnough = phrase.strong || (gapBefore >= 0.8 && gapAfter >= 0.8);
+
+    if (pausedBefore && pausedAfter && weakEnough && label.trim()) {
+      heard.push({ at: tokens[index].start, label });
+      index += span;
+      continue;
+    }
+    index += 1;
+  }
+
+  return heard;
+}
+
 function hearCues(transcription: SectionTranscript): HeardCue[] {
+  if ((transcription.words || []).length > 0) {
+    return hearCuesFromWords(transcription.words).sort((left, right) => left.at - right.at);
+  }
+
   const segments = transcription.segments
     .filter((segment) => segment.text.trim().length > 0 && Number.isFinite(segment.start))
     .slice()
@@ -268,7 +355,7 @@ export function detectSongSectionGroups(
 ): DetectedSongSections[] {
   const windows = songWindows(markers, durationSeconds);
   const groups: DetectedSongSections[] = windows.map((window) => ({ title: window.title, sections: [] }));
-  const lastOffset = windows.map(() => null as number | null);
+  const lastKept = windows.map(() => null as { offset: number; label: string } | null);
 
   for (const cue of hearCues(transcription)) {
     const index = windows.findIndex((window) => cue.at >= window.startSeconds && cue.at < window.endSeconds);
@@ -276,9 +363,10 @@ export function detectSongSectionGroups(
     const window = windows[index];
     const length = Math.min(LAST_SONG_FALLBACK_SECONDS, Math.max(0, Math.round(window.endSeconds - window.startSeconds)));
     const offsetSeconds = Math.min(length, Math.max(0, Math.round(cue.at - window.startSeconds)));
-    const previous = lastOffset[index];
-    if (previous != null && offsetSeconds - previous < MIN_SECTION_GAP_SECONDS) continue;
-    lastOffset[index] = offsetSeconds;
+    const previous = lastKept[index];
+    if (previous && offsetSeconds - previous.offset < DISTINCT_CUE_GAP_SECONDS) continue;
+    if (previous && previous.label === cue.label && offsetSeconds - previous.offset < SAME_CUE_GAP_SECONDS) continue;
+    lastKept[index] = { offset: offsetSeconds, label: cue.label };
     groups[index].sections.push({ offsetSeconds, label: cue.label });
   }
 

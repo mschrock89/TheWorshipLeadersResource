@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Upload, FileAudio, Loader2, ChevronDown, ChevronUp, Clock } from "lucide-react";
 import {
   Dialog,
@@ -18,6 +18,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ReferenceTrackMarkerInput, MarkerInput, markersToDbFormat, SetlistSong } from "./ReferenceTrackMarkerInput";
 import { isMp3File } from "@/lib/detectReferenceTrackMarkers";
+import { loadSongsForTrackMarkers } from "@/lib/loadTrackMarkerSongs";
+import { markerRowsForSongs } from "@/lib/trackMarkerSongs";
 import { syncServiceFlowDurationsFromPlaylist } from "@/hooks/useServiceFlow";
 
 interface ReferenceTrackUploadDialogProps {
@@ -42,7 +44,11 @@ export function ReferenceTrackUploadDialog({
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [markers, setMarkers] = useState<MarkerInput[]>([]);
+  const [markerSongs, setMarkerSongs] = useState<SetlistSong[]>(setlistSongs);
   const [markersOpen, setMarkersOpen] = useState(false);
+  const markersTouched = useRef(false);
+  const markerSongsRef = useRef(setlistSongs);
+  markerSongsRef.current = markerSongs;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -75,13 +81,36 @@ export function ReferenceTrackUploadDialog({
     setTitle("");
     setProgress(0);
     setMarkers([]);
+    setMarkerSongs(setlistSongs);
+    markersTouched.current = false;
     setMarkersOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void loadSongsForTrackMarkers(playlistId)
+      .then((songs) => {
+        if (cancelled) return;
+        const next = songs.length > 0 ? songs : markerSongsRef.current;
+        setMarkerSongs(next);
+        if (!markersTouched.current) {
+          setMarkers((current) => (current.length === 0 && !selectedFile ? current : markerRowsForSongs(next)));
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not load songs for track markers:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, playlistId, selectedFile]);
+
   const processSelectedFile = useCallback(async (file: File) => {
     setSelectedFile(file);
-    setMarkers([]);
+    markersTouched.current = false;
+    setMarkers(markerRowsForSongs(markerSongsRef.current));
     setMarkersOpen(true);
 
     try {
@@ -366,12 +395,15 @@ export function ReferenceTrackUploadDialog({
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2">
                 <p className="text-xs text-muted-foreground mb-2">
-                  Add a marker at the start of each song. These timestamps calculate Service Flow song durations.
+                  Every song on the service is listed, including songs added after the set was published. Set the time where each song starts. Leave a song blank if it is not on this MP3.
                 </p>
                 <ReferenceTrackMarkerInput
                   markers={markers}
-                  onChange={setMarkers}
-                  setlistSongs={setlistSongs}
+                  onChange={(next) => {
+                    markersTouched.current = true;
+                    setMarkers(next);
+                  }}
+                  setlistSongs={markerSongs}
                   disabled={uploading}
                 />
               </CollapsibleContent>

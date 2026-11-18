@@ -19,6 +19,8 @@ import {
   SetlistSong,
 } from "./ReferenceTrackMarkerInput";
 import { syncServiceFlowDurationsFromPlaylist } from "@/hooks/useServiceFlow";
+import { loadSongsForTrackMarkers } from "@/lib/loadTrackMarkerSongs";
+import { withMissingSongMarkers } from "@/lib/trackMarkerSongs";
 
 interface ReferenceTrackMarker {
   id: string;
@@ -47,6 +49,7 @@ export function EditReferenceTrackMarkersDialog({
   setlistSongs,
 }: EditReferenceTrackMarkersDialogProps) {
   const [markers, setMarkers] = useState<MarkerInput[]>([]);
+  const [markerSongs, setMarkerSongs] = useState<SetlistSong[]>(setlistSongs);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -56,6 +59,10 @@ export function EditReferenceTrackMarkersDialog({
   // parent rebuilds those arrays on every render, which would otherwise wipe out
   // freshly edited markers on the next re-render.
   const initializedKeyRef = useRef<string | null>(null);
+  const existingMarkersRef = useRef(existingMarkers);
+  const setlistSongsRef = useRef(setlistSongs);
+  existingMarkersRef.current = existingMarkers;
+  setlistSongsRef.current = setlistSongs;
   useEffect(() => {
     if (!open) {
       initializedKeyRef.current = null;
@@ -64,17 +71,33 @@ export function EditReferenceTrackMarkersDialog({
     if (initializedKeyRef.current === referenceTrackId) return;
     initializedKeyRef.current = referenceTrackId;
 
-    const converted = dbToMarkerFormat(
-      existingMarkers.map((m) => ({
-        id: m.id,
-        title: m.title,
-        timestamp_seconds: m.timestampSeconds,
-        sequence_order: m.sequenceOrder,
-      })),
-      setlistSongs
-    );
-    setMarkers(converted);
-  }, [open, referenceTrackId, existingMarkers, setlistSongs]);
+    let cancelled = false;
+    const saved = existingMarkersRef.current.map((marker) => ({
+      id: marker.id,
+      title: marker.title,
+      timestamp_seconds: marker.timestampSeconds,
+      sequence_order: marker.sequenceOrder,
+    }));
+
+    void loadSongsForTrackMarkers(playlistId)
+      .then((songs) => {
+        if (cancelled) return;
+        const list = songs.length > 0 ? songs : setlistSongsRef.current;
+        setMarkerSongs(list);
+        setMarkers(withMissingSongMarkers(dbToMarkerFormat(saved, list), list));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Could not load songs for track markers:", error);
+        const list = setlistSongsRef.current;
+        setMarkerSongs(list);
+        setMarkers(withMissingSongMarkers(dbToMarkerFormat(saved, list), list));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, referenceTrackId, playlistId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -141,7 +164,7 @@ export function EditReferenceTrackMarkersDialog({
             Edit Markers
           </DialogTitle>
           <DialogDescription>
-            Add or edit song markers for "{referenceTrackTitle}". These timestamps calculate Service Flow song durations.
+            Add or edit song markers for "{referenceTrackTitle}". Songs added after the set was published are included. Leave a song blank if it is not on this MP3.
           </DialogDescription>
         </DialogHeader>
 
@@ -149,7 +172,7 @@ export function EditReferenceTrackMarkersDialog({
           <ReferenceTrackMarkerInput
             markers={markers}
             onChange={setMarkers}
-            setlistSongs={setlistSongs}
+            setlistSongs={markerSongs}
             disabled={saving}
           />
 

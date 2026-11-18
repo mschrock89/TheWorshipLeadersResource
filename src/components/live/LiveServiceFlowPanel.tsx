@@ -7,7 +7,7 @@ import { notesWithoutServiceStart } from "@/components/service-flow/serviceFlowC
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LiveLineNote } from "@/components/live/LiveLineNote";
 import { readableSongNotes } from "@/lib/liveSongNotes";
-import { activeSongMapCue, formatSongMapTime, type SongMapCue } from "@/lib/songMap";
+import { activeSongMapCue, formatSongMapTime, upcomingSongMapCue, type SongMapCue } from "@/lib/songMap";
 import {
   effectiveMidiCue,
   formatMidiCueLabel,
@@ -101,7 +101,9 @@ function SongNotesStage({
   const shown = entries.flatMap((entry) => {
     if (elapsed == null || run?.itemId !== entry.item.id) return [];
     const active = activeSongMapCue(entry.notes, elapsed);
-    return active ? [{ entry, active }] : [];
+    const upcoming = upcomingSongMapCue(entry.notes, elapsed);
+    if (!active && !upcoming) return [];
+    return [{ entry, active, upcoming }];
   });
   if (shown.length === 0) return null;
 
@@ -111,7 +113,7 @@ function SongNotesStage({
       className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-xl border border-primary/40 bg-card shadow-[0_18px_48px_rgba(0,0,0,0.55)]"
     >
       <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-        {shown.map(({ entry, active }) => {
+        {shown.map(({ entry, active, upcoming }) => {
           const singers = vocalistNames(entry.item);
           return (
             <article
@@ -138,12 +140,30 @@ function SongNotesStage({
                 ) : null}
                 {singers ? <span className="min-w-0 text-sm font-medium">{singers}</span> : null}
               </button>
-              <p className="mt-2 flex items-baseline gap-3 text-2xl font-semibold leading-snug text-primary">
-                <span className="w-14 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-                  {formatSongMapTime(active.offsetSeconds)}
-                </span>
-                <span className="min-w-0 flex-1">{active.body}</span>
-              </p>
+              {active ? (
+                <p className="mt-2 flex items-baseline gap-3 text-2xl font-semibold leading-snug text-primary">
+                  <span className="w-14 shrink-0 text-right text-[10px] font-bold uppercase tracking-wide text-primary">
+                    Now
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="mr-2 text-sm tabular-nums text-muted-foreground">
+                      {formatSongMapTime(active.offsetSeconds)}
+                    </span>
+                    {active.body}
+                  </span>
+                </p>
+              ) : null}
+              {upcoming ? (
+                <p className="mt-2 flex items-baseline gap-3 text-base font-medium leading-snug text-muted-foreground">
+                  <span className="w-14 shrink-0 text-right text-[10px] font-bold uppercase tracking-wide">
+                    Next
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="mr-2 tabular-nums">{formatSongMapTime(upcoming.offsetSeconds)}</span>
+                    {upcoming.body}
+                  </span>
+                </p>
+              ) : null}
             </article>
           );
         })}
