@@ -71,6 +71,7 @@ import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelect
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { closestCalendarServiceDate } from "@/lib/calendarServiceDate";
 import { campusGroupOffersMinistry, campusOffersViewMinistry } from "@/lib/campusSetup";
 import { useAllCampusMinistries } from "@/hooks/useCampusMinistries";
 import { getEffectiveCustomServiceMinistryType, getServiceFlowMinistryType } from "@/lib/customServiceMinistry";
@@ -635,12 +636,13 @@ function StandardCalendar() {
   })();
   const {
     data: customServices = [],
+    isFetched: customServicesFetched,
   } = useCustomServiceOccurrences({
     campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
     startDate: monthStart,
     endDate: monthEnd,
   });
-  const { data: serviceTimeOverrides = [] } = useServiceTimeOverrides({
+  const { data: serviceTimeOverrides = [], isFetched: serviceTimeOverridesFetched } = useServiceTimeOverrides({
     campusId: campusFilter && campusFilter !== "network-wide" ? campusFilter : undefined,
     startDate: monthStart,
     endDate: monthEnd,
@@ -860,6 +862,33 @@ function StandardCalendar() {
       return (data || [])
         .filter((entry) => scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter))
         .map((entry) => entry.schedule_date as string);
+    },
+  });
+  const auditionDatesLookback = formatDateForStorage(addDays(new Date(), -90));
+  const needsAuditionServiceDates = ministryFilter === "audition" || ministryFilter === "all";
+  const canSeeCalendarAuditions = isAdmin || canManageTeam;
+  const { data: auditionServiceDates = [], isFetched: auditionServiceDatesFetched } = useQuery({
+    queryKey: ["calendar-audition-service-dates", campusFilter, todayStr, canSeeCalendarAuditions],
+    enabled: canSeeCalendarAuditions && needsAuditionServiceDates,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      let query = supabase
+        .from("auditions")
+        .select("audition_date")
+        .eq("status", "scheduled")
+        .gte("audition_date", auditionDatesLookback)
+        .lte("audition_date", upcomingServiceHorizon)
+        .order("audition_date", { ascending: true });
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.eq("campus_id", campusFilter);
+      } else if (campusFilter === "network-wide") {
+        query = query.is("campus_id", null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return [...new Set((data || []).map((row) => row.audition_date as string))];
     },
   });
   const {
@@ -1109,7 +1138,8 @@ function StandardCalendar() {
     const campusReady = campusFilter === "network-wide" || Boolean(selectedCampusConfig);
     if (!campusReady) return;
     if (!usesRecurringServiceDay && !upcomingScheduleFetched) return;
-    if (!ministrySchedulesFetched) return;
+    if (!ministrySchedulesFetched || !customServicesFetched || !serviceTimeOverridesFetched) return;
+    if (needsAuditionServiceDates && canSeeCalendarAuditions && !auditionServiceDatesFetched) return;
 
     const filterKey = `${campusFilter}|${ministryFilter}`;
     if (lastAutoSelectFilterKeyRef.current === filterKey) return;
@@ -1130,6 +1160,7 @@ function StandardCalendar() {
         )
         .map((service) => service.occurrence_date),
       ...filteredServiceTimeOverrides.map((override) => override.service_date),
+      ...(needsAuditionServiceDates ? auditionServiceDates : []),
     ];
     const scheduledDates = Array.from(
       new Set([
@@ -1140,7 +1171,7 @@ function StandardCalendar() {
       ]),
     );
 
-    const nextServiceDate = getNextUpcomingServiceDate({
+    const upcomingServiceDate = getNextUpcomingServiceDate({
       from: new Date(),
       ministryFilter,
       campusFilter,
@@ -1153,23 +1184,35 @@ function StandardCalendar() {
         ministryFilter,
       ),
     });
-    if (!nextServiceDate) {
-      lastAutoSelectFilterKeyRef.current = filterKey;
-      return;
-    }
+    const closestServiceDate = closestCalendarServiceDate(new Date(), [
+      ...scheduledDates,
+      ...extraDates,
+      upcomingServiceDate ? formatDateForStorage(upcomingServiceDate) : null,
+    ]);
+    // Weekly ministries keep opening on the next service. One-off ministries,
+    // including Audition, open on whichever scheduled date is nearest to today.
+    const nextServiceDate = usesRecurringServiceDay && upcomingServiceDate
+      ? upcomingServiceDate
+      : closestServiceDate;
 
     lastAutoSelectFilterKeyRef.current = filterKey;
     suppressServiceFlowScrollRef.current = true;
     setCurrentDate(nextServiceDate);
     setSelectedDate(nextServiceDate);
   }, [
+    auditionServiceDates,
+    auditionServiceDatesFetched,
     campusFilter,
+    canSeeCalendarAuditions,
     customServices,
+    customServicesFetched,
     filteredServiceTimeOverrides,
     ministryFilter,
     ministrySchedules,
     ministrySchedulesFetched,
+    needsAuditionServiceDates,
     selectedCampusConfig,
+    serviceTimeOverridesFetched,
     teamSchedule,
     upcomingScheduleFetched,
     upcomingScheduledServiceDates,
