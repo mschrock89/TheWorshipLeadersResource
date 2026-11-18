@@ -102,6 +102,32 @@ test("campus setup requires a unique name, a ministry, and service days", () => 
   );
 });
 
+test("audition can be turned on without a weekly service time", () => {
+  const drafts = buildCampusMinistryDrafts({
+    campus: null,
+    schedules: [],
+    enabledMinistries: null,
+    isNew: true,
+  }).map((draft) => (
+    draft.ministryType === "audition"
+      ? { ...draft, enabled: true, days: draft.days.map((day) => ({ ...day, enabled: false, times: [""] })) }
+      : draft
+  ));
+  assert.equal(
+    campusSetupError({
+      name: "McMinnville",
+      ministries: drafts,
+      attendanceEnabled: false,
+      latitude: "",
+      longitude: "",
+      radius: "150",
+      existingNames: [],
+      campusId: null,
+    }),
+    null,
+  );
+});
+
 test("a campus created earlier today can be finished, and older names stay taken", () => {
   const now = Date.parse("2026-11-18T15:30:00.000Z");
   assert.equal(existingCampusSaveAction(null, now), "insert");

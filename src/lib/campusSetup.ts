@@ -9,6 +9,7 @@ import {
   enabledScheduleRows,
   ministryScheduleIsInherited,
   ministryUsesCampusWeekendDefaults,
+  ministryUsesRecurringSchedule,
   scheduleMinistryType,
   type CampusWeekendTimes,
   type DayScheduleDraft,
@@ -139,7 +140,7 @@ export function campusSetupError({
   const enabled = ministries.filter((ministry) => ministry.enabled);
   if (enabled.length === 0) return "Turn on at least one ministry.";
   for (const ministry of enabled) {
-    if (ministry.followWeekend) continue;
+    if (ministry.followWeekend || !ministryUsesRecurringSchedule(ministry.ministryType)) continue;
     if (enabledScheduleRows(ministry.days).length === 0) {
       return `Add at least one service day for ${ministry.label}.`;
     }

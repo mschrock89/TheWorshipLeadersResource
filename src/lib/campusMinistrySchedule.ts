@@ -51,6 +51,9 @@ const WEEKEND_ALIGNED_MINISTRIES = new Set([
   "eon_weekend",
 ]);
 
+/** Offered on a campus, but scheduled one date at a time rather than every week. */
+const UNSCHEDULED_MINISTRIES = new Set(["audition"]);
+
 const weekdayByDay = new Map(WEEKDAYS.map((day) => [day.day, day]));
 
 export function normalizeServiceTime(value: string | null | undefined): string {
@@ -66,6 +69,11 @@ export function scheduleMinistryType(ministryType: string | null | undefined): s
 export function ministryUsesCampusWeekendDefaults(ministryType: string | null | undefined): boolean {
   const ministry = scheduleMinistryType(ministryType);
   return ministry != null && WEEKEND_ALIGNED_MINISTRIES.has(ministry);
+}
+
+export function ministryUsesRecurringSchedule(ministryType: string | null | undefined): boolean {
+  const ministry = scheduleMinistryType(ministryType);
+  return ministry != null && !UNSCHEDULED_MINISTRIES.has(ministry);
 }
 
 export const SERVICE_SCHEDULE_MINISTRY_OPTIONS: Array<{ value: string; label: string }> = (() => {

@@ -22,7 +22,7 @@ import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { useSaveCampusSetup } from "@/hooks/useCampusSetup";
 import { useToast } from "@/hooks/use-toast";
-import { ministryUsesCampusWeekendDefaults } from "@/lib/campusMinistrySchedule";
+import { ministryUsesCampusWeekendDefaults, ministryUsesRecurringSchedule } from "@/lib/campusMinistrySchedule";
 import {
   buildCampusMinistryDrafts,
   campusSetupError,
@@ -232,6 +232,7 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
               <div className="space-y-3">
                 {ministries.map((ministry) => {
                   const canFollowWeekend = ministry.ministryType !== "weekend" && ministryUsesCampusWeekendDefaults(ministry.ministryType);
+                  const usesRecurringSchedule = ministryUsesRecurringSchedule(ministry.ministryType);
                   return (
                     <div key={ministry.ministryType} className="rounded-lg border border-border p-4">
                       <label className="flex items-center gap-2 text-sm font-medium">
@@ -244,7 +245,7 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
                         />
                         {ministry.label}
                       </label>
-                      {ministry.enabled ? (
+                      {ministry.enabled && usesRecurringSchedule ? (
                         <div className="mt-4 space-y-4">
                           {canFollowWeekend ? (
                             <div className="flex items-center justify-between gap-4">
@@ -273,6 +274,10 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
                             />
                           )}
                         </div>
+                      ) : ministry.enabled ? (
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          Scheduled one date at a time, so no weekly service time is needed.
+                        </p>
                       ) : null}
                     </div>
                   );

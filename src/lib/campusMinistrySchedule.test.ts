@@ -5,6 +5,7 @@ import {
   configuredServiceWeekdays,
   enabledScheduleRows,
   ministryScheduleIsInherited,
+  ministryUsesRecurringSchedule,
   recurringServiceTimesForDate,
   weekendColumnsFromDrafts,
 } from "./campusMinistrySchedule.ts";
@@ -72,6 +73,12 @@ test("saving weekend drafts writes the campus Saturday and Sunday columns", () =
   assert.equal(columns.has_sunday_service, true);
   assert.deepEqual(columns.saturday_service_time, ["17:00"]);
   assert.deepEqual(enabledScheduleRows(drafts).map((row) => row.day_of_week).sort(), [0, 3, 6]);
+});
+
+test("audition is offered without a recurring service schedule", () => {
+  assert.equal(ministryUsesRecurringSchedule("audition"), false);
+  assert.equal(ministryUsesRecurringSchedule("weekend"), true);
+  assert.equal(ministryUsesRecurringSchedule("encounter"), true);
 });
 
 test("a ministry schedule supplies times only on its configured weekday", () => {

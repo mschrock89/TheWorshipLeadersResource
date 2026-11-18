@@ -8,7 +8,7 @@ import {
   existingCampusSaveAction,
   type CampusMinistryDraft,
 } from "@/lib/campusSetup";
-import { weekendColumnsFromDrafts } from "@/lib/campusMinistrySchedule";
+import { ministryUsesRecurringSchedule, weekendColumnsFromDrafts } from "@/lib/campusMinistrySchedule";
 
 type AttendanceSupabase = {
   rpc: (
@@ -256,12 +256,16 @@ export function useSaveCampusSetup() {
       await replaceCampusMinistries(campusId, enabled.map((ministry) => ministry.ministryType));
 
       const cleared = input.ministries
-        .filter((ministry) => !ministry.enabled || (ministry.followWeekend && ministry.ministryType !== "weekend"))
+        .filter((ministry) => (
+          !ministry.enabled
+          || (ministry.followWeekend && ministry.ministryType !== "weekend")
+          || !ministryUsesRecurringSchedule(ministry.ministryType)
+        ))
         .map((ministry) => ministry.ministryType);
       await deleteMinistrySchedules(campusId, cleared);
 
       for (const ministry of enabled) {
-        if (ministry.followWeekend) continue;
+        if (ministry.followWeekend || !ministryUsesRecurringSchedule(ministry.ministryType)) continue;
         await persistCampusMinistrySchedule({
           campusId,
           ministryType: ministry.ministryType,
