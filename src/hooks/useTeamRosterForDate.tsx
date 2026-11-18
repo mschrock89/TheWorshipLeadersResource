@@ -7,6 +7,7 @@ import { isSeparateProductionMinistry } from "@/lib/linkedProduction";
 import { getWeekendKey, isWeekend, getWeekendPairDate, sortPositionsByPriority } from "@/lib/utils";
 import { getRelatedWeekendServiceDates } from "@/lib/weekendServiceOverrides";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
+import { repeatedTeamLineup } from "@/lib/teamBuilderLineup";
 import {
   applyEffectiveActiveRotationPeriods,
   buildFirstScheduledDateByRotationName,
@@ -347,7 +348,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v25"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v26"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -588,9 +589,37 @@ export function useTeamRosterForDate(
       const suppressingDateOverrides = allDateOverrides.filter((override) =>
         isBlankTeamBuilderAssignment(override) || assignmentMatchesRosterFilter(override, ministryType)
       );
-      const visibleDateOverrides = matchingDateOverrides.filter(
+      let visibleDateOverrides = matchingDateOverrides.filter(
         (override) => !isBlankTeamBuilderAssignment(override),
       );
+      // No standing roster and no fill on this date. If Team Builder saved one
+      // lineup for the team, that lineup plays the later dates too.
+      if (
+        filteredMembers.length === 0 &&
+        visibleDateOverrides.length === 0 &&
+        suppressingDateOverrides.length === 0 &&
+        rotationPeriodIds.length > 0
+      ) {
+        const { data: periodOverrides, error: periodOverridesError } = await supabase
+          .from("team_member_date_overrides")
+          .select("id, member_name, position, position_slot, user_id, rotation_period_id, ministry_types, schedule_date")
+          .eq("team_id", teamId)
+          .in("rotation_period_id", rotationPeriodIds);
+        if (periodOverridesError) throw periodOverridesError;
+
+        const lineup = repeatedTeamLineup(
+          ((periodOverrides || []) as TeamMemberDateOverrideRow[])
+            .filter((override) => assignmentMatchesRosterFilter(override, ministryType))
+            .map((override) => ({
+              ...override,
+              scheduleDate: override.schedule_date,
+              positionSlot: override.position_slot,
+              userId: override.user_id,
+              memberName: override.member_name,
+            })),
+        );
+        if (lineup) visibleDateOverrides = lineup;
+      }
       const visibleDateOverrideIds = new Set(visibleDateOverrides.map((override) => override.id));
       const suppressingOverrideSlotKeys = new Set(
         suppressingDateOverrides
