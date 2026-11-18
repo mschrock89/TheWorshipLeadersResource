@@ -14,6 +14,10 @@ import {
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { assignmentBelongsOnServiceDay, isSpeakerAssignmentPosition } from "@/lib/teamScheduleSupport";
 import { overrideAppliesToRosterDate } from "@/lib/weekendPositionSplit";
+import {
+  compareRosterFallbackPeriods,
+  shouldBorrowRosterFromAnotherPeriod,
+} from "@/lib/rosterPeriodFallback";
 import { resolveChainedHolder, type AcceptedRosterSwap } from "@/lib/effectiveSwapSchedule";
 import { swapPositionsMatch } from "@/lib/swapPositions";
 
@@ -341,7 +345,7 @@ export function useTeamRosterForDate(
   const dateStr = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : null;
 
   return useQuery({
-    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v22"],
+    queryKey: ["team-roster-for-date", dateStr, teamId, campusId || userCampusIds, ministryType, resourceAppKey, "v23"],
     queryFn: async () => {
       if (!dateStr || !teamId) return [];
 
@@ -446,10 +450,11 @@ export function useTeamRosterForDate(
         return assignmentMatchesRosterFilter(m, ministryType);
       });
 
-      // Some campuses can have a scheduled team row without a rotation period that
-      // exactly covers the selected date yet. Fall back to the best campus-matching
-      // team membership instead of showing an empty roster.
-      if (filteredMembers.length === 0) {
+      // A date inside a campus rotation uses that rotation only. Shelbyville T3
+      // can be empty while an older trimester is still flagged active; borrowing
+      // that roster made the calendar show people Team Builder does not have
+      // on this date. Fall back only when no rotation covers the date at all.
+      if (shouldBorrowRosterFromAnotherPeriod(activePeriodIds.length, filteredMembers.length)) {
         const { data: fallbackMembers, error: fallbackMembersError } = await supabase
           .from("team_members")
           .select(`
@@ -522,12 +527,7 @@ export function useTeamRosterForDate(
                 startTime: start?.getTime() ?? 0,
               };
             })
-            .sort((a, b) => {
-              if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-              if (a.containsDate !== b.containsDate) return a.containsDate ? -1 : 1;
-              if (a.distance !== b.distance) return a.distance - b.distance;
-              return b.startTime - a.startTime;
-            });
+            .sort(compareRosterFallbackPeriods);
 
           filteredMembers = (rankedPeriods[0]?.rows || []) as TeamMemberRow[];
         } else {
