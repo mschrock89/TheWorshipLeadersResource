@@ -175,7 +175,13 @@ function getWelcomeEmailTheme(resourceAppKey: ResourceAppKey): WelcomeEmailTheme
   };
 }
 
-function getWelcomeEmailSubject(theme: WelcomeEmailTheme, isResend: boolean) {
+function getWelcomeEmailSubject(theme: WelcomeEmailTheme, isResend: boolean, isAudition: boolean) {
+  if (isAudition) {
+    return isResend
+      ? `Reminder: Your ${theme.appName} audition account`
+      : `Your ${theme.appName} audition account`;
+  }
+
   if (isResend) {
     return `Reminder: Welcome to ${theme.appName}!`;
   }
@@ -191,6 +197,7 @@ function generateWelcomeEmailHtml(
   userEmail: string,
   isResend: boolean,
   theme: WelcomeEmailTheme,
+  isAudition = false,
 ): string {
   const safeFirstName = escapeHtml(firstName);
   const safeCampusName = campusName ? escapeHtml(campusName) : undefined;
@@ -203,6 +210,51 @@ function generateWelcomeEmailHtml(
     ? ` background-image: url('${escapeHtml(theme.backgroundImageUrl)}'); background-size: cover; background-position: center 8%;`
     : "";
   const isStudentEmail = isStudentResourceAppKey(theme.resourceAppKey);
+  const campusPhrase = safeCampusName
+    ? ` at our <span style="color: ${theme.accent}; font-weight: 600;">${safeCampusName}</span> campus`
+    : "";
+  const hasName = Boolean(safeFirstName);
+  const headline = isResend
+    ? hasName
+      ? `Hey ${safeFirstName}, just a reminder!`
+      : "Hey, just a reminder!"
+    : isAudition
+      ? hasName
+        ? `Welcome, ${safeFirstName}!`
+        : "Welcome!"
+      : hasName
+        ? `Welcome to the team, ${safeFirstName}!`
+        : "Welcome to the team!";
+  const intro = isAudition
+    ? isResend
+      ? `We wanted to make sure you got set up with your ${theme.familyLabel} audition account${campusPhrase}.`
+      : `We're glad you're auditioning with ${theme.familyLabel}${campusPhrase}. Your account is ready so you can prepare.`
+    : isResend
+      ? `We wanted to make sure you got set up with the ${theme.familyLabel} team portal${campusPhrase}.`
+      : `We're thrilled to have you join the ${theme.familyLabel} family${campusPhrase}!`;
+  const accessLine = isAudition
+    ? "While you get ready for your audition, you can use the portal to:"
+    : `As a member of our ${theme.teamDescription}, you'll have access to our team portal where you can:`;
+  const bulletItems = isAudition
+    ? [
+        "See your audition date and details",
+        "Review songs and resources",
+        "Update your profile",
+      ]
+    : [
+        "View upcoming schedules and events",
+        "Connect with other team members",
+        "Update your profile and availability",
+      ];
+  const helpLine = isAudition
+    ? `If you have any questions as you prepare, reach out to your ${theme.contactLabel}. We're glad you're taking this step.`
+    : `If you have any questions or need assistance, don't hesitate to reach out to your ${theme.contactLabel}. We're here to help you settle in and thrive!`;
+  const footerReason = isAudition
+    ? "an audition account was created for you"
+    : `you were added to the ${theme.footerReason}`;
+  const bulletHtml = bulletItems
+    .map((item) => `<li style="margin-bottom: 8px;">${item}</li>`)
+    .join("\n          ");
   const headerHtml = isStudentEmail
     ? `
     <!-- Brand Header -->
@@ -256,24 +308,19 @@ function generateWelcomeEmailHtml(
     <tr>
       <td style="padding: 32px 48px;">
         <h2 style="color: ${theme.headerText}; font-size: 26px; font-weight: 700; line-height: 1.3; margin: 0 0 24px;">
-          ${isResend ? `Hey ${safeFirstName}, just a reminder!` : `Welcome to the team, ${safeFirstName}!`}
+          ${headline}
         </h2>
         
         <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
-          ${isResend 
-            ? `We wanted to make sure you got set up with the ${theme.familyLabel} team portal${safeCampusName ? ` at our <span style="color: ${theme.accent}; font-weight: 600;">${safeCampusName}</span> campus` : ''}.`
-            : `We're thrilled to have you join the ${theme.familyLabel} family${safeCampusName ? ` at our <span style="color: ${theme.accent}; font-weight: 600;">${safeCampusName}</span> campus` : ''}!`
-          }
+          ${intro}
         </p>
 
         <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
-          As a member of our ${theme.teamDescription}, you'll have access to our team portal where you can:
+          ${accessLine}
         </p>
 
         <ul style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 24px; padding-left: 24px;">
-          <li style="margin-bottom: 8px;">View upcoming schedules and events</li>
-          <li style="margin-bottom: 8px;">Connect with other team members</li>
-          <li style="margin-bottom: 8px;">Update your profile and availability</li>
+          ${bulletHtml}
         </ul>
 
         <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
@@ -310,7 +357,7 @@ function generateWelcomeEmailHtml(
         </table>
 
         <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 0 0 16px;">
-          If you have any questions or need assistance, don't hesitate to reach out to your ${theme.contactLabel}. We're here to help you settle in and thrive!
+          ${helpLine}
         </p>
 
         <p style="color: ${theme.bodyText}; font-size: 16px; line-height: 26px; margin: 32px 0 0;">
@@ -332,7 +379,7 @@ function generateWelcomeEmailHtml(
       <td style="padding: 24px 48px; text-align: center;">
         <p style="color: ${theme.mutedText}; font-size: 14px; margin: 0 0 8px;">Experience Community Church</p>
         <p style="color: ${theme.mutedText}; font-size: 12px; line-height: 18px; margin: 0;">
-          This email was sent because you were added to the ${theme.footerReason}.<br>
+          This email was sent because ${footerReason}.<br>
           If you believe this was a mistake, please contact your ${theme.contactLabel}.
         </p>
       </td>
@@ -399,6 +446,18 @@ serve(async (req: Request): Promise<Response> => {
       console.error("Error fetching campuses:", campusError);
     }
 
+    const { data: auditionRoles, error: auditionRolesError } = await supabase
+      .from("user_roles")
+      .select("user_id")
+      .in("user_id", userIds)
+      .eq("role", "audition_candidate");
+
+    if (auditionRolesError) {
+      console.error("Error fetching audition candidate roles:", auditionRolesError);
+    }
+
+    const auditionCandidateIds = new Set((auditionRoles || []).map((row) => row.user_id));
+
     // Build campus map
     const campusMap: Record<string, string> = {};
     if (userCampuses) {
@@ -416,16 +475,25 @@ serve(async (req: Request): Promise<Response> => {
     for (const profile of profiles || []) {
       try {
         // Extract first name
-        const firstName = profile.full_name?.split(" ")[0] || "Team Member";
+        const isAudition = auditionCandidateIds.has(profile.id);
+        const firstName = profile.full_name?.split(" ")[0] || (isAudition ? "" : "Team Member");
         const campusName = campusMap[profile.id];
 
         // Generate the email HTML
-        const html = generateWelcomeEmailHtml(firstName, campusName, loginUrl, profile.email, isResend, theme);
+        const html = generateWelcomeEmailHtml(
+          firstName,
+          campusName,
+          loginUrl,
+          profile.email,
+          isResend,
+          theme,
+          isAudition,
+        );
 
         // Send the email
         await sendEmail(
           [profile.email],
-          getWelcomeEmailSubject(theme, isResend),
+          getWelcomeEmailSubject(theme, isResend, isAudition),
           html,
           theme.fromName
         );

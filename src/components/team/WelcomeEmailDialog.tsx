@@ -23,6 +23,7 @@ interface WelcomeEmailDialogProps {
   profiles: Profile[];
   mode: "bulk" | "individual" | "resend";
   selectedMember?: Profile;
+  auditionCandidateIds?: ReadonlySet<string>;
   onEmailSent?: () => void;
 }
 
@@ -32,6 +33,7 @@ export function WelcomeEmailDialog({
   profiles,
   mode,
   selectedMember,
+  auditionCandidateIds,
   onEmailSent,
 }: WelcomeEmailDialogProps) {
   const { toast } = useToast();
@@ -47,6 +49,14 @@ export function WelcomeEmailDialog({
     : mode === "resend"
     ? profiles.filter(p => p.welcome_email_sent_at)
     : [];
+
+  const previewRecipientIds = mode === "individual" && selectedMember
+    ? [selectedMember.id]
+    : selectedIds.size > 0
+      ? Array.from(selectedIds)
+      : eligibleProfiles.map((profile) => profile.id);
+  const previewIsAudition = previewRecipientIds.length > 0
+    && previewRecipientIds.every((id) => auditionCandidateIds?.has(id));
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -297,6 +307,7 @@ export function WelcomeEmailDialog({
           ? selectedMember.email 
           : "john.smith@example.com"}
         isResend={mode === "resend" || (mode === "individual" && !!selectedMember?.welcome_email_sent_at)}
+        isAudition={previewIsAudition}
         resourceAppKey={resourceAppKey}
       />
     </Dialog>

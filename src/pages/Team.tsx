@@ -107,6 +107,14 @@ export default function Team() {
   const { data: userCampusMap = {} } = useProfilesWithCampuses();
   const { data: campusMinistryPositions = [] } = useAllCampusMinistryPositions();
   const { data: directoryBaseRoles = [] } = useDirectoryBaseRoles();
+  const auditionCandidateIds = useMemo(
+    () => new Set(
+      directoryBaseRoles
+        .filter(({ role }) => role === "audition_candidate")
+        .map(({ user_id }) => user_id),
+    ),
+    [directoryBaseRoles],
+  );
   const { data: campuses = [] } = useCampuses();
   const { canManageTeam, can } = useAuth();
   const location = useLocation();
@@ -907,6 +915,7 @@ export default function Team() {
         profiles={filteredProfiles}
         mode={emailDialogMode}
         selectedMember={selectedMemberForEmail}
+        auditionCandidateIds={auditionCandidateIds}
         onEmailSent={handleEmailSent}
       />
 
