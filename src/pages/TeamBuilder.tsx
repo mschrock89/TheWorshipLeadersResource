@@ -86,7 +86,7 @@ import { useUserRoles } from "@/hooks/useUserRoles";
 import {
   POSITION_SLOTS,
   STUDENT_TEAM_BUILDER_MINISTRY_TYPE,
-  isTeamVisibleForMinistry,
+  isWorshipTeamVisibleForScope,
   resolveTeamBuilderSlotMinistryType,
   breakRequestMatchesMinistryFilter,
   memberMatchesMinistryFilter,
@@ -789,8 +789,10 @@ export default function TeamBuilder() {
 
   // Filter teams by selected ministry type
   const filteredTeams = useMemo(() => {
-    return teams.filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
-  }, [teams, selectedMinistryType]);
+    return teams.filter((team) =>
+      isWorshipTeamVisibleForScope(team, selectedCampusId, selectedMinistryType),
+    );
+  }, [selectedCampusId, selectedMinistryType, teams]);
 
   const displayTeams = useMemo(() => {
     const fallbackTeamsForApp = Object.values(FALLBACK_TEAM_DEFINITIONS).filter((team) => {
@@ -800,7 +802,7 @@ export default function TeamBuilder() {
     });
 
     const canonicalVisibleFallbackTeams = fallbackTeamsForApp.filter((team) =>
-      isTeamVisibleForMinistry(team.name, selectedMinistryType),
+      isWorshipTeamVisibleForScope(team, selectedCampusId, selectedMinistryType),
     );
 
     const mergeMissingTeams = (sourceTeams: WorshipTeam[]) => {
@@ -833,10 +835,10 @@ export default function TeamBuilder() {
           }
         );
       })
-      .filter((team) => isTeamVisibleForMinistry(team.name, selectedMinistryType));
+      .filter((team) => isWorshipTeamVisibleForScope(team, selectedCampusId, selectedMinistryType));
 
     return mergeMissingTeams(fallbackTeams);
-  }, [filteredTeams, isStudentTeamBuilder, members, resourceAppKey, selectedMinistryType, teams]);
+  }, [filteredTeams, isStudentTeamBuilder, members, resourceAppKey, selectedCampusId, selectedMinistryType, teams]);
 
   const hiddenTeamIdSet = useMemo(
     () => new Set(teamHides.map((hide) => hide.team_id)),
@@ -2035,7 +2037,15 @@ export default function TeamBuilder() {
     if (editingTeam) {
       await updateWorshipTeam.mutateAsync({ team: editingTeam, value });
     } else {
-      await createWorshipTeam.mutateAsync(value);
+      if (!selectedCampusId || !selectedMinistryType || selectedMinistryType === "all") {
+        toast.error("Choose a campus and ministry before adding a team.");
+        return;
+      }
+      await createWorshipTeam.mutateAsync({
+        ...value,
+        campusId: selectedCampusId,
+        ministryType: selectedMinistryType,
+      });
     }
     setTeamDialogOpen(false);
     setEditingTeam(null);

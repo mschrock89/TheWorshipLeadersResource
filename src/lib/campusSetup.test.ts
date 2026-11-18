@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { campusOffersMinistry, campusOffersViewMinistry, campusSetupError, buildCampusMinistryDrafts } from "./campusSetup.ts";
+import {
+  attendanceSettingsWarning,
+  buildCampusMinistryDrafts,
+  campusOffersMinistry,
+  campusOffersViewMinistry,
+  campusSaveFailureMessage,
+  campusSetupError,
+  existingCampusSaveAction,
+} from "./campusSetup.ts";
 
 test("a campus with no ministry list still offers every ministry", () => {
   assert.equal(campusOffersMinistry(null, "encounter"), true);
@@ -92,4 +100,42 @@ test("campus setup requires a unique name, a ministry, and service days", () => 
     }) || "",
     /Weekend Services/,
   );
+});
+
+test("a campus created earlier today can be finished, and older names stay taken", () => {
+  const now = Date.parse("2026-11-18T15:30:00.000Z");
+  assert.equal(existingCampusSaveAction(null, now), "insert");
+  assert.equal(
+    existingCampusSaveAction({
+      is_network_wide: false,
+      created_at: "2026-11-18T15:04:15.619Z",
+    }, now),
+    "resume",
+  );
+  assert.equal(
+    existingCampusSaveAction({
+      is_network_wide: true,
+      created_at: "2026-11-18T15:04:15.619Z",
+    }, now),
+    "duplicate",
+  );
+  assert.equal(
+    existingCampusSaveAction({
+      is_network_wide: false,
+      created_at: "2025-12-23T21:25:36.867Z",
+    }, now),
+    "duplicate",
+  );
+});
+
+test("campus save errors stay readable", () => {
+  assert.equal(
+    campusSaveFailureMessage({ code: "23505", message: 'duplicate key value violates unique constraint "campuses_name_key"' }),
+    "A campus with that name already exists.",
+  );
+  assert.equal(
+    attendanceSettingsWarning({ code: "PGRST202", message: "Could not find the function public.update_attendance_campus_settings" }),
+    "Student attendance settings were not saved.",
+  );
+  assert.equal(attendanceSettingsWarning(null), null);
 });

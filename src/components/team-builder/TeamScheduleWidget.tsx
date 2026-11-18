@@ -46,11 +46,10 @@ import {
   useClearScheduleEntries,
   usePublishScheduleNetworkWide,
 } from "@/hooks/useTeamScheduleEditor";
-import { useWorshipTeams } from "@/hooks/useTeamSchedule";
-import { useTeamHidesForPeriod } from "@/hooks/useTeamBuilder";
+import { useTeamHidesForPeriod, useWorshipTeams } from "@/hooks/useTeamBuilder";
 import { useCampuses } from "@/hooks/useCampuses";
 import { useAuth } from "@/hooks/useAuth";
-import { isTeamVisibleForMinistry } from "@/lib/constants";
+import { isWorshipTeamVisibleForScope } from "@/lib/constants";
 
 interface TeamScheduleWidgetProps {
   campusId: string | null;
@@ -191,7 +190,6 @@ export function TeamScheduleWidget({
     scheduleMinistryFilter
   );
   const { data: campuses = [] } = useCampuses();
-  const { data: teams = [] } = useWorshipTeams();
   const { data: teamHides = [] } = useTeamHidesForPeriod(rotationPeriodId);
   const hiddenTeamIdSet = useMemo(
     () => new Set(teamHides.map((hide) => hide.team_id)),
@@ -200,14 +198,22 @@ export function TeamScheduleWidget({
   const activeScheduleMinistry = useMemo(() => {
     return normalizeScheduleMinistryFilter(scheduleMinistryFilter);
   }, [scheduleMinistryFilter]);
+  const { data: teams = [] } = useWorshipTeams(
+    campusId,
+    activeScheduleMinistry || ministryFilter || "all",
+  );
   const selectableTeams = useMemo(
     () =>
       teams.filter(
         (team) =>
           !hiddenTeamIdSet.has(team.id) &&
-          isTeamVisibleForMinistry(team.name, activeScheduleMinistry || ministryFilter || "all"),
+          isWorshipTeamVisibleForScope(
+            team,
+            campusId,
+            activeScheduleMinistry || ministryFilter || "all",
+          ),
       ),
-    [activeScheduleMinistry, hiddenTeamIdSet, ministryFilter, teams],
+    [activeScheduleMinistry, campusId, hiddenTeamIdSet, ministryFilter, teams],
   );
   const getTeamsForPicker = useCallback(
     (currentTeamId?: string | null) => {

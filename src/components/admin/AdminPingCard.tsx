@@ -24,7 +24,7 @@ import { useProfiles } from "@/hooks/useProfiles";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useActiveCampMode } from "@/hooks/useCampMode";
 import { supabase } from "@/integrations/supabase/client";
-import { SET_PLANNER_MINISTRY_OPTIONS, STUDENT_RESOURCE_APP_KEYS, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
+import { isCustomWorshipTeamName, SET_PLANNER_MINISTRY_OPTIONS, STUDENT_RESOURCE_APP_KEYS, STUDENT_TEAM_BUILDER_MINISTRY_TYPE } from "@/lib/constants";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { cn } from "@/lib/cn";
 import { toast } from "sonner";
@@ -117,7 +117,7 @@ export function AdminPingCard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worship_teams")
-        .select("id, name")
+        .select("id, name, campus_id")
         .eq("resource_app_key", resourceAppKey)
         .order("name", { ascending: true });
       if (error) throw error;
@@ -134,17 +134,24 @@ export function AdminPingCard() {
       : SET_PLANNER_MINISTRY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
     ).filter((option) => campusOffersMinistry(campusMinistries, option.value));
 
-    const teamOptions = (teamsQuery.data || []).map((team) => ({
-      value: `team:${team.id}`,
-      label: team.name,
-    }));
+    const teamOptions = (teamsQuery.data || [])
+      .filter((team) => {
+        if (!team.campus_id) {
+          return campusId === "all" || !isCustomWorshipTeamName(team.name);
+        }
+        return campusId === "all" || team.campus_id === campusId;
+      })
+      .map((team) => ({
+        value: `team:${team.id}`,
+        label: team.name,
+      }));
 
     const optionsByValue = new Map<string, MinistryOption>();
     [...baseOptions, ...teamOptions].forEach((option) => {
       optionsByValue.set(option.value, option);
     });
     return Array.from(optionsByValue.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [campusMinistries, isStudentApp, teamsQuery.data]);
+  }, [campusId, campusMinistries, isStudentApp, teamsQuery.data]);
 
   const gradeOptions = isStudentApp
     ? useCampAudience && activeCamp

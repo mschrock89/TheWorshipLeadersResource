@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 } from "@/components/admin/AdminToolCard";
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { DayScheduleFields } from "@/components/admin/DayScheduleFields";
-import type { Campus } from "@/hooks/useCampuses";
+import { useNetworkWideCampus, type Campus } from "@/hooks/useCampuses";
 import { useAttendanceCampuses } from "@/hooks/useAttendance";
 import { useCampusMinistrySchedules } from "@/hooks/useCampusMinistrySchedules";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
@@ -44,6 +44,8 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
   const ministriesQuery = useCampusMinistrySet(campusId);
   const attendanceQuery = useAttendanceCampuses();
   const saveCampus = useSaveCampusSetup();
+  const networkWideCampus = useNetworkWideCampus();
+  const savingRef = useRef(false);
   const sourceCampuses = campuses.filter((entry) => entry.id !== campusId);
 
   const [name, setName] = useState("");
@@ -120,6 +122,11 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
   };
 
   const handleSave = () => {
+    if (savingRef.current || saveCampus.isPending) return;
+    const existingNames = campuses.map((entry) => ({ id: entry.id, name: entry.name }));
+    if (networkWideCampus.data) {
+      existingNames.push({ id: networkWideCampus.data.id, name: networkWideCampus.data.name });
+    }
     const error = campusSetupError({
       name,
       ministries,
@@ -127,13 +134,14 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
       latitude,
       longitude,
       radius,
-      existingNames: campuses.map((entry) => ({ id: entry.id, name: entry.name })),
+      existingNames,
       campusId,
     });
     if (error) {
       toast({ title: error, variant: "destructive" });
       return;
     }
+    savingRef.current = true;
     saveCampus.mutate({
       campusId,
       name,
@@ -147,7 +155,13 @@ export function CampusSetupEditor({ campuses, campusId, onBack, onSaved }: Campu
       copyServiceFlows,
       copyNotificationChoices,
     }, {
-      onSuccess: (result) => onSaved(result.campusId),
+      onSuccess: (result) => {
+        savingRef.current = false;
+        onSaved(result.campusId);
+      },
+      onError: () => {
+        savingRef.current = false;
+      },
     });
   };
 

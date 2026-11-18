@@ -7,8 +7,10 @@ import {
   POSITION_SLOTS,
   STUDENT_TEAM_NAMES,
   getTeamBuilderSlotCategories,
+  isWorshipTeamVisibleForScope,
   memberMatchesMinistryFilter,
   normalizeWeekendWorshipMinistryType,
+  scopeWorshipTeamMinistryType,
 } from "@/lib/constants";
 import { isBlankTeamBuilderAssignment } from "@/lib/teamBuilderBlankSlot";
 import { countsAsTrimesterRosterAssignment } from "@/lib/teamBuilderRosterAssignment";
@@ -59,6 +61,8 @@ export interface WorshipTeam {
   name: string;
   color: string;
   icon: string;
+  campus_id?: string | null;
+  ministry_type?: string | null;
   template_config?: TeamTemplateConfig | null;
 }
 
@@ -679,9 +683,15 @@ export function useWorshipTeams(campusId: string | null, ministryType: string | 
 
       if (teamsError) throw teamsError;
 
-      const baseTeams = (teams || []).length > 0
-        ? ((teams || []) as WorshipTeam[])
-        : getDefaultTeamsForResourceApp(resourceAppKey);
+      const allTeams = (teams || []) as WorshipTeam[];
+      const loadedTeams = allTeams.filter((team) =>
+        isWorshipTeamVisibleForScope(team, campusId, ministryType),
+      );
+      const baseTeams = allTeams.length > 0
+        ? loadedTeams
+        : getDefaultTeamsForResourceApp(resourceAppKey).filter((team) =>
+            isWorshipTeamVisibleForScope(team, campusId, ministryType),
+          );
 
       const templateMinistryType =
         normalizeWeekendWorshipMinistryType(
@@ -739,18 +749,30 @@ export interface WorshipTeamEditorValue {
   icon: string;
 }
 
+export interface CreateWorshipTeamInput extends WorshipTeamEditorValue {
+  campusId: string;
+  ministryType: string;
+}
+
 // Create a brand-new custom worship team for the current resource app.
 export function useCreateWorshipTeam() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (value: WorshipTeamEditorValue) => {
+    mutationFn: async (value: CreateWorshipTeamInput) => {
+      const ministryType = scopeWorshipTeamMinistryType(value.ministryType);
+      if (!value.campusId || !ministryType) {
+        throw new Error("Choose a campus and ministry before adding a team.");
+      }
+
       const { data, error } = await supabase
         .from("worship_teams")
         .insert({
           name: value.name,
           color: value.color,
           icon: value.icon,
+          campus_id: value.campusId,
+          ministry_type: ministryType,
           resource_app_key: getCurrentResourceAppKey(),
         })
         .select("*")
@@ -794,6 +816,8 @@ export function useUpdateWorshipTeam() {
             name: value.name,
             color: value.color,
             icon: value.icon,
+            campus_id: team.campus_id ?? null,
+            ministry_type: team.ministry_type ?? null,
             resource_app_key: getCurrentResourceAppKey(),
             template_config: (team.template_config ?? {}) as TeamTemplateConfig,
           },
@@ -1313,6 +1337,7 @@ export function useAssignMember() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       queryClient.invalidateQueries({ queryKey: ["team-members-period", variables.rotationPeriodId] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
       queryClient.invalidateQueries({ queryKey: ["my-scheduled-dates"] });
@@ -1406,6 +1431,7 @@ export function useRemoveMember() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
     },
     onError: (error) => {
@@ -1473,6 +1499,7 @@ export function useAssignMemberDateOverride() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides", variables.rotationPeriodId] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
       queryClient.invalidateQueries({ queryKey: ["my-team-date-overrides"] });
@@ -1570,6 +1597,7 @@ export function useRemoveMemberDateOverride() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-member-date-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       queryClient.invalidateQueries({ queryKey: ["team-roster-for-date"] });
       if (!variables.suppressToast) {
         toast({ title: "Split assignment removed" });
@@ -1649,6 +1677,7 @@ export function useCopyFromPreviousPeriod() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       toast({ title: "Teams copied successfully" });
     },
     onError: (error) => {
@@ -1680,6 +1709,7 @@ export function useClearPeriod() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       toast({ title: "All assignments cleared" });
     },
     onError: (error) => {
@@ -2176,6 +2206,7 @@ export function useUpdateMinistryTypes() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       toast({ title: "Ministry types updated" });
     },
     onError: (error) => {
@@ -3319,6 +3350,7 @@ export function useAutoBuildTeams() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["team-members-period"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       toast({ 
         title: `Auto-built ${result.teamsBuilt} teams`,
         description:
@@ -3461,6 +3493,7 @@ export function useToggleTeamHide() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["team-hides", variables.rotationPeriodId] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-campus-roster"] });
       toast({
         title: variables.isCurrentlyHidden
           ? "Team unhidden"

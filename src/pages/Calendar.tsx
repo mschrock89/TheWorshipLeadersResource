@@ -25,6 +25,11 @@ import {
   useRemoveCustomServiceAssignment,
 } from "@/hooks/useCustomServices";
 import { useTeamSchedule, type TeamScheduleEntry } from "@/hooks/useTeamSchedule";
+import {
+  buildCampusCalendarRosterGate,
+  isCalendarTeamScheduleVisible,
+  type CampusCalendarRosterGate,
+} from "@/lib/campusCalendarRoster";
 import { useMyTeamAssignments } from "@/hooks/useMyTeamAssignments";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { useSongsForDate } from "@/hooks/useSongs";
@@ -705,6 +710,73 @@ function StandardCalendar() {
       return data?.name ?? null;
     },
   });
+  const { data: campusRosterGate } = useQuery({
+    queryKey: ["calendar-campus-roster", effectiveCampusId, resourceAppKey],
+    enabled: !!effectiveCampusId,
+    queryFn: async (): Promise<CampusCalendarRosterGate> => {
+      const { data: periods, error: periodsError } = await supabase
+        .from("rotation_periods")
+        .select("id, name")
+        .eq("campus_id", effectiveCampusId!);
+
+      if (periodsError) throw periodsError;
+
+      const periodRows = (periods || []).filter((period) => period.id && period.name);
+      const periodIds = periodRows.map((period) => period.id);
+      if (periodIds.length === 0) {
+        return buildCampusCalendarRosterGate({ periods: [], assignments: [], hides: [] });
+      }
+
+      const [membersResult, overridesResult, hidesResult] = await Promise.all([
+        supabase
+          .from("team_members")
+          .select("rotation_period_id, team_id, user_id, member_name, worship_teams(name)")
+          .in("rotation_period_id", periodIds),
+        supabase
+          .from("team_member_date_overrides")
+          .select("rotation_period_id, team_id, user_id, member_name, schedule_date, worship_teams(name)")
+          .in("rotation_period_id", periodIds),
+        supabase
+          .from("team_period_hides")
+          .select("rotation_period_id, team_id")
+          .in("rotation_period_id", periodIds),
+      ]);
+
+      if (membersResult.error) throw membersResult.error;
+      if (overridesResult.error) throw overridesResult.error;
+      if (hidesResult.error) throw hidesResult.error;
+
+      const teamNameOf = (
+        team: { name?: string | null } | { name?: string | null }[] | null,
+      ) => (Array.isArray(team) ? team[0]?.name : team?.name) ?? null;
+
+      const standingAssignments = (membersResult.data || []).map((row) => ({
+        rotationPeriodId: row.rotation_period_id,
+        teamId: row.team_id,
+        teamName: teamNameOf(row.worship_teams),
+        userId: row.user_id,
+        memberName: row.member_name,
+      }));
+      const dateAssignments = (overridesResult.data || []).map((row) => ({
+        rotationPeriodId: row.rotation_period_id,
+        teamId: row.team_id,
+        teamName: teamNameOf(row.worship_teams),
+        userId: row.user_id,
+        memberName: row.member_name,
+        scheduleDate: row.schedule_date,
+      }));
+      const assignments = [...standingAssignments, ...dateAssignments];
+
+      return buildCampusCalendarRosterGate({
+        periods: periodRows.map((period) => ({ id: period.id, name: period.name })),
+        assignments,
+        hides: (hidesResult.data || []).map((hide) => ({
+          rotationPeriodId: hide.rotation_period_id,
+          teamId: hide.team_id,
+        })),
+      });
+    },
+  });
   const {
     data: teamSchedule = []
   } = useTeamSchedule(
@@ -1336,8 +1408,12 @@ function StandardCalendar() {
       }
     }
 
+    if (campusRosterGate) {
+      entries = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, campusRosterGate));
+    }
+
     return entries;
-  }, [activeRotationPeriodName, teamSchedule]);
+  }, [activeRotationPeriodName, campusRosterGate, teamSchedule]);
 
   // Get events for a specific day
   const getEventsForDay = (day: number, options?: { ignoreMinistryFilter?: boolean }): Event[] => {
@@ -1772,6 +1848,10 @@ function StandardCalendar() {
       }
     }
 
+    if (campusRosterGate) {
+      entries = entries.filter((entry) => isCalendarTeamScheduleVisible(entry, campusRosterGate));
+    }
+
     const canAccessCampus = isAdmin || userCampusIds.includes(campusFilter);
     if (!canAccessCampus) {
       return [];
@@ -1828,7 +1908,7 @@ function StandardCalendar() {
         teamName: videoServiceDayLabel ? `${baseTeamName} ${videoServiceDayLabel}` : baseTeamName,
       }];
     });
-  }, [activeRotationPeriodName, campusFilter, campuses, isAdmin, ministryFilter, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
+  }, [activeRotationPeriodName, campusFilter, campusRosterGate, campuses, isAdmin, ministryFilter, roleNames, selectedDateStr, teamSchedule, userCampusIds]);
 
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));

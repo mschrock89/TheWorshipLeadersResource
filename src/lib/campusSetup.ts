@@ -160,3 +160,41 @@ export function campusSetupError({
   }
   return null;
 }
+
+/** A create that already inserted the campus can be finished for the rest of the day. Older campuses stay protected. */
+export const PARTIAL_CAMPUS_RESUME_MS = 24 * 60 * 60 * 1000;
+
+export function existingCampusSaveAction(
+  campus: { is_network_wide?: boolean | null; created_at?: string | null } | null,
+  now = Date.now(),
+): "insert" | "resume" | "duplicate" {
+  if (!campus) return "insert";
+  if (campus.is_network_wide) return "duplicate";
+  const created = campus.created_at ? new Date(campus.created_at).getTime() : Number.NaN;
+  if (Number.isNaN(created) || now - created > PARTIAL_CAMPUS_RESUME_MS) return "duplicate";
+  return "resume";
+}
+
+export function campusSaveFailureMessage(error: unknown): string {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+  const code = typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code || "")
+    : "";
+  if (code === "23505" || message.includes("campuses_name_key")) {
+    return "A campus with that name already exists.";
+  }
+  return message || "Could not save campus.";
+}
+
+export function attendanceSettingsWarning(error: { message?: string; code?: string } | null): string | null {
+  if (!error) return null;
+  const message = error.message || "";
+  if (error.code === "PGRST202" || message.includes("Could not find the function")) {
+    return "Student attendance settings were not saved.";
+  }
+  return message || "Student attendance settings were not saved.";
+}

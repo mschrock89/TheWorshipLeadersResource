@@ -5127,33 +5127,47 @@ export type Database = {
       }
       worship_teams: {
         Row: {
+          campus_id: string | null
           color: string
           created_at: string
           icon: string
           id: string
+          ministry_type: string | null
           name: string
           resource_app_key: string
           template_config: Json
         }
         Insert: {
+          campus_id?: string | null
           color: string
           created_at?: string
           icon: string
           id?: string
+          ministry_type?: string | null
           name: string
           resource_app_key?: string
           template_config?: Json
         }
         Update: {
+          campus_id?: string | null
           color?: string
           created_at?: string
           icon?: string
           id?: string
+          ministry_type?: string | null
           name?: string
           resource_app_key?: string
           template_config?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "worship_teams_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

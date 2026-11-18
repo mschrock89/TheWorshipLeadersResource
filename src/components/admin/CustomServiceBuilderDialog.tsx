@@ -11,7 +11,7 @@ import {
   useSaveCustomServiceRoster,
   useUpdateCustomService,
 } from "@/hooks/useCustomServices";
-import { POSITION_LABELS, POSITION_SLOTS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
+import { isWorshipTeamVisibleForScope, POSITION_LABELS, POSITION_SLOTS, SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
 import { campusOffersMinistry } from "@/lib/campusSetup";
 import { useCampusMinistrySet } from "@/hooks/useCampusMinistries";
 import { getCurrentResourceAppKey } from "@/lib/resourceApp";
@@ -169,11 +169,11 @@ function rosterGroupForMember(ministryTypes: string[] | null): RosterGroup {
  * usable as a starting lineup. Each team is split into worship / production /
  * video crews so support teams can be copied onto the service independently.
  */
-function useCopyableTeamRosters(campusId?: string, serviceDate?: string) {
+function useCopyableTeamRosters(campusId?: string, serviceDate?: string, ministryType?: string) {
   const resourceAppKey = getCurrentResourceAppKey();
 
   return useQuery({
-    queryKey: ["copyable-team-rosters", campusId, serviceDate, resourceAppKey],
+    queryKey: ["copyable-team-rosters", campusId, serviceDate, ministryType, resourceAppKey],
     enabled: !!campusId && !!serviceDate,
     queryFn: async () => {
       const { data: periods, error: periodsError } = await supabase
@@ -189,7 +189,7 @@ function useCopyableTeamRosters(campusId?: string, serviceDate?: string) {
 
       const { data: teams, error: teamsError } = await supabase
         .from("worship_teams")
-        .select("id, name")
+        .select("id, name, campus_id, ministry_type")
         .eq("resource_app_key", resourceAppKey)
         .order("name");
       if (teamsError) throw teamsError;
@@ -205,6 +205,7 @@ function useCopyableTeamRosters(campusId?: string, serviceDate?: string) {
 
       const rosters: CopyableTeamRoster[] = [];
       for (const team of teams) {
+        if (!isWorshipTeamVisibleForScope(team, campusId, ministryType || "all")) continue;
         const grouped: Record<RosterGroup, Array<{ userId: string; name: string; role: TeamPosition }>> = {
           worship: [],
           production: [],
@@ -299,7 +300,11 @@ export function CustomServiceBuilderDialog({
 
   const { data: campusMembers = [] } = useCustomServiceCampusMembers(campusId || undefined);
   const { data: breakStatuses } = useBreakStatusesForDate(serviceDate || undefined);
-  const { data: copyableRosters = [] } = useCopyableTeamRosters(campusId || undefined, serviceDate || undefined);
+  const { data: copyableRosters = [] } = useCopyableTeamRosters(
+    campusId || undefined,
+    serviceDate || undefined,
+    ministry || undefined,
+  );
   const { data: existingAssignments = [] } = useCustomServiceAssignments(
     existingService?.id,
     existingService?.service_date,

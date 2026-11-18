@@ -397,10 +397,9 @@ export function getTeamRotationNumber(teamName: string): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-// Built-in teams whose per-ministry visibility is intentionally controlled by
-// MINISTRY_TEAM_FILTER. Any team NOT in this set is treated as a user-created
-// custom team and is shown under every ministry filter (it was never tied to a
-// specific rotation, so hiding it behind a filter would make it "disappear").
+// Built-in rotation teams whose visibility is controlled by MINISTRY_TEAM_FILTER.
+// Those teams are shared across campuses; each campus has its own roster.
+// Anything else is a custom team and belongs to exactly one campus and ministry.
 const BUILTIN_TEAM_NAMES = new Set(
   [
     ...Object.values(MINISTRY_TEAM_FILTER).flatMap((list) => list ?? []),
@@ -412,7 +411,27 @@ const BUILTIN_TEAM_NAMES = new Set(
   ].map((name) => name.toLowerCase()),
 );
 
+export function isCustomWorshipTeamName(teamName: string): boolean {
+  if (BUILTIN_TEAM_NAMES.has(teamName.trim().toLowerCase())) return false;
+  return getTeamRotationNumber(teamName) == null;
+}
+
+// Collapse weekend aliases and camp session variants so a team created for
+// HS Worship does not also match Weekend Worship, while Saturday/Sunday and
+// camp morning/evening still share one team.
+export function scopeWorshipTeamMinistryType(
+  ministryType: string | null | undefined,
+): string | null {
+  if (!ministryType || ministryType === "all") return null;
+  const weekendNormalized = normalizeWeekendWorshipMinistryType(ministryType) || ministryType;
+  return normalizeSessionSetMinistryType(weekendNormalized) || weekendNormalized;
+}
+
 export function isTeamVisibleForMinistry(teamName: string, ministryType: string): boolean {
+  // Custom teams are campus- and ministry-scoped. Name matching alone must not
+  // show them under every ministry.
+  if (isCustomWorshipTeamName(teamName)) return false;
+
   const allowedTeams = MINISTRY_TEAM_FILTER[ministryType];
   if (!allowedTeams) return true;
   if (allowedTeams.length === 0) return false;
@@ -422,13 +441,33 @@ export function isTeamVisibleForMinistry(teamName: string, ministryType: string)
   }
 
   const teamNumber = getTeamRotationNumber(teamName);
-  if (teamNumber == null) {
-    // Custom teams (anything that isn't a recognized built-in) stay visible so a
-    // newly created team shows up no matter which ministry filter is active.
-    return !BUILTIN_TEAM_NAMES.has(teamName.toLowerCase());
-  }
+  if (teamNumber == null) return false;
 
   return allowedTeams.some((allowedTeamName) => getTeamRotationNumber(allowedTeamName) === teamNumber);
+}
+
+export function isWorshipTeamVisibleForScope(
+  team: {
+    name: string;
+    campus_id?: string | null;
+    ministry_type?: string | null;
+  },
+  campusId: string | null | undefined,
+  ministryType: string | null | undefined,
+): boolean {
+  const isScopedTeam =
+    isCustomWorshipTeamName(team.name) || !!team.campus_id || !!team.ministry_type;
+
+  if (!isScopedTeam) {
+    return isTeamVisibleForMinistry(team.name, ministryType && ministryType !== "all" ? ministryType : "all");
+  }
+
+  if (!campusId || !team.campus_id || team.campus_id !== campusId) return false;
+  if (!ministryType || ministryType === "all") return true;
+
+  const selectedScope = scopeWorshipTeamMinistryType(ministryType);
+  const teamScope = scopeWorshipTeamMinistryType(team.ministry_type);
+  return !!selectedScope && selectedScope === teamScope;
 }
 
 const WEEKEND_WORSHIP_ALIASES = new Set(["weekend", "weekend_team", "sunday_am"]);

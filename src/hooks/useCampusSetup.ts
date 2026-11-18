@@ -2,14 +2,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { persistCampusMinistrySchedule } from "@/hooks/useCampusMinistrySchedules";
-import type { CampusMinistryDraft } from "@/lib/campusSetup";
+import {
+  attendanceSettingsWarning,
+  campusSaveFailureMessage,
+  existingCampusSaveAction,
+  type CampusMinistryDraft,
+} from "@/lib/campusSetup";
 import { weekendColumnsFromDrafts } from "@/lib/campusMinistrySchedule";
 
 type AttendanceSupabase = {
   rpc: (
     functionName: string,
     args: Record<string, unknown>,
-  ) => Promise<{ error: { message: string } | null }>;
+  ) => Promise<{ error: { message: string; code?: string } | null }>;
 };
 
 export type CampusSetupInput = {
@@ -53,6 +58,22 @@ function ministryIsOffered(offered: Set<string>, ministryType: string) {
   return offered.has(ministryType) || (ministryType === "weekend_team" && offered.has("weekend"));
 }
 
+type SavedCampus = {
+  id: string;
+  name: string;
+  is_network_wide: boolean | null;
+  created_at: string;
+};
+
+async function findCampusByName(name: string): Promise<SavedCampus | null> {
+  const { data, error } = await supabase
+    .from("campuses")
+    .select("id, name, is_network_wide, created_at");
+  if (error) throw error;
+  const trimmed = name.trim().toLowerCase();
+  return (data || []).find((campus) => campus.name.trim().toLowerCase() === trimmed) ?? null;
+}
+
 async function copyCampusSetup(
   sourceCampusId: string,
   campusId: string,
@@ -94,32 +115,44 @@ async function copyCampusSetup(
     if (flowError) {
       warnings.push("Service flow templates were not copied.");
     } else {
-      for (const flow of flows || []) {
-        if (!ministryIsOffered(offered, flow.ministry_type)) continue;
-        const { data: created, error: createError } = await supabase
-          .from("service_flow_templates")
-          .insert({ campus_id: campusId, ministry_type: flow.ministry_type, name: flow.name })
-          .select("id")
-          .single();
-        if (createError || !created) {
-          warnings.push("Service flow templates were not copied.");
-          break;
-        }
-        const { data: items, error: itemError } = await supabase
-          .from("service_flow_template_items")
-          .select("item_type, sequence_order, title, default_duration_seconds")
-          .eq("template_id", flow.id);
-        if (itemError) {
-          warnings.push("Service flow templates were not copied.");
-          break;
-        }
-        if (!items || items.length === 0) continue;
-        const { error: insertItemsError } = await supabase.from("service_flow_template_items").insert(
-          items.map((item) => ({ ...item, template_id: created.id })),
+      const { data: existingFlows, error: existingFlowError } = await supabase
+        .from("service_flow_templates")
+        .select("ministry_type, name")
+        .eq("campus_id", campusId);
+      if (existingFlowError) {
+        warnings.push("Service flow templates were not copied.");
+      } else {
+        const copiedFlowKeys = new Set(
+          (existingFlows || []).map((flow) => `${flow.ministry_type}:${flow.name}`),
         );
-        if (insertItemsError) {
-          warnings.push("Service flow templates were not copied.");
-          break;
+        for (const flow of flows || []) {
+          if (!ministryIsOffered(offered, flow.ministry_type)) continue;
+          if (copiedFlowKeys.has(`${flow.ministry_type}:${flow.name}`)) continue;
+          const { data: created, error: createError } = await supabase
+            .from("service_flow_templates")
+            .insert({ campus_id: campusId, ministry_type: flow.ministry_type, name: flow.name })
+            .select("id")
+            .single();
+          if (createError || !created) {
+            warnings.push("Service flow templates were not copied.");
+            break;
+          }
+          const { data: items, error: itemError } = await supabase
+            .from("service_flow_template_items")
+            .select("item_type, sequence_order, title, default_duration_seconds")
+            .eq("template_id", flow.id);
+          if (itemError) {
+            warnings.push("Service flow templates were not copied.");
+            break;
+          }
+          if (!items || items.length === 0) continue;
+          const { error: insertItemsError } = await supabase.from("service_flow_template_items").insert(
+            items.map((item) => ({ ...item, template_id: created.id })),
+          );
+          if (insertItemsError) {
+            warnings.push("Service flow templates were not copied.");
+            break;
+          }
         }
       }
     }
@@ -167,35 +200,58 @@ export function useSaveCampusSetup() {
             sunday_service_time: null,
           };
 
+      const campusColumns = {
+        name,
+        has_saturday_service: weekendColumns.has_saturday_service,
+        has_sunday_service: weekendColumns.has_sunday_service,
+        saturday_service_time: weekendColumns.saturday_service_time,
+        sunday_service_time: weekendColumns.sunday_service_time,
+      };
+      const updateCampus = async (id: string) => {
+        const { error } = await supabase.from("campuses").update(campusColumns).eq("id", id);
+        if (error) throw error;
+      };
+
       let campusId = input.campusId;
+      let created = !input.campusId;
       if (campusId) {
-        const { error } = await supabase
-          .from("campuses")
-          .update({
-            name,
-            has_saturday_service: weekendColumns.has_saturday_service,
-            has_sunday_service: weekendColumns.has_sunday_service,
-            saturday_service_time: weekendColumns.saturday_service_time,
-            sunday_service_time: weekendColumns.sunday_service_time,
-          })
-          .eq("id", campusId);
-        if (error) throw error;
+        await updateCampus(campusId);
       } else {
-        const { data, error } = await supabase
-          .from("campuses")
-          .insert({
-            name,
-            is_network_wide: false,
-            has_saturday_service: weekendColumns.has_saturday_service,
-            has_sunday_service: weekendColumns.has_sunday_service,
-            saturday_service_time: weekendColumns.saturday_service_time,
-            sunday_service_time: weekendColumns.sunday_service_time,
-          })
-          .select("id")
-          .single();
-        if (error) throw error;
-        campusId = data.id;
+        const existing = await findCampusByName(name);
+        const action = existingCampusSaveAction(existing);
+        if (action === "duplicate") {
+          throw new Error("A campus with that name already exists.");
+        }
+        if (action === "resume" && existing) {
+          campusId = existing.id;
+          created = false;
+          await updateCampus(campusId);
+        } else {
+          const { data, error } = await supabase
+            .from("campuses")
+            .insert({ ...campusColumns, is_network_wide: false })
+            .select("id")
+            .single();
+          if (error) {
+            const raced = campusSaveFailureMessage(error).includes("already exists")
+              ? await findCampusByName(name)
+              : null;
+            if (raced && existingCampusSaveAction(raced) === "resume") {
+              campusId = raced.id;
+              created = false;
+              await updateCampus(campusId);
+            } else if (campusSaveFailureMessage(error).includes("already exists")) {
+              throw new Error("A campus with that name already exists.");
+            } else {
+              throw error;
+            }
+          } else {
+            campusId = data.id;
+          }
+        }
       }
+
+      if (!campusId) throw new Error("Could not save campus.");
 
       await replaceCampusMinistries(campusId, enabled.map((ministry) => ministry.ministryType));
 
@@ -213,19 +269,6 @@ export function useSaveCampusSetup() {
         });
       }
 
-      const radius = Math.max(25, Math.min(5000, Number(input.radius) || 150));
-      const { error: attendanceError } = await (supabase as unknown as AttendanceSupabase).rpc(
-        "update_attendance_campus_settings",
-        {
-          _campus_id: campusId,
-          _attendance_enabled: input.attendanceEnabled,
-          _geofence_latitude: input.latitude.trim() ? Number(input.latitude) : null,
-          _geofence_longitude: input.longitude.trim() ? Number(input.longitude) : null,
-          _geofence_radius_meters: radius,
-        },
-      );
-      if (attendanceError) throw new Error(attendanceError.message);
-
       let warnings: string[] = [];
       if (!input.campusId && input.copyFromCampusId) {
         warnings = await copyCampusSetup(
@@ -240,7 +283,25 @@ export function useSaveCampusSetup() {
         );
       }
 
-      return { campusId, warnings, created: !input.campusId };
+      const radius = Math.max(25, Math.min(5000, Number(input.radius) || 150));
+      const { error: attendanceError } = await (supabase as unknown as AttendanceSupabase).rpc(
+        "update_attendance_campus_settings",
+        {
+          _campus_id: campusId,
+          _attendance_enabled: input.attendanceEnabled,
+          _geofence_latitude: input.latitude.trim() ? Number(input.latitude) : null,
+          _geofence_longitude: input.longitude.trim() ? Number(input.longitude) : null,
+          _geofence_radius_meters: radius,
+        },
+      );
+      const attendanceWarning = attendanceSettingsWarning(attendanceError);
+      const missingAttendanceFunction = attendanceError?.code === "PGRST202"
+        || (attendanceError?.message || "").includes("Could not find the function");
+      if (attendanceWarning && (input.attendanceEnabled || !missingAttendanceFunction)) {
+        warnings.push(attendanceWarning);
+      }
+
+      return { campusId, warnings, created };
     },
     onSuccess: async (result) => {
       await Promise.all([
@@ -255,10 +316,11 @@ export function useSaveCampusSetup() {
         description: result.warnings.length > 0 ? result.warnings.join(" ") : undefined,
       });
     },
-    onError: (error) => {
+    onError: async (error) => {
+      await queryClient.invalidateQueries({ queryKey: ["campuses"] });
       toast({
         title: "Could not save campus",
-        description: error.message,
+        description: campusSaveFailureMessage(error),
         variant: "destructive",
       });
     },
