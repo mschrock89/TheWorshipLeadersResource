@@ -84,6 +84,27 @@ test("student camp sessions on the same day stay separate", () => {
   );
 });
 
+test("video and speakers stay on Weekend Worship instead of repeating as their own services", () => {
+  const services = listCalendarCampusServices({
+    date: new Date(2026, 10, 21),
+    campusId: campus.id,
+    campus,
+    viewMinistries: [...views, "production", "video", "speaker"],
+    schedules,
+    scheduleEntries: [
+      { ministry_type: "weekend", time_of_day: null },
+      { ministry_type: "production", time_of_day: null },
+      { ministry_type: "video", time_of_day: null },
+      { ministry_type: "speaker", time_of_day: null },
+      { ministry_type: "eon_weekend", time_of_day: null },
+    ],
+  });
+  assert.deepEqual(
+    services.map((service) => service.label),
+    ["Weekend Worship", "MS Worship Weekend"],
+  );
+});
+
 test("a ministry with no service that day is left off", () => {
   const services = listCalendarCampusServices({
     date: new Date(2026, 10, 19),

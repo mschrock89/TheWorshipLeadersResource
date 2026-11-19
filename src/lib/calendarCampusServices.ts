@@ -13,7 +13,11 @@ import {
   type CampusWeekendTimes,
   type MinistryServiceScheduleRow,
 } from "./campusMinistrySchedule.ts";
-import { calendarLinkedMinistries, isSeparateProductionMinistry } from "./linkedProduction.ts";
+import {
+  calendarLinkedMinistries,
+  isSeparateProductionMinistry,
+  linkedProductionFamily,
+} from "./linkedProduction.ts";
 
 export type CalendarCampusService = {
   key: string;
@@ -91,10 +95,90 @@ function sessionLabel(timeOfDay: string) {
   return timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
 }
 
+function servicesForView({
+  view,
+  date,
+  campusId,
+  campus,
+  schedules,
+  scheduleEntries,
+  overrides,
+}: {
+  view: string;
+  date: Date;
+  campusId: string | null;
+  campus: CampusWeekendTimes | null;
+  schedules: MinistryServiceScheduleRow[];
+  scheduleEntries: readonly ScheduleEntryLike[];
+  overrides: readonly ServiceOverrideLike[];
+}): CalendarCampusService[] {
+  const day = date.getDay();
+  const dateKey = localDateKey(date);
+  const ministry = scheduleMinistryType(view) || view;
+  const matching = scheduleEntries.filter((entry) => calendarEntryMatchesView(entry.ministry_type, view));
+  const recurring = campusId
+    ? recurringServiceTimesForDate(schedules, campusId, ministry, dateKey)
+    : null;
+  const inherited =
+    recurring == null && ministryUsesCampusWeekendDefaults(view)
+      ? inheritedWeekendTimes(campus, day)
+      : null;
+  const overrideTimes = uniqueTimes(
+    overrides
+      .filter((override) => calendarEntryMatchesView(override.ministry_type, view))
+      .flatMap((override) => override.service_times || []),
+  );
+  const clockTimes = uniqueTimes([...(recurring && recurring.length > 0 ? recurring : inherited || []), ...overrideTimes]);
+  const networkWide = isNetworkWideMinistryType(ministry);
+  const meets = matching.length > 0 || clockTimes.length > 0;
+  if (!meets) return [];
+  if (networkWide && matching.length === 0 && overrideTimes.length === 0) return [];
+
+  const sessionTimes = isSessionSetMinistryType(view)
+    ? [...new Set(matching.map((entry) => entry.time_of_day).filter((time): time is string => Boolean(time)))]
+        .sort((a, b) => (SESSION_ORDER[a] ?? 99) - (SESSION_ORDER[b] ?? 99))
+    : [];
+  const base = normalizeSessionSetMinistryType(view) || view;
+
+  if (sessionTimes.length > 0) {
+    return sessionTimes.map((timeOfDay) => ({
+      key: `${base}|${timeOfDay}`,
+      label: `${getViewMinistryLabel(base)} · ${sessionLabel(timeOfDay)}`,
+      rosterMinistry: base,
+      songMinistry: `${base}_${timeOfDay}`,
+      timeOfDay,
+      times: clockTimes,
+    }));
+  }
+
+  return [{
+    key: view,
+    label: getViewMinistryLabel(view),
+    rosterMinistry: view,
+    songMinistry: view,
+    timeOfDay: null,
+    times: clockTimes,
+  }];
+}
+
+function worshipServiceCoversSupportView(
+  view: string,
+  services: readonly CalendarCampusService[],
+) {
+  const family = linkedProductionFamily(view);
+  if (!family) return false;
+  return services.some(
+    (service) =>
+      service.rosterMinistry === family.worshipView ||
+      family.worshipTypes.includes(service.rosterMinistry),
+  );
+}
+
 /**
  * Every worship service a campus holds on this date, in ministry order.
- * Production and video stay inside the worship service they serve.
- * Network-wide camps show up only on dates that are actually scheduled.
+ * Production, video, and speakers stay inside the worship service they serve
+ * whenever that service is also on the day. Network-wide camps show up only
+ * on dates that are actually scheduled.
  */
 export function listCalendarCampusServices({
   date,
@@ -113,63 +197,26 @@ export function listCalendarCampusServices({
   scheduleEntries: readonly ScheduleEntryLike[];
   overrides?: readonly ServiceOverrideLike[];
 }): CalendarCampusService[] {
-  const day = date.getDay();
-  const dateKey = localDateKey(date);
-  const services: CalendarCampusService[] = [];
+  const args = { date, campusId, campus, schedules, scheduleEntries, overrides };
+  const worship: CalendarCampusService[] = [];
+  const supportViews: string[] = [];
 
   for (const view of viewMinistries) {
     if (!view || view === "audition") continue;
     const ministry = scheduleMinistryType(view) || view;
-    const matching = scheduleEntries.filter((entry) => calendarEntryMatchesView(entry.ministry_type, view));
-    const recurring = campusId
-      ? recurringServiceTimesForDate(schedules, campusId, ministry, dateKey)
-      : null;
-    const inherited =
-      recurring == null && ministryUsesCampusWeekendDefaults(view)
-        ? inheritedWeekendTimes(campus, day)
-        : null;
-    const overrideTimes = uniqueTimes(
-      overrides
-        .filter((override) => calendarEntryMatchesView(override.ministry_type, view))
-        .flatMap((override) => override.service_times || []),
-    );
-    const clockTimes = uniqueTimes([...(recurring && recurring.length > 0 ? recurring : inherited || []), ...overrideTimes]);
-    const networkWide = isNetworkWideMinistryType(ministry);
-    const meets = matching.length > 0 || clockTimes.length > 0;
-    if (!meets) continue;
-    if (networkWide && matching.length === 0 && overrideTimes.length === 0) continue;
-
-    const sessionTimes = isSessionSetMinistryType(view)
-      ? [...new Set(matching.map((entry) => entry.time_of_day).filter((time): time is string => Boolean(time)))]
-          .sort((a, b) => (SESSION_ORDER[a] ?? 99) - (SESSION_ORDER[b] ?? 99))
-      : [];
-    const base = normalizeSessionSetMinistryType(view) || view;
-
-    if (sessionTimes.length > 0) {
-      for (const timeOfDay of sessionTimes) {
-        services.push({
-          key: `${base}|${timeOfDay}`,
-          label: `${getViewMinistryLabel(base)} · ${sessionLabel(timeOfDay)}`,
-          rosterMinistry: base,
-          songMinistry: `${base}_${timeOfDay}`,
-          timeOfDay,
-          times: clockTimes,
-        });
-      }
+    if (isCalendarSupportMinistry(view) || isCalendarSupportMinistry(ministry)) {
+      supportViews.push(view);
       continue;
     }
-
-    services.push({
-      key: view,
-      label: getViewMinistryLabel(view),
-      rosterMinistry: view,
-      songMinistry: view,
-      timeOfDay: null,
-      times: clockTimes,
-    });
+    worship.push(...servicesForView({ view, ...args }));
   }
 
-  return services;
+  for (const view of supportViews) {
+    if (worshipServiceCoversSupportView(view, worship)) continue;
+    worship.push(...servicesForView({ view, ...args }));
+  }
+
+  return worship;
 }
 
 export function calendarEntriesForService<T extends ScheduleEntryLike>(

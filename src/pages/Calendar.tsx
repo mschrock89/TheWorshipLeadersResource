@@ -526,7 +526,6 @@ function StandardCalendar() {
   const hasHydratedFromUrl = useRef(false);
   const skipAutoSelectFromUrlRef = useRef(false);
   const lastAutoSelectFilterKeyRef = useRef<string | null>(null);
-  const suppressServiceFlowScrollRef = useRef(false);
 
   // Use the global campus selection from context
   const campusContext = useCampusSelectionOptional();
@@ -1040,7 +1039,6 @@ function StandardCalendar() {
       : closestServiceDate;
 
     lastAutoSelectFilterKeyRef.current = filterKey;
-    suppressServiceFlowScrollRef.current = true;
     setCurrentDate(nextServiceDate);
     setSelectedDate(nextServiceDate);
   }, [
@@ -1451,34 +1449,6 @@ function StandardCalendar() {
     selectedDayMinistryServices,
     selectedDayServices,
   ]);
-
-  const scrollToServiceFlowPanel = useCallback((panelId = "calendar-service-flow-panel") => {
-    window.requestAnimationFrame(() => {
-      document.getElementById(panelId)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-  }, []);
-
-  const previousSelectedDateStrRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!selectedDateStr || inlineServiceFlowTargets.length === 0) {
-      previousSelectedDateStrRef.current = selectedDateStr;
-      return;
-    }
-    if (previousSelectedDateStrRef.current === selectedDateStr) return;
-    previousSelectedDateStrRef.current = selectedDateStr;
-    if (suppressServiceFlowScrollRef.current) {
-      suppressServiceFlowScrollRef.current = false;
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      scrollToServiceFlowPanel(inlineServiceFlowTargets[0].id);
-    }, 120);
-    return () => window.clearTimeout(timer);
-  }, [inlineServiceFlowTargets, scrollToServiceFlowPanel, selectedDateStr]);
 
   const teamEntryForService = (entries: TeamScheduleEntry[], service: CalendarCampusService) => {
     const matched = calendarEntriesForService(entries, service);
@@ -3681,15 +3651,23 @@ function BandRoster({
   const productionOnWorshipTeam = productionLivesOnWorshipTeam(
     effectiveMinistryFilter || ministryFilter,
   );
+  const isVideoMinistryFilter = effectiveMinistryFilter === "video";
+  const isSpeakerMinistryFilter = effectiveMinistryFilter === "speaker";
   const productionScheduleMinistry = productionOnWorshipTeam
     ? null
     : linkedFamily?.productionType ?? "production";
-  const videoScheduleMinistry = linkedFamily ? linkedFamily.videoType : "video";
-  const speakerScheduleMinistry = linkedFamily ? linkedFamily.speakerType : "speaker";
+  const videoScheduleMinistry = linkedFamily
+    ? linkedFamily.videoType
+    : isVideoMinistryFilter
+      ? "video"
+      : null;
+  const speakerScheduleMinistry = linkedFamily
+    ? linkedFamily.speakerType
+    : isSpeakerMinistryFilter
+      ? "speaker"
+      : null;
   const isProductionMinistryFilter =
     !!effectiveMinistryFilter && effectiveMinistryFilter === productionScheduleMinistry;
-  const isVideoMinistryFilter = effectiveMinistryFilter === "video";
-  const isSpeakerMinistryFilter = effectiveMinistryFilter === "speaker";
   // Student Camp carries its production crew (FOH/MON/Lyrics) on the camp team itself rather
   // than a separately scheduled Production team, so those members live in the main roster.
   const isStudentCampRosterFilter =
@@ -4310,6 +4288,18 @@ function BandRoster({
         : supportPushMinistry === "speaker"
           ? speakerTeamId
           : undefined;
+  const familyNotificationMinistries = new Set(
+    [
+      linkedFamily?.productionType,
+      linkedFamily?.videoType,
+      linkedFamily?.speakerType,
+    ].filter((ministry): ministry is string => Boolean(ministry)),
+  );
+  const outreachNotificationTargets = supportSection
+    ? []
+    : supportNotificationTargets.filter((target) =>
+        familyNotificationMinistries.has(target.ministryType),
+      );
   const outreachWidget = (
     <RosterOutreachWidget
       date={date}
@@ -4317,7 +4307,7 @@ function BandRoster({
       ministryFilter={ministryFilter}
       serviceLabel={serviceLabel}
       groupTextMembers={groupTextMembers}
-      supportNotificationTargets={supportSection ? [] : supportNotificationTargets}
+      supportNotificationTargets={outreachNotificationTargets}
       supportPushMinistry={supportPushMinistry}
       supportPushScheduleDate={supportPushEntry?.schedule_date ?? dateStr ?? undefined}
       supportPushTeamId={supportPushTeamId}
