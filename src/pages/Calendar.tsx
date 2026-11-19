@@ -44,7 +44,6 @@ import {
   normalizeSessionSetMinistryType,
   getViewMinistryFilterOptions,
   getViewMinistryLabel,
-  isValidViewMinistryFilter,
   productionLivesOnWorshipTeam,
 } from "@/lib/constants";
 import {
@@ -65,7 +64,6 @@ import { SwapButton } from "@/components/calendar/SwapButton";
 import { SwapRequestDialog } from "@/components/calendar/SwapRequestDialog";
 import { RefreshableContainer } from "@/components/layout/RefreshableContainer";
 import { useCampusSelectionOptional } from "@/components/layout/CampusSelectionContext";
-import { useMinistrySelectionOptional } from "@/components/layout/MinistrySelectionContext";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { POSITION_LABELS, MINISTRY_TYPES, getMinistryLabel } from "@/lib/constants";
 import { SET_PLANNER_MINISTRY_OPTIONS } from "@/lib/constants";
@@ -83,18 +81,19 @@ import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
 import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
 import { cn } from "@/lib/utils";
-import {
-  configuredServiceWeekdays,
-  ministryUsesCampusWeekendDefaults,
-  recurringServiceTimesForDate,
-  scheduleMinistryType,
-} from "@/lib/campusMinistrySchedule";
+import { scheduleMinistryType } from "@/lib/campusMinistrySchedule";
 import { toast } from "sonner";
 import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
+import {
+  calendarCampusServiceWeekdays,
+  calendarEntriesForService,
+  calendarEntryMatchesView,
+  listCalendarCampusServices,
+  type CalendarCampusService,
+} from "@/lib/calendarCampusServices";
 import { useMySetlistPlaylists } from "@/hooks/useSetlistPlaylists";
 import { SetlistPlaylistCard } from "@/components/audio/SetlistPlaylistCard";
 import { CalendarServiceFlowPanel } from "@/components/service-flow/CalendarServiceFlowPanel";
-import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { AssignedSetlistPrep, useRosteredSetlistsForDate } from "@/components/calendar/AssignedSetlistPrep";
 import { ChordChartDialog } from "@/components/songs/ChordChartDialog";
 import { SetlistConfirmationWidget } from "@/components/dashboard/SetlistConfirmationWidget";
@@ -534,32 +533,14 @@ function StandardCalendar() {
   const [localCampusFilter, setLocalCampusFilter] = useState<string>("");
   const campusFilter = campusContext?.selectedCampusId || localCampusFilter;
   const setCampusFilter = campusContext?.setSelectedCampusId || setLocalCampusFilter;
-  const ministryContext = useMinistrySelectionOptional();
   const resourceAppKey = getCurrentResourceAppKey();
   // HS/MS student apps show their own worship ministries plus shared Student Camp;
-  // null means show every ministry.
+  // null means show every ministry. The calendar lists all of them for the campus.
   const appMinistryTypes = useMemo(
     () => getResourceAppMinistryTypes(resourceAppKey),
     [resourceAppKey],
   );
-  const [localMinistryFilter, setLocalMinistryFilter] = useState<string>(
-    () => getResourceAppMinistryTypes(getCurrentResourceAppKey())?.[0] ?? "weekend_team",
-  );
-  const ministryFilter =
-    (ministryContext?.selectedMinistryType &&
-    isValidViewMinistryFilter(ministryContext.selectedMinistryType, appMinistryTypes)
-      ? ministryContext.selectedMinistryType
-      : null) || localMinistryFilter;
-  const setMinistryFilter = useCallback(
-    (value: string) => {
-      if (ministryContext) {
-        ministryContext.setSelectedMinistryType(value);
-      } else {
-        setLocalMinistryFilter(value);
-      }
-    },
-    [ministryContext],
-  );
+  const ministryFilter = "all";
 
   // Restore date/campus/ministry when returning from Service Flow (?date=...).
   useEffect(() => {
@@ -581,9 +562,6 @@ function StandardCalendar() {
     }
     if (campusParam) {
       setCampusFilter(campusParam);
-    }
-    if (ministryParam) {
-      setMinistryFilter(ministryParam);
     }
 
     // Clear one-shot restore params so refresh doesn't keep re-selecting.
@@ -743,59 +721,19 @@ function StandardCalendar() {
     effectiveCampusId,
     // Student Camp is shared across the HS/MS student apps and worship, so pull its
     // network-wide schedule from all of them regardless of which app is active.
-    isStudentCampMinistryFilter
-      ? ["students_hs", "students_ms", "worship"]
-      : undefined,
+    appMinistryTypes
+      ? undefined
+      : [resourceAppKey, "students_hs", "students_ms"],
     {
       startDate: scheduleRangeStart,
       endDate: scheduleRangeEnd,
       preserveRotationPeriods: true,
     },
   );
-  const usesRecurringServiceDay =
-    WEEKEND_SERVICE_MINISTRY_FILTERS.has(ministryFilter) ||
-    MIDWEEK_SERVICE_MINISTRY_FILTERS.has(ministryFilter);
   const upcomingServiceHorizon = formatDateForStorage(addDays(new Date(), 90));
   const todayStr = formatDateForStorage(new Date());
-  const { data: upcomingScheduledServiceDates = [], isFetched: upcomingScheduleFetched } = useQuery({
-    queryKey: [
-      "calendar-upcoming-service-dates",
-      campusFilter,
-      ministryFilter,
-      todayStr,
-      resourceAppKey,
-      isStudentCampMinistryFilter,
-    ],
-    enabled: Boolean(ministryFilter) && !usesRecurringServiceDay,
-    staleTime: 60 * 1000,
-    queryFn: async () => {
-      const resourceAppKeys = isStudentCampMinistryFilter
-        ? ["students_hs", "students_ms", "worship"]
-        : [resourceAppKey];
-      let query = supabase
-        .from("team_schedule")
-        .select("schedule_date, ministry_type, campus_id")
-        .in("resource_app_key", resourceAppKeys)
-        .gte("schedule_date", todayStr)
-        .lte("schedule_date", upcomingServiceHorizon)
-        .order("schedule_date")
-        .limit(80);
-
-      if (campusFilter && campusFilter !== "network-wide") {
-        query = query.or(`campus_id.eq.${campusFilter},campus_id.is.null`);
-      } else if (campusFilter === "network-wide") {
-        query = query.is("campus_id", null);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || [])
-        .filter((entry) => scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter))
-        .map((entry) => entry.schedule_date as string);
-    },
-  });
   const auditionDatesLookback = formatDateForStorage(addDays(new Date(), -90));
-  const needsAuditionServiceDates = ministryFilter === "audition" || ministryFilter === "all";
+  const needsAuditionServiceDates = true;
   const canSeeCalendarAuditions = isAdmin || canManageTeam;
   const { data: auditionServiceDates = [], isFetched: auditionServiceDatesFetched } = useQuery({
     queryKey: ["calendar-audition-service-dates", campusFilter, todayStr, canSeeCalendarAuditions],
@@ -885,18 +823,6 @@ function StandardCalendar() {
     const enabled = campusMinistryLists.byCampus.get(campusFilter) ?? null;
     return options.filter((ministry) => campusOffersViewMinistry(enabled, ministry.value));
   }, [appMinistryTypes, campusFilter, campusMinistryLists.byCampus, campusMinistryLists.isSuccess]);
-  useEffect(() => {
-    if (!campusFilter || campusFilter === "network-wide" || !campusMinistryLists.isSuccess) return;
-    if (ministryFilterOptions.some((ministry) => ministry.value === ministryFilter)) return;
-    const next = ministryFilterOptions[0]?.value;
-    if (next) setMinistryFilter(next);
-  }, [
-    campusFilter,
-    campusMinistryLists.isSuccess,
-    ministryFilter,
-    ministryFilterOptions,
-    setMinistryFilter,
-  ]);
   const {
     data: ministrySchedules = [],
     isFetched: ministrySchedulesFetched,
@@ -989,90 +915,6 @@ function StandardCalendar() {
     setNewEvent((prev) => ({ ...prev, campus_id: defaultCampusId }));
   }, [newEvent.campus_id, campusFilter, userCampuses, campuses]);
 
-  // Helper to get service times for a selected date
-  const getServiceTimesForDate = (date: Date) => {
-    if (isCampusAdmin && campusFilter === "network-wide") {
-      return null;
-    }
-
-    const dateStr = formatDateForStorage(date);
-    const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
-    const isSaturday = dayOfWeek === 6;
-    const isSunday = dayOfWeek === 0;
-    const relevantOverrides = filteredServiceTimeOverrides.filter((override) => {
-      if (override.service_date !== dateStr) return false;
-      if (isCampusAdmin && campusFilter !== "network-wide") {
-        return override.campus_id === campusFilter;
-      }
-      if (campusFilter && campusFilter !== "network-wide") {
-        return override.campus_id === campusFilter;
-      }
-      return true;
-    });
-
-    const serviceTimesByCampus = new Map<string, { campusName: string; times: string[] }>();
-    const scheduleMinistry = scheduleMinistryType(ministryFilter);
-    const showCampusWeekendDefaults =
-      ministryFilter === "all" || ministryUsesCampusWeekendDefaults(ministryFilter);
-
-    let relevantCampuses = campuses;
-    if (isCampusAdmin && campusFilter !== "network-wide") {
-      relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
-    } else if (campusFilter && campusFilter !== "network-wide") {
-      relevantCampuses = relevantCampuses.filter((campus) => campus.id === campusFilter);
-    }
-
-    relevantCampuses.forEach((campus) => {
-      const recurring = scheduleMinistry
-        ? recurringServiceTimesForDate(ministrySchedules, campus.id, scheduleMinistry, dateStr)
-        : null;
-      if (recurring) {
-        if (recurring.length > 0) {
-          serviceTimesByCampus.set(campus.id, {
-            campusName: campus.name,
-            times: [...recurring],
-          });
-        }
-        return;
-      }
-
-      if (!showCampusWeekendDefaults || (!isSaturday && !isSunday)) return;
-      if (isSaturday && !campus.has_saturday_service) return;
-      if (isSunday && !campus.has_sunday_service) return;
-      const defaultTimes = isSaturday ? campus.saturday_service_time : campus.sunday_service_time;
-      serviceTimesByCampus.set(campus.id, {
-        campusName: campus.name,
-        times: defaultTimes ? [...defaultTimes] : [],
-      });
-    });
-
-    relevantOverrides.forEach((override) => {
-      const campusName = campuses.find((campus) => campus.id === override.campus_id)?.name || "Campus";
-      const overrideMinistryType = override.ministry_type || "weekend";
-      const overrideKey =
-        overrideMinistryType === "weekend" || overrideMinistryType === "sunday_am"
-          ? override.campus_id
-          : `${override.campus_id}:${overrideMinistryType}`;
-      const existing = serviceTimesByCampus.get(overrideKey);
-      const mergedTimes = Array.from(
-        new Set([...(existing?.times || []), ...override.service_times]),
-      ).sort();
-
-      serviceTimesByCampus.set(overrideKey, {
-        campusName:
-          existing?.campusName ||
-          (overrideMinistryType === "weekend" || overrideMinistryType === "sunday_am"
-            ? campusName
-            : `${campusName} - ${getMinistryLabel(overrideMinistryType)}`),
-        times: mergedTimes,
-      });
-    });
-
-    const merged = Array.from(serviceTimesByCampus.values()).filter((entry) => entry.times.length > 0);
-    if (merged.length === 0) return null;
-    return merged.sort((a, b) => a.campusName.localeCompare(b.campusName));
-  };
-
   // Format time helper for service times
   const formatServiceTime = (timeString: string): string => {
     if (!timeString) return "";
@@ -1091,6 +933,51 @@ function StandardCalendar() {
     if (!campusFilter || campusFilter === "network-wide") return null;
     return campuses.find((c) => c.id === campusFilter) || null;
   }, [campusFilter, campuses]);
+  const campusServiceWeekdays = useMemo(
+    () =>
+      calendarCampusServiceWeekdays({
+        campusId: campusFilter !== "network-wide" ? campusFilter : null,
+        campus: selectedCampusConfig,
+        viewMinistries: ministryFilterOptions.map((ministry) => ministry.value),
+        schedules: ministrySchedules,
+      }),
+    [campusFilter, ministryFilterOptions, ministrySchedules, selectedCampusConfig],
+  );
+  const usesRecurringServiceDay = campusServiceWeekdays.length > 0;
+  const { data: upcomingScheduledServiceDates = [], isFetched: upcomingScheduleFetched } = useQuery({
+    queryKey: [
+      "calendar-upcoming-service-dates",
+      campusFilter,
+      todayStr,
+      resourceAppKey,
+      appMinistryTypes?.join(",") ?? "all",
+    ],
+    enabled: !usesRecurringServiceDay,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const resourceAppKeys = appMinistryTypes
+        ? [resourceAppKey]
+        : [resourceAppKey, "students_hs", "students_ms"];
+      let query = supabase
+        .from("team_schedule")
+        .select("schedule_date, ministry_type, campus_id")
+        .in("resource_app_key", resourceAppKeys)
+        .gte("schedule_date", todayStr)
+        .lte("schedule_date", upcomingServiceHorizon)
+        .order("schedule_date")
+        .limit(80);
+
+      if (campusFilter && campusFilter !== "network-wide") {
+        query = query.or(`campus_id.eq.${campusFilter},campus_id.is.null`);
+      } else if (campusFilter === "network-wide") {
+        query = query.is("campus_id", null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []).map((entry) => entry.schedule_date as string);
+    },
+  });
 
   useEffect(() => {
     if (!ministryFilter) return;
@@ -1139,11 +1026,7 @@ function StandardCalendar() {
       campus: selectedCampusConfig,
       scheduledDates,
       extraDates,
-      serviceWeekdays: configuredServiceWeekdays(
-        ministrySchedules,
-        campusFilter === "network-wide" ? null : campusFilter,
-        ministryFilter,
-      ),
+      serviceWeekdays: campusServiceWeekdays,
     });
     const closestServiceDate = closestCalendarServiceDate(new Date(), [
       ...scheduledDates,
@@ -1166,6 +1049,7 @@ function StandardCalendar() {
     auditionSetlistDates,
     auditionSetlistDatesFetched,
     campusFilter,
+    campusServiceWeekdays,
     canSeeCalendarAuditions,
     customServices,
     customServicesFetched,
@@ -1286,36 +1170,6 @@ function StandardCalendar() {
     }
   };
 
-  // True when the currently-scoped campus context actually has a weekend service on this date.
-  // Prevents false weekend highlights for campuses that only run Sunday services.
-  const hasServiceForDateInScope = (date: Date): boolean => {
-    const dayOfWeek = date.getDay();
-    const isSaturday = dayOfWeek === 6;
-    const isSunday = dayOfWeek === 0;
-
-    if (!isSaturday && !isSunday) return true;
-
-    if (selectedCampusConfig) {
-      return isSaturday
-        ? !!selectedCampusConfig.has_saturday_service
-        : !!selectedCampusConfig.has_sunday_service;
-    }
-
-    // Network-wide admin view hides weekends entirely.
-    if (isCampusAdmin && campusFilter === "network-wide") return false;
-
-    // For users without a single selected campus, use their assigned campuses when possible.
-    const scopedCampuses =
-      !isCampusAdmin && userCampuses.length > 0
-        ? campuses.filter((c) => userCampuses.some((uc) => uc.campus_id === c.id))
-        : campuses;
-
-    if (scopedCampuses.length === 0) return false;
-    return scopedCampuses.some((c) =>
-      isSaturday ? !!c.has_saturday_service : !!c.has_sunday_service
-    );
-  };
-
   // Check if user is scheduled on a specific day (filtered by campus for volunteers)
   const getUserScheduleForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -1323,21 +1177,16 @@ function StandardCalendar() {
     const dayOfWeek = dateForDay.getDay();
     const isSaturday = dayOfWeek === 6;
     const isSunday = dayOfWeek === 0;
-    const isStudentCampFilter =
-      normalizeSessionSetMinistryType(ministryFilter) === "student_camp";
-
-    // When a specific campus is selected, don't show schedule for days that campus doesn't have service
-    // (e.g. Tullahoma, Shelbyville, Murfreesboro North have no Saturday service)
+    // When a specific campus is selected, weekend worship only highlights on days that
+    // campus actually gathers. Other ministries keep their own dates.
     if (campusFilter && campusFilter !== "network-wide") {
       const selectedCampus = campuses.find(c => c.id === campusFilter);
-      if (selectedCampus) {
-        if (!isStudentCampFilter && isSaturday && !selectedCampus.has_saturday_service) return null;
-        if (!isStudentCampFilter && isSunday && !selectedCampus.has_sunday_service) return null;
-      }
-      // Filter by selected campus - only show schedule at this campus
       let matches = scheduledDates.filter(
         (s) => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId),
       );
+      if (selectedCampus && ((isSaturday && !selectedCampus.has_saturday_service) || (isSunday && !selectedCampus.has_sunday_service))) {
+        matches = matches.filter((entry) => !calendarEntryMatchesView(entry.ministryType, "weekend_team"));
+      }
 
       if (ministryFilter && ministryFilter !== "all") {
         matches = matches.filter((entry) =>
@@ -1430,6 +1279,42 @@ function StandardCalendar() {
     return entries;
   }, [campusRosterGate, campusRotationPeriods, teamSchedule]);
 
+  const servicesForDate = useCallback((date: Date) => {
+    const dateStr = formatDateForStorage(date);
+    const scheduleEntries = getBaseScheduleEntriesForDate(dateStr).filter((entry) => {
+      if (campusFilter !== "network-wide") return true;
+      return entry.campus_id == null || isNetworkWideMinistryType(entry.ministry_type);
+    });
+    return listCalendarCampusServices({
+      date,
+      campusId: campusFilter !== "network-wide" ? campusFilter : null,
+      campus: campusFilter !== "network-wide" ? selectedCampusConfig : null,
+      viewMinistries: ministryFilterOptions.map((ministry) => ministry.value),
+      schedules: ministrySchedules,
+      scheduleEntries,
+      overrides: serviceTimeOverrides
+        .filter((override) => override.service_date === dateStr)
+        .map((override) => ({
+          ministry_type: override.ministry_type,
+          service_times: override.service_times,
+        })),
+    });
+  }, [
+    campusFilter,
+    getBaseScheduleEntriesForDate,
+    ministryFilterOptions,
+    ministrySchedules,
+    selectedCampusConfig,
+    serviceTimeOverrides,
+  ]);
+
+  const hasServiceForDateInScope = useCallback((date: Date) => {
+    if (servicesForDate(date).length > 0) return true;
+    const dateStr = formatDateForStorage(date);
+    return customServices.some((service) => service.occurrence_date === dateStr)
+      || serviceTimeOverrideDateSet.has(dateStr);
+  }, [customServices, serviceTimeOverrideDateSet, servicesForDate]);
+
   // Get events for a specific day
   const getEventsForDay = (day: number, options?: { ignoreMinistryFilter?: boolean }): Event[] => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -1511,6 +1396,17 @@ function StandardCalendar() {
       : []),
     [customServices, ministryFilter, selectedDateStr],
   );
+  const selectedDayMinistryServices = useMemo(() => {
+    if (!selectedDate) return [];
+    return servicesForDate(selectedDate).filter((card) =>
+      !selectedDayServices.some((service) =>
+        calendarEntryMatchesView(
+          getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
+          card.rosterMinistry,
+        ),
+      ),
+    );
+  }, [selectedDate, selectedDayServices, servicesForDate]);
   const selectedDayAuditions = selectedDate ? getAuditionsForDay(selectedDate.getDate()) : [];
   const selectedDayScheduleEntries = useMemo(
     () => selectedDate
@@ -1519,197 +1415,41 @@ function StandardCalendar() {
     [getBaseScheduleEntriesForDate, selectedDate],
   );
   const headerFlowCampusId = campusFilter !== "network-wide" ? campusFilter : null;
-  const { data: headerPlansWithSongs = [] } = useSongsForDate(
-    selectedDateStr,
-    headerFlowCampusId,
-    ministryFilter,
-  );
-  const headerDraftSetIds = headerPlansWithSongs
-    .filter((plan) => (plan.songs || []).length > 0)
-    .map((plan) => plan.draft_set_id)
-    .filter((id): id is string => Boolean(id));
-  const headerDraftSetId = headerDraftSetIds.length === 1 ? headerDraftSetIds[0] : null;
-  const headerServiceFlowLink = selectedDateStr
-    ? `/service-flow?date=${selectedDateStr}${headerFlowCampusId ? `&campus=${headerFlowCampusId}` : ""}${ministryFilter ? `&ministry=${ministryFilter}` : ""}${headerDraftSetId ? `&draftSetId=${headerDraftSetId}` : ""}`
-    : null;
-  const flowTemplateMinistry =
-    ministryFilter && ministryFilter !== "all"
-      ? scheduleMinistryType(ministryFilter) || ministryFilter
-      : null;
-  const { data: savedFlowTemplates = [] } = useServiceFlowTemplates(
-    headerFlowCampusId || null,
-    flowTemplateMinistry,
-  );
-  const selectedDayHasScheduledService = useMemo(() => {
-    if (!selectedDateStr || !headerFlowCampusId || !flowTemplateMinistry) return false;
-    const recurring = recurringServiceTimesForDate(
-      ministrySchedules,
-      headerFlowCampusId,
-      flowTemplateMinistry,
-      selectedDateStr,
-    );
-    if (recurring && recurring.length > 0) return true;
-    const hasOverride = selectedDateOverrides.some(
-      (override) =>
-        override.campus_id === headerFlowCampusId &&
-        serviceOverrideMatchesMinistryFilter(override.ministry_type, flowTemplateMinistry),
-    );
-    if (hasOverride) return true;
-    const hasTeam = selectedDayScheduleEntries.some((entry) =>
-      scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter),
-    );
-    if (hasTeam) return true;
-    if (recurring) return false;
-    const campus = campuses.find((entry) => entry.id === headerFlowCampusId);
-    if (!campus || !ministryUsesCampusWeekendDefaults(flowTemplateMinistry)) return false;
-    const day = parseLocalDate(selectedDateStr).getDay();
-    if (day === 6) return !!campus.has_saturday_service;
-    if (day === 0) return campus.has_sunday_service !== false;
-    return false;
-  }, [
-    campuses,
-    flowTemplateMinistry,
-    headerFlowCampusId,
-    ministryFilter,
-    ministrySchedules,
-    selectedDateOverrides,
-    selectedDateStr,
-    selectedDayScheduleEntries,
-  ]);
-  const showHeaderServiceFlowButton = useMemo(() => {
-    if (!selectedDateStr || isCrossCampusReadOnly || selectedDayServices.length > 0) {
-      return false;
-    }
-
-    const hasSongs = headerPlansWithSongs.some((plan) => (plan.songs || []).length > 0);
-    const hasSavedTemplate = !!headerFlowCampusId && savedFlowTemplates.length > 0 && selectedDayHasScheduledService;
-    if ((!hasSongs && !hasSavedTemplate) || !headerServiceFlowLink) {
-      return false;
-    }
-
-    if (ministryFilter && isSessionSetMinistryType(ministryFilter)) {
-      const sessionBase = normalizeSessionSetMinistryType(ministryFilter);
-      const seenSessionTimes = new Set<string>();
-      const sessionCount = selectedDayScheduleEntries
-        .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
-        .filter((entry) => {
-          const timeOfDay = entry.time_of_day;
-          if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
-          seenSessionTimes.add(timeOfDay);
-          return true;
-        }).length;
-
-      if (sessionCount > 1) {
-        return false;
-      }
-    }
-
-    return true;
-  }, [
-    headerFlowCampusId,
-    headerPlansWithSongs,
-    headerServiceFlowLink,
-    isCrossCampusReadOnly,
-    ministryFilter,
-    savedFlowTemplates,
-    selectedDateStr,
-    selectedDayHasScheduledService,
-    selectedDayScheduleEntries,
-    selectedDayServices.length,
-  ]);
-
   const inlineServiceFlowTargets = useMemo(() => {
     if (!isAdmin || !selectedDateStr || isCrossCampusReadOnly) return [];
-
-    if (selectedDayServices.length > 0) {
-      return selectedDayServices.map((service) => ({
-        id: `calendar-service-flow-${service.id}`,
-        date: service.occurrence_date || selectedDateStr,
-        campusId: service.campus_id,
-        ministryType: getServiceFlowMinistryType(
-          service.ministry_type,
-          service.service_name,
-        ),
-        customServiceId: service.id,
-        draftSetId: null as string | null,
-        campusName: campuses.find((campus) => campus.id === service.campus_id)?.name || null,
-        label: service.service_name,
-      }));
-    }
-
-    const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
-    const sessionBase =
-      ministryFilter && isSessionSetMinistryType(ministryFilter)
-        ? normalizeSessionSetMinistryType(ministryFilter)
-        : null;
-
-    if (sessionBase) {
-      const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
-      const seenSessionTimes = new Set<string>();
-      const sessionEntries = selectedDayScheduleEntries
-        .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
-        .filter((entry) => {
-          const timeOfDay = entry.time_of_day;
-          if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
-          seenSessionTimes.add(timeOfDay);
-          return true;
-        })
-        .sort(
-          (a, b) =>
-            (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
-            (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
-        );
-
-      if (sessionEntries.length > 1) {
-        return sessionEntries.map((entry) => {
-          const timeOfDay = entry.time_of_day as string;
-          const variant = `${sessionBase}_${timeOfDay}`;
-          const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-          return {
-            id: `calendar-service-flow-${variant}`,
-            date: selectedDateStr,
-            campusId: sessionCampusId,
-            ministryType: variant,
-            customServiceId: null as string | null,
-            draftSetId: null as string | null,
-            campusName:
-              (sessionCampusId && campuses.find((campus) => campus.id === sessionCampusId)?.name) ||
-              null,
-            label: `${getMinistryLabel(sessionBase)} · ${sessionLabel}`,
-          };
-        });
-      }
-    }
-
-    if (!showHeaderServiceFlowButton) return [];
-
-    return [
-      {
-        id: "calendar-service-flow-panel",
-        date: selectedDateStr,
-        campusId: headerFlowCampusId,
-        ministryType: ministryFilter || "weekend",
-        customServiceId: null as string | null,
-        draftSetId: headerDraftSetId,
-        campusName:
-          (headerFlowCampusId &&
-            campuses.find((campus) => campus.id === headerFlowCampusId)?.name) ||
-          null,
-        label: getMinistryLabel(ministryFilter === "weekend_team" ? "weekend" : ministryFilter) || "Service",
-      },
-    ];
+    const campusName =
+      (headerFlowCampusId && campuses.find((campus) => campus.id === headerFlowCampusId)?.name) || null;
+    const customTargets = selectedDayServices.map((service) => ({
+      id: `calendar-service-flow-${service.id}`,
+      date: service.occurrence_date || selectedDateStr,
+      campusId: service.campus_id,
+      ministryType: getServiceFlowMinistryType(service.ministry_type, service.service_name),
+      customServiceId: service.id,
+      draftSetId: null as string | null,
+      campusName: campuses.find((campus) => campus.id === service.campus_id)?.name || null,
+      label: service.service_name,
+    }));
+    const ministryTargets = selectedDayMinistryServices.map((service) => ({
+      id: `calendar-service-flow-${service.key}`,
+      date: selectedDateStr,
+      campusId: headerFlowCampusId,
+      ministryType: service.timeOfDay
+        ? service.songMinistry
+        : scheduleMinistryType(service.rosterMinistry) || service.rosterMinistry,
+      customServiceId: null as string | null,
+      draftSetId: null as string | null,
+      campusName,
+      label: service.label,
+    }));
+    return [...customTargets, ...ministryTargets];
   }, [
     campuses,
-    campusFilter,
-    headerDraftSetId,
     headerFlowCampusId,
     isAdmin,
     isCrossCampusReadOnly,
-    ministryFilter,
     selectedDateStr,
-    selectedDayScheduleEntries,
+    selectedDayMinistryServices,
     selectedDayServices,
-    showHeaderServiceFlowButton,
   ]);
 
   const scrollToServiceFlowPanel = useCallback((panelId = "calendar-service-flow-panel") => {
@@ -1740,100 +1480,46 @@ function StandardCalendar() {
     return () => window.clearTimeout(timer);
   }, [inlineServiceFlowTargets, scrollToServiceFlowPanel, selectedDateStr]);
 
-  // Get team schedule for a specific day
-  // Note: Midweek ministries (e.g. HS Worship) should still show even if the user isn't personally scheduled.
+  const teamEntryForService = (entries: TeamScheduleEntry[], service: CalendarCampusService) => {
+    const matched = calendarEntriesForService(entries, service);
+    return (
+      matched.find(
+        (entry) =>
+          entry.team_id &&
+          !isSeparateProductionMinistry(entry.ministry_type) &&
+          entry.ministry_type !== "video" &&
+          entry.ministry_type !== "speaker",
+      ) ?? matched.find((entry) => entry.team_id) ?? null
+    );
+  };
+
+  // Team icon for a day. Any campus service can supply it, including midweek.
   const getTeamForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const dateForDay = new Date(year, month, day);
-    const dayOfWeek = dateForDay.getDay();
-    const isSaturday = dayOfWeek === 6;
-    const isSunday = dayOfWeek === 0;
-    const isMidweek = dayOfWeek === 3; // Wednesday
-    const isStudentCampFilter =
-      normalizeSessionSetMinistryType(ministryFilter) === "student_camp";
-    const hasServiceOverride = serviceTimeOverrideDateSet.has(dateStr);
+    const services = servicesForDate(dateForDay);
+    if (services.length === 0) return null;
 
-    // Check if selected campus has service on this day
-    if (campusFilter && campusFilter !== "network-wide") {
-      const selectedCampus = campuses.find(c => c.id === campusFilter);
-      if (selectedCampus) {
-        // Skip if Saturday and campus doesn't have Saturday service
-        if (!isStudentCampFilter && isSaturday && !selectedCampus.has_saturday_service) return null;
-        // Skip if Sunday and campus doesn't have Sunday service
-        if (!isStudentCampFilter && isSunday && !selectedCampus.has_sunday_service) return null;
-      }
-    }
-
-    const getScheduleEntriesForDate = (targetDateStr: string) => {
-      let entries = getBaseScheduleEntriesForDate(targetDateStr);
-
-      if (ministryFilter && ministryFilter !== "all") {
-        entries = entries.filter((entry) =>
-          scheduleEntryMatchesCalendarFilter(entry.ministry_type, ministryFilter),
-        );
-      }
-
-      return entries;
-    };
-
-    const dayCustomServices = getCustomServicesForDay(day);
-    // A custom service for this ministry replaces the Team Builder rotation
-    // (e.g. HS Worship Prayer & Worship Night should not also show T3).
-    if (
-      dayCustomServices.length > 0 &&
-      ministryFilter &&
-      ministryFilter !== "all" &&
-      ministryFilter !== "weekend_team"
-    ) {
-      return null;
-    }
-
-    // There can be multiple schedule entries per date (different ministries)
-    let entries = getScheduleEntriesForDate(dateStr);
-
-    // A Resurrection Friday-style override should inherit the same weekend team if Friday
-    // doesn't have its own team schedule row.
-    if (entries.length === 0 && hasServiceOverride && dayOfWeek === 5) {
+    let entries = getBaseScheduleEntriesForDate(dateStr);
+    if (entries.length === 0 && serviceTimeOverrideDateSet.has(dateStr) && dateForDay.getDay() === 5) {
       const saturdayDateStr = formatDateForStorage(addDays(dateForDay, 1));
       const sundayDateStr = formatDateForStorage(addDays(dateForDay, 2));
       entries = [
-        ...getScheduleEntriesForDate(saturdayDateStr),
-        ...getScheduleEntriesForDate(sundayDateStr),
+        ...getBaseScheduleEntriesForDate(saturdayDateStr),
+        ...getBaseScheduleEntriesForDate(sundayDateStr),
       ];
     }
 
-    // Pick a single entry (HS/MS Worship first when multiple exist)
-    const ministryPriority = ["encounter", "eon", "eon_weekend", "ms_hs", "weekend", "sunday_am", "production", "video"];
-    const teamEntry = entries.sort((a, b) => {
-      const aIdx = ministryPriority.indexOf(a.ministry_type);
-      const bIdx = ministryPriority.indexOf(b.ministry_type);
-      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-    })[0];
-    if (!teamEntry) return null;
-
-    if (dayCustomServices.length > 0) {
-      const teamMinistry = teamEntry.ministry_type || "";
-      const customReplacesTeam = dayCustomServices.some((service) =>
-        serviceOverrideMatchesMinistryFilter(
-          getEffectiveCustomServiceMinistryType(service.ministry_type, service.service_name),
-          teamMinistry,
-        ),
-      );
-      if (customReplacesTeam) return null;
-    }
-
-    // If no campus filter or network-wide, show the team entry
-    if (!campusFilter || campusFilter === "network-wide") {
-      return teamEntry;
-    }
-
-    // If a specific campus is selected, only show team if user is scheduled at that campus
-    // OR if it's a weekend rotation OR a midweek scheduled ministry (HS/MS Worship/etc.).
-    // Student Camp can span any day of the week, including non-Wednesday weekdays.
-    const userScheduleForDay = scheduledDates.find(s => s.scheduleDate === dateStr && (s.campusId === campusFilter || !s.campusId));
-    const isWeekend = isSaturday || isSunday;
-    if (userScheduleForDay || isWeekend || isMidweek || isStudentCampFilter || hasServiceOverride) {
-      return teamEntry;
+    const userScheduleForDay = scheduledDates.find(
+      (entry) => entry.scheduleDate === dateStr && (entry.campusId === campusFilter || !entry.campusId || campusFilter === "network-wide"),
+    );
+    const preferred = userScheduleForDay
+      ? services.find((service) => calendarEntryMatchesView(userScheduleForDay.ministryType, service.rosterMinistry))
+      : null;
+    const ordered = preferred ? [preferred, ...services.filter((service) => service !== preferred)] : services;
+    for (const service of ordered) {
+      const teamEntry = teamEntryForService(entries, service);
+      if (teamEntry) return teamEntry;
     }
     return null;
   };
@@ -2075,21 +1761,6 @@ function StandardCalendar() {
                       </SelectItem>)}
                   </SelectContent>
                 </Select> : null}
-              {/* Ministry Filter */}
-              <Select value={ministryFilter} onValueChange={setMinistryFilter}>
-                <SelectTrigger className="h-8 min-w-0 flex-1 px-2 text-sm bg-background border-border sm:flex-initial sm:min-w-[150px] sm:max-w-[200px] sm:px-3">
-                  <Music className="mr-2 hidden h-4 w-4 flex-shrink-0 text-muted-foreground sm:block" />
-                  <CompactSelectValue
-                    label={ministryFilterOptions.find((ministry) => ministry.value === ministryFilter)?.label}
-                    placeholder="Ministry"
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {ministryFilterOptions.map(ministry => <SelectItem key={ministry.value} value={ministry.value}>
-                      {ministry.label}
-                    </SelectItem>)}
-                </SelectContent>
-              </Select>
             </div>
             <div className="flex shrink-0 items-center">
               <Button variant="ghost" size="icon" onClick={() => navigateMonth(-1)} className="text-foreground hover:bg-card h-8 w-8">
@@ -2126,19 +1797,21 @@ function StandardCalendar() {
               const dayServices = getCustomServicesForDay(day);
               const dayAuditions = getAuditionsForDay(day);
               const dateStrForDay = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const dateForDay = new Date(year, month, day);
               const hasServiceTimeOverride = serviceTimeOverrideDateSet.has(dateStrForDay);
               const hasAudition = dayAuditions.length > 0 || auditionSetlistDateSet.has(dateStrForDay);
-              const hasOtherEvents = dayEvents.length > 0 || dayServices.length > 0 || hasServiceTimeOverride;
-              const teamEntry = hideWeekends ? null : getTeamForDay(day); // Don't show team icons in network-wide view
+              const hasCampusService = servicesForDate(dateForDay).length > 0;
+              const hasOtherEvents = dayEvents.length > 0 || dayServices.length > 0 || hasServiceTimeOverride || hasCampusService;
+              const teamEntry = getTeamForDay(day);
               const TeamIcon = teamEntry?.worship_teams?.icon ? teamIcons[teamEntry.worship_teams.icon] : null;
               const teamColor = teamEntry?.worship_teams?.color;
-              const userSchedule = hideWeekends ? null : getUserScheduleForDay(day); // Don't show user schedule in network-wide view
+              const rawUserSchedule = getUserScheduleForDay(day);
+              const userSchedule = hideWeekends && !isNetworkWideMinistryType(rawUserSchedule?.ministryType) ? null : rawUserSchedule;
 
               // Check swap status for this day
               const hasCustomAssignment = customAssignedDateSet.has(dateStrForDay);
               const teachingWeek = teachingWeekByDate.get(dateStrForDay);
               const swapStatus = getSwapStatusForDate(dateStrForDay, allUserSwaps);
-              const dateForDay = new Date(year, month, day);
               const hasServiceForDayInScope = hasServiceForDateInScope(dateForDay);
 
               // Grid highlighting should come from the assignment engine (service_day + swaps).
@@ -2207,7 +1880,6 @@ function StandardCalendar() {
           {/* Selected Day Panel */}
           {selectedDate && (() => {
           const userSchedule = getUserScheduleForDay(selectedDate.getDate());
-          const serviceTimes = getServiceTimesForDate(selectedDate);
 
           // Determine effective schedule considering swaps:
           // - If user has swapped OUT, they're NOT playing on this date (even if on home team)
@@ -2245,29 +1917,7 @@ function StandardCalendar() {
           } : null;
           const selectedDayEventListCount = selectedDayAuditions.length + selectedDayEvents.length;
           const sessionCampusId = campusFilter !== "network-wide" ? campusFilter : null;
-          const sessionBase =
-            ministryFilter && isSessionSetMinistryType(ministryFilter)
-              ? normalizeSessionSetMinistryType(ministryFilter)
-              : null;
-          const sessionEntries = (() => {
-            if (!sessionBase) return [];
-            const SESSION_TIME_ORDER: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 };
-            const seenSessionTimes = new Set<string>();
-            return selectedDayScheduleEntries
-              .filter((entry) => normalizeSessionSetMinistryType(entry.ministry_type) === sessionBase)
-              .filter((entry) => {
-                const timeOfDay = entry.time_of_day;
-                if (!timeOfDay || seenSessionTimes.has(timeOfDay)) return false;
-                seenSessionTimes.add(timeOfDay);
-                return true;
-              })
-              .sort(
-                (a, b) =>
-                  (SESSION_TIME_ORDER[a.time_of_day ?? ""] ?? 99) -
-                  (SESSION_TIME_ORDER[b.time_of_day ?? ""] ?? 99),
-              );
-          })();
-          const showScheduledTeamLabel = selectedDayServices.length === 0;
+          const showScheduledTeamLabel = selectedDayServices.length === 0 && selectedDayMinistryServices.length <= 1;
           return <>
               <CalendarDayWidget
                 className="aspect-square min-h-0 overflow-hidden"
@@ -2302,7 +1952,7 @@ function StandardCalendar() {
                 }
                 actions={
                   <>
-                    {showScheduledTeamLabel && swapOffer ? (
+                    {swapOffer ? (
                       <SwapButton
                         onClick={() => {
                           if (isSwapDateTooSoon(selectedDate)) {
@@ -2405,14 +2055,6 @@ function StandardCalendar() {
                   </>
                 }
               >
-                    {/* Service Times */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    {serviceTimes && serviceTimes.length > 0 && serviceTimes.map((st, idx) => <span key={idx} className="text-[11px] text-muted-foreground">
-                            <span className="font-medium text-foreground/70">{st.campusName}</span>
-                            {st.times && st.times.length > 0 && <span className="ml-1">@ {formatServiceTimes(st.times)}</span>}
-                          </span>)}
-                    </div>
-
                 {selectedDateOverrides.length > 0 && <div className="mb-2 rounded-md border border-dashed border-border bg-muted/30 p-2">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Additional weekend services</p>
@@ -2443,8 +2085,10 @@ function StandardCalendar() {
                     Audition
                   </p>
                 ) : null}
-                {selectedDayServices.length > 0 ? (
-                  <div className="space-y-2">
+                {selectedDayServices.length === 0 && selectedDayMinistryServices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No service scheduled.</p>
+                ) : (
+                  <div className="space-y-4">
                     {selectedDayServices.map((service) => {
                       const campusName = campuses.find((c) => c.id === service.campus_id)?.name || "Campus";
                       return (
@@ -2472,57 +2116,37 @@ function StandardCalendar() {
                         </div>
                       );
                     })}
-                  </div>
-                ) : sessionEntries.length > 0 ? (
-                  <div className="space-y-2">
-                    {sessionEntries.map((entry) => {
-                      const timeOfDay = entry.time_of_day as string;
-                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
+                    {selectedDayMinistryServices.map((service) => {
+                      const matched = calendarEntriesForService(selectedDayScheduleEntries, service);
+                      const worship = teamEntryForService(selectedDayScheduleEntries, service);
+                      const scheduledMinistries = [...new Set(matched.map((entry) => entry.ministry_type).filter((value): value is string => Boolean(value)))];
                       return (
-                        <div key={`roster-${entry.id}`}>
-                          <div className="mb-1 flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-teal-600/10 text-teal-700 border-transparent text-[10px]">
-                              {sessionLabel}
-                            </Badge>
-                            {entry.worship_teams?.name && (
-                              <span className="truncate text-[10px] text-muted-foreground">
-                                {entry.worship_teams.name}
-                              </span>
-                            )}
+                        <div key={`roster-${service.key}`}>
+                          <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <p className="text-sm font-semibold leading-tight text-foreground">{service.label}</p>
+                            {worship?.worship_teams?.name ? (
+                              <span className="truncate text-[11px] text-muted-foreground">{worship.worship_teams.name}</span>
+                            ) : null}
+                            {service.times.length > 0 ? (
+                              <span className="text-[11px] text-muted-foreground">@ {formatServiceTimes(service.times)}</span>
+                            ) : null}
                           </div>
                           <BandRoster
                             date={selectedDate}
-                            teamId={entry.team_id}
+                            teamId={worship?.team_id}
                             showAudioVideo={false}
-                            ministryFilter={sessionBase}
-                            timeOfDay={timeOfDay}
-                            scheduledEntries={[entry]}
-                            rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
-                            scheduledMinistries={sessionBase ? [sessionBase] : []}
+                            ministryFilter={service.rosterMinistry}
+                            timeOfDay={service.timeOfDay ?? undefined}
+                            scheduledEntries={matched}
+                            rotationPeriodName={worship?.rotation_period ?? null}
+                            scheduledMinistries={scheduledMinistries.length > 0 ? scheduledMinistries : [service.rosterMinistry]}
                             campusId={sessionCampusId}
+                            supportNotificationTargets={selectedSupportNotificationTargets}
                           />
                         </div>
                       );
                     })}
                   </div>
-                ) : (
-                  <BandRoster
-                    date={selectedDate}
-                    teamId={selectedDayTeam?.team_id}
-                    showAudioVideo={false}
-                    ministryFilter={ministryFilter}
-                    scheduledEntries={selectedDayScheduleEntries}
-                    rotationPeriodName={selectedDayTeam?.rotation_period || null}
-                    scheduledMinistries={(() => {
-                      let scheduleEntries = selectedDayScheduleEntries;
-                      if (ministryFilter && ministryFilter !== "all") {
-                        scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
-                      }
-                      return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
-                    })()}
-                    campusId={sessionCampusId}
-                    supportNotificationTargets={selectedSupportNotificationTargets}
-                  />
                 )}
                   </div>
                 </div>
@@ -2572,9 +2196,12 @@ function StandardCalendar() {
                         ) : null}
                       </div>
                     ) : null}
-                    {selectedDayServices.length > 0 ? selectedDayServices.map((service) => (
+                    {selectedDayServices.length === 0 && selectedDayMinistryServices.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No songs for this day.</p>
+                    ) : null}
+                    {selectedDayServices.map((service) => (
                       <div key={`standalone-songs-${service.occurrence_key}`}>
-                        {selectedDayServices.length > 1 ? (
+                        {selectedDayServices.length + selectedDayMinistryServices.length > 1 ? (
                           <div className="mb-2">
                             <p className="text-sm font-semibold text-foreground">{service.service_name}</p>
                             <p className="text-xs text-muted-foreground">
@@ -2595,40 +2222,27 @@ function StandardCalendar() {
                           scheduled={Boolean(isPlayingThisWeekend)}
                         />
                       </div>
-                    )) : sessionEntries.length > 0 ? sessionEntries.map((entry) => {
-                      const timeOfDay = entry.time_of_day as string;
-                      const variant = `${sessionBase}_${timeOfDay}`;
-                      const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-                      return (
-                        <div key={`standalone-songs-${entry.id}`}>
-                          <div className="mb-1 flex items-center gap-2">
-                            <Badge variant="secondary" className="border-transparent bg-teal-600/10 text-[10px] text-teal-700">
-                              {sessionLabel}
-                            </Badge>
-                            {entry.worship_teams?.name ? (
-                              <span className="truncate text-[10px] text-muted-foreground">{entry.worship_teams.name}</span>
+                    ))}
+                    {selectedDayMinistryServices.map((service) => (
+                      <div key={`standalone-songs-${service.key}`}>
+                        {selectedDayServices.length + selectedDayMinistryServices.length > 1 ? (
+                          <div className="mb-2">
+                            <p className="text-sm font-semibold text-foreground">{service.label}</p>
+                            {service.times.length > 0 ? (
+                              <p className="text-xs text-muted-foreground">{formatServiceTimes(service.times)}</p>
                             ) : null}
                           </div>
-                          <SongsPreview
-                            date={selectedDate}
-                            campusId={sessionCampusId}
-                            ministryFilter={variant}
-                            readOnly={isCrossCampusReadOnly}
-                            prominent
-                            scheduled={Boolean(isPlayingThisWeekend)}
-                          />
-                        </div>
-                      );
-                    }) : (
-                      <SongsPreview
-                        date={selectedDate}
-                        campusId={sessionCampusId}
-                        ministryFilter={ministryFilter}
-                        readOnly={isCrossCampusReadOnly}
-                        prominent
-                        scheduled={Boolean(isPlayingThisWeekend)}
-                      />
-                    )}
+                        ) : null}
+                        <SongsPreview
+                          date={selectedDate}
+                          campusId={sessionCampusId}
+                          ministryFilter={service.songMinistry}
+                          readOnly={isCrossCampusReadOnly}
+                          prominent
+                          scheduled={Boolean(isPlayingThisWeekend)}
+                        />
+                      </div>
+                    ))}
                     <AssignedSetlistPrep
                       date={selectedDate}
                       campusId={sessionCampusId}
@@ -2638,13 +2252,12 @@ function StandardCalendar() {
                   </div>
                 </CalendarDayWidget>
 
-              {selectedDayServices.length > 0
-                ? selectedDayServices.flatMap((service) =>
+              {selectedDayServices.flatMap((service) =>
                     (["production", "video"] as const).map((section) => (
                       <CalendarDayWidget
                         key={`${service.occurrence_key}-${section}`}
                         title={
-                          selectedDayServices.length > 1
+                          selectedDayServices.length + selectedDayMinistryServices.length > 1
                             ? `${service.service_name} • ${section === "video" ? "Video" : "Production"}`
                             : section === "video"
                               ? "Video"
@@ -2672,68 +2285,33 @@ function StandardCalendar() {
                         />
                       </CalendarDayWidget>
                     )),
-                  )
-                : (["production", "video"] as const).map((section) => (
-                sessionEntries.length > 0 ? (
-                  <CalendarDayWidget key={section} title={section === "video" ? "Video" : "Production"} className="min-w-0 lg:col-span-2">
-                    <div className="space-y-4">
-                      {sessionEntries.map((entry) => {
-                        const timeOfDay = entry.time_of_day as string;
-                        const sessionLabel = timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1);
-                        return (
-                          <div key={`support-${section}-${entry.id}`}>
-                            <div className="mb-1.5 flex items-center gap-2">
-                              <Badge variant="secondary" className="bg-teal-600/10 text-[10px] text-teal-700 border-transparent">
-                                {sessionLabel}
-                              </Badge>
-                              {entry.worship_teams?.name && (
-                                <span className="text-xs text-muted-foreground">
-                                  {entry.worship_teams.name}
-                                </span>
-                              )}
-                            </div>
-                            <BandRoster
-                              date={selectedDate}
-                              teamId={entry.team_id}
-                              showAudioVideo
-                              supportOnly
-                              supportSection={section}
-                              embedded
-                              ministryFilter={sessionBase}
-                              timeOfDay={timeOfDay}
-                              scheduledEntries={[entry]}
-                              rotationPeriodName={entry.rotation_period ?? selectedDayTeam?.rotation_period ?? null}
-                              scheduledMinistries={sessionBase ? [sessionBase] : []}
-                              campusId={sessionCampusId}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CalendarDayWidget>
-                ) : (
-                  <BandRoster
-                    key={section}
-                    date={selectedDate}
-                    teamId={selectedDayTeam?.team_id}
-                    showAudioVideo
-                    supportOnly
-                    supportSection={section}
-                    ministryFilter={ministryFilter}
-                    scheduledEntries={selectedDayScheduleEntries}
-                    rotationPeriodName={selectedDayTeam?.rotation_period || null}
-                    scheduledMinistries={(() => {
-                      let scheduleEntries = selectedDayScheduleEntries;
-                      if (ministryFilter && ministryFilter !== "all") {
-                        scheduleEntries = scheduleEntries.filter(s => s.ministry_type === ministryFilter);
-                      }
-                      return scheduleEntries.map(s => s.ministry_type).filter((m): m is string => Boolean(m));
-                    })()}
-                    campusId={sessionCampusId}
-                    supportNotificationTargets={selectedSupportNotificationTargets}
-                  />
-                )
-              ))}
+                  )}
+              {selectedDayMinistryServices.flatMap((service) =>
+                (["production", "video"] as const).map((section) => {
+                  const matched = calendarEntriesForService(selectedDayScheduleEntries, service);
+                  const worship = teamEntryForService(selectedDayScheduleEntries, service);
+                  const scheduledMinistries = [...new Set(matched.map((entry) => entry.ministry_type).filter((value): value is string => Boolean(value)))];
+                  const multiple = selectedDayServices.length + selectedDayMinistryServices.length > 1;
+                  return (
+                    <BandRoster
+                      key={`${service.key}-${section}`}
+                      date={selectedDate}
+                      teamId={worship?.team_id}
+                      showAudioVideo
+                      supportOnly
+                      supportSection={section}
+                      supportTitle={multiple ? `${service.label} · ${section === "video" ? "Video" : "Production"}` : undefined}
+                      ministryFilter={service.rosterMinistry}
+                      timeOfDay={service.timeOfDay ?? undefined}
+                      scheduledEntries={matched}
+                      rotationPeriodName={worship?.rotation_period ?? null}
+                      scheduledMinistries={scheduledMinistries.length > 0 ? scheduledMinistries : [service.rosterMinistry]}
+                      campusId={sessionCampusId}
+                      supportNotificationTargets={selectedSupportNotificationTargets}
+                    />
+                  );
+                }),
+              )}
 
                 {/* Events Section */}
                 <CalendarDayWidget
@@ -3975,6 +3553,7 @@ function BandRoster({
   compact = false,
   supportOnly = false,
   supportSection,
+  supportTitle,
   embedded = false,
 }: {
   date: Date;
@@ -3992,6 +3571,7 @@ function BandRoster({
   compact?: boolean;
   supportOnly?: boolean;
   supportSection?: "production" | "video";
+  supportTitle?: string;
   embedded?: boolean;
 }) {
   const { user, isAdmin } = useAuth();
@@ -4997,7 +4577,7 @@ function BandRoster({
     if (!body) return null;
     if (!supportOnly || embedded) return body;
     return (
-      <CalendarDayWidget title={supportSection === "video" ? "Video" : supportSection === "production" ? "Production" : "Production & Video"} className="min-w-0 lg:col-span-2">
+      <CalendarDayWidget title={supportTitle || (supportSection === "video" ? "Video" : supportSection === "production" ? "Production" : "Production & Video")} className="min-w-0 lg:col-span-2">
         {body}
       </CalendarDayWidget>
     );
