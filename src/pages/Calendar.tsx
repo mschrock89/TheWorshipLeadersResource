@@ -1712,7 +1712,7 @@ function StandardCalendar() {
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1 sm:flex-wrap">
               {/* Campus selector - for admins OR volunteers with multiple campuses */}
               {isCampusAdmin && campuses.length > 0 || !isCampusAdmin && userCampuses.length > 1 ? <Select value={campusFilter} onValueChange={setCampusFilter}>
-                  <SelectTrigger className="h-8 min-w-0 flex-1 px-2 text-sm bg-background border-border sm:flex-initial sm:min-w-[180px] sm:max-w-[240px] sm:px-3">
+                  <SelectTrigger className="h-8 min-w-0 flex-1 border-border bg-background px-2 text-sm focus:ring-inset focus:ring-offset-0 sm:min-w-[180px] sm:max-w-[240px] sm:flex-initial sm:px-3">
                     <Building2 className="mr-2 hidden h-4 w-4 flex-shrink-0 text-muted-foreground sm:block" />
                     <CompactSelectValue
                       label={
