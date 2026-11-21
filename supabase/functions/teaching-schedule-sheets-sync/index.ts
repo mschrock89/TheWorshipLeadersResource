@@ -1,10 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { strFromU8, unzipSync } from "npm:fflate@0.8.2";
 import * as XLSX from "npm:xlsx@0.18.5";
 import {
   findCampusColumnIndex,
   normalizeCampusKey,
   scoreCampusColumnMatch,
 } from "../_shared/teachingCampusColumns.ts";
+import { cellTextsFromSheetXml, sharedStringsFromXml } from "../_shared/xlsxCellText.ts";
 
 const corsHeaders = (origin: string) => ({
   "Access-Control-Allow-Origin": origin,
@@ -618,9 +620,49 @@ function isGoogleSheetsMimeType(mimeType?: string | null): boolean {
   return mimeType === "application/vnd.google-apps.spreadsheet";
 }
 
+function zipText(files: Record<string, Uint8Array>, path: string): string {
+  const bytes = files[path] || files[path.replace(/^\/+/, "")];
+  return bytes ? strFromU8(bytes) : "";
+}
+
+function fullCellTextBySheet(bytes: Uint8Array): Map<string, Map<string, string>> {
+  const bySheet = new Map<string, Map<string, string>>();
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(bytes);
+  } catch {
+    return bySheet;
+  }
+
+  const sharedStrings = sharedStringsFromXml(zipText(files, "xl/sharedStrings.xml"));
+  const workbookXml = zipText(files, "xl/workbook.xml");
+  const relsXml = zipText(files, "xl/_rels/workbook.xml.rels");
+  const attr = (tag: string, name: string) => tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1] || "";
+  const rels = new Map<string, string>();
+  for (const match of relsXml.matchAll(/<Relationship\b[^>]*\/?>/g)) {
+    const id = attr(match[0], "Id");
+    const target = attr(match[0], "Target").replace(/^\//, "");
+    if (!id || !target) continue;
+    rels.set(id, target.startsWith("xl/") ? target : `xl/${target}`);
+  }
+
+  for (const match of workbookXml.matchAll(/<sheet\b[^>]*\/?>/g)) {
+    const name = attr(match[0], "name")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"');
+    const sheetPath = rels.get(attr(match[0], "r:id"));
+    if (!name || !sheetPath) continue;
+    bySheet.set(name, cellTextsFromSheetXml(zipText(files, sheetPath), sharedStrings));
+  }
+  return bySheet;
+}
+
 function workbookValuesForTab(
   workbook: XLSX.WorkBook,
   preferredTabs: Array<string | null>,
+  fullTextBySheet: Map<string, Map<string, string>>,
 ): { tab: string | null; values: string[][] } | null {
   const names = workbook.SheetNames || [];
   if (names.length === 0) return null;
@@ -629,7 +671,7 @@ function workbookValuesForTab(
   const toValues = (sheetName: string): string[][] => {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) return [];
-    return sheetToMatrix(sheet);
+    return sheetToMatrix(sheet, fullTextBySheet.get(sheetName));
   };
 
   const candidates: string[] = [];
@@ -666,7 +708,7 @@ function cellDisplayText(cell: XLSX.CellObject | undefined): string {
   return formatted || raw;
 }
 
-function sheetToMatrix(sheet: XLSX.WorkSheet): string[][] {
+function sheetToMatrix(sheet: XLSX.WorkSheet, fullText: Map<string, string> | undefined): string[][] {
   const ref = sheet["!ref"];
   if (!ref) return [];
   const range = XLSX.utils.decode_range(ref);
@@ -676,8 +718,11 @@ function sheetToMatrix(sheet: XLSX.WorkSheet): string[][] {
   for (let rowIndex = range.s.r; rowIndex <= lastRow; rowIndex += 1) {
     const row: string[] = [];
     for (let columnIndex = range.s.c; columnIndex <= lastColumn; columnIndex += 1) {
-      const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })] as XLSX.CellObject | undefined;
-      row.push(cellDisplayText(cell));
+      const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+      const cell = sheet[address] as XLSX.CellObject | undefined;
+      const formatted = cellDisplayText(cell);
+      const full = fullText?.get(address) || "";
+      row.push(full.length > formatted.length ? full : formatted);
     }
     rows.push(row);
   }
@@ -729,7 +774,7 @@ async function readOfficeSpreadsheet(
     throw new DriveReadError(400, `Could not read that Excel file (${detail}).`);
   }
 
-  const parsed = workbookValuesForTab(workbook, preferredTabs);
+  const parsed = workbookValuesForTab(workbook, preferredTabs, fullCellTextBySheet(bytes));
   if (!parsed || parsed.values.length === 0) {
     throw new DriveReadError(400, "The Excel file has no rows to import.");
   }
