@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Mic, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin, FileText } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, X, Star, Heart, Zap, Diamond, ArrowRightLeft, Music, Mic, MicVocal, Guitar, Volume2, Video, Building2, Pencil, Check, ListMusic, Headphones, Megaphone, Loader2, MapPin, FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -498,16 +498,57 @@ function CalendarDayWidget({
   className?: string;
   bodyClassName?: string;
 }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const updateScrollHint = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setCanScrollDown(remaining > 12);
+  }, []);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    updateScrollHint();
+    const observer = new ResizeObserver(updateScrollHint);
+    observer.observe(el);
+    const observeChildren = () => {
+      Array.from(el.children).forEach((child) => observer.observe(child));
+    };
+    observeChildren();
+    const mutation = new MutationObserver(() => {
+      observeChildren();
+      updateScrollHint();
+    });
+    mutation.observe(el, { childList: true, subtree: true });
+    el.addEventListener("scroll", updateScrollHint, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", updateScrollHint);
+      observer.disconnect();
+      mutation.disconnect();
+    };
+  }, [updateScrollHint]);
+
   return (
     <section className={cn(
-      "calendar-day-widget flex min-w-0 w-full flex-col rounded-lg border border-border bg-card p-2 sm:p-2.5 lg:p-4",
+      "calendar-day-widget relative flex min-w-0 w-full flex-col rounded-lg border border-border bg-card p-2 sm:p-2.5 lg:p-4",
       className,
     )}>
       <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
         <h2 className="min-w-0 text-sm font-semibold leading-tight text-foreground">{title}</h2>
         {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
       </div>
-      <div className={cn("min-w-0", bodyClassName)}>{children}</div>
+      <div ref={bodyRef} className={cn("min-w-0", bodyClassName)}>{children}</div>
+      {canScrollDown ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center rounded-b-lg bg-gradient-to-t from-card via-card/95 to-transparent px-2 pb-1.5 pt-6">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm">
+            <ChevronDown className="h-3 w-3" />
+            Scroll for more
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
