@@ -35,7 +35,7 @@ import { useCampusSelection } from "@/components/layout/CampusSelectionContext";
 import { MINISTRY_TYPES, isKidsCampSetMinistryType, isNetworkWideMinistryType } from "@/lib/constants";
 import { useServiceFlowTemplates } from "@/hooks/useServiceFlowTemplates";
 import { useServiceTimeOverrides } from "@/hooks/useServiceTimeOverrides";
-import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
+import { formatTeachingReference, useTeachingWeekForDate, visibleTeachingThemes } from "@/hooks/useTeachingSchedule";
 import { useScheduledTeamForDate } from "@/hooks/useScheduledTeamForDate";
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import {
@@ -1392,9 +1392,9 @@ export const ServiceFlowEditor = forwardRef<ServiceFlowEditorHandle, ServiceFlow
                 {teachingWeek.teacher_name}
               </span>
             ) : null}
-            {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 ? (
+            {visibleTeachingThemes(teachingWeek).length > 0 ? (
               <span className="text-xs text-muted-foreground">
-                {teachingWeek.themes_manual.join(", ")}
+                {visibleTeachingThemes(teachingWeek).join(", ")}
               </span>
             ) : null}
             {BIBLE_READER_ENABLED ? (

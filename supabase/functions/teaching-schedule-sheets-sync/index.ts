@@ -200,13 +200,32 @@ function parseTopicToTeaching(topic: string): {
     };
   }
 
-  // Non-scripture weekend labels still become teaching weeks.
+  // Weekend labels such as Advent still become a teaching week.
+  // The label is the reference itself, so it is not also stored as a theme.
   return {
     book: trimmed,
     chapter: 1,
     chapter_reference: trimmed,
-    themes_manual: [trimmed],
+    themes_manual: [],
   };
+}
+
+function readTeachingTopic(row: string[], topicColumnIndex: number, campusColumnIndexes: Set<number>): string {
+  if (topicColumnIndex < 0) return "";
+  const topic = cell(row, topicColumnIndex);
+  if (!topic || /\d/.test(topic)) return topic;
+
+  // Some sheets keep the chapter in the next cell ("Psalm" | "19") under one visual column.
+  for (let index = topicColumnIndex + 1; index < row.length; index += 1) {
+    if (campusColumnIndexes.has(index)) break;
+    const next = cell(row, index);
+    if (!next) continue;
+    if (/^\d{1,3}(?:\s*[:.]\s*\d+)?(?:\s*[-–]\s*\d+)?(?:\s+pt\.?\s*\d+)?$/i.test(next)) {
+      return `${topic} ${next}`.trim();
+    }
+    break;
+  }
+  return topic;
 }
 
 function findCampusColumnMappings(
@@ -262,7 +281,7 @@ function parseEccOverviewRows(values: string[][], campuses: CampusRef[]): Parsed
   }
 
   const dateColumnIndex = headerRow.findIndex((value) => /weekend\s*dates?|dates?/i.test(value));
-  const topicColumnIndex = headerRow.findIndex((value) => /teaching\s*topic|topic|passage|scripture/i.test(value));
+  const topicColumnIndex = headerRow.findIndex((value) => /teaching\s*topic|^topic$|passage|scripture/i.test(value));
   if (dateColumnIndex < 0) {
     throw new Error("Could not find the Weekend Dates column in the ECC Overview sheet.");
   }
@@ -291,7 +310,11 @@ function parseEccOverviewRows(values: string[][], campuses: CampusRef[]): Parsed
     const parsedYear = Number.parseInt(parsedDate.slice(0, 4), 10);
     if (parsedYear !== currentYear) continue;
 
-    const topic = topicColumnIndex >= 0 ? cell(rawRow, topicColumnIndex) : "";
+    const topic = readTeachingTopic(
+      rawRow,
+      topicColumnIndex,
+      new Set(campusMappings.map((mapping) => mapping.columnIndex)),
+    );
     const teaching = parseTopicToTeaching(topic);
     const weekendDate = getWeekendKey(parsedDate);
 
@@ -606,15 +629,7 @@ function workbookValuesForTab(
   const toValues = (sheetName: string): string[][] => {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) return [];
-    const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
-      header: 1,
-      raw: false,
-      defval: "",
-      blankrows: true,
-    });
-    return rows.map((row) =>
-      (Array.isArray(row) ? row : []).map((cell) => String(cell ?? "").trim()),
-    );
+    return sheetToMatrix(sheet);
   };
 
   const candidates: string[] = [];
@@ -639,14 +654,53 @@ function workbookValuesForTab(
   return fallback;
 }
 
-async function readOfficeSpreadsheet(
-  accessToken: string,
-  fileId: string,
-  preferredTabs: Array<string | null>,
-): Promise<{ tab: string | null; values: string[][] }> {
+function cellDisplayText(cell: XLSX.CellObject | undefined): string {
+  if (!cell) return "";
+  const formatted = typeof cell.w === "string" ? cell.w.trim() : "";
+  const raw = cell.v == null || typeof cell.v === "object" ? "" : String(cell.v).trim();
+  if (formatted && raw && formatted !== raw) {
+    if (/\d/.test(formatted) && !/\d/.test(raw)) return formatted;
+    if (/\d/.test(raw) && !/\d/.test(formatted)) return raw;
+    return formatted.length >= raw.length ? formatted : raw;
+  }
+  return formatted || raw;
+}
+
+function sheetToMatrix(sheet: XLSX.WorkSheet): string[][] {
+  const ref = sheet["!ref"];
+  if (!ref) return [];
+  const range = XLSX.utils.decode_range(ref);
+  const lastRow = Math.min(range.e.r, range.s.r + 5000);
+  const lastColumn = Math.min(range.e.c, range.s.c + 40);
+  const rows: string[][] = [];
+  for (let rowIndex = range.s.r; rowIndex <= lastRow; rowIndex += 1) {
+    const row: string[] = [];
+    for (let columnIndex = range.s.c; columnIndex <= lastColumn; columnIndex += 1) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })] as XLSX.CellObject | undefined;
+      row.push(cellDisplayText(cell));
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function isZipWorkbook(bytes: Uint8Array): boolean {
+  return bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+}
+
+async function downloadSpreadsheetBytes(accessToken: string, fileId: string): Promise<Uint8Array> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  // Export returns the values Google Sheets is showing, including chapters typed into an uploaded Excel file.
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(fileId)}/export?format=xlsx`;
+  const exported = await fetch(exportUrl, { headers });
+  if (exported.ok) {
+    const bytes = new Uint8Array(await exported.arrayBuffer());
+    if (isZipWorkbook(bytes)) return bytes;
+  }
+
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { headers },
   );
   if (!res.ok) {
     let message = `Could not download the spreadsheet from Drive (${res.status}).`;
@@ -658,8 +712,15 @@ async function readOfficeSpreadsheet(
     }
     throw new DriveReadError(res.status, message);
   }
+  return new Uint8Array(await res.arrayBuffer());
+}
 
-  const bytes = new Uint8Array(await res.arrayBuffer());
+async function readOfficeSpreadsheet(
+  accessToken: string,
+  fileId: string,
+  preferredTabs: Array<string | null>,
+): Promise<{ tab: string | null; values: string[][] }> {
+  const bytes = await downloadSpreadsheetBytes(accessToken, fileId);
   let workbook: XLSX.WorkBook;
   try {
     workbook = XLSX.read(bytes, { type: "array" });
@@ -697,7 +758,7 @@ async function readSheetValues(
   valuesRange: string,
 ): Promise<{ ok: true; values: string[][] } | { ok: false; status: number; message: string; statusText?: string }> {
   const sheetRes = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(valuesRange)}`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(valuesRange)}?valueRenderOption=FORMATTED_VALUE`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     },

@@ -79,7 +79,7 @@ import { getCurrentResourceAppKey } from "@/lib/resourceApp";
 import { getResourceAppMinistryTypes } from "@/lib/studentFlow";
 import { useExistingSet, useDraftSetSongs } from "@/hooks/useSetPlanner";
 import { useCustomServiceAssignments } from "@/hooks/useCustomServices";
-import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange } from "@/hooks/useTeachingSchedule";
+import { formatTeachingReference, getTeachingWeekDisplayDates, useTeachingWeekForDate, useTeachingWeeksInRange, visibleTeachingThemes } from "@/hooks/useTeachingSchedule";
 import { cn } from "@/lib/utils";
 import { scheduleMinistryType } from "@/lib/campusMinistrySchedule";
 import { toast } from "sonner";
@@ -2140,9 +2140,9 @@ function StandardCalendar() {
                             Teaching
                           </Badge>
                           <span className="text-sm font-medium">{formatTeachingReference(selectedTeachingWeek)}</span>
-                          {selectedTeachingWeek.themes_manual && selectedTeachingWeek.themes_manual.length > 0 ? (
+                          {visibleTeachingThemes(selectedTeachingWeek).length > 0 ? (
                             <span className="text-xs text-muted-foreground">
-                              {selectedTeachingWeek.themes_manual.join(", ")}
+                              {visibleTeachingThemes(selectedTeachingWeek).join(", ")}
                             </span>
                           ) : null}
                           {BIBLE_READER_ENABLED ? (

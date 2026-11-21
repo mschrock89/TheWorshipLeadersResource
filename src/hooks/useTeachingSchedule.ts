@@ -259,5 +259,24 @@ export function getTeachingWeekDisplayDates(
 }
 
 export function formatTeachingReference(week: Pick<TeachingWeekSummary, "book" | "chapter" | "chapter_reference">): string {
-  return week.chapter_reference?.trim() || `${week.book} ${week.chapter}`;
+  const reference = week.chapter_reference?.trim() || "";
+  const composed = week.chapter && week.chapter > 1 ? `${week.book} ${week.chapter}` : week.book;
+  if (!reference) return composed;
+  if (week.chapter && week.chapter > 1 && !reference.includes(String(week.chapter))) {
+    return `${reference} ${week.chapter}`;
+  }
+  return reference;
+}
+
+export function visibleTeachingThemes(
+  week: Pick<TeachingWeekSummary, "book" | "chapter" | "chapter_reference" | "themes_manual">,
+): string[] {
+  const shown = new Set(
+    [formatTeachingReference(week), week.book, week.chapter_reference]
+      .map((value) => value?.trim().toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+  return (week.themes_manual || [])
+    .map((theme) => theme.trim())
+    .filter((theme) => theme && !shown.has(theme.toLowerCase()));
 }

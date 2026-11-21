@@ -46,7 +46,7 @@ import { POSITION_LABELS, POSITION_LABELS_SHORT, POSITION_SLOTS } from "@/lib/co
 import { useTeamRosterForDate } from "@/hooks/useTeamRosterForDate";
 import { GroupTextButton, buildRosterGroupTextTemplate } from "@/components/team/GroupTextButton";
 import { supabase } from "@/integrations/supabase/client";
-import { formatTeachingReference, useTeachingWeekForDate } from "@/hooks/useTeachingSchedule";
+import { formatTeachingReference, useTeachingWeekForDate, visibleTeachingThemes } from "@/hooks/useTeachingSchedule";
 import { BIBLE_READER_ENABLED, buildBibleHref } from "@/lib/bible";
 import { isMissingYoutubeUrlColumnError } from "@/lib/youtube";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1102,9 +1102,9 @@ function SetlistTeachingSchedule({
           </Button>
         ) : null}
       </div>
-      {teachingWeek.themes_manual && teachingWeek.themes_manual.length > 0 && (
+      {visibleTeachingThemes(teachingWeek).length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {teachingWeek.themes_manual.join(", ")}
+          {visibleTeachingThemes(teachingWeek).join(", ")}
         </p>
       )}
       {(teachingWeek.psa_highlight || teachingWeek.announcer_name) ? (
