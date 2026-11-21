@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import * as XLSX from "npm:xlsx@0.18.5";
 import {
   findCampusColumnIndex,
   normalizeCampusKey,
@@ -557,9 +558,18 @@ async function getAccessToken(refreshToken: string): Promise<string> {
   return tokenData.access_token as string;
 }
 
+class DriveReadError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function getDriveFileMetadata(accessToken: string, fileId: string) {
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType&supportsAllDrives=true`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   const data = await res.json();
@@ -575,37 +585,110 @@ function isOfficeMimeType(mimeType?: string | null): boolean {
     mimeType.includes("officedocument") ||
     mimeType.includes("ms-excel") ||
     mimeType === "application/vnd.ms-excel" ||
-    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "text/csv" ||
+    mimeType === "application/vnd.oasis.opendocument.spreadsheet"
   );
 }
 
-async function convertOfficeFileToGoogleSheet(
-  accessToken: string,
-  fileId: string,
-  fileName?: string,
-): Promise<{ id: string; webViewLink?: string } | null> {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?supportsAllDrives=true`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: `${(fileName || "Teaching Schedule").replace(/\.(xlsx|xls|csv)$/i, "")} (Google Sheet)`,
-        mimeType: "application/vnd.google-apps.spreadsheet",
-      }),
-    },
-  );
+function isGoogleSheetsMimeType(mimeType?: string | null): boolean {
+  return mimeType === "application/vnd.google-apps.spreadsheet";
+}
 
-  const data = await res.json();
-  if (!res.ok || !data?.id) {
-    console.error("office_convert_failed", { status: res.status, data });
-    return null;
+function workbookValuesForTab(
+  workbook: XLSX.WorkBook,
+  preferredTabs: Array<string | null>,
+): { tab: string | null; values: string[][] } | null {
+  const names = workbook.SheetNames || [];
+  if (names.length === 0) return null;
+
+  const byLower = new Map(names.map((name) => [name.trim().toLowerCase(), name]));
+  const toValues = (sheetName: string): string[][] => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return [];
+    const rows = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
+      header: 1,
+      raw: false,
+      defval: "",
+      blankrows: true,
+    });
+    return rows.map((row) =>
+      (Array.isArray(row) ? row : []).map((cell) => String(cell ?? "").trim()),
+    );
+  };
+
+  const candidates: string[] = [];
+  for (const tab of preferredTabs) {
+    if (!tab) continue;
+    const match = byLower.get(tab.trim().toLowerCase());
+    if (match && !candidates.includes(match)) candidates.push(match);
+  }
+  for (const name of names) {
+    if (!candidates.includes(name)) candidates.push(name);
   }
 
-  return { id: data.id as string, webViewLink: data.webViewLink as string | undefined };
+  let fallback: { tab: string | null; values: string[][] } | null = null;
+  for (const name of candidates) {
+    const values = toValues(name);
+    if (!values.some((row) => row.some((cell) => cell.trim()))) continue;
+    if (!fallback) fallback = { tab: name, values };
+    if (values.some((row) => isEccOverviewHeaderRow(row))) {
+      return { tab: name, values };
+    }
+  }
+  return fallback;
+}
+
+async function readOfficeSpreadsheet(
+  accessToken: string,
+  fileId: string,
+  preferredTabs: Array<string | null>,
+): Promise<{ tab: string | null; values: string[][] }> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!res.ok) {
+    let message = `Could not download the spreadsheet from Drive (${res.status}).`;
+    try {
+      const data = await res.json();
+      message = String(data?.error?.message || message);
+    } catch {
+      // Drive sometimes returns an empty or non-JSON body.
+    }
+    throw new DriveReadError(res.status, message);
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(bytes, { type: "array" });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unreadable workbook";
+    throw new DriveReadError(400, `Could not read that Excel file (${detail}).`);
+  }
+
+  const parsed = workbookValuesForTab(workbook, preferredTabs);
+  if (!parsed || parsed.values.length === 0) {
+    throw new DriveReadError(400, "The Excel file has no rows to import.");
+  }
+  return parsed;
+}
+
+function officeReadErrorResponse(origin: string, error: unknown) {
+  const status = error instanceof DriveReadError ? error.status : 400;
+  const message = error instanceof Error ? error.message : "Could not read the Excel file.";
+  const needsReconnect = status === 403 || /insufficient|permission|forbidden|scope/i.test(message);
+  return jsonResponse(
+    origin,
+    {
+      error: needsReconnect
+        ? "Google Drive access is missing on your connected account. Reconnect Google in Settings → Planning Center and approve access, then sync again."
+        : message,
+      code: needsReconnect ? "sheets_permission_denied" : "office_file_read_failed",
+    },
+    needsReconnect ? 403 : 400,
+  );
 }
 
 async function readSheetValues(
@@ -770,32 +853,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    let effectiveSheetId = sheetId;
-    let effectiveSheetUrl = sheetUrl;
+    const effectiveSheetId = sheetId;
+    const effectiveSheetUrl = sheetUrl;
     let sheetTab: string | null = requestedSheetTab;
     const fileMeta = await getDriveFileMetadata(accessToken, sheetId);
-    if (fileMeta && isOfficeMimeType(fileMeta.mimeType)) {
-      const converted = await convertOfficeFileToGoogleSheet(
-        accessToken,
-        sheetId,
-        fileMeta.name,
-      );
-      if (!converted?.id) {
-        return jsonResponse(
-          origin,
-          {
-            error:
-              "That link is an Excel/Office file in Drive, not a native Google Sheet. Open it in Google Drive → File → Save as Google Sheets, then paste the new Sheets URL here.",
-            code: "office_file_needs_conversion",
-          },
-          400,
-        );
-      }
-      effectiveSheetId = converted.id;
-      effectiveSheetUrl =
-        converted.webViewLink ||
-        `https://docs.google.com/spreadsheets/d/${converted.id}/edit`;
-    }
 
     const tabCandidates = Array.from(
       new Set(
@@ -805,48 +866,56 @@ Deno.serve(async (req) => {
       ),
     ) as Array<string | null>;
 
+    let values: string[][] | null = null;
     let sheetRead: Awaited<ReturnType<typeof readSheetValues>> | null = null;
-    for (const tab of tabCandidates) {
-      const candidate = await readSheetValues(accessToken, effectiveSheetId, buildValuesRange(tab));
-      if (candidate.ok) {
-        sheetRead = candidate;
-        sheetTab = tab;
-        break;
-      }
 
-      // Some Drive links look like Sheets URLs but are still Office binaries.
-      if (/must not be an Office file|not supported for this document/i.test(candidate.message)) {
-        const converted = await convertOfficeFileToGoogleSheet(
-          accessToken,
-          effectiveSheetId,
-          fileMeta?.name,
-        );
-        if (!converted?.id) {
-          return jsonResponse(
-            origin,
-            {
-              error:
-                "That link is an Excel/Office file in Drive, not a native Google Sheet. Open it in Google Drive → File → Save as Google Sheets, then paste the new Sheets URL here.",
-              code: "office_file_needs_conversion",
-            },
-            400,
-          );
+    const readUploadedSpreadsheet = async () => {
+      const officeRead = await readOfficeSpreadsheet(accessToken, effectiveSheetId, tabCandidates);
+      values = officeRead.values;
+      sheetTab = officeRead.tab;
+    };
+
+    if (fileMeta && isOfficeMimeType(fileMeta.mimeType) && !isGoogleSheetsMimeType(fileMeta.mimeType)) {
+      try {
+        await readUploadedSpreadsheet();
+      } catch (officeError) {
+        console.error("office_file_read_failed", officeError);
+        return officeReadErrorResponse(origin, officeError);
+      }
+    } else {
+      for (const tab of tabCandidates) {
+        const candidate = await readSheetValues(accessToken, effectiveSheetId, buildValuesRange(tab));
+        if (candidate.ok) {
+          sheetRead = candidate;
+          sheetTab = tab;
+          break;
         }
-        effectiveSheetId = converted.id;
-        effectiveSheetUrl =
-          converted.webViewLink ||
-          `https://docs.google.com/spreadsheets/d/${converted.id}/edit`;
-        continue;
-      }
 
-      sheetRead = candidate;
-      // Keep trying alternate tabs for missing-range style failures.
-      if (!/Unable to parse range|Unable to parse|not found|400/i.test(candidate.message)) {
-        break;
+        // A /spreadsheets/ URL can still point at an uploaded Excel file.
+        if (/must not be an Office file|not supported for this document|office file/i.test(candidate.message)) {
+          try {
+            await readUploadedSpreadsheet();
+            sheetRead = null;
+            break;
+          } catch (officeError) {
+            console.error("office_file_read_failed", officeError);
+            return officeReadErrorResponse(origin, officeError);
+          }
+        }
+
+        sheetRead = candidate;
+        // Keep trying alternate tabs for missing-range style failures.
+        if (!/Unable to parse range|Unable to parse|not found|400/i.test(candidate.message)) {
+          break;
+        }
       }
     }
 
-    if (!sheetRead || !sheetRead.ok) {
+    if (!values && sheetRead?.ok) {
+      values = sheetRead.values;
+    }
+
+    if (!values) {
       const googleMessage = sheetRead?.message || "Unable to read the Google Sheet.";
       const googleStatus = sheetRead?.statusText || "";
       const needsReconnect =
@@ -878,7 +947,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const values = sheetRead.values;
     if (values.length === 0) {
       return jsonResponse(origin, { error: "The Google Sheet returned no rows." }, 400);
     }

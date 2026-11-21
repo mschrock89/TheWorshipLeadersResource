@@ -82,7 +82,7 @@ serve(async (req) => {
         [
           "https://www.googleapis.com/auth/calendar.events",
           "https://www.googleapis.com/auth/spreadsheets.readonly",
-          // Needed to inspect/convert uploaded Excel files into native Google Sheets.
+          // Needed to download uploaded Excel files for the teaching schedule sync.
           "https://www.googleapis.com/auth/drive",
         ].join(" ")
       )}` +
